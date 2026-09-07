@@ -1,5 +1,14 @@
-const CACHE_NAME = 'chef-secteur-v1';
-const APP_SHELL = ['./', './index.html', './manifest.webmanifest'];
+const CACHE_NAME = 'chef-secteur-v4-3';
+const APP_SHELL = [
+  './',
+  './index.html',
+  './manifest.webmanifest',
+  './payload/part01.txt',
+  './payload/part02.txt',
+  './payload/part03.txt',
+  './payload/part04.txt',
+  './payload/part05.txt'
+];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
