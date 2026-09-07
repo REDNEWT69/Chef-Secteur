@@ -1,4 +1,4 @@
-const CACHE_NAME = 'chef-secteur-v5-rhone-alpes-1';
+const CACHE_NAME = 'chef-secteur-v5-samsung-2';
 const APP_SHELL = [
   './',
   './index.html',

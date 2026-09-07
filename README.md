@@ -1,6 +1,6 @@
-# Mon activité terrain
+# Chef Secteur SAMSUNG
 
-Mon activité terrain est une application web autonome de planification terrain pensée pour un chef de secteur Samsung. Elle centralise le planning hebdomadaire, les magasins du secteur, le suivi des visites, le mode terrain, l'historique et les données locales dans une interface adaptée au mobile.
+Chef Secteur SAMSUNG est une application web autonome de planification terrain pensée pour un chef de secteur Samsung. Elle centralise le planning hebdomadaire, les magasins du secteur, le suivi des visites, le mode terrain, l'historique et les données locales dans une interface adaptée au mobile.
 
 ## Fonctionnalités principales
 
@@ -38,7 +38,7 @@ L'application est maintenue dans `src/chef-secteur.html`, puis conservée pour l
 
 ## Utilisation
 
-Le projet doit être servi via HTTP/HTTPS pour profiter correctement du manifeste PWA et du service worker. Une fois ouvert dans Safari sur iPhone, il peut être ajouté à l'écran d'accueil depuis le menu Partager.
+Le site est publié automatiquement sur GitHub Pages par `.github/workflows/deploy-pages.yml`. Le projet doit être servi via HTTP/HTTPS pour profiter correctement du manifeste PWA et du service worker. Une fois ouvert dans Safari sur iPhone, il peut être ajouté à l'écran d'accueil depuis le menu Partager.
 
 Les données métier et l'historique sont enregistrés localement dans le navigateur. Les kilomètres calculés par l'application sont des estimations géographiques basées sur les coordonnées GPS et ne correspondent pas à une matrice de trafic routier en temps réel.
 
