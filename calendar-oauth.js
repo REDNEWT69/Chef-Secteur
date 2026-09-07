@@ -1,6 +1,6 @@
 (function(){
   'use strict';
-  const CLIENT_ID='59370123885-qe3r6obm3bjgc9jlnmn8qb6342lthhr6.apps.googleusercontent.com';
+  const CLIENT_ID='59370123885-qe3r60bm3bjgc9jlnmn8qb6342lthhr6.apps.googleusercontent.com';
   const SCOPE='https://www.googleapis.com/auth/calendar.readonly';
   let tokenClient;
 
