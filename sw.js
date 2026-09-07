@@ -1,8 +1,9 @@
-const CACHE_NAME = 'chef-secteur-v5-samsung-2';
+const CACHE_NAME = 'chef-secteur-v5-groq-1';
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
+  './assistant-upgrade.js',
   './payload/part01.txt',
   './payload/part02.txt',
   './payload/part03.txt',
