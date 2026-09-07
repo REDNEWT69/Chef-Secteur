@@ -1,8 +1,15 @@
-const CACHE_NAME = 'chef-secteur-v5-samsung-2';
+const CACHE_NAME = 'chef-secteur-v5-samsung-ai3';
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
+  './ai-gateway-config.js',
+  './assistant-upgrade.js',
+  './calendar-oauth.js',
+  './calendar-enhancements.js',
+  './ui-polish.js',
+  './route-polish.js',
+  './planning-ui-fixes.js',
   './payload/part01.txt',
   './payload/part02.txt',
   './payload/part03.txt',
