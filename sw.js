@@ -1,4 +1,4 @@
-const CACHE_NAME = 'chef-secteur-v7-assistant-drag';
+const CACHE_NAME = 'chef-secteur-v8-assistant-touch';
 const APP_SHELL = [
   './',
   './index.html',

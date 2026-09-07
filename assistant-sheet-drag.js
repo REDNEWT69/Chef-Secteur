@@ -12,22 +12,25 @@
     handle.type='button';handle.className='assistantDragHandle';handle.setAttribute('aria-label','Faire glisser la fenêtre IA vers le bas');
     handle.innerHTML='<span></span>';
     p.insertBefore(handle,p.firstChild);
-    handle.addEventListener('pointerdown',function(e){
+    function begin(y){
       if(!p.classList.contains('open'))return;
-      dragging=true;startY=lastY=e.clientY;startTime=Date.now();p.classList.add('dragging');p.classList.remove('peek');
-      try{handle.setPointerCapture(e.pointerId)}catch(_){}e.preventDefault();
-    });
-    handle.addEventListener('pointermove',function(e){
-      if(!dragging)return;lastY=e.clientY;const y=Math.max(0,lastY-startY);applyY(p,y);e.preventDefault();
-    });
+      dragging=true;startY=lastY=y;startTime=Date.now();p.classList.add('dragging');p.classList.remove('peek');
+    }
+    function move(y){if(!dragging)return;lastY=y;applyY(p,Math.max(0,lastY-startY))}
     function finish(e){
       if(!dragging)return;dragging=false;p.classList.remove('dragging');
       const y=Math.max(0,lastY-startY),elapsed=Math.max(1,Date.now()-startTime),speed=y/elapsed;
       if(y>190||speed>.75){close(p)}else if(y>42){applyY(p,118);p.classList.add('peek')}else{reset(p)}
       if(e)e.preventDefault();
     }
+    handle.addEventListener('pointerdown',function(e){if(e.pointerType==='touch')return;begin(e.clientY);try{handle.setPointerCapture(e.pointerId)}catch(_){}e.preventDefault()});
+    handle.addEventListener('pointermove',function(e){if(e.pointerType==='touch'||!dragging)return;move(e.clientY);e.preventDefault()});
     handle.addEventListener('pointerup',finish);handle.addEventListener('pointercancel',finish);
-    new MutationObserver(function(){if(!p.classList.contains('open'))reset(p)}).observe(p,{attributes:true,attributeFilter:['class']});
+    handle.addEventListener('touchstart',function(e){if(!e.touches.length)return;begin(e.touches[0].clientY);e.preventDefault()},{passive:false});
+    handle.addEventListener('touchmove',function(e){if(!dragging||!e.touches.length)return;move(e.touches[0].clientY);e.preventDefault()},{passive:false});
+    handle.addEventListener('touchend',finish,{passive:false});handle.addEventListener('touchcancel',finish,{passive:false});
+    function syncOpen(){const open=p.classList.contains('open');document.documentElement.classList.toggle('assistantIsOpen',open);if(!open)reset(p)}
+    new MutationObserver(syncOpen).observe(p,{attributes:true,attributeFilter:['class']});syncOpen();
     return true;
   }
   function boot(){if(install())return;let tries=0;const timer=setInterval(function(){if(install()||++tries>60)clearInterval(timer)},100)}
