@@ -1,8 +1,11 @@
-const CACHE_NAME = 'chef-secteur-v5-samsung-rangefix2';
+const CACHE_NAME = 'chef-secteur-v6-glass-order';
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
+  './glass-theme.css',
+  './home-refresh-v2.js',
+  './visual-refresh-v1.js',
   './ai-gateway-config.js',
   './assistant-upgrade.js',
   './ai-context-limit.js',
