@@ -1,105 +1,80 @@
 (function(){
   'use strict';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-  const MAPKIT_TOKEN_KEY='chef_secteur_mapkit_token_v1';
-  let busy=false,timer=null,mapInstance=null,mapLoading=null;
+  let busy=false,timer=null,mapInstance=null,mapLayer=null,leafletLoading=null,routeSeq=0;
 
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-  function selectedDay(){
-    try{
-      const active=document.querySelector('#dayTabs .dayTab.active');
-      if(active){const txt=active.textContent||'';const d=DAYS.find(x=>norm(txt).includes(norm(x)));if(d)return d;}
-      if(typeof window.selectedPlanningDay==='string'&&window.selectedPlanningDay)return window.selectedPlanningDay;
-      return ((state.settings&&state.settings.days)||DAYS)[0]||'Lundi';
-    }catch(e){return'Lundi';}
-  }
+  function selectedDay(){try{const active=document.querySelector('#dayTabs .dayTab.active');if(active){const txt=active.textContent||'';const d=DAYS.find(x=>norm(txt).includes(norm(x)));if(d)return d}if(typeof window.selectedPlanningDay==='string'&&window.selectedPlanningDay)return window.selectedPlanningDay;return ((state.settings&&state.settings.days)||DAYS)[0]||'Lundi'}catch(e){return'Lundi'}}
   function routeForDay(day){try{return (state.plan&&state.plan[day])||[]}catch(e){return[]}}
   function profile(){try{return state.profile||{}}catch(e){return{}}}
+  function baseCoordinate(){const p=profile();return isFinite(Number(p.baseLat))&&isFinite(Number(p.baseLon))?{lat:Number(p.baseLat),lon:Number(p.baseLon)}:null}
+  function storeCoordinate(s){return s&&isFinite(Number(s.lat))&&isFinite(Number(s.lon))?{lat:Number(s.lat),lon:Number(s.lon)}:null}
   function basePoint(){const p=profile();if(p.baseAddress)return p.baseAddress;if(isFinite(Number(p.baseLat))&&isFinite(Number(p.baseLon)))return Number(p.baseLat)+','+Number(p.baseLon);return''}
-  function baseCoordinate(){const p=profile();if(isFinite(Number(p.baseLat))&&isFinite(Number(p.baseLon)))return{latitude:Number(p.baseLat),longitude:Number(p.baseLon)};return null}
   function storePoint(s){if(!s)return'';if(s.adresse||s.ville)return [s.adresse,s.ville].filter(Boolean).join(' ');if(isFinite(Number(s.lat))&&isFinite(Number(s.lon)))return Number(s.lat)+','+Number(s.lon);return s.ville||s.enseigne||''}
-  function storeCoordinate(s){return s&&isFinite(Number(s.lat))&&isFinite(Number(s.lon))?{latitude:Number(s.lat),longitude:Number(s.lon)}:null}
-  function routeKm(route){try{if(!route.length)return 0;let km=typeof window.havBase==='function'?window.havBase(route[0]):0;for(let i=1;i<route.length;i++)if(typeof window.hav==='function')km+=window.hav(route[i-1],route[i]);return Math.round(km)}catch(e){return 0}}
 
   function appleDirectionsUrl(day){
     const route=routeForDay(day);if(!route.length)return'';
-    const source=basePoint()||storePoint(route[0]);
-    const startIndex=basePoint()?0:1;
-    const destination=storePoint(route[route.length-1]);
+    const source=basePoint()||storePoint(route[0]),destination=storePoint(route[route.length-1]),startIndex=basePoint()?0:1;
     const middle=route.slice(startIndex,-1).map(storePoint).filter(Boolean);
     let url='https://maps.apple.com/directions?source='+encodeURIComponent(source)+'&destination='+encodeURIComponent(destination)+'&mode=driving';
-    middle.forEach(w=>{url+='&waypoint='+encodeURIComponent(w)});
-    return url;
+    middle.forEach(w=>{url+='&waypoint='+encodeURIComponent(w)});return url;
   }
-  function openRoute(){const day=selectedDay(),url=appleDirectionsUrl(day);if(url)window.open(url,'_blank','noopener')}
-  window.showPlanMap=openRoute;
-  window.openSelectedDayRoute=openRoute;
+  function openRoute(){const url=appleDirectionsUrl(selectedDay());if(url)window.open(url,'_blank','noopener')}
+  window.showPlanMap=openRoute;window.openSelectedDayRoute=openRoute;
 
-  function token(){try{return localStorage.getItem(MAPKIT_TOKEN_KEY)||''}catch(e){return''}}
-  function saveMapKitToken(){const input=document.getElementById('mapkitTokenInput');if(!input)return;const v=input.value.trim();try{if(v)localStorage.setItem(MAPKIT_TOKEN_KEY,v);else localStorage.removeItem(MAPKIT_TOKEN_KEY)}catch(e){}mapInstance=null;const old=document.getElementById('apple-mapkit-js');if(old)old.remove();window.mapkit=undefined;renderCompactRoute();if(v)setTimeout(renderEmbeddedMap,50)}
-  window.saveMapKitToken=saveMapKitToken;
-  window.toggleMapKitSetup=function(){const box=document.getElementById('mapkitSetup');if(box)box.style.display=box.style.display==='none'?'block':'none'};
-
-  function loadMapKit(){
-    if(window.mapkit&&window.mapkit.Map)return Promise.resolve(window.mapkit);
-    if(mapLoading)return mapLoading;
-    const t=token();if(!t)return Promise.reject(new Error('TOKEN_MISSING'));
-    mapLoading=new Promise((resolve,reject)=>{
-      const previous=document.getElementById('apple-mapkit-js');if(previous)previous.remove();
-      const cb='chefSecteurMapKitReady_'+Date.now();
-      window[cb]=function(){delete window[cb];if(window.mapkit)resolve(window.mapkit);else reject(new Error('MapKit non disponible'))};
-      const s=document.createElement('script');s.id='apple-mapkit-js';s.src='https://cdn.apple-mapkit.com/mk/6/mapkit.core.js';s.crossOrigin='anonymous';s.async=true;s.dataset.callback=cb;s.dataset.libraries='full-map';s.dataset.token=t;s.onerror=function(){delete window[cb];mapLoading=null;reject(new Error('Impossible de charger Apple MapKit JS'))};document.head.appendChild(s);
-    }).finally(()=>{mapLoading=null});
-    return mapLoading;
+  function loadLeaflet(){
+    if(window.L&&window.L.map)return Promise.resolve(window.L);if(leafletLoading)return leafletLoading;
+    leafletLoading=new Promise((resolve,reject)=>{
+      if(!document.getElementById('leaflet-css')){const css=document.createElement('link');css.id='leaflet-css';css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(css)}
+      const existing=document.getElementById('leaflet-js');if(existing){existing.addEventListener('load',()=>resolve(window.L),{once:true});existing.addEventListener('error',()=>reject(new Error('Leaflet indisponible')),{once:true});return}
+      const js=document.createElement('script');js.id='leaflet-js';js.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';js.onload=()=>resolve(window.L);js.onerror=()=>reject(new Error('Impossible de charger la carte'));document.head.appendChild(js);
+    }).finally(()=>{leafletLoading=null});return leafletLoading;
   }
 
-  async function renderEmbeddedMap(){
-    const holder=document.getElementById('appleRouteMap');if(!holder)return;
-    const day=selectedDay(),route=routeForDay(day);
-    if(!route.length){holder.innerHTML='';holder.style.display='none';return}
-    if(!token()){holder.style.display='none';return}
-    holder.style.display='block';holder.innerHTML='<div style="display:grid;place-items:center;height:100%;color:#667085;font-size:12px">Chargement d’Apple Plans…</div>';
+  function routeCoordinates(day){
+    const route=routeForDay(day),pts=[];const base=baseCoordinate();if(base)pts.push({coord:base,label:'Départ',kind:'base'});
+    route.forEach((s,i)=>{const c=storeCoordinate(s);if(c)pts.push({coord:c,label:(i+1)+'. '+(s.enseigne||'Magasin')+' '+(s.ville||''),kind:'store',store:s,index:i+1})});
+    return pts;
+  }
+  async function fetchRoadRoute(points){
+    if(points.length<2)return null;
+    const coords=points.map(p=>p.coord.lon+','+p.coord.lat).join(';');
+    const url='https://router.project-osrm.org/route/v1/driving/'+coords+'?overview=full&geometries=geojson&steps=false';
+    const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error('Service routier indisponible');const data=await r.json();if(!data.routes||!data.routes[0])throw new Error('Aucun itinéraire routier trouvé');return data.routes[0];
+  }
+  function markerIcon(L,n,isBase){
+    return L.divIcon({className:'chef-route-marker',html:'<div style="width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:'+(isBase?'#111827':'#fff')+';color:'+(isBase?'#fff':'#111827')+';border:2px solid #111827;font:800 12px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;box-shadow:0 3px 10px rgba(0,0,0,.18)">'+(isBase?'D':n)+'</div>',iconSize:[28,28],iconAnchor:[14,14]});
+  }
+
+  async function renderFreeMap(){
+    const holder=document.getElementById('freeRouteMap'),stats=document.getElementById('freeMapStats');if(!holder)return;
+    const day=selectedDay(),points=routeCoordinates(day),seq=++routeSeq;if(points.length<2){holder.style.display='none';return}
+    holder.style.display='block';holder.innerHTML='<div style="height:100%;display:grid;place-items:center;color:#667085;font-size:12px">Calcul du vrai tracé routier…</div>';
     try{
-      await loadMapKit();
-      holder.innerHTML='';
-      mapInstance=new mapkit.Map('appleRouteMap',{showsZoomControl:true,showsMapTypeControl:false,showsCompass:mapkit.FeatureVisibility.Adaptive});
-      const coordinates=[],annotations=[];
-      const base=baseCoordinate();
-      if(base){coordinates.push(base);annotations.push(new mapkit.MarkerAnnotation(base,{title:profile().baseName||'Départ',subtitle:'Départ',glyphText:'D'}))}
-      route.forEach((s,i)=>{const c=storeCoordinate(s);if(!c)return;coordinates.push(c);annotations.push(new mapkit.MarkerAnnotation(c,{title:(i+1)+'. '+(s.enseigne||'Magasin')+' '+(s.ville||''),subtitle:s.adresse||'',glyphText:String(i+1)}))});
-      if(annotations.length)mapInstance.addAnnotations(annotations);
-      const directions=new mapkit.Directions({language:'fr-FR'}),polylines=[];
-      let totalMeters=0,totalSeconds=0;
-      for(let i=0;i<coordinates.length-1;i++){
-        try{
-          const data=await directions.route({origin:coordinates[i],destination:coordinates[i+1],transportType:mapkit.TransportType.Automobile,requestsAlternateRoutes:false});
-          const r=data&&data.routes&&data.routes[0];if(r&&r.polyline){polylines.push(r.polyline);totalMeters+=Number(r.distance||0);totalSeconds+=Number(r.expectedTravelTime||0)}
-        }catch(e){console.warn('MapKit leg',i,e)}
-      }
-      if(polylines.length){mapInstance.addOverlays(polylines);mapInstance.showItems(annotations.concat(polylines),{padding:{top:36,right:36,bottom:36,left:36}})}else if(annotations.length)mapInstance.showItems(annotations,{padding:{top:36,right:36,bottom:36,left:36}});
-      const stats=document.getElementById('appleMapStats');if(stats&&totalMeters){const km=Math.round(totalMeters/1000),h=Math.floor(totalSeconds/3600),m=Math.round((totalSeconds%3600)/60);stats.textContent='Apple Plans · '+km+' km · '+(h?h+' h ':'')+m+' min de conduite estimée'}
-    }catch(e){
-      holder.innerHTML='<div style="padding:16px;color:#a33;font-size:11.5px">Carte Apple indisponible : '+esc(e&&e.message?e.message:e)+'. Vérifie le token MapKit JS et le domaine autorisé.</div>';
-    }
+      const L=await loadLeaflet();if(seq!==routeSeq)return;holder.innerHTML='';
+      if(mapInstance){try{mapInstance.remove()}catch(e){}mapInstance=null}
+      mapInstance=L.map(holder,{zoomControl:true,attributionControl:true});
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(mapInstance);
+      const bounds=[];points.forEach((p,i)=>{const latlng=[p.coord.lat,p.coord.lon];bounds.push(latlng);L.marker(latlng,{icon:markerIcon(L,i,p.kind==='base')}).addTo(mapInstance).bindPopup('<b>'+esc(p.label)+'</b>'+(p.store&&p.store.adresse?'<br>'+esc(p.store.adresse):''))});
+      let road=null;
+      try{road=await fetchRoadRoute(points)}catch(e){console.warn('OSRM:',e)}
+      if(seq!==routeSeq)return;
+      if(road&&road.geometry&&road.geometry.coordinates){const line=road.geometry.coordinates.map(c=>[c[1],c[0]]);L.polyline(line,{weight:5,opacity:.78}).addTo(mapInstance);line.forEach(x=>bounds.push(x));if(stats){const km=Math.round(road.distance/1000),mins=Math.round(road.duration/60),h=Math.floor(mins/60),m=mins%60;stats.textContent='Tracé routier · '+km+' km · '+(h?h+' h ':'')+m+' min de conduite'}}else{L.polyline(points.map(p=>[p.coord.lat,p.coord.lon]),{weight:4,opacity:.45,dashArray:'8 8'}).addTo(mapInstance);if(stats)stats.textContent='Aperçu géographique · calcul routier momentanément indisponible'}
+      if(bounds.length)mapInstance.fitBounds(bounds,{padding:[30,30],maxZoom:13});setTimeout(()=>mapInstance&&mapInstance.invalidateSize(),100);
+    }catch(e){holder.innerHTML='<div style="padding:16px;color:#a33;font-size:11.5px">Carte indisponible : '+esc(e&&e.message?e.message:e)+'</div>'}
   }
 
-  function hideLegacyMap(){
-    const wrap=document.getElementById('planMapWrap');if(wrap)wrap.style.display='none';const map=document.getElementById('map');if(map)map.style.display='none';
-    document.querySelectorAll('.applePlanTools button').forEach(btn=>{const txt=norm(btn.textContent||'');if(txt.includes('voir la carte')||txt.includes('itineraire')){btn.textContent=' Ouvrir la tournée';btn.setAttribute('onclick','openSelectedDayRoute()')}});
-  }
+  function hideLegacyMap(){const wrap=document.getElementById('planMapWrap');if(wrap)wrap.style.display='none';const map=document.getElementById('map');if(map)map.style.display='none';document.querySelectorAll('.applePlanTools button').forEach(btn=>{const txt=norm(btn.textContent||'');if(txt.includes('voir la carte')||txt.includes('itineraire')){btn.textContent=' Ouvrir la tournée';btn.setAttribute('onclick','openSelectedDayRoute()')}})}
   function renderCompactRoute(){
     const shell=document.querySelector('#planPanel .timelineShell');if(!shell)return;let box=document.getElementById('routeCompactCard');if(!box){box=document.createElement('div');box.id='routeCompactCard';shell.parentNode.insertBefore(box,shell.nextSibling)}
-    const day=selectedDay(),route=routeForDay(day),km=routeKm(route);if(!route.length){box.style.display='none';return}box.style.display='block';box.style.cssText='margin:12px 0 0;padding:14px 16px;border:1px solid #e1e5ed;border-radius:18px;background:#fff;box-shadow:0 4px 14px rgba(25,42,80,.045)';
+    const day=selectedDay(),route=routeForDay(day);if(!route.length){box.style.display='none';return}box.style.display='block';box.style.cssText='margin:12px 0 0;padding:14px 16px;border:1px solid #e1e5ed;border-radius:18px;background:#fff;box-shadow:0 4px 14px rgba(25,42,80,.045)';
     const names=route.slice(0,5).map((s,i)=>(i+1)+'. '+esc((s.enseigne||'')+' '+(s.ville||''))).join(' · ')+(route.length>5?' · +'+(route.length-5)+' autres':'');
-    const hasToken=!!token();
-    box.innerHTML='<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap"><div><b style="font-size:14px"> Tournée Apple Plans · '+esc(day)+'</b><div id="appleMapStats" style="font-size:11px;color:#667085;margin-top:4px">'+route.length+' visite'+(route.length>1?'s':'')+(km?' · ~'+km+' km géographiques':'')+'</div><div style="font-size:10.5px;color:#7b8494;margin-top:5px;line-height:1.4">'+names+'</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="secondary" type="button" onclick="openSelectedDayRoute()">Ouvrir la tournée dans Plans</button><button class="secondary" type="button" onclick="toggleMapKitSetup()">'+(hasToken?'Réglages carte Apple':'Activer carte Apple intégrée')+'</button></div></div>'+
-      '<div id="mapkitSetup" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #eef1f5"><label style="font-size:11px;font-weight:700">Token MapKit JS Apple</label><div style="display:flex;gap:8px;margin-top:6px"><input id="mapkitTokenInput" type="password" value="'+esc(token())+'" placeholder="Token MapKit JS" style="flex:1"><button class="secondary" onclick="saveMapKitToken()">Enregistrer</button></div><div style="font-size:10.5px;color:#667085;margin-top:6px">Token public limité au domaine rednewt69.github.io. Aucun identifiant Apple ni clé privée ne doit être placé ici.</div></div>'+
-      '<div id="appleRouteMap" style="display:'+(hasToken?'block':'none')+';height:360px;margin-top:12px;border-radius:16px;overflow:hidden;background:#f5f5f7"></div>';
-    if(hasToken)setTimeout(renderEmbeddedMap,30)
+    box.innerHTML='<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap"><div><b style="font-size:14px">🗺 Tournée du '+esc(day)+'</b><div id="freeMapStats" style="font-size:11px;color:#667085;margin-top:4px">'+route.length+' visite'+(route.length>1?'s':'')+' · calcul routier en cours</div><div style="font-size:10.5px;color:#7b8494;margin-top:5px;line-height:1.4">'+names+'</div></div><button class="secondary" type="button" onclick="openSelectedDayRoute()"> Ouvrir la tournée dans Plans</button></div><div id="freeRouteMap" style="height:380px;margin-top:12px;border-radius:16px;overflow:hidden;background:#f5f5f7"></div><div style="font-size:9.5px;color:#98a2b3;margin-top:6px">Carte OpenStreetMap · tracé routier calculé en ligne, sans abonnement ni clé API.</div>';
+    setTimeout(renderFreeMap,30);
   }
   function polish(){if(busy)return;busy=true;try{hideLegacyMap();renderCompactRoute()}finally{busy=false}}
   function hook(){if(!window.__routePolishWeek&&typeof window.renderWeek==='function'){const base=window.renderWeek;window.renderWeek=function(){const out=base.apply(this,arguments);setTimeout(polish,0);return out};window.__routePolishWeek=true}if(!window.__routePolishAll&&typeof window.renderAll==='function'){const base=window.renderAll;window.renderAll=function(){const out=base.apply(this,arguments);setTimeout(polish,0);return out};window.__routePolishAll=true}}
-  async function boot(){for(let i=0;i<50;i++){hook();polish();if(window.__routePolishWeek)break;await new Promise(r=>setTimeout(r,120))}document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(polish,30)},true);const root=document.querySelector('.wrap')||document.body;const obs=new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(polish,80)});obs.observe(root,{childList:true,subtree:true});polish()}
+  async function boot(){for(let i=0;i<50;i++){hook();polish();if(window.__routePolishWeek)break;await new Promise(r=>setTimeout(r,120))}document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(polish,30)},true);const root=document.querySelector('.wrap')||document.body;const obs=new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(polish,120)});obs.observe(root,{childList:true,subtree:true});polish()}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
 })();
