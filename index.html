@@ -19,7 +19,7 @@
     try{
       if(typeof DecompressionStream==='undefined') throw new Error('Ce navigateur ne prend pas en charge la décompression nécessaire. Utilise une version récente de Safari, Chrome ou Edge.');
       const texts=await Promise.all(parts.map(async name=>{
-        const r=await fetch('./applepayload2/'+name,{cache:'no-store'});
+        const r=await fetch('./payload/'+name,{cache:'no-store'});
         if(!r.ok) throw new Error('Impossible de charger '+name+' ('+r.status+').');
         return (await r.text()).trim();
       }));
