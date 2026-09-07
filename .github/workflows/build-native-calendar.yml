@@ -1,0 +1,36 @@
+name: Build native Chef Secteur
+
+on:
+  push:
+    branches: [v3-premium]
+    paths:
+      - 'tools/build_native_calendar.py'
+      - '.github/workflows/build-native-calendar.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v3-premium
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build and validate native app
+        run: python tools/build_native_calendar.py
+      - name: Commit generated app
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html sw.js apple-native-v1/
+          if git diff --cached --quiet; then
+            echo 'No generated changes'
+          else
+            git commit -m 'Construit Chef Secteur natif avec samedi et Google Agenda'
+            git push origin HEAD:v3-premium
+          fi
