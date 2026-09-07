@@ -28,7 +28,9 @@
       for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
       const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
       const html=await new Response(stream).text();
-      document.open(); document.write(html); document.close();
+      const hoursLabelShim='<script>window.hoursLabel=function(minutes){var h=Math.floor(minutes/60),m=Math.round(minutes%60/5)*5;if(m===60){h++;m=0}return h+\' h\'+(m?\' \'+(\'0\'+m).slice(-2):\'\')}<\/script>';
+      const patchedHtml=html.replace('<head>','<head>'+hoursLabelShim);
+      document.open(); document.write(patchedHtml); document.close();
     }catch(e){
       status.className='err';
       status.textContent='Erreur de chargement : '+(e&&e.message?e.message:String(e));
