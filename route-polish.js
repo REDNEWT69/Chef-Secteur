@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-  let busy=false,timer=null,mapInstance=null,mapLayer=null,leafletLoading=null,routeSeq=0;
+  let busy=false,timer=null,mapInstance=null,leafletLoading=null,routeSeq=0;
 
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -13,68 +13,23 @@
   function basePoint(){const p=profile();if(p.baseAddress)return p.baseAddress;if(isFinite(Number(p.baseLat))&&isFinite(Number(p.baseLon)))return Number(p.baseLat)+','+Number(p.baseLon);return''}
   function storePoint(s){if(!s)return'';if(s.adresse||s.ville)return [s.adresse,s.ville].filter(Boolean).join(' ');if(isFinite(Number(s.lat))&&isFinite(Number(s.lon)))return Number(s.lat)+','+Number(s.lon);return s.ville||s.enseigne||''}
 
-  function appleDirectionsUrl(day){
-    const route=routeForDay(day);if(!route.length)return'';
-    const source=basePoint()||storePoint(route[0]),destination=storePoint(route[route.length-1]),startIndex=basePoint()?0:1;
-    const middle=route.slice(startIndex,-1).map(storePoint).filter(Boolean);
-    let url='https://maps.apple.com/directions?source='+encodeURIComponent(source)+'&destination='+encodeURIComponent(destination)+'&mode=driving';
-    middle.forEach(w=>{url+='&waypoint='+encodeURIComponent(w)});return url;
-  }
+  function appleDirectionsUrl(day){const route=routeForDay(day);if(!route.length)return'';const source=basePoint()||storePoint(route[0]),destination=storePoint(route[route.length-1]),startIndex=basePoint()?0:1;const middle=route.slice(startIndex,-1).map(storePoint).filter(Boolean);let url='https://maps.apple.com/directions?source='+encodeURIComponent(source)+'&destination='+encodeURIComponent(destination)+'&mode=driving';middle.forEach(w=>{url+='&waypoint='+encodeURIComponent(w)});return url}
   function openRoute(){const url=appleDirectionsUrl(selectedDay());if(url)window.open(url,'_blank','noopener')}
   window.showPlanMap=openRoute;window.openSelectedDayRoute=openRoute;
 
-  function loadLeaflet(){
-    if(window.L&&window.L.map)return Promise.resolve(window.L);if(leafletLoading)return leafletLoading;
-    leafletLoading=new Promise((resolve,reject)=>{
-      if(!document.getElementById('leaflet-css')){const css=document.createElement('link');css.id='leaflet-css';css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(css)}
-      const existing=document.getElementById('leaflet-js');if(existing){existing.addEventListener('load',()=>resolve(window.L),{once:true});existing.addEventListener('error',()=>reject(new Error('Leaflet indisponible')),{once:true});return}
-      const js=document.createElement('script');js.id='leaflet-js';js.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';js.onload=()=>resolve(window.L);js.onerror=()=>reject(new Error('Impossible de charger la carte'));document.head.appendChild(js);
-    }).finally(()=>{leafletLoading=null});return leafletLoading;
-  }
+  function loadLeaflet(){if(window.L&&window.L.map)return Promise.resolve(window.L);if(leafletLoading)return leafletLoading;leafletLoading=new Promise((resolve,reject)=>{if(!document.getElementById('leaflet-css')){const css=document.createElement('link');css.id='leaflet-css';css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(css)}const existing=document.getElementById('leaflet-js');if(existing){if(window.L)return resolve(window.L);existing.addEventListener('load',()=>resolve(window.L),{once:true});existing.addEventListener('error',()=>reject(new Error('Leaflet indisponible')),{once:true});return}const js=document.createElement('script');js.id='leaflet-js';js.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';js.onload=()=>resolve(window.L);js.onerror=()=>reject(new Error('Impossible de charger la carte'));document.head.appendChild(js)}).finally(()=>{leafletLoading=null});return leafletLoading}
 
-  function routeCoordinates(day){
-    const route=routeForDay(day),pts=[];const base=baseCoordinate();if(base)pts.push({coord:base,label:'Départ',kind:'base'});
-    route.forEach((s,i)=>{const c=storeCoordinate(s);if(c)pts.push({coord:c,label:(i+1)+'. '+(s.enseigne||'Magasin')+' '+(s.ville||''),kind:'store',store:s,index:i+1})});
-    return pts;
-  }
-  async function fetchRoadRoute(points){
-    if(points.length<2)return null;
-    const coords=points.map(p=>p.coord.lon+','+p.coord.lat).join(';');
-    const url='https://router.project-osrm.org/route/v1/driving/'+coords+'?overview=full&geometries=geojson&steps=false';
-    const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error('Service routier indisponible');const data=await r.json();if(!data.routes||!data.routes[0])throw new Error('Aucun itinéraire routier trouvé');return data.routes[0];
-  }
-  function markerIcon(L,n,isBase){
-    return L.divIcon({className:'chef-route-marker',html:'<div style="width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:'+(isBase?'#111827':'#fff')+';color:'+(isBase?'#fff':'#111827')+';border:2px solid #111827;font:800 12px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;box-shadow:0 3px 10px rgba(0,0,0,.18)">'+(isBase?'D':n)+'</div>',iconSize:[28,28],iconAnchor:[14,14]});
-  }
+  function routeCoordinates(day){const route=routeForDay(day),pts=[];const base=baseCoordinate();if(base)pts.push({coord:base,label:'Départ',kind:'base'});route.forEach((s,i)=>{const c=storeCoordinate(s);if(c)pts.push({coord:c,label:(i+1)+'. '+(s.enseigne||'Magasin')+' '+(s.ville||''),kind:'store',store:s,index:i+1})});return pts}
+  async function fetchRoadRoute(points){if(points.length<2)return null;const coords=points.map(p=>p.coord.lon+','+p.coord.lat).join(';');const url='https://router.project-osrm.org/route/v1/driving/'+coords+'?overview=full&geometries=geojson&steps=false';const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error('Service routier indisponible');const data=await r.json();if(!data.routes||!data.routes[0])throw new Error('Aucun itinéraire routier trouvé');return data.routes[0]}
+  function markerIcon(L,n,isBase){return L.divIcon({className:'chef-route-marker',html:'<div style="width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:'+(isBase?'#111827':'#fff')+';color:'+(isBase?'#fff':'#111827')+';border:2px solid #111827;font:800 12px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;box-shadow:0 3px 10px rgba(0,0,0,.18)">'+(isBase?'D':n)+'</div>',iconSize:[28,28],iconAnchor:[14,14]})}
 
-  async function renderFreeMap(){
-    const holder=document.getElementById('freeRouteMap'),stats=document.getElementById('freeMapStats');if(!holder)return;
-    const day=selectedDay(),points=routeCoordinates(day),seq=++routeSeq;if(points.length<2){holder.style.display='none';return}
-    holder.style.display='block';holder.innerHTML='<div style="height:100%;display:grid;place-items:center;color:#667085;font-size:12px">Calcul du vrai tracé routier…</div>';
-    try{
-      const L=await loadLeaflet();if(seq!==routeSeq)return;holder.innerHTML='';
-      if(mapInstance){try{mapInstance.remove()}catch(e){}mapInstance=null}
-      mapInstance=L.map(holder,{zoomControl:true,attributionControl:true});
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(mapInstance);
-      const bounds=[];points.forEach((p,i)=>{const latlng=[p.coord.lat,p.coord.lon];bounds.push(latlng);L.marker(latlng,{icon:markerIcon(L,i,p.kind==='base')}).addTo(mapInstance).bindPopup('<b>'+esc(p.label)+'</b>'+(p.store&&p.store.adresse?'<br>'+esc(p.store.adresse):''))});
-      let road=null;
-      try{road=await fetchRoadRoute(points)}catch(e){console.warn('OSRM:',e)}
-      if(seq!==routeSeq)return;
-      if(road&&road.geometry&&road.geometry.coordinates){const line=road.geometry.coordinates.map(c=>[c[1],c[0]]);L.polyline(line,{weight:5,opacity:.78}).addTo(mapInstance);line.forEach(x=>bounds.push(x));if(stats){const km=Math.round(road.distance/1000),mins=Math.round(road.duration/60),h=Math.floor(mins/60),m=mins%60;stats.textContent='Tracé routier · '+km+' km · '+(h?h+' h ':'')+m+' min de conduite'}}else{L.polyline(points.map(p=>[p.coord.lat,p.coord.lon]),{weight:4,opacity:.45,dashArray:'8 8'}).addTo(mapInstance);if(stats)stats.textContent='Aperçu géographique · calcul routier momentanément indisponible'}
-      if(bounds.length)mapInstance.fitBounds(bounds,{padding:[30,30],maxZoom:13});setTimeout(()=>mapInstance&&mapInstance.invalidateSize(),100);
-    }catch(e){holder.innerHTML='<div style="padding:16px;color:#a33;font-size:11.5px">Carte indisponible : '+esc(e&&e.message?e.message:e)+'</div>'}
-  }
+  async function renderFreeMap(){const holder=document.getElementById('freeRouteMap'),stats=document.getElementById('freeMapStats');if(!holder)return;const day=selectedDay(),points=routeCoordinates(day),seq=++routeSeq;if(points.length<2){holder.style.display='none';return}holder.style.display='block';holder.innerHTML='<div style="height:100%;display:grid;place-items:center;color:#667085;font-size:12px">Calcul du vrai tracé routier…</div>';try{const L=await loadLeaflet();if(seq!==routeSeq)return;holder.innerHTML='';if(mapInstance){try{mapInstance.remove()}catch(e){}mapInstance=null}mapInstance=L.map(holder,{zoomControl:true,attributionControl:true,preferCanvas:true});L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(mapInstance);const bounds=[];points.forEach((p,i)=>{const latlng=[p.coord.lat,p.coord.lon];bounds.push(latlng);L.marker(latlng,{icon:markerIcon(L,i,p.kind==='base')}).addTo(mapInstance).bindPopup('<b>'+esc(p.label)+'</b>'+(p.store&&p.store.adresse?'<br>'+esc(p.store.adresse):''))});let road=null;try{road=await fetchRoadRoute(points)}catch(e){console.warn('OSRM:',e)}if(seq!==routeSeq)return;if(road&&road.geometry&&road.geometry.coordinates){const line=road.geometry.coordinates.map(c=>[c[1],c[0]]);L.polyline(line,{weight:5,opacity:.78}).addTo(mapInstance);line.forEach(x=>bounds.push(x));if(stats){const km=Math.round(road.distance/1000),mins=Math.round(road.duration/60),h=Math.floor(mins/60),m=mins%60;stats.textContent='Tracé routier · '+km+' km · '+(h?h+' h ':'')+m+' min de conduite'}}else{L.polyline(points.map(p=>[p.coord.lat,p.coord.lon]),{weight:4,opacity:.45,dashArray:'8 8'}).addTo(mapInstance);if(stats)stats.textContent='Aperçu géographique · calcul routier momentanément indisponible'}if(bounds.length)mapInstance.fitBounds(bounds,{padding:[24,24],maxZoom:12});setTimeout(()=>{if(mapInstance){mapInstance.invalidateSize(true);if(bounds.length)mapInstance.fitBounds(bounds,{padding:[24,24],maxZoom:12})}},180)}catch(e){holder.innerHTML='<div style="padding:16px;color:#a33;font-size:11.5px">Carte indisponible : '+esc(e&&e.message?e.message:e)+'</div>'}}
 
   function hideLegacyMap(){const wrap=document.getElementById('planMapWrap');if(wrap)wrap.style.display='none';const map=document.getElementById('map');if(map)map.style.display='none';document.querySelectorAll('.applePlanTools button').forEach(btn=>{const txt=norm(btn.textContent||'');if(txt.includes('voir la carte')||txt.includes('itineraire')){btn.textContent=' Ouvrir la tournée';btn.setAttribute('onclick','openSelectedDayRoute()')}})}
-  function renderCompactRoute(){
-    const shell=document.querySelector('#planPanel .timelineShell');if(!shell)return;let box=document.getElementById('routeCompactCard');if(!box){box=document.createElement('div');box.id='routeCompactCard';shell.parentNode.insertBefore(box,shell.nextSibling)}
-    const day=selectedDay(),route=routeForDay(day);if(!route.length){box.style.display='none';return}box.style.display='block';box.style.cssText='margin:12px 0 0;padding:14px 16px;border:1px solid #e1e5ed;border-radius:18px;background:#fff;box-shadow:0 4px 14px rgba(25,42,80,.045)';
-    const names=route.slice(0,5).map((s,i)=>(i+1)+'. '+esc((s.enseigne||'')+' '+(s.ville||''))).join(' · ')+(route.length>5?' · +'+(route.length-5)+' autres':'');
-    box.innerHTML='<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap"><div><b style="font-size:14px">🗺 Tournée du '+esc(day)+'</b><div id="freeMapStats" style="font-size:11px;color:#667085;margin-top:4px">'+route.length+' visite'+(route.length>1?'s':'')+' · calcul routier en cours</div><div style="font-size:10.5px;color:#7b8494;margin-top:5px;line-height:1.4">'+names+'</div></div><button class="secondary" type="button" onclick="openSelectedDayRoute()"> Ouvrir la tournée dans Plans</button></div><div id="freeRouteMap" style="height:380px;margin-top:12px;border-radius:16px;overflow:hidden;background:#f5f5f7"></div><div style="font-size:9.5px;color:#98a2b3;margin-top:6px">Carte OpenStreetMap · tracé routier calculé en ligne, sans abonnement ni clé API.</div>';
-    setTimeout(renderFreeMap,30);
-  }
-  function polish(){if(busy)return;busy=true;try{hideLegacyMap();renderCompactRoute()}finally{busy=false}}
+  function ensureResponsiveCss(){if(document.getElementById('route-polish-responsive'))return;const s=document.createElement('style');s.id='route-polish-responsive';s.textContent='#routeCompactCard{width:100%!important;max-width:100%!important;min-width:0!important;overflow:hidden!important}#routeCompactCard>div{min-width:0!important}#freeRouteMap{width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important}.leaflet-container{width:100%!important;max-width:100%!important;box-sizing:border-box!important}@media(max-width:700px){#freeRouteMap{height:300px!important}#routeCompactCard{padding:12px!important;border-radius:15px!important}}';document.head.appendChild(s)}
+  function renderCompactRoute(){const shell=document.querySelector('#planPanel .timelineShell');if(!shell)return;let box=document.getElementById('routeCompactCard');if(!box){box=document.createElement('div');box.id='routeCompactCard';shell.parentNode.insertBefore(box,shell.nextSibling)}const day=selectedDay(),route=routeForDay(day);if(!route.length){box.style.display='none';return}box.style.display='block';box.style.cssText='margin:12px 0 0;padding:14px 16px;border:1px solid #e1e5ed;border-radius:18px;background:#fff;box-shadow:0 4px 14px rgba(25,42,80,.045);width:100%;max-width:100%;min-width:0;overflow:hidden';const names=route.slice(0,5).map((s,i)=>(i+1)+'. '+esc((s.enseigne||'')+' '+(s.ville||''))).join(' · ')+(route.length>5?' · +'+(route.length-5)+' autres':'');box.innerHTML='<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;min-width:0"><div style="min-width:0;flex:1"><b style="font-size:14px">🗺 Tournée du '+esc(day)+'</b><div id="freeMapStats" style="font-size:11px;color:#667085;margin-top:4px">'+route.length+' visite'+(route.length>1?'s':'')+' · calcul routier en cours</div><div style="font-size:10.5px;color:#7b8494;margin-top:5px;line-height:1.4;overflow-wrap:anywhere">'+names+'</div></div><button class="secondary" type="button" onclick="openSelectedDayRoute()"> Ouvrir la tournée dans Plans</button></div><div id="freeRouteMap" style="width:100%;max-width:100%;height:340px;margin-top:12px;border-radius:16px;overflow:hidden;background:#f5f5f7"></div><div style="font-size:9.5px;color:#98a2b3;margin-top:6px">Carte OpenStreetMap · tracé routier calculé en ligne, sans abonnement ni clé API.</div>';setTimeout(renderFreeMap,40)}
+  function polish(){if(busy)return;busy=true;try{ensureResponsiveCss();hideLegacyMap();renderCompactRoute()}finally{busy=false}}
   function hook(){if(!window.__routePolishWeek&&typeof window.renderWeek==='function'){const base=window.renderWeek;window.renderWeek=function(){const out=base.apply(this,arguments);setTimeout(polish,0);return out};window.__routePolishWeek=true}if(!window.__routePolishAll&&typeof window.renderAll==='function'){const base=window.renderAll;window.renderAll=function(){const out=base.apply(this,arguments);setTimeout(polish,0);return out};window.__routePolishAll=true}}
-  async function boot(){for(let i=0;i<50;i++){hook();polish();if(window.__routePolishWeek)break;await new Promise(r=>setTimeout(r,120))}document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(polish,30)},true);const root=document.querySelector('.wrap')||document.body;const obs=new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(polish,120)});obs.observe(root,{childList:true,subtree:true});polish()}
+  async function boot(){for(let i=0;i<50;i++){hook();polish();if(window.__routePolishWeek)break;await new Promise(r=>setTimeout(r,120))}document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(polish,40)},true);window.addEventListener('resize',()=>{clearTimeout(timer);timer=setTimeout(()=>{if(mapInstance)mapInstance.invalidateSize(true)},120)});const root=document.querySelector('.wrap')||document.body;const obs=new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(polish,160)});obs.observe(root,{childList:true,subtree:true});polish()}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
 })();
