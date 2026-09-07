@@ -3,7 +3,7 @@
   let startY=0,lastY=0,startTime=0,dragging=false;
   function panel(){return document.getElementById('assistantPanel')}
   function applyY(p,y){p.style.setProperty('--assistant-sheet-y',y+'px');p.style.setProperty('transform',matchMedia('(max-width:700px)').matches?'translateY('+y+'px)':'translate(-50%,'+y+'px)','important')}
-  function reset(p){p.style.removeProperty('--assistant-sheet-y');p.style.removeProperty('transform');p.classList.remove('dragging','peek')}
+  function reset(p){p.style.removeProperty('--assistant-sheet-y');p.style.removeProperty('transform');if(p.classList.contains('dragging')||p.classList.contains('peek'))p.classList.remove('dragging','peek')}
   function close(p){reset(p);if(p.classList.contains('open')){if(typeof window.toggleAssistant==='function')window.toggleAssistant();else p.classList.remove('open')}}
   function install(){
     const p=panel();if(!p||p.dataset.dragSheet==='1')return false;
@@ -29,7 +29,14 @@
     handle.addEventListener('touchstart',function(e){if(!e.touches.length)return;begin(e.touches[0].clientY);e.preventDefault()},{passive:false});
     handle.addEventListener('touchmove',function(e){if(!dragging||!e.touches.length)return;move(e.touches[0].clientY);e.preventDefault()},{passive:false});
     handle.addEventListener('touchend',finish,{passive:false});handle.addEventListener('touchcancel',finish,{passive:false});
-    function syncOpen(){const open=p.classList.contains('open');document.documentElement.classList.toggle('assistantIsOpen',open);if(!open)reset(p)}
+    let wasOpen=null;
+    function syncOpen(){
+      const open=p.classList.contains('open');
+      if(open===wasOpen)return;
+      wasOpen=open;
+      document.documentElement.classList.toggle('assistantIsOpen',open);
+      if(!open){dragging=false;reset(p)}
+    }
     new MutationObserver(syncOpen).observe(p,{attributes:true,attributeFilter:['class']});syncOpen();
     return true;
   }

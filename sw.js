@@ -1,4 +1,4 @@
-const CACHE_NAME = "chef-secteur-cache9";
+const CACHE_NAME = "chef-secteur-cache10";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -21,7 +21,7 @@ const APP_SHELL = [
   "./period-day-slider.js?rev=20260907-4",
   "./workdays-enforcer.js?rev=20260907-1",
   "./visit-history-delete.js?rev=20260907-1",
-  "./assistant-sheet-drag.js?rev=20260907-2",
+  "./assistant-sheet-drag.js?rev=observer10",
   "./visual-refresh-v1.js?rev=20260907-glass4",
   "./home-refresh-v2.js?rev=20260907-glass4",
   "./glass-theme.css?rev=cache9",
