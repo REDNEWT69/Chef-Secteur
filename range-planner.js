@@ -2,6 +2,7 @@
   'use strict';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   const ARCHIVE_KEY='chef_sector_plan_archive_v1';
+  const RANGE_KEY='chef_sector_range_v1';
   let installed=false;
   function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
   function parse(v){const d=new Date(String(v||'')+'T12:00:00');return isNaN(d)?null:d}
@@ -21,11 +22,12 @@
   function collectUsed(){const out=[];for(const d of DAYS)for(const s of ((state.plan&&state.plan[d])||[]))if(s&&s.id!=null)out.push(String(s.id));return out}
   function eligibleNonWeeklyCount(originalExcluded){let n=0;try{for(const s of (state.stores||[])){if(s.active===false||originalExcluded[s.id]||isWeeklyStore(s))continue;if(typeof includedByFilters==='function'&&!includedByFilters(s))continue;n++}}catch(e){}return n}
   function planCount(){let n=0;for(const d of DAYS)n+=((state.plan&&state.plan[d])||[]).length;return n}
+  function clearPlan(){try{state.plan={};for(const d of DAYS)state.plan[d]=[]}catch(e){}}
   function generateOneWeek(monIso,originalExcluded,used){
-    restoreExcluded(originalExcluded);markTempExclusions(used,originalExcluded);setNativeWeekDate(monIso);window.generateWeek();
+    restoreExcluded(originalExcluded);markTempExclusions(used,originalExcluded);setNativeWeekDate(monIso);clearPlan();window.generateWeek();
     let count=planCount();
-    if(count===0&&used.size){
-      used.clear();restoreExcluded(originalExcluded);setNativeWeekDate(monIso);window.generateWeek();count=planCount();
+    if(count===0){
+      used.clear();restoreExcluded(originalExcluded);setNativeWeekDate(monIso);clearPlan();window.generateWeek();count=planCount();
     }
     return count;
   }
@@ -45,12 +47,14 @@
         const monIso=iso(mon),generated=generateOneWeek(monIso,originalExcluded,used);
         if(!generated)emptyWeeks++;
         const ids=collectUsed();for(const id of ids){const s=(state.stores||[]).find(x=>String(x.id)===id);if(s&&!isWeeklyStore(s))used.add(id)}
-        archive[monIso]=snapshotWeek(mon,start,end);count++;rotations+=ids.length;mon=addDays(mon,7);await new Promise(r=>setTimeout(r,35));
+        archive[monIso]=snapshotWeek(mon,start,end);count++;rotations+=ids.length;mon=addDays(mon,7);await new Promise(r=>setTimeout(r,50));
       }
-      restoreExcluded(originalExcluded);saveArchive(archive);setNativeWeekDate(iso(firstMon));
+      restoreExcluded(originalExcluded);
+      saveArchive(archive);
+      localStorage.setItem(RANGE_KEY,JSON.stringify({start:iso(start),end:iso(end),weeks:count,smartRotation:true,updatedAt:new Date().toISOString()}));
+      setNativeWeekDate(iso(firstMon));
       const first=archive[iso(firstMon)];if(first&&first.plan){state.plan={};for(const d of DAYS)state.plan[d]=(first.plan[d]||[]).map(x=>{try{return (state.stores||[]).find(s=>String(s.id)===String(x.id))||x}catch(e){return x}})}
       try{if(typeof save==='function')save();if(typeof renderAll==='function')renderAll()}catch(e){}
-      try{localStorage.setItem('chef_sector_range_v1',JSON.stringify({start:iso(start),end:iso(end),weeks:count,smartRotation:true,updatedAt:new Date().toISOString()}))}catch(e){}
       showStatus('Période générée : '+formatRange(start,end)+' · '+count+' semaine'+(count>1?'s':'')+(emptyWeeks?' · '+emptyWeeks+' semaine(s) sans magasin disponible':'')+'.');
       window.dispatchEvent(new CustomEvent('chef-range-generated',{detail:{start:iso(start),end:iso(end),weeks:count}}));
     }catch(e){restoreExcluded(originalExcluded);showStatus('Erreur pendant la génération : '+(e&&e.message?e.message:String(e)),true);if(originalWeek)setNativeWeekDate(originalWeek)}finally{restoreExcluded(originalExcluded);if(btn)btn.disabled=false}
