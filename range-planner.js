@@ -84,7 +84,7 @@
     let workDays=[];try{workDays=readBaseControls()}catch(e){if(btn)btn.disabled=false;return showStatus(e.message||String(e),true)}
     const archive=loadArchive(),firstMon=monday(start),lastMon=monday(end),originalWeek=state.settings&&state.settings.weekDate,originalExcluded=Object.assign({},state.excluded||{}),used=new Set();
     const target=Math.max(1,Number((state.settings&&state.settings.target)||20));
-    const maxPerDay=Math.max(1,Math.min(8,Number((state.settings&&state.settings.maxVisitsPerDay)||4));
+    const maxPerDay=Math.max(1,Math.min(8,Number((state.settings&&state.settings.maxVisitsPerDay)||4)));
     const weeklyCapacity=Math.max(1,Math.min(target,maxPerDay*workDays.length));
     const eligible=eligibleStores(originalExcluded);
     let count=0,mon=new Date(firstMon),emptyWeeks=0,uniquePlanned=new Set();
