@@ -3,6 +3,7 @@
   const CLIENT_ID='59370123885-qe3r60bm3bjgc9jlnmn8qb6342lthhr6.apps.googleusercontent.com';
   const CONFIG_KEY='chef_secteur_google_calendar_v2';
   const TOKEN_KEY='chef_secteur_google_token_v2';
+  const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
   function hasToken(){try{return !!sessionStorage.getItem(TOKEN_KEY)}catch(e){return false}}
@@ -14,7 +15,7 @@
   function eventCoversDate(e,date){
     const start=dateOnly(e&& (e.date||e.start));if(!start)return false;
     let end=dateOnly(e&&e.end)||start;
-    if(e&&e.allDay&&end>start)end=addDays(end,-1); // fin Google all-day exclusive
+    if(e&&e.allDay&&end>start)end=addDays(end,-1);
     if(end<start)end=start;
     return date>=start&&date<=end;
   }
@@ -46,9 +47,38 @@
     };
     window.__calendarSemanticBlocks=true;
   }
-  function wrapSync(){if(window.__nativeCalendarSyncWrapped||typeof window.syncGoogleCalendar!=='function')return;const base=window.syncGoogleCalendar;window.syncGoogleCalendar=async function(){const out=await base.apply(this,arguments);installSemanticCalendarBlocks();try{if(typeof window.renderAll==='function')window.renderAll()}catch(e){}return out};window.__nativeCalendarSyncWrapped=true}
-  function wrapGenerate(){if(window.__nativeCalendarGenerateWrapped||typeof window.generateWeek!=='function')return;const base=window.generateWeek;window.generateWeek=async function(){try{setClientId();if(hasToken()&&typeof window.syncGoogleCalendar==='function'){const s=document.getElementById('googleCalendarStatus');if(s)s.textContent='Mise à jour de l’agenda avant génération…';await window.syncGoogleCalendar(true)}}catch(e){console.warn('Pré-synchronisation Calendar :',e)}installSemanticCalendarBlocks();return base.apply(this,arguments)};window.__nativeCalendarGenerateWrapped=true}
-  async function boot(){setClientId();for(let i=0;i<50;i++){setClientId();installSemanticCalendarBlocks();wrapSync();wrapGenerate();if(window.__nativeCalendarSyncWrapped&&window.__nativeCalendarGenerateWrapped)break;await new Promise(r=>setTimeout(r,120))}if(hasToken()&&typeof window.syncGoogleCalendar==='function')try{await window.syncGoogleCalendar(true)}catch(e){}}
-  window.chefSecteurCalendarPlanningBlock=isPlanningBlock;window.chefSecteurAwayRanges=inferAwayRanges;window.chefSecteurEventCoversDate=eventCoversDate;
+  function weekMonday(){
+    const raw=(state.settings&&state.settings.weekDate)||new Date().toISOString().slice(0,10),d=new Date(raw+'T12:00:00'),w=d.getDay()||7;d.setDate(d.getDate()-w+1);return d;
+  }
+  function dateForDay(day){const d=weekMonday();d.setDate(d.getDate()+Math.max(0,DAYS.indexOf(day)));return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+  function dayIsBlocked(day){
+    try{const rows=typeof window.calendarEventsForDate==='function'?window.calendarEventsForDate(dateForDay(day)):[];return rows.some(e=>e.allDay||e.planningBlock)}catch(e){return false}
+  }
+  function enforceBlockedDays(){
+    if(!window.state||!state.plan)return;
+    const chosen=(state.settings&&state.settings.days)||DAYS.slice(0,5),overflow=[],free=[];
+    for(const day of chosen){
+      if(dayIsBlocked(day)){
+        if(Array.isArray(state.plan[day])&&state.plan[day].length)overflow.push.apply(overflow,state.plan[day]);
+        state.plan[day]=[];
+      }else free.push(day);
+    }
+    if(!free.length){if(typeof window.save==='function')window.save();if(typeof window.renderAll==='function')window.renderAll();return;}
+    while(overflow.length){
+      const store=overflow.shift();
+      let best=free[0];
+      for(const d of free)if((state.plan[d]||[]).length<(state.plan[best]||[]).length)best=d;
+      if(!state.plan[best])state.plan[best]=[];
+      state.plan[best].push(store);
+    }
+    try{if(typeof window.twoOpt==='function'&&typeof window.nearestRoute==='function'){for(const d of free)state.plan[d]=window.twoOpt(window.nearestRoute(state.plan[d]||[]))}}catch(e){}
+    try{if(typeof window.applyAppointmentsToPlan==='function')window.applyAppointmentsToPlan()}catch(e){}
+    if(typeof window.save==='function')window.save();
+    if(typeof window.renderAll==='function')window.renderAll();
+  }
+  function wrapSync(){if(window.__nativeCalendarSyncWrapped||typeof window.syncGoogleCalendar!=='function')return;const base=window.syncGoogleCalendar;window.syncGoogleCalendar=async function(){const out=await base.apply(this,arguments);installSemanticCalendarBlocks();enforceBlockedDays();return out};window.__nativeCalendarSyncWrapped=true}
+  function wrapGenerate(){if(window.__nativeCalendarGenerateWrapped||typeof window.generateWeek!=='function')return;const base=window.generateWeek;window.generateWeek=async function(){try{setClientId();if(hasToken()&&typeof window.syncGoogleCalendar==='function'){const s=document.getElementById('googleCalendarStatus');if(s)s.textContent='Mise à jour de l’agenda avant génération…';await window.syncGoogleCalendar(true)}}catch(e){console.warn('Pré-synchronisation Calendar :',e)}installSemanticCalendarBlocks();const out=await base.apply(this,arguments);enforceBlockedDays();return out};window.__nativeCalendarGenerateWrapped=true}
+  async function boot(){setClientId();for(let i=0;i<50;i++){setClientId();installSemanticCalendarBlocks();wrapSync();wrapGenerate();if(window.__nativeCalendarSyncWrapped&&window.__nativeCalendarGenerateWrapped)break;await new Promise(r=>setTimeout(r,120))}if(hasToken()&&typeof window.syncGoogleCalendar==='function')try{await window.syncGoogleCalendar(true)}catch(e){}enforceBlockedDays()}
+  window.chefSecteurCalendarPlanningBlock=isPlanningBlock;window.chefSecteurAwayRanges=inferAwayRanges;window.chefSecteurEventCoversDate=eventCoversDate;window.chefSecteurEnforceBlockedDays=enforceBlockedDays;
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
 })();
