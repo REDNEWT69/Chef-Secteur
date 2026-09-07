@@ -1,15 +1,20 @@
-const CACHE_NAME = 'chef-secteur-v5-samsung-ai3';
+const CACHE_NAME = 'chef-secteur-v5-samsung-rangefix2';
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
   './ai-gateway-config.js',
   './assistant-upgrade.js',
+  './ai-context-limit.js',
+  './assistant-store-lookup.js',
   './calendar-oauth.js',
   './calendar-enhancements.js',
   './ui-polish.js',
   './route-polish.js',
   './planning-ui-fixes.js',
+  './map-layer-fix.js',
+  './timeline-end-times.js',
+  './range-planner.js',
   './payload/part01.txt',
   './payload/part02.txt',
   './payload/part03.txt',
