@@ -11,16 +11,31 @@
   </style>
 </head>
 <body>
-  <div class="boot"><div><h1>Chef Secteur</h1><p id="bootText">Chargement de la V3 Premium Fusion…</p></div></div>
+  <div class="boot"><div><h1>Chef Secteur</h1><p id="bootText">Chargement de l’application…</p></div></div>
   <script>
   (async function(){
-    const r=await fetch('./Chef_Secteur_V3_Premium_FUSION.html',{cache:'no-store'});
+    const parts=['part01.txt','part02.txt','part03.txt','part04.txt','part05.txt'];
     const status=document.getElementById('bootText');
     try{
-      if(!r.ok) throw new Error('Impossible de charger la V3 Premium Fusion ('+r.status+').');
-      const html=await r.text();
-      document.open(); document.write(html); document.close();
-    }catch(e){status.className='err';status.textContent='Erreur de chargement : '+(e&&e.message?e.message:String(e));}
+      if(typeof DecompressionStream==='undefined') throw new Error('Ce navigateur ne prend pas en charge la décompression nécessaire. Utilise une version récente de Safari, Chrome ou Edge.');
+      const texts=await Promise.all(parts.map(async name=>{
+        const r=await fetch('./payload/'+name,{cache:'no-store'});
+        if(!r.ok) throw new Error('Impossible de charger '+name+' ('+r.status+').');
+        return (await r.text()).trim();
+      }));
+      const binary=atob(texts.join(''));
+      const bytes=new Uint8Array(binary.length);
+      for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+      const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+      const html=await new Response(stream).text();
+      document.open();
+      document.write(html);
+      document.close();
+    }catch(e){
+      status.className='err';
+      status.textContent='Erreur de chargement : '+(e&&e.message?e.message:String(e));
+      console.error(e);
+    }
   })();
   </script>
 </body>
