@@ -1,53 +1,66 @@
-const CACHE_NAME = 'chef-secteur-v8-assistant-touch';
+const CACHE_NAME = "chef-secteur-cache9";
 const APP_SHELL = [
-  './',
-  './index.html',
-  './manifest.webmanifest',
-  './glass-theme.css',
-  './assistant-sheet-drag.js',
-  './home-refresh-v2.js',
-  './visual-refresh-v1.js',
-  './ai-gateway-config.js',
-  './assistant-upgrade.js',
-  './ai-context-limit.js',
-  './assistant-store-lookup.js',
-  './calendar-oauth.js',
-  './calendar-enhancements.js',
-  './ui-polish.js',
-  './route-polish.js',
-  './planning-ui-fixes.js',
-  './map-layer-fix.js',
-  './timeline-end-times.js',
-  './range-planner.js',
-  './payload/part01.txt',
-  './payload/part02.txt',
-  './payload/part03.txt',
-  './payload/part04.txt',
-  './payload/part05.txt',
-  './payload/part06.txt',
-  './payload/part07.txt',
-  './payload/part08.txt'
+  "./",
+  "./index.html",
+  "./manifest.webmanifest",
+  "./calendar-oauth.js?rev=20260907-5",
+  "./calendar-enhancements.js?rev=20260907-4",
+  "./ui-polish.js?rev=20260907-2",
+  "./route-polish.js?rev=20260907-free-map2",
+  "./planning-ui-fixes.js?rev=20260907-1",
+  "./ai-gateway-config.js?rev=20260907-groq4",
+  "./assistant-upgrade.js?rev=20260907-groq4",
+  "./ai-context-limit.js?rev=20260907-1",
+  "./assistant-store-lookup.js?rev=20260907-2",
+  "./map-layer-fix.js?rev=20260907-1",
+  "./timeline-end-times.js?rev=20260907-2",
+  "./range-planner-v2.js?rev=20260907-3",
+  "./working-hours-end.js?rev=20260907-1",
+  "./daily-capacity.js?rev=20260907-1",
+  "./planning-pro-plus.js?rev=20260907-3",
+  "./period-day-slider.js?rev=20260907-4",
+  "./workdays-enforcer.js?rev=20260907-1",
+  "./visit-history-delete.js?rev=20260907-1",
+  "./assistant-sheet-drag.js?rev=20260907-2",
+  "./visual-refresh-v1.js?rev=20260907-glass4",
+  "./home-refresh-v2.js?rev=20260907-glass4",
+  "./glass-theme.css?rev=cache9",
+  "./src/chef-secteur.html?rev=cache9"
 ];
-
+const SCOPE = self.registration.scope;
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
-  self.skipWaiting();
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.addAll(APP_SHELL.map(path => new Request(new URL(path,SCOPE), {cache:'reload'})));
+    await self.skipWaiting();
+  })());
 });
-
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
-  );
-  self.clients.claim();
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k.startsWith('chef-secteur-') && k !== CACHE_NAME).map(k => caches.delete(k)));
+    await self.clients.claim();
+  })());
 });
-
 self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET') return;
-  event.respondWith(
-    fetch(event.request).then(response => {
-      const copy = response.clone();
-      caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+  const url = new URL(event.request.url);
+  if (event.request.method !== 'GET' || !url.href.startsWith(SCOPE)) return;
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    try {
+      const response = await fetch(event.request, {cache:'no-store'});
+      if (!response.ok) throw new Error('HTTP '+response.status);
+      await cache.put(event.request,response.clone());
       return response;
-    }).catch(() => caches.match(event.request).then(cached => cached || caches.match('./index.html')))
-  );
+    } catch (error) {
+      const cached = await cache.match(event.request);
+      if (cached) return cached;
+      // Only page navigation may use the app entry point; never scripts or CSS.
+      if (event.request.mode === 'navigate') {
+        const entry = await cache.match(new URL('./index.html',SCOPE).href);
+        if (entry) return entry;
+      }
+      return new Response('Fichier indisponible hors ligne', {status:503,headers:{'Content-Type':'text/plain; charset=utf-8'}});
+    }
+  })());
 });
