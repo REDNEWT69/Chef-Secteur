@@ -15,24 +15,31 @@
   function defaultDates(){let raw=null;try{raw=state.settings&&state.settings.weekDate}catch(e){}const m=monday(parse(raw)||new Date()),f=addDays(m,4);return{start:iso(m),end:iso(f)}}
   function setNativeWeekDate(v){try{if(!state.settings)state.settings={};state.settings.weekDate=v;const el=document.getElementById('weekDate');if(el)el.value=v}catch(e){}}
   function showStatus(text,bad){const el=document.getElementById('rangePlanStatus');if(!el)return;el.textContent=text;el.style.color=bad?'#b42318':'#667085'}
-  function isWeeklyStore(s){const f=String(s&&s.freq||'').toLowerCase();return /hebdo|weekly|semaine/.test(f)||Number(s&&s.intervalDays||99)<=7}
   function restoreExcluded(original){state.excluded={};for(const k of Object.keys(original||{}))if(original[k])state.excluded[k]=true}
-  function selectedDaysFromUI(){
-    const out=[];document.querySelectorAll('[data-day]').forEach(el=>{if(el.checked&&DAYS.includes(el.value))out.push(el.value)});
-    return out;
-  }
+  function selectedDaysFromUI(){const out=[];document.querySelectorAll('[data-day]').forEach(el=>{if(el.checked&&DAYS.includes(el.value))out.push(el.value)});return out}
   function readBaseControls(){
     if(typeof window.readPlanningControls==='function')window.readPlanningControls();
     const uiDays=selectedDaysFromUI();
     if(!uiDays.length)throw new Error('Choisis au moins un jour travaillé.');
     state.settings.days=uiDays.slice();
-    if(!uiDays.includes('Samedi'))state.settings.days=state.settings.days.filter(d=>d!=='Samedi');
     const end=document.getElementById('endTime');if(end&&end.value)state.settings.endTime=end.value;
     const max=document.getElementById('maxVisitsPerDay');if(max&&max.value)state.settings.maxVisitsPerDay=Math.max(1,Math.min(8,Number(max.value)||4));
     if(typeof save==='function')save();
     return uiDays;
   }
-  function markTempExclusions(used,originalExcluded){if(!state.excluded)state.excluded={};for(const id of used){const s=(state.stores||[]).find(x=>String(x.id)===String(id));if(!s||isWeeklyStore(s)||originalExcluded[id])continue;state.excluded[id]=true}}
+  function eligibleStores(originalExcluded){
+    const out=[];
+    for(const s of (state.stores||[])){
+      if(!s||s.active===false||originalExcluded[s.id])continue;
+      try{if(typeof includedByFilters==='function'&&!includedByFilters(s))continue}catch(e){}
+      out.push(s);
+    }
+    return out;
+  }
+  function markTempExclusions(used,originalExcluded){
+    if(!state.excluded)state.excluded={};
+    for(const id of used){if(!originalExcluded[id])state.excluded[id]=true}
+  }
   function collectUsed(plan){const out=[];for(const d of DAYS)for(const s of ((plan&&plan[d])||[]))if(s&&s.id!=null)out.push(String(s.id));return out}
   function routeFinish(route,day){
     if(!route||!route.length)return 0;const p=t=>{const a=String(t||'').split(':');return (+a[0]||0)*60+(+a[1]||0)};
@@ -77,26 +84,32 @@
     let workDays=[];try{workDays=readBaseControls()}catch(e){if(btn)btn.disabled=false;return showStatus(e.message||String(e),true)}
     const archive=loadArchive(),firstMon=monday(start),lastMon=monday(end),originalWeek=state.settings&&state.settings.weekDate,originalExcluded=Object.assign({},state.excluded||{}),used=new Set();
     const target=Math.max(1,Number((state.settings&&state.settings.target)||20));
-    let count=0,mon=new Date(firstMon),emptyWeeks=0;
+    const maxPerDay=Math.max(1,Math.min(8,Number((state.settings&&state.settings.maxVisitsPerDay)||4));
+    const weeklyCapacity=Math.max(1,Math.min(target,maxPerDay*workDays.length));
+    const eligible=eligibleStores(originalExcluded);
+    let count=0,mon=new Date(firstMon),emptyWeeks=0,uniquePlanned=new Set();
     try{
       while(mon<=lastMon){
+        const remaining=Math.max(0,eligible.length-used.size);
+        if(used.size&&remaining<Math.min(weeklyCapacity,eligible.length))used.clear();
         restoreExcluded(originalExcluded);markTempExclusions(used,originalExcluded);setNativeWeekDate(iso(mon));
         let plan=buildWeek(workDays,target);
         let total=workDays.reduce((n,d)=>n+(plan[d]||[]).length,0);
         if(!total&&used.size){used.clear();restoreExcluded(originalExcluded);plan=buildWeek(workDays,target);total=workDays.reduce((n,d)=>n+(plan[d]||[]).length,0)}
         if(!total)emptyWeeks++;
-        const ids=collectUsed(plan);for(const id of ids){const s=(state.stores||[]).find(x=>String(x.id)===id);if(s&&!isWeeklyStore(s))used.add(id)}
+        const ids=collectUsed(plan);
+        for(const id of ids){used.add(id);uniquePlanned.add(id)}
         archive[iso(mon)]=snapshotWeek(mon,start,end,plan,workDays);
         count++;mon=addDays(mon,7);await new Promise(r=>setTimeout(r,20));
       }
       restoreExcluded(originalExcluded);saveArchive(archive);
-      localStorage.setItem(RANGE_KEY,JSON.stringify({start:iso(start),end:iso(end),weeks:count,workDays:workDays.slice(),smartRotation:true,updatedAt:new Date().toISOString()}));
+      localStorage.setItem(RANGE_KEY,JSON.stringify({start:iso(start),end:iso(end),weeks:count,workDays:workDays.slice(),smartRotation:true,uniqueStores:uniquePlanned.size,updatedAt:new Date().toISOString()}));
       setNativeWeekDate(iso(firstMon));
       const first=archive[iso(firstMon)];state.plan={};for(const d of DAYS)state.plan[d]=first&&first.plan?(first.plan[d]||[]).map(x=>(state.stores||[]).find(s=>String(s.id)===String(x.id))||x):[];
       state.settings.days=workDays.slice();
       try{if(typeof save==='function')save();if(typeof renderAll==='function')renderAll()}catch(e){}
-      showStatus('Période générée : '+formatRange(start,end)+' · '+count+' semaine'+(count>1?'s':'')+(emptyWeeks?' · '+emptyWeeks+' semaine(s) vide(s)':'')+'.');
-      window.dispatchEvent(new CustomEvent('chef-range-generated',{detail:{start:iso(start),end:iso(end),weeks:count,workDays:workDays.slice()}}));
+      showStatus('Période générée : '+formatRange(start,end)+' · '+count+' semaine'+(count>1?'s':'')+' · '+uniquePlanned.size+' magasins distincts'+(emptyWeeks?' · '+emptyWeeks+' semaine(s) vide(s)':'')+'.');
+      window.dispatchEvent(new CustomEvent('chef-range-generated',{detail:{start:iso(start),end:iso(end),weeks:count,workDays:workDays.slice(),uniqueStores:uniquePlanned.size}}));
     }catch(e){restoreExcluded(originalExcluded);if(originalWeek)setNativeWeekDate(originalWeek);showStatus('Erreur pendant la génération : '+(e&&e.message?e.message:String(e)),true)}finally{restoreExcluded(originalExcluded);if(btn)btn.disabled=false}
   }
   function movePairToBottom(settings,inputId){const input=document.getElementById(inputId);if(!input)return;const label=input.previousElementSibling;if(label&&label.tagName==='LABEL')settings.appendChild(label);settings.appendChild(input)}
@@ -106,7 +119,7 @@
     const settings=document.querySelector('#planningSettings .settingsInner'),weekInput=document.getElementById('weekDate');if(!settings||!weekInput)return false;
     const oldLabel=weekInput.previousElementSibling;if(oldLabel&&oldLabel.tagName==='LABEL')oldLabel.style.display='none';weekInput.style.display='none';
     const d=defaultDates(),box=document.createElement('div');box.id='rangePlannerCard';box.style.cssText='margin:0 0 14px;padding:14px;border:1px solid #dfe5ef;border-radius:16px;background:#f8faff';
-    box.innerHTML='<label style="margin-top:0">Période du planning</label><div class="formgrid"><div><label for="rangeStart">Date de début</label><input id="rangeStart" type="date" value="'+d.start+'"></div><div><label for="rangeEnd">Date de fin</label><input id="rangeEnd" type="date" value="'+d.end+'"></div></div><button id="generateRangeBtn" class="primary full" type="button">Générer la période</button><div id="rangePlanStatus" class="tiny" style="margin-top:9px">La période respecte strictement les jours cochés et régénère chaque semaine indépendamment.</div>';
+    box.innerHTML='<label style="margin-top:0">Période du planning</label><div class="formgrid"><div><label for="rangeStart">Date de début</label><input id="rangeStart" type="date" value="'+d.start+'"></div><div><label for="rangeEnd">Date de fin</label><input id="rangeEnd" type="date" value="'+d.end+'"></div></div><button id="generateRangeBtn" class="primary full" type="button">Générer la période</button><div id="rangePlanStatus" class="tiny" style="margin-top:9px">Rotation couverture : l’application privilégie les magasins pas encore planifiés avant de recommencer un cycle.</div>';
     settings.insertBefore(box,settings.firstChild);document.getElementById('generateRangeBtn').addEventListener('click',generateRange);moveBlockToBottom(settings,'brandsBox');movePairToBottom(settings,'target');installed=true;return true
   }
   window.generatePlanningRange=generateRange;
