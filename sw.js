@@ -1,4 +1,4 @@
-const CACHE_NAME = 'chef-secteur-v3-premium-apple-1';
+const CACHE_NAME = 'chef-secteur-v5-rhone-alpes-1';
 const APP_SHELL = [
   './',
   './index.html',
@@ -9,7 +9,8 @@ const APP_SHELL = [
   './payload/part04.txt',
   './payload/part05.txt',
   './payload/part06.txt',
-  './payload/part07.txt'
+  './payload/part07.txt',
+  './payload/part08.txt'
 ];
 
 self.addEventListener('install', event => {

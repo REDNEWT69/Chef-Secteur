@@ -1,6 +1,6 @@
 {
-  "name": "Chef Secteur",
-  "short_name": "Chef Secteur",
+  "name": "Mon activité terrain",
+  "short_name": "Mon activité",
   "description": "Planning terrain automatique pour chef de secteur Samsung",
   "start_url": "./",
   "scope": "./",
