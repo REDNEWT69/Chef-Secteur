@@ -35,6 +35,18 @@
       showStatus('Période générée : '+formatRange(start,end)+' · '+count+' semaine'+(count>1?'s':'')+' enregistrée'+(count>1?'s':'')+'.');
     }catch(e){showStatus('Erreur pendant la génération : '+(e&&e.message?e.message:String(e)),true);if(original)setNativeWeekDate(original)}finally{if(btn)btn.disabled=false}
   }
+  function movePairToBottom(settings,inputId){
+    const input=document.getElementById(inputId);if(!input)return;
+    const label=input.previousElementSibling;
+    if(label&&label.tagName==='LABEL')settings.appendChild(label);
+    settings.appendChild(input);
+  }
+  function moveBlockToBottom(settings,boxId){
+    const box=document.getElementById(boxId);if(!box)return;
+    const label=box.previousElementSibling;
+    if(label&&label.tagName==='LABEL')settings.appendChild(label);
+    settings.appendChild(box);
+  }
   function install(){
     if(installed)return true;
     const settings=document.querySelector('#planningSettings .settingsInner');
@@ -45,10 +57,15 @@
     weekInput.style.display='none';
     const d=defaultDates(),box=document.createElement('div');
     box.id='rangePlannerCard';
-    box.style.cssText='margin:14px 0 8px;padding:14px;border:1px solid #dfe5ef;border-radius:16px;background:#f8faff';
+    box.style.cssText='margin:0 0 14px;padding:14px;border:1px solid #dfe5ef;border-radius:16px;background:#f8faff';
     box.innerHTML='<label style="margin-top:0">Période du planning</label><div class="formgrid"><div><label for="rangeStart">Date de début</label><input id="rangeStart" type="date" value="'+d.start+'"></div><div><label for="rangeEnd">Date de fin</label><input id="rangeEnd" type="date" value="'+d.end+'"></div></div><button id="generateRangeBtn" class="primary full" type="button">Générer la période</button><div id="rangePlanStatus" class="tiny" style="margin-top:9px">L’affichage reste semaine par semaine, mais toutes les semaines de la période sont enregistrées.</div>';
-    weekInput.insertAdjacentElement('afterend',box);
+    settings.insertBefore(box,settings.firstChild);
     document.getElementById('generateRangeBtn').addEventListener('click',generateRange);
+
+    // Ordre plus logique : période d'abord, choix des magasins en dernier.
+    moveBlockToBottom(settings,'brandsBox');
+    movePairToBottom(settings,'target');
+
     installed=true;return true;
   }
   window.generatePlanningRange=generateRange;
