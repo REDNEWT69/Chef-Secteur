@@ -1,9 +1,10 @@
-const CACHE_NAME = 'chef-secteur-v6-glass-order';
+const CACHE_NAME = 'chef-secteur-v7-assistant-drag';
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
   './glass-theme.css',
+  './assistant-sheet-drag.js',
   './home-refresh-v2.js',
   './visual-refresh-v1.js',
   './ai-gateway-config.js',

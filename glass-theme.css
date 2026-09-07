@@ -28,3 +28,10 @@ html body #bottomAppNav .bottomNavBtn.ia{color:#7c89a8;background:radial-gradien
 @media(min-width:701px){#premiumHomeV2 .phTop{padding-top:30px}#premiumHomeV2 .phVisitCard{padding:28px}#premiumHomeV2 .phVisitText strong{font-size:28px}#premiumHomeV2 .phAssistant{font-size:17px}#premiumHomeV2 .phCard{min-height:172px;padding:22px!important}#premiumHomeV2 .phLabel,#premiumHomeV2 .phSub{font-size:16px}#premiumHomeV2 .phValue{font-size:30px!important}#premiumHomeV2 .phPriority{font-size:24px!important}}
 @media(max-width:370px){body.glassHome .wrap{padding-left:18px!important;padding-right:18px!important}#premiumHomeV2 .phTitle{font-size:44px!important}#premiumHomeV2 .phVisitLink{gap:9px}#premiumHomeV2 .phVisitText strong{font-size:17px}#premiumHomeV2 .phVisitIcon{width:44px;height:48px}#premiumHomeV2 .phArrow{width:36px;height:36px}#premiumHomeV2 .phCard{padding:12px!important}#premiumHomeV2 .phValue{font-size:20px!important}}
 @media(prefers-reduced-transparency:reduce){#premiumHomeV2 .phCard,#premiumHomeV2 .phVisitCard,html body #bottomAppNav{background:#f1f6fd!important;backdrop-filter:none;-webkit-backdrop-filter:none}}
+/* The assistant grabber is interactive: drag down to lower or close the sheet. */
+.assist.open{transform:translate(-50%,var(--assistant-sheet-y,0))!important;transition:transform .26s cubic-bezier(.22,.8,.25,1)!important}
+.assist.open.dragging{transition:none!important;user-select:none;-webkit-user-select:none}
+.assistantDragHandle{position:absolute;z-index:8;top:0;left:50%;transform:translateX(-50%);width:92px;height:30px;padding:0;border:0;background:transparent;touch-action:none;cursor:grab}
+.assistantDragHandle:active{cursor:grabbing}.assistantDragHandle span{display:block;width:44px;height:5px;margin:8px auto 0;border-radius:999px;background:rgba(91,101,120,.38);box-shadow:0 1px 1px rgba(255,255,255,.75)}
+.assist.open:before{display:none!important}
+@media(max-width:700px){.assist.open{transform:translateY(var(--assistant-sheet-y,0))!important}.assist.open.peek{height:calc(100dvh - 26px)!important}}
