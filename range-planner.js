@@ -16,10 +16,19 @@
   function setNativeWeekDate(v){try{if(!state.settings)state.settings={};state.settings.weekDate=v;const el=document.getElementById('weekDate');if(el){el.value=v;el.dispatchEvent(new Event('change',{bubbles:true}))}}catch(e){}}
   function showStatus(text,bad){const el=document.getElementById('rangePlanStatus');if(!el)return;el.textContent=text;el.style.color=bad?'#b42318':'#667085'}
   function isWeeklyStore(s){const f=String(s&&s.freq||'').toLowerCase();return /hebdo|weekly|semaine/.test(f)||Number(s&&s.intervalDays||99)<=7}
-  function activeCount(){try{return typeof activeStores==='function'?activeStores().length:(state.stores||[]).filter(s=>s.active!==false).length}catch(e){return(state.stores||[]).length}}
   function markTempExclusions(used,originalExcluded){if(!state.excluded)state.excluded={};for(const id of used){const s=(state.stores||[]).find(x=>String(x.id)===String(id));if(!s||isWeeklyStore(s)||originalExcluded[id])continue;state.excluded[id]=true}}
   function restoreExcluded(original){state.excluded={};for(const k of Object.keys(original||{}))if(original[k])state.excluded[k]=true}
   function collectUsed(){const out=[];for(const d of DAYS)for(const s of ((state.plan&&state.plan[d])||[]))if(s&&s.id!=null)out.push(String(s.id));return out}
+  function eligibleNonWeeklyCount(originalExcluded){let n=0;try{for(const s of (state.stores||[])){if(s.active===false||originalExcluded[s.id]||isWeeklyStore(s))continue;if(typeof includedByFilters==='function'&&!includedByFilters(s))continue;n++}}catch(e){}return n}
+  function planCount(){let n=0;for(const d of DAYS)n+=((state.plan&&state.plan[d])||[]).length;return n}
+  function generateOneWeek(monIso,originalExcluded,used){
+    restoreExcluded(originalExcluded);markTempExclusions(used,originalExcluded);setNativeWeekDate(monIso);window.generateWeek();
+    let count=planCount();
+    if(count===0&&used.size){
+      used.clear();restoreExcluded(originalExcluded);setNativeWeekDate(monIso);window.generateWeek();count=planCount();
+    }
+    return count;
+  }
   async function generateRange(){
     const sEl=document.getElementById('rangeStart'),eEl=document.getElementById('rangeEnd'),start=parse(sEl&&sEl.value),end=parse(eEl&&eEl.value);
     if(!start||!end)return showStatus('Choisis une date de début et une date de fin.',true);
@@ -28,12 +37,13 @@
     if(typeof window.generateWeek!=='function')return showStatus('Le moteur de planning n’est pas encore prêt.',true);
     const btn=document.getElementById('generateRangeBtn');if(btn)btn.disabled=true;
     const archive=loadArchive(),firstMon=monday(start),lastMon=monday(end),originalWeek=state.settings&&state.settings.weekDate,originalExcluded=Object.assign({},state.excluded||{}),used=new Set();
-    let count=0,mon=new Date(firstMon),rotations=0;
+    const eligible=eligibleNonWeeklyCount(originalExcluded),target=Math.max(1,Number((state.settings&&state.settings.target)||20));
+    let count=0,mon=new Date(firstMon),rotations=0,emptyWeeks=0;
     try{
       while(mon<=lastMon){
-        if(used.size>Math.max(0,activeCount()-Math.max(1,Number((state.settings&&state.settings.target)||20))))used.clear();
-        restoreExcluded(originalExcluded);markTempExclusions(used,originalExcluded);
-        const monIso=iso(mon);setNativeWeekDate(monIso);window.generateWeek();
+        if(eligible>0&&used.size>=Math.max(1,eligible-target+1))used.clear();
+        const monIso=iso(mon),generated=generateOneWeek(monIso,originalExcluded,used);
+        if(!generated)emptyWeeks++;
         const ids=collectUsed();for(const id of ids){const s=(state.stores||[]).find(x=>String(x.id)===id);if(s&&!isWeeklyStore(s))used.add(id)}
         archive[monIso]=snapshotWeek(mon,start,end);count++;rotations+=ids.length;mon=addDays(mon,7);await new Promise(r=>setTimeout(r,35));
       }
@@ -41,7 +51,7 @@
       const first=archive[iso(firstMon)];if(first&&first.plan){state.plan={};for(const d of DAYS)state.plan[d]=(first.plan[d]||[]).map(x=>{try{return (state.stores||[]).find(s=>String(s.id)===String(x.id))||x}catch(e){return x}})}
       try{if(typeof save==='function')save();if(typeof renderAll==='function')renderAll()}catch(e){}
       try{localStorage.setItem('chef_sector_range_v1',JSON.stringify({start:iso(start),end:iso(end),weeks:count,smartRotation:true,updatedAt:new Date().toISOString()}))}catch(e){}
-      showStatus('Période générée : '+formatRange(start,end)+' · '+count+' semaine'+(count>1?'s':'')+' · rotation multi-semaines activée.');
+      showStatus('Période générée : '+formatRange(start,end)+' · '+count+' semaine'+(count>1?'s':'')+(emptyWeeks?' · '+emptyWeeks+' semaine(s) sans magasin disponible':'')+'.');
       window.dispatchEvent(new CustomEvent('chef-range-generated',{detail:{start:iso(start),end:iso(end),weeks:count}}));
     }catch(e){restoreExcluded(originalExcluded);showStatus('Erreur pendant la génération : '+(e&&e.message?e.message:String(e)),true);if(originalWeek)setNativeWeekDate(originalWeek)}finally{restoreExcluded(originalExcluded);if(btn)btn.disabled=false}
   }
@@ -52,7 +62,7 @@
     const settings=document.querySelector('#planningSettings .settingsInner'),weekInput=document.getElementById('weekDate');if(!settings||!weekInput)return false;
     const oldLabel=weekInput.previousElementSibling;if(oldLabel&&oldLabel.tagName==='LABEL')oldLabel.style.display='none';weekInput.style.display='none';
     const d=defaultDates(),box=document.createElement('div');box.id='rangePlannerCard';box.style.cssText='margin:0 0 14px;padding:14px;border:1px solid #dfe5ef;border-radius:16px;background:#f8faff';
-    box.innerHTML='<label style="margin-top:0">Période du planning</label><div class="formgrid"><div><label for="rangeStart">Date de début</label><input id="rangeStart" type="date" value="'+d.start+'"></div><div><label for="rangeEnd">Date de fin</label><input id="rangeEnd" type="date" value="'+d.end+'"></div></div><button id="generateRangeBtn" class="primary full" type="button">Générer la période</button><div id="rangePlanStatus" class="tiny" style="margin-top:9px">Rotation intelligente : les magasins non hebdomadaires évitent d’être répétés inutilement d’une semaine à l’autre.</div>';
+    box.innerHTML='<label style="margin-top:0">Période du planning</label><div class="formgrid"><div><label for="rangeStart">Date de début</label><input id="rangeStart" type="date" value="'+d.start+'"></div><div><label for="rangeEnd">Date de fin</label><input id="rangeEnd" type="date" value="'+d.end+'"></div></div><button id="generateRangeBtn" class="primary full" type="button">Générer la période</button><div id="rangePlanStatus" class="tiny" style="margin-top:9px">Rotation intelligente : le cycle repart automatiquement quand le stock de magasins disponibles est épuisé.</div>';
     settings.insertBefore(box,settings.firstChild);document.getElementById('generateRangeBtn').addEventListener('click',generateRange);moveBlockToBottom(settings,'brandsBox');movePairToBottom(settings,'target');installed=true;return true
   }
   window.generatePlanningRange=generateRange;
