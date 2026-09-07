@@ -13,12 +13,19 @@
   function shortDay(d){return ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][d.getDay()]}
   function range(){const r=load(RANGE_KEY);let start=parse(r.start),end=parse(r.end);if(!start||!end){let w=null;try{w=parse(state.settings&&state.settings.weekDate)}catch(e){};w=monday(w||new Date());start=w;end=addDays(w,5)}return{start,end,workDays:Array.isArray(r.workDays)&&r.workDays.length?r.workDays.slice():(((state.settings&&state.settings.days)||DAYS.slice(0,5)).slice())}}
   function resolveStore(x){try{return (state.stores||[]).find(s=>String(s.id)===String(x.id))||x}catch(e){return x}}
-  function loadDate(date){const a=load(ARCHIVE_KEY),mon=monday(date),key=iso(mon),snap=a[key],name=dayName(date),r=range();if(name==='Dimanche'||!r.workDays.includes(name))return;
+  function loadDate(date){
+    const a=load(ARCHIVE_KEY),mon=monday(date),key=iso(mon),snap=a[key],name=dayName(date),r=range();
+    if(name==='Dimanche'||!r.workDays.includes(name))return;
     if(snap&&snap.plan){state.plan={};for(const d of DAYS)state.plan[d]=(snap.plan[d]||[]).map(resolveStore)}
     try{if(!state.settings)state.settings={};state.settings.weekDate=key;const week=document.getElementById('weekDate');if(week)week.value=key}catch(e){}
-    activeDate=iso(date);window.selectedPlanningDay=name;
+    activeDate=iso(date);
+    window.selectedPlanningDay=name;
     try{if(typeof save==='function')save()}catch(e){}
-    try{if(typeof window.renderWeek==='function')window.renderWeek();else if(typeof renderAll==='function')renderAll()}catch(e){}
+    try{
+      if(typeof window.selectPlanningDay==='function')window.selectPlanningDay(name);
+      else if(typeof window.renderWeek==='function')window.renderWeek();
+      else if(typeof renderAll==='function')renderAll();
+    }catch(e){}
     setTimeout(renderTabs,60);
   }
   function renderTabs(){const box=document.getElementById('dayTabs');if(!box)return false;const r=range(),frag=document.createDocumentFragment();box.innerHTML='';box.classList.add('periodDayTabs');
@@ -29,7 +36,7 @@
   }
   function css(){if(document.getElementById('periodDaySliderCss'))return;const s=document.createElement('style');s.id='periodDaySliderCss';s.textContent='.periodDayTabs{display:flex!important;gap:8px!important;overflow-x:auto!important;overflow-y:hidden!important;grid-template-columns:none!important;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:4px 1px 8px!important;scrollbar-width:none}.periodDayTabs::-webkit-scrollbar{display:none}.periodDayTab{flex:0 0 72px!important;min-width:72px!important;scroll-snap-align:center;border:1px solid #e1e5ed;background:#fff;border-radius:16px;padding:8px 6px!important;text-align:center;color:#667085;min-height:66px}.periodDayTab span,.periodDayTab small{display:block;font-size:10px;line-height:1.1}.periodDayTab b{display:block;font-size:18px;line-height:1.2;color:#1d2939;margin:2px 0}.periodDayTab.active{background:#111318!important;color:#fff!important;border-color:#111318!important}.periodDayTab.active b{color:#fff!important}';document.head.appendChild(s)}
   function hooks(){if(!window.__periodDaySliderRender&&typeof window.renderWeek==='function'){const base=window.renderWeek;window.renderWeek=function(){const r=base.apply(this,arguments);setTimeout(renderTabs,30);return r};window.__periodDaySliderRender=true}}
-  window.addEventListener('chef-range-generated',function(e){const d=e&&e.detail||{};activeDate='';setTimeout(renderTabs,20)});
+  window.addEventListener('chef-range-generated',function(){activeDate='';setTimeout(renderTabs,20)});
   let n=0,t=setInterval(function(){n++;css();hooks();if(renderTabs()&&window.__periodDaySliderRender&&n>10)clearInterval(t);if(n>120)clearInterval(t)},100);
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){css();hooks();renderTabs()});else setTimeout(function(){css();hooks();renderTabs()},0);
 })();
