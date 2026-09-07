@@ -5,15 +5,22 @@
   function apply(){
     try{
       if(!window.aiConfig) return false;
-      const previous=(window.aiConfig.gateway||'').trim();
-      if(!previous){
+
+      // Toujours utiliser la passerelle publique officielle du projet.
+      // Aucune clé API n'est stockée côté navigateur.
+      if(window.aiConfig.gateway!==DEFAULT_GATEWAY){
         window.aiConfig.gateway=DEFAULT_GATEWAY;
-        window.aiConfig.mode='online';
-        try{localStorage.setItem('sector_planner_ai_config_v1',JSON.stringify(window.aiConfig));}catch(e){}
       }
+      window.aiConfig.mode='online';
+
+      try{
+        localStorage.setItem('sector_planner_ai_config_v1',JSON.stringify(window.aiConfig));
+      }catch(e){}
+
       const input=document.getElementById('aiGateway');
-      if(input && !input.value) input.value=window.aiConfig.gateway||DEFAULT_GATEWAY;
-      if(typeof window.setAssistantMode==='function' && window.aiConfig.mode==='online'){
+      if(input) input.value=DEFAULT_GATEWAY;
+
+      if(typeof window.setAssistantMode==='function'){
         window.setAssistantMode('online',true);
       }
       if(typeof window.updateAIStatus==='function') window.updateAIStatus();
@@ -29,6 +36,7 @@
     tries++;
     if(apply() || tries>80) clearInterval(timer);
   },100);
+
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',apply);
   else setTimeout(apply,0);
 })();
