@@ -1,4 +1,4 @@
-const CACHE_NAME = 'chef-secteur-v4-3';
+const CACHE_NAME = 'chef-secteur-v3-premium-apple-1';
 const APP_SHELL = [
   './',
   './index.html',
@@ -7,7 +7,9 @@ const APP_SHELL = [
   './payload/part02.txt',
   './payload/part03.txt',
   './payload/part04.txt',
-  './payload/part05.txt'
+  './payload/part05.txt',
+  './payload/part06.txt',
+  './payload/part07.txt'
 ];
 
 self.addEventListener('install', event => {
@@ -25,10 +27,10 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
+    fetch(event.request).then(response => {
       const copy = response.clone();
       caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
       return response;
-    }).catch(() => caches.match('./index.html')))
+    }).catch(() => caches.match(event.request).then(cached => cached || caches.match('./index.html')))
   );
 });
