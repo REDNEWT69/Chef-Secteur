@@ -23,75 +23,89 @@
   (async function(){
     const status=document.getElementById('bootText');
 
+    function createMemoryStorage(){
+      const memory=new Map();
+      return {
+        getItem(key){key=String(key);return memory.has(key)?memory.get(key):null},
+        setItem(key,value){memory.set(String(key),String(value))},
+        removeItem(key){memory.delete(String(key))},
+        clear(){memory.clear()},
+        key(index){return Array.from(memory.keys())[Number(index)]??null},
+        get length(){return memory.size}
+      };
+    }
+
     async function createStorageFallback(){
-      let nativeStorage=null;
       try{
-        nativeStorage=window.localStorage;
+        const nativeStorage=window.localStorage;
         const key='__chef_storage_test__';
         nativeStorage.setItem(key,'1');
         nativeStorage.removeItem(key);
+        window.__chefStorageMode='localStorage';
+        return nativeStorage;
       }catch(nativeError){
-        nativeStorage=null;
-        console.warn('localStorage indisponible, bascule IndexedDB',nativeError);
+        console.warn('localStorage indisponible, tentative IndexedDB',nativeError);
       }
 
-      if(nativeStorage) return nativeStorage;
-      if(!('indexedDB' in window)) return null;
+      if('indexedDB' in window){
+        try{
+          const db=await new Promise((resolve,reject)=>{
+            const req=indexedDB.open('chef-secteur-storage',3);
+            req.onupgradeneeded=()=>{
+              const d=req.result;
+              if(!d.objectStoreNames.contains('kv')) d.createObjectStore('kv');
+            };
+            req.onsuccess=()=>resolve(req.result);
+            req.onerror=()=>reject(req.error||new Error('IndexedDB indisponible'));
+          });
 
-      try{
-        const db=await new Promise((resolve,reject)=>{
-          const req=indexedDB.open('chef-secteur-storage',2);
-          req.onupgradeneeded=()=>{
-            const d=req.result;
-            if(!d.objectStoreNames.contains('kv')) d.createObjectStore('kv');
+          const memory=new Map();
+          await new Promise((resolve,reject)=>{
+            const tx=db.transaction('kv','readonly');
+            const req=tx.objectStore('kv').openCursor();
+            req.onsuccess=()=>{
+              const cursor=req.result;
+              if(cursor){memory.set(String(cursor.key),String(cursor.value));cursor.continue();}
+              else resolve();
+            };
+            req.onerror=()=>reject(req.error||new Error('Lecture IndexedDB impossible'));
+          });
+
+          const persist=(action,key,value)=>{
+            try{
+              const tx=db.transaction('kv','readwrite');
+              const store=tx.objectStore('kv');
+              if(action==='put') store.put(value,key);
+              else if(action==='delete') store.delete(key);
+              else if(action==='clear') store.clear();
+            }catch(e){console.warn('Écriture IndexedDB impossible',e)}
           };
-          req.onsuccess=()=>resolve(req.result);
-          req.onerror=()=>reject(req.error||new Error('IndexedDB indisponible'));
-        });
 
-        const memory=new Map();
-        await new Promise((resolve,reject)=>{
-          const tx=db.transaction('kv','readonly');
-          const store=tx.objectStore('kv');
-          const req=store.openCursor();
-          req.onsuccess=()=>{
-            const cursor=req.result;
-            if(cursor){memory.set(String(cursor.key),String(cursor.value));cursor.continue();}
-            else resolve();
+          window.__chefStorageMode='indexedDB';
+          return {
+            getItem(key){key=String(key);return memory.has(key)?memory.get(key):null},
+            setItem(key,value){key=String(key);value=String(value);memory.set(key,value);persist('put',key,value)},
+            removeItem(key){key=String(key);memory.delete(key);persist('delete',key)},
+            clear(){memory.clear();persist('clear')},
+            key(index){return Array.from(memory.keys())[Number(index)]??null},
+            get length(){return memory.size}
           };
-          req.onerror=()=>reject(req.error||new Error('Lecture IndexedDB impossible'));
-        });
-
-        const persist=(action,key,value)=>{
-          const tx=db.transaction('kv','readwrite');
-          const store=tx.objectStore('kv');
-          if(action==='put') store.put(value,key);
-          else if(action==='delete') store.delete(key);
-          else if(action==='clear') store.clear();
-        };
-
-        return {
-          getItem(key){key=String(key);return memory.has(key)?memory.get(key):null},
-          setItem(key,value){key=String(key);value=String(value);memory.set(key,value);persist('put',key,value)},
-          removeItem(key){key=String(key);memory.delete(key);persist('delete',key)},
-          clear(){memory.clear();persist('clear')},
-          key(index){return Array.from(memory.keys())[Number(index)]??null},
-          get length(){return memory.size}
-        };
-      }catch(e){
-        console.error('Fallback IndexedDB indisponible',e);
-        return null;
+        }catch(e){console.error('IndexedDB indisponible',e)}
       }
+
+      window.__chefStorageMode='memory';
+      return createMemoryStorage();
     }
 
     try{
+      if(navigator.storage&&navigator.storage.persist){navigator.storage.persist().catch(()=>{});}
       window.__chefStorage=await createStorageFallback();
 
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js', {updateViaCache:'none'}).then(function(reg){return reg.update()}).catch(function(e){console.warn('Mise à jour hors ligne indisponible',e)});
       }
       status.textContent='Chargement du fichier principal…';
-      const r=await fetch('./src/chef-secteur.html?rev=storagefix2',{cache:'no-store'});
+      const r=await fetch('./src/chef-secteur.html?rev=storagefix3',{cache:'no-store'});
       if(!r.ok) throw new Error('Impossible de charger l’application ('+r.status+').');
       let html=await r.text();
       if(!html || html.length<1000) throw new Error('Le fichier principal est vide ou incomplet.');
