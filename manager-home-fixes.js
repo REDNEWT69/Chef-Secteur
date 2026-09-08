@@ -28,21 +28,32 @@
 
   function render(){
     css();
-    const box=document.getElementById('premiumHomeV2');if(!box)return;
+    const box=document.getElementById('premiumHomeV2');if(!box)return false;
     let el=document.getElementById('managerGoogleStatus');
     if(!el){el=document.createElement('button');el.type='button';el.id='managerGoogleStatus';el.innerHTML='<span class="gdot"></span><span class="gtxt"></span>';el.addEventListener('click',openSettings)}
     const hero=box.querySelector('.mhHero')||box.querySelector('.phVisitCard');
-    if(hero&&el.parentNode!==box)box.insertBefore(el,hero);else if(hero&&el.nextSibling!==hero)box.insertBefore(el,hero);
+    if(hero&&el.parentNode!==box)box.insertBefore(el,hero);
     const on=hasToken(),n=eventCount(),t=syncTime();el.classList.toggle('on',on);const txt=el.querySelector('.gtxt');if(txt)txt.textContent=on?'Google Agenda connecté'+(n?' · '+n+' événement'+(n>1?'s':''):'')+(t?' · '+t:''):'Google Agenda non connecté · toucher pour connecter';
+    return true;
   }
 
   function hook(){
     if(!window.__managerHomeFixRender&&typeof window.renderAll==='function'){const base=window.renderAll;window.renderAll=function(){const out=base.apply(this,arguments);setTimeout(render,40);return out};window.__managerHomeFixRender=true}
     if(!window.__managerHomeFixSync&&typeof window.syncGoogleCalendar==='function'){const base=window.syncGoogleCalendar;window.syncGoogleCalendar=async function(){const out=await base.apply(this,arguments);setTimeout(render,40);return out};window.__managerHomeFixSync=true}
+    return window.__managerHomeFixRender&&window.__managerHomeFixSync;
   }
 
-  let tries=0;const boot=setInterval(function(){tries++;hook();render();if(tries>120)clearInterval(boot)},100);
-  document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(render,40)});
+  async function boot(){
+    for(let i=0;i<40;i++){
+      hook();
+      render();
+      if(window.__managerHomeFixRender&&document.getElementById('premiumHomeV2'))break;
+      await new Promise(r=>setTimeout(r,100));
+    }
+  }
+
+  document.addEventListener('visibilitychange',function(){if(!document.hidden){hook();setTimeout(render,40)}});
+  window.addEventListener('focus',function(){hook();setTimeout(render,40)});
   window.addEventListener('resize',function(){clearTimeout(timer);timer=setTimeout(render,80)});
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){hook();render()});else setTimeout(function(){hook();render()},0);
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
 })();
