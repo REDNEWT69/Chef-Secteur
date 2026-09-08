@@ -1,29 +1,53 @@
 (function () {
   'use strict';
 
+  function ensureStyle() {
+    if (document.getElementById('stores-layout-order-style')) return;
+    var style = document.createElement('style');
+    style.id = 'stores-layout-order-style';
+    style.textContent = [
+      '#storesSearchTop{margin:0 0 18px!important;padding:16px!important}',
+      '#storesSearchTop .toolbar{margin:0!important}',
+      '#storesPanel>#storeKpis{margin:22px 0 0!important}',
+      '#storesPanel>.storesListCard{margin-bottom:0!important}',
+      '@media(max-width:700px){#storesSearchTop{margin-bottom:14px!important;padding:14px!important}#storesPanel>#storeKpis{margin-top:18px!important}}'
+    ].join('');
+    document.head.appendChild(style);
+  }
+
   function arrangeStoresPanel() {
     var panel = document.getElementById('storesPanel');
-    if (!panel) return false;
-
     var search = document.getElementById('storeSearch');
-    var searchCard = search && search.closest ? search.closest('.card') : null;
     var toolbar = search && search.closest ? search.closest('.toolbar') : null;
     var storeList = document.getElementById('storeList');
+    var listCard = storeList && storeList.closest ? storeList.closest('.card') : null;
     var kpis = document.getElementById('storeKpis');
-    if (!searchCard || !toolbar || !storeList || !kpis) return false;
+    if (!panel || !toolbar || !storeList || !listCard || !kpis) return false;
 
-    /* La carte Magasins doit commencer tout en haut de l'onglet. */
-    if (panel.firstElementChild !== searchCard) {
-      panel.insertBefore(searchCard, panel.firstElementChild || null);
+    ensureStyle();
+
+    var searchTop = document.getElementById('storesSearchTop');
+    if (!searchTop) {
+      searchTop = document.createElement('div');
+      searchTop.id = 'storesSearchTop';
+      searchTop.className = 'card';
     }
 
-    /* Ordre voulu dans la carte : recherche/actions, tuiles, liste. */
-    if (kpis.parentNode !== searchCard || kpis.previousElementSibling !== toolbar) {
-      searchCard.insertBefore(kpis, storeList);
+    /* Recherche + actions seules dans leur propre zone, tout en haut. */
+    if (toolbar.parentNode !== searchTop) searchTop.appendChild(toolbar);
+    if (panel.firstElementChild !== searchTop) panel.insertBefore(searchTop, panel.firstElementChild || null);
+
+    /* La liste des magasins reste dans sa carte, séparée de la recherche. */
+    listCard.classList.add('storesListCard');
+    if (listCard.parentNode !== panel || listCard.previousElementSibling !== searchTop) {
+      panel.insertBefore(listCard, searchTop.nextSibling);
     }
 
-    kpis.style.marginTop = '18px';
-    kpis.style.marginBottom = '18px';
+    /* Les 4 tuiles passent réellement tout en bas, après la liste. */
+    if (kpis.parentNode !== panel || panel.lastElementChild !== kpis) {
+      panel.appendChild(kpis);
+    }
+
     return true;
   }
 
@@ -50,11 +74,8 @@
     apply();
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
-  } else {
-    boot();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 
   window.addEventListener('load', boot);
   document.addEventListener('click', function (event) {
