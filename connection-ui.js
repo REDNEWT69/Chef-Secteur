@@ -5,8 +5,7 @@
     if(!home||!badge||!status||document.getElementById('calendarHomeStatus'))return;
     const card=document.createElement('div');card.id='calendarHomeStatus';
     card.innerHTML='<div class="calendarHomeCopy" role="status"><strong></strong><small></small></div><button type="button"></button>';
-    const header=document.querySelector('.top .toprow');
-    if(header)header.appendChild(card);else home.insertBefore(card,home.firstChild);
+    home.insertBefore(card,home.firstChild);
     const title=card.querySelector('strong'),detail=card.querySelector('small'),action=card.querySelector('button');
     function render(){
       const connected=badge.classList.contains('on');

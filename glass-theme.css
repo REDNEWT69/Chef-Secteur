@@ -69,3 +69,46 @@ body.glassHome .wrap{padding-top:4px!important}
 #premiumHomeV2 .phTop{padding-top:4px!important;margin-bottom:15px!important}
 #premiumHomeV2 .phBase{position:static;order:3;align-self:flex-end;margin-top:5px;font-size:12px;min-height:32px}
 @media(max-width:370px){body.glassHome .top{padding-left:18px!important;padding-right:18px!important}body.glassHome .top #appContextTitle{width:124px;height:21px}}
+/* Reference composition, 393px mobile canvas; fluid desktop scaling. */
+body.glassHome{isolation:isolate;padding-bottom:0!important}
+body.glassHome:before{content:'';position:fixed;inset:-45px;pointer-events:none;z-index:-2;background:radial-gradient(ellipse at 3% 15%,#fcfdff 0%,transparent 31%),radial-gradient(ellipse at 78% 6%,#c7e2ff 0%,transparent 32%),radial-gradient(ellipse at 96% 31%,#99b2ca 0%,transparent 23%),radial-gradient(ellipse at 5% 53%,#a8c9f3 0%,transparent 31%),radial-gradient(ellipse at 97% 65%,#b0c1d2 0%,transparent 28%),radial-gradient(ellipse at 24% 89%,#c4d9f6 0%,transparent 30%),linear-gradient(140deg,#e8eefb,#f8f9fc 44%,#dce4ef 80%,#f4f3f5)!important;filter:blur(22px)}
+body.glassHome:after{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background:rgba(255,255,255,.08)}
+body.glassHome .top{display:none!important}
+body.glassHome .wrap{padding:18px 22px 106px!important;max-width:900px!important}
+body.glassHome #homePanel{position:relative}
+#premiumHomeV2 .phTop{margin:0 0 17px!important;padding:0!important}
+#premiumHomeV2 .phBrandRow{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;width:100%;min-height:53px;margin:0 3px 12px}
+#premiumHomeV2 .phBrand{display:flex;flex-direction:column;gap:3px;padding-top:1px}
+#premiumHomeV2 .phBrand>span{color:#74839e;font-size:11px;line-height:1.1}
+#premiumHomeV2 .phBrand img{display:block;width:92px;height:auto;max-width:100%}
+#premiumHomeV2 .phBase{position:static;align-self:auto;order:0;min-height:29px;padding:5px 10px;gap:5px;margin:0;border-radius:22px;font-size:12px;background:rgba(255,255,255,.25);color:#7686a4;max-width:52%}
+#premiumHomeV2 .phBase span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#premiumHomeV2 .phTitle{font-size:clamp(44px,12.2vw,74px)!important;font-weight:850;letter-spacing:-.06em;line-height:1.04;margin:0 3px!important}
+#premiumHomeV2 .phTagline{font-size:14px;letter-spacing:-.025em;line-height:1.3;margin:5px 4px 0;color:#7988a5}
+#premiumHomeV2 .phVisitCard{border-radius:25px;padding:19px 16px 16px;margin-bottom:14px;background:linear-gradient(118deg,rgba(255,255,255,.42),rgba(234,246,255,.16) 50%,rgba(255,255,255,.34))!important;box-shadow:inset 1px 2px 3px #fff,inset -2px -2px 5px #fff9,0 8px 24px #687e9926!important;border:1px solid #fffffff2!important}
+#premiumHomeV2 .phVisitLink{gap:13px;min-height:59px}
+#premiumHomeV2 .phVisitIcon{width:56px;height:56px;border-radius:18px;background:linear-gradient(128deg,#d2e8ffba,#f7fbffb3);box-shadow:inset 2px 2px 5px white,inset -1px -2px 4px #fff,0 3px 9px #448bdd30}
+#premiumHomeV2 .phVisitText strong{font-size:18px;line-height:1.13;font-weight:780;letter-spacing:-.04em}
+#premiumHomeV2 .phVisitText>span{font-size:12px;line-height:1.35;letter-spacing:-.02em;margin-top:4px}
+#premiumHomeV2 .phArrow{width:47px;height:47px;box-shadow:inset 0 2px 5px #a6d7ff,inset 0 -3px 7px #0071eb70,0 4px 12px #218bff40;background:radial-gradient(circle at 35% 25%,#3da8ff,#0d82ff 68%,#3da5ff)}
+#premiumHomeV2 .phAssistant{margin-top:15px;padding:12px 13px;min-height:51px;border-radius:17px;gap:15px;background:linear-gradient(125deg,#ffffffab,#ffffff63);box-shadow:inset 0 1px 2px #fff;font-size:12px;letter-spacing:-.02em}
+#premiumHomeV2 .phActivityHeading{margin:0 2px 8px;min-height:20px}
+#premiumHomeV2 .phActivityHeading h3{font-size:18px;font-weight:780;letter-spacing:-.04em}
+#premiumHomeV2 .phActivityHeading button{padding:3px 0;font-size:12px}
+#premiumHomeV2 .phGrid{gap:7px 8px}
+#premiumHomeV2 .phCard{min-height:112px!important;padding:10px 15px!important;border-radius:18px!important;border:1px solid #ffffffe6!important;background:linear-gradient(128deg,#ffffffad,#eff6ff50 60%,#ffffff8c)!important;box-shadow:inset 0 1px 3px white,inset -1px -1px 3px #ffffff80,0 6px 17px #6f80951a!important}
+#premiumHomeV2 .phIcon{width:34px;height:34px;border-radius:11px;margin-bottom:5px!important;background:linear-gradient(140deg,#c8e2ffa3,#eef8ffb8);box-shadow:inset 0 1px 2px #fff9,0 2px 5px #4b98e830}
+#premiumHomeV2 .phLabel{font-size:12px;letter-spacing:-.035em;line-height:1.2}
+#premiumHomeV2 .phValue,#premiumHomeV2 .phAppointment{font-size:20px!important;letter-spacing:-.04em;margin-top:4px;line-height:1.08}
+#premiumHomeV2 .phPriority{font-size:16px!important;letter-spacing:-.04em;overflow-wrap:normal}
+#premiumHomeV2 .phSub{font-size:12px;line-height:1.25;margin-top:3px;letter-spacing:-.02em}
+#premiumHomeV2 .phRange{display:none}
+html body #bottomAppNav{width:calc(100% - 28px);max-width:720px;min-height:61px;bottom:calc(10px + env(safe-area-inset-bottom));padding:4px 7px;border-radius:32px;background:linear-gradient(118deg,#ffffff9c,#e1efff63 65%,#ffffff99)!important;box-shadow:inset 1px 2px 4px #fff,inset -1px -2px 4px #ffffffb3,0 8px 24px #5e739726}
+html body #bottomAppNav .bottomNavBtn{min-height:51px;font-size:10px!important;gap:5px}
+html body #bottomAppNav .bottomNavBtn.ia{margin:-3px 4px -1px;min-height:57px}
+body.glassHome #calendarHomeStatus{position:absolute;top:31px;right:4px;z-index:2;max-width:180px;gap:3px;font-size:9px}
+body.glassHome #calendarHomeStatus strong{font-size:9px}
+body.glassHome #calendarHomeStatus button{font-size:9px;min-height:22px;padding:2px 0 2px 3px}
+@media(min-width:701px){body.glassHome .wrap{padding:28px 32px 115px!important}#premiumHomeV2 .phBrandRow{min-height:65px}#premiumHomeV2 .phBrand img{width:120px}#premiumHomeV2 .phVisitCard{padding:26px}#premiumHomeV2 .phVisitText strong{font-size:26px}#premiumHomeV2 .phVisitText>span,#premiumHomeV2 .phAssistant{font-size:16px}#premiumHomeV2 .phCard{min-height:160px!important;padding:18px 22px!important}#premiumHomeV2 .phValue{font-size:28px!important}#premiumHomeV2 .phPriority{font-size:23px!important}#premiumHomeV2 .phLabel,#premiumHomeV2 .phSub{font-size:15px}}
+@media(max-width:360px){body.glassHome .wrap{padding-left:17px!important;padding-right:17px!important}#premiumHomeV2 .phTitle{font-size:43px!important}#premiumHomeV2 .phVisitText strong{font-size:16px}#premiumHomeV2 .phVisitLink{gap:9px}#premiumHomeV2 .phVisitIcon{width:47px;height:49px}#premiumHomeV2 .phArrow{width:38px;height:38px}}
+@media(prefers-reduced-transparency:reduce){#premiumHomeV2 .phCard,#premiumHomeV2 .phVisitCard,html body #bottomAppNav{background:#f1f6fd!important;backdrop-filter:none;-webkit-backdrop-filter:none}}
