@@ -1,9 +1,10 @@
-const CACHE_NAME = "chef-secteur-layout4";
+const CACHE_NAME = "chef-secteur-pwa3";
 const APP_SHELL = [
   "./region-stores.js?rev=region18", "./region-stores.css?rev=region18",
   "./",
   "./index.html",
-  "./manifest.webmanifest",
+  "./manifest.webmanifest?rev=pwa2",
+  "./app-icon.svg",
   "./samsung-wordmark.svg",
   "./src/chef-secteur.html?rev=safe16",
   "./calendar-oauth.js?rev=safe16",
