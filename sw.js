@@ -1,4 +1,4 @@
-const CACHE_NAME = "chef-secteur-sectoradmin2";
+const CACHE_NAME = "chef-secteur-sectoradmin3";
 const APP_SHELL = [
   "./region-stores.js?rev=official20", "./region-stores.css?rev=region18",
   "./",
@@ -36,7 +36,7 @@ const APP_SHELL = [
   "./stores-layout-order.js?rev=20260908-4",
   "./boulanger-national.js?rev=20260908-1",
   "./national-sectors.js?rev=20260908-1",
-  "./sector-admin.js?rev=20260909-2"
+  "./sector-admin.js?rev=20260909-3"
 ];
 const SCOPE = self.registration.scope;
 self.addEventListener('install', event => {
