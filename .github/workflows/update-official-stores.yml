@@ -1,0 +1,38 @@
+name: Mise à jour annuaires officiels
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '20 4 * * 1'
+  push:
+    branches: [main]
+    paths:
+      - tools/update_official_stores.py
+      - .github/workflows/update-official-stores.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Installer les dépendances
+        run: pip install requests beautifulsoup4
+      - name: Collecter les annuaires officiels
+        run: python tools/update_official_stores.py
+      - name: Enregistrer le snapshot s'il a changé
+        run: |
+          if git diff --quiet -- data/official-stores.json; then
+            echo "Aucun changement"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/official-stores.json
+          git commit -m "Met à jour les annuaires officiels"
+          git push
