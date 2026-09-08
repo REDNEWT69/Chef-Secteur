@@ -1,12 +1,25 @@
 (function () {
   'use strict';
 
+  function loadScript(id, src, onload) {
+    if (document.getElementById(id)) { if (onload) onload(); return; }
+    var script = document.createElement('script');
+    script.id = id;
+    script.src = src;
+    if (onload) script.onload = onload;
+    document.head.appendChild(script);
+  }
+
   if (!document.getElementById('planning-autofix-script')) {
     var hotfix = document.createElement('script');
     hotfix.id = 'planning-autofix-script';
     hotfix.src = './planning-autofix.js?rev=20260908-1';
     document.head.appendChild(hotfix);
   }
+
+  loadScript('boulanger-national-script', './boulanger-national.js?rev=20260908-1', function () {
+    loadScript('national-sectors-script', './national-sectors.js?rev=20260908-1');
+  });
 
   function ensureStyle() {
     if (document.getElementById('stores-layout-order-style')) return;
