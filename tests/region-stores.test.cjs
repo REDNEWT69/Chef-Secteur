@@ -17,3 +17,18 @@ assert.equal(R.commit(rows),1);assert.equal(global.state.stores.length,1);assert
 const before=JSON.stringify(global.state);assert.throws(()=>R.commit([missing]));assert.equal(JSON.stringify(global.state),before);
 const fail=global.localStorage.setItem;global.localStorage.setItem=()=>{throw Error('quota')};assert.throws(()=>R.commit([{...rows[0],id:'new',lat:48,adresse:'Different'}]));assert.equal(JSON.stringify(global.state),before);global.localStorage.setItem=fail;
 console.log('PASS: region query validation, brand filtering, node/way deduplication, missing data, partial errors, selected-only import, repeated import, backup and quota protection.');
+
+for(const tags of [
+ {shop:'bakery',name:'Boulanger Pâtissier'},
+ {shop:'bakery',name:'Boulanger'},
+ {shop:'bakery',brand:'Boulanger'},
+ {shop:'electronics',name:'Boulanger Pâtissier'},
+ {shop:'electronics',brand:'Autre marque',name:'Boulanger Lyon'},
+ {shop:'convenience',brand:'Carrefour',name:'Carrefour City'}
+])assert.equal(R.matchBrand(tags,R.BRANDS),undefined);
+assert.equal(R.matchBrand({shop:'electronics',name:'Boulanger Lyon'},R.BRANDS),'Boulanger');
+assert.equal(R.matchBrand({shop:'electronics',brand:'Boulanger',name:'Boulanger Lyon'},R.BRANDS),'Boulanger');
+assert.throws(()=>R.commit([{...rows[0],id:'no-address',adresse:'',lat:48}]));
+assert.equal(JSON.stringify(global.state),before);
+assert(!R.complete({...rows[0],adresse:' '}));
+console.log('PASS: bakeries, misleading names, conflicting brands and convenience shops excluded; missing addresses cannot be imported.');

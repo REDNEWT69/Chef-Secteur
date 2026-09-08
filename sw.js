@@ -1,6 +1,6 @@
-const CACHE_NAME = "chef-secteur-region17";
+const CACHE_NAME = "chef-secteur-region18";
 const APP_SHELL = [
-  "./region-stores.js?rev=region17", "./region-stores.css?rev=region17",
+  "./region-stores.js?rev=region18", "./region-stores.css?rev=region18",
   "./",
   "./index.html",
   "./manifest.webmanifest",
