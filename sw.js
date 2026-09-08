@@ -1,4 +1,4 @@
-const CACHE_NAME = "chef-secteur-planfix1";
+const CACHE_NAME = "chef-secteur-storagefix2";
 const APP_SHELL = [
   "./region-stores.js?rev=region18", "./region-stores.css?rev=region18",
   "./",
@@ -6,7 +6,7 @@ const APP_SHELL = [
   "./manifest.webmanifest?rev=pwa2",
   "./app-icon.svg",
   "./samsung-wordmark.svg",
-  "./src/chef-secteur.html?rev=safe16",
+  "./src/chef-secteur.html?rev=storagefix2",
   "./calendar-oauth.js?rev=safe16",
   "./calendar-enhancements.js?rev=20260907-4",
   "./ui-polish.js?rev=20260907-2",
@@ -28,12 +28,12 @@ const APP_SHELL = [
   "./assistant-sheet-drag.js?rev=observer10",
   "./visual-refresh-v1.js?rev=20260907-glass4",
   "./home-refresh-v2.js?rev=safe16",
+  "./auto-planning-fix.js?rev=20260908-1",
   "./connection-ui.js?rev=safe16",
   "./reliability-core.js?rev=safe16",
   "./glass-theme.css?rev=safe16",
-  "./reliability-ui.js?rev=safe16",
-  "./stores-layout-order.js?rev=20260908-4",
-  "./planning-autofix.js?rev=20260908-1"
+  "./reliability-ui.js?rev=auto1",
+  "./stores-layout-order.js?rev=20260908-4"
 ];
 const SCOPE = self.registration.scope;
 self.addEventListener('install', event => {
