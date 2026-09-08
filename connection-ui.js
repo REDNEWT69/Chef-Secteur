@@ -29,7 +29,6 @@
     healStorage();
     setTimeout(healStorage,50);
     setTimeout(healStorage,250);
-    setInterval(healStorage,1500);
 
     function updateSectorSubtitle(){
       const sub=document.getElementById('titleSub');
@@ -45,6 +44,9 @@
       window.__sectorSubtitleInstalled=true;
     }
     updateSectorSubtitle();
+    window.addEventListener('focus',healStorage,{passive:true});
+    document.addEventListener('visibilitychange',function(){if(!document.hidden)healStorage()});
+
     const home=document.getElementById('homePanel'),badge=document.getElementById('googleCalendarBadge'),status=document.getElementById('googleCalendarStatus');
     if(!home||!badge||!status||document.getElementById('calendarHomeStatus'))return;
     const card=document.createElement('div');card.id='calendarHomeStatus';
