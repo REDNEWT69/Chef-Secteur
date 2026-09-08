@@ -1,6 +1,36 @@
 (function(){
   'use strict';
+
+  function healStorage(){
+    try{
+      if(window.__chefStorage){
+        try{window.storage=window.__chefStorage}catch(e){}
+      }
+      var box=document.getElementById('errorBox');
+      if(box&&/stockage (du navigateur )?indisponible|sauvegarde locale impossible/i.test(box.textContent||'')){
+        try{
+          var s=window.__chefStorage||window.storage;
+          if(s){
+            var k='__chef_heal_test__';
+            s.setItem(k,'1');
+            s.removeItem(k);
+            window.storage=s;
+            box.style.display='none';
+            box.textContent='';
+            var dot=document.getElementById('statusDot');
+            if(dot&&dot.classList.contains('bad'))dot.className='dot ok';
+          }
+        }catch(e){}
+      }
+    }catch(e){}
+  }
+
   function boot(){
+    healStorage();
+    setTimeout(healStorage,50);
+    setTimeout(healStorage,250);
+    setInterval(healStorage,1500);
+
     function updateSectorSubtitle(){
       const sub=document.getElementById('titleSub');
       if(!sub||typeof state==='undefined')return;
@@ -11,7 +41,7 @@
     }
     if(typeof window.renderHeader==='function'&&!window.__sectorSubtitleInstalled){
       const original=window.renderHeader;
-      window.renderHeader=function(){const result=original.apply(this,arguments);updateSectorSubtitle();return result};
+      window.renderHeader=function(){const result=original.apply(this,arguments);updateSectorSubtitle();healStorage();return result};
       window.__sectorSubtitleInstalled=true;
     }
     updateSectorSubtitle();
@@ -22,6 +52,7 @@
     home.insertBefore(card,home.firstChild);
     const title=card.querySelector('strong'),detail=card.querySelector('small'),action=card.querySelector('button');
     function render(){
+      healStorage();
       const googleState=window.chefGoogleStatus||{};
       const connected=googleState.connected===true;
       const heading='Google Agenda';
