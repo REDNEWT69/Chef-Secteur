@@ -1,11 +1,11 @@
-const CACHE_NAME = "chef-secteur-cache15";
+const CACHE_NAME = "chef-secteur-cache16";
 const APP_SHELL = [
-  "./samsung-wordmark.svg",
-  "./connection-ui.js?rev=subtitle15",
   "./",
   "./index.html",
   "./manifest.webmanifest",
-  "./calendar-oauth.js?rev=20260907-5",
+  "./samsung-wordmark.svg",
+  "./src/chef-secteur.html?rev=safe16",
+  "./calendar-oauth.js?rev=safe16",
   "./calendar-enhancements.js?rev=20260907-4",
   "./ui-polish.js?rev=20260907-2",
   "./route-polish.js?rev=20260907-free-map2",
@@ -16,18 +16,20 @@ const APP_SHELL = [
   "./assistant-store-lookup.js?rev=20260907-2",
   "./map-layer-fix.js?rev=20260907-1",
   "./timeline-end-times.js?rev=20260907-2",
-  "./range-planner-v2.js?rev=20260907-3",
-  "./working-hours-end.js?rev=20260907-1",
-  "./daily-capacity.js?rev=20260907-1",
+  "./range-planner-v2.js?rev=safe16",
+  "./working-hours-end.js?rev=safe16",
+  "./daily-capacity.js?rev=safe16",
   "./planning-pro-plus.js?rev=20260907-3",
   "./period-day-slider.js?rev=20260907-4",
-  "./workdays-enforcer.js?rev=20260907-1",
+  "./workdays-enforcer.js?rev=safe16",
   "./visit-history-delete.js?rev=20260907-1",
   "./assistant-sheet-drag.js?rev=observer10",
   "./visual-refresh-v1.js?rev=20260907-glass4",
-  "./home-refresh-v2.js?rev=subtitle15",
-  "./glass-theme.css?rev=subtitle15",
-  "./src/chef-secteur.html?rev=cache9"
+  "./home-refresh-v2.js?rev=safe16",
+  "./connection-ui.js?rev=safe16",
+  "./reliability-core.js?rev=safe16",
+  "./glass-theme.css?rev=safe16",
+  "./reliability-ui.js?rev=safe16"
 ];
 const SCOPE = self.registration.scope;
 self.addEventListener('install', event => {

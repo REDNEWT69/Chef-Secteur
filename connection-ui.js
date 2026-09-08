@@ -22,18 +22,19 @@
     home.insertBefore(card,home.firstChild);
     const title=card.querySelector('strong'),detail=card.querySelector('small'),action=card.querySelector('button');
     function render(){
-      const connected=badge.classList.contains('on');
+      const googleState=window.chefGoogleStatus||{};
+      const connected=googleState.connected===true;
       const heading='Google Agenda';
       if(title.textContent!==heading)title.textContent=heading;
       if(detail.textContent!==status.textContent)detail.textContent=status.textContent;
-      const issue=/impossible|expirée|refusée|erreur/i.test(status.textContent);
+      const issue=['error','expired','offline'].includes(googleState.phase);
       card.dataset.issue=String(issue);
       action.title=status.textContent;
       action.setAttribute('aria-label',connected?'Google Agenda connecté. Synchroniser maintenant.':'Connecter Google Agenda');
-      const label=issue?'À vérifier':connected?'Connecté':'Connecter';if(action.textContent!==label)action.textContent=label;
+      const label=googleState.phase==='syncing'?'Vérification…':googleState.phase==='offline'?'Hors ligne':googleState.phase==='expired'?'Reconnecter':issue?'À vérifier':connected?'Connecté':'Connecter';if(action.textContent!==label)action.textContent=label;
       card.dataset.connected=String(connected);
     }
-    action.addEventListener('click',function(){if(badge.classList.contains('on'))window.syncGoogleCalendar();else window.connectGoogleCalendar()});
+    action.addEventListener('click',function(){if(window.chefGoogleStatus&&window.chefGoogleStatus.canRetry)window.syncGoogleCalendar();else window.connectGoogleCalendar()});
     const observer=new MutationObserver(render);
     observer.observe(badge,{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['class']});
     observer.observe(status,{childList:true,characterData:true,subtree:true});render();

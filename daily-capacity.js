@@ -32,7 +32,7 @@
   }
   function hooks(){
     if(!window.__dailyCapGenerate&&typeof window.generateWeek==='function'){
-      const base=window.generateWeek;window.generateWeek=function(){const r=base.apply(this,arguments);capPlan();try{if(typeof renderAll==='function')renderAll()}catch(e){}return r};window.__dailyCapGenerate=true;
+      const base=window.generateWeek;window.generateWeek=function(){return base.apply(this,arguments)};window.__dailyCapGenerate=true;
     }
     if(!window.__dailyCapRead&&typeof window.readPlanningControls==='function'){
       const base=window.readPlanningControls;window.readPlanningControls=function(){const r=base.apply(this,arguments);ensure();const el=document.getElementById('maxVisitsPerDay');if(el)state.settings.maxVisitsPerDay=Math.max(1,Math.min(8,Number(el.value)||4));return r};window.__dailyCapRead=true;
