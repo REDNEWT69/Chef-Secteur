@@ -46,3 +46,9 @@ html.assistantIsOpen,html.assistantIsOpen body{overscroll-behavior:none!importan
 #assistantPanel #assistantAIStatus.bad{background:rgba(255,233,229,.7)!important;color:#ad3a2c!important}
 #calendarHomeStatus{display:flex;align-items:center;gap:10px;padding:11px 13px;margin:0 0 14px;border:1px solid #ffffffd9;border-radius:18px;background:#ffffff66;color:#435571;font-size:12px;box-shadow:inset 0 1px 2px #fff}
 #calendarHomeStatus .calendarHomeCopy{flex:1;min-width:0}#calendarHomeStatus strong{display:block;font-size:13px}#calendarHomeStatus small{display:block;margin-top:3px;line-height:1.4}#calendarHomeStatus button{border:0;border-radius:12px;padding:10px 12px;min-height:42px;background:#e0edff;color:#0862c4;font-weight:700;flex-shrink:0}#calendarHomeStatus[data-connected="true"] strong{color:#23714d}
+/* Samsung wordmark (Simple Icons, samsung.svg); retain heading text for accessibility. */
+html body .top #appContextTitle{font-size:0!important;line-height:0!important;letter-spacing:0!important;min-width:0;width:144px;height:24px;margin:4px 0!important;background:url('./samsung-wordmark.svg') no-repeat left center;background-size:contain}
+@media(min-width:701px){html body .top #appContextTitle{width:164px;height:28px}}
+body.glassHome .top{display:block!important;position:relative!important;padding:18px 28px 8px!important;background:transparent!important;border:0!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+body.glassHome .top .toprow{max-width:984px;margin:auto}
+body.glassHome .top #titleSub,body.glassHome .top .departureShortcut,body.glassHome .top .tabs{display:none!important}
