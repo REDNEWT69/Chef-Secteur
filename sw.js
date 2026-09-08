@@ -1,7 +1,7 @@
-const CACHE_NAME = "chef-secteur-cache14";
+const CACHE_NAME = "chef-secteur-cache15";
 const APP_SHELL = [
   "./samsung-wordmark.svg",
-  "./connection-ui.js?rev=reference14",
+  "./connection-ui.js?rev=subtitle15",
   "./",
   "./index.html",
   "./manifest.webmanifest",
@@ -25,8 +25,8 @@ const APP_SHELL = [
   "./visit-history-delete.js?rev=20260907-1",
   "./assistant-sheet-drag.js?rev=observer10",
   "./visual-refresh-v1.js?rev=20260907-glass4",
-  "./home-refresh-v2.js?rev=reference14",
-  "./glass-theme.css?rev=reference14",
+  "./home-refresh-v2.js?rev=subtitle15",
+  "./glass-theme.css?rev=subtitle15",
   "./src/chef-secteur.html?rev=cache9"
 ];
 const SCOPE = self.registration.scope;

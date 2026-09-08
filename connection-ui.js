@@ -1,6 +1,20 @@
 (function(){
   'use strict';
   function boot(){
+    function updateSectorSubtitle(){
+      const sub=document.getElementById('titleSub');
+      if(!sub||typeof state==='undefined')return;
+      const sector=String((state.profile&&state.profile.sectorName)||'Rhône-Alpes').replace(/^samsung\s*[·:–—-]?\s*/i,'').trim()||'Rhône-Alpes';
+      const stores=typeof window.activeStores==='function'?window.activeStores():(state.stores||[]).filter(s=>s.active!==false);
+      const label=sector+' · '+stores.length+' magasins';
+      if(sub.textContent!==label)sub.textContent=label;
+    }
+    if(typeof window.renderHeader==='function'&&!window.__sectorSubtitleInstalled){
+      const original=window.renderHeader;
+      window.renderHeader=function(){const result=original.apply(this,arguments);updateSectorSubtitle();return result};
+      window.__sectorSubtitleInstalled=true;
+    }
+    updateSectorSubtitle();
     const home=document.getElementById('homePanel'),badge=document.getElementById('googleCalendarBadge'),status=document.getElementById('googleCalendarStatus');
     if(!home||!badge||!status||document.getElementById('calendarHomeStatus'))return;
     const card=document.createElement('div');card.id='calendarHomeStatus';
