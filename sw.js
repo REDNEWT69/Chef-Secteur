@@ -1,4 +1,4 @@
-const CACHE_NAME = "chef-secteur-pwa3";
+const CACHE_NAME = "chef-secteur-planfix1";
 const APP_SHELL = [
   "./region-stores.js?rev=region18", "./region-stores.css?rev=region18",
   "./",
@@ -32,7 +32,8 @@ const APP_SHELL = [
   "./reliability-core.js?rev=safe16",
   "./glass-theme.css?rev=safe16",
   "./reliability-ui.js?rev=safe16",
-  "./stores-layout-order.js?rev=20260908-4"
+  "./stores-layout-order.js?rev=20260908-4",
+  "./planning-autofix.js?rev=20260908-1"
 ];
 const SCOPE = self.registration.scope;
 self.addEventListener('install', event => {
