@@ -1,0 +1,12 @@
+{
+  "generatedAt": null,
+  "sources": {
+    "Boulanger": "https://www.boulanger.com/info/magasins/france",
+    "Darty": "https://magasin.darty.com/fr",
+    "Fnac": "https://www.fnac.com/localiser-magasin-fnac/w-4",
+    "Conforama": "https://www.conforama.fr/magasins-conforama",
+    "Carrefour": "https://www.carrefour.fr/magasin",
+    "Cuisinella": "https://www.ma.cuisinella/fr-fr/liste-magasins"
+  },
+  "stores": []
+}
