@@ -2,7 +2,7 @@
   'use strict';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   const RANGE_KEY='chef_sector_range_v1';
-  let busy=false,timer=null;
+  let busy=false;
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]||c))}
   function icon(name){const paths={home:'<path d="m3 10 9-8 9 8v11h-6v-7H9v7H3Z" fill="currentColor"/>',calendar:'<rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8 2v6m8-6v6M4 11h16M8 15h2m4 0h2m-8 3h2"/>',store:'<path d="M3 10 5 3h14l2 7c0 4-5 4-6 1-1 3-5 3-6 0-1 3-6 3-6-1ZM5 14v7h14v-7"/>',pin:'<path d="M19 10c0 5-7 12-7 12S5 15 5 10a7 7 0 1 1 14 0Z"/><circle cx="12" cy="9" r="2"/>',navigation:'<path d="m3 11 18-8-7 18-3-8Z" fill="currentColor"/>',spark:'<path d="M12 1c-2 8-3 9-11 11 8 2 9 3 11 11 2-8 3-9 11-11-8-2-9-3-11-11Z" fill="currentColor" stroke="none"/>',chevron:'<path d="m9 4 8 8-8 8"/>',chart:'<rect x="3" y="12" width="4" height="9" rx="1" fill="currentColor" stroke="none"/><rect x="10" y="7" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="17" y="2" width="4" height="19" rx="1" fill="currentColor" stroke="none"/>',check:'<circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/>',more:'<circle cx="4" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="20" cy="12" r="2" fill="currentColor"/>'};return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[name]||paths.spark)+'</svg>'}
   function parse(v){const d=new Date(String(v||'')+'T12:00:00');return isNaN(d)?null:d}
@@ -44,6 +44,9 @@
   function activePanel(){const p=document.querySelector('.panel.active');return p&&p.id}
   function run(){if(busy)return;busy=true;try{ensureCss();buildHome();rebuildBottomNav();installMoreSheet();setActive(activePanel()||'homePanel')}finally{busy=false}}
   function hook(){if(!window.__homeRefreshRender&&typeof window.renderHome==='function'){const base=window.renderHome;window.renderHome=function(){const out=base.apply(this,arguments);setTimeout(buildHome,20);return out};window.__homeRefreshRender=true}if(!window.__homeRefreshTab&&typeof window.switchTab==='function'){const base=window.switchTab;window.switchTab=function(id,btn){const out=base.apply(this,arguments);setTimeout(()=>setActive(id),20);return out};window.__homeRefreshTab=true}}
-  async function boot(){for(let i=0;i<60;i++){hook();run();if(document.getElementById('homePanel')&&document.getElementById('bottomAppNav'))break;await new Promise(r=>setTimeout(r,100))}const root=document.querySelector('.wrap')||document.body;const obs=new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(()=>{buildHome();setActive(activePanel()||'homePanel')},140)});obs.observe(root,{childList:true,subtree:true});run()}
+  async function boot(){for(let i=0;i<60;i++){hook();run();if(document.getElementById('homePanel')&&document.getElementById('bottomAppNav'))break;await new Promise(r=>setTimeout(r,100))}run()}
+  function refreshWhenVisible(){if(document.hidden)return;hook();run()}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
+  window.addEventListener('focus',refreshWhenVisible);
+  document.addEventListener('visibilitychange',refreshWhenVisible);
 })();
