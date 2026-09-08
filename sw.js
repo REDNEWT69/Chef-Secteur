@@ -1,5 +1,6 @@
-const CACHE_NAME = "chef-secteur-cache10";
+const CACHE_NAME = "chef-secteur-cache11";
 const APP_SHELL = [
+  "./connection-ui.js?rev=ui11",
   "./",
   "./index.html",
   "./manifest.webmanifest",
@@ -24,7 +25,7 @@ const APP_SHELL = [
   "./assistant-sheet-drag.js?rev=observer10",
   "./visual-refresh-v1.js?rev=20260907-glass4",
   "./home-refresh-v2.js?rev=20260907-glass4",
-  "./glass-theme.css?rev=cache9",
+  "./glass-theme.css?rev=ui11",
   "./src/chef-secteur.html?rev=cache9"
 ];
 const SCOPE = self.registration.scope;
