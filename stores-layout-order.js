@@ -1,24 +1,34 @@
 (function () {
   'use strict';
 
-  function moveStoreSearchAboveKpis() {
+  function arrangeStoresPanel() {
     var panel = document.getElementById('storesPanel');
     if (!panel) return false;
 
     var search = document.getElementById('storeSearch');
     var searchCard = search && search.closest ? search.closest('.card') : null;
-    if (!searchCard) return false;
-
+    var toolbar = search && search.closest ? search.closest('.toolbar') : null;
+    var storeList = document.getElementById('storeList');
     var kpis = document.getElementById('storeKpis');
-    if (kpis && searchCard.nextElementSibling !== kpis) {
-      panel.insertBefore(searchCard, kpis);
+    if (!searchCard || !toolbar || !storeList || !kpis) return false;
+
+    /* La carte Magasins doit commencer tout en haut de l'onglet. */
+    if (panel.firstElementChild !== searchCard) {
+      panel.insertBefore(searchCard, panel.firstElementChild || null);
     }
 
+    /* Ordre voulu dans la carte : recherche/actions, tuiles, liste. */
+    if (kpis.parentNode !== searchCard || kpis.previousElementSibling !== toolbar) {
+      searchCard.insertBefore(kpis, storeList);
+    }
+
+    kpis.style.marginTop = '18px';
+    kpis.style.marginBottom = '18px';
     return true;
   }
 
   function apply() {
-    moveStoreSearchAboveKpis();
+    arrangeStoresPanel();
   }
 
   function hookRenderStores() {
