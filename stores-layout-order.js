@@ -1,6 +1,10 @@
 (function () {
   'use strict';
 
+  var retryTimer = null;
+  var retryCount = 0;
+  var MAX_RETRIES = 30;
+
   function loadScript(id, src, onload) {
     if (document.getElementById(id)) { if (onload) onload(); return; }
     var script = document.createElement('script');
@@ -19,7 +23,9 @@
 
   loadScript('boulanger-national-script', './boulanger-national.js?rev=20260908-1', function () {
     loadScript('national-sectors-script', './national-sectors.js?rev=20260908-1', function () {
-      loadScript('sector-admin-script', './sector-admin.js?rev=20260909-5');
+      loadScript('sector-admin-script', './sector-admin.js?rev=20260909-5', function () {
+        scheduleApply();
+      });
     });
   });
 
@@ -86,49 +92,58 @@
   }
 
   function apply() {
-    arrangeStoresPanel();
+    hookRenderStores();
+    return arrangeStoresPanel();
+  }
+
+  function scheduleApply() {
+    requestAnimationFrame(function () {
+      apply();
+      setTimeout(apply, 40);
+      setTimeout(apply, 160);
+    });
   }
 
   function hookRenderStores() {
-    if (window.__storeLayoutOrderHooked) return;
-    if (typeof window.renderStores !== 'function') return;
+    if (window.__storeLayoutOrderHooked) return true;
+    if (typeof window.renderStores !== 'function') return false;
     var base = window.renderStores;
     window.renderStores = function () {
       var out = base.apply(this, arguments);
-      requestAnimationFrame(apply);
-      setTimeout(apply, 40);
-      setTimeout(apply, 160);
+      scheduleApply();
       return out;
     };
     window.__storeLayoutOrderHooked = true;
+    return true;
+  }
+
+  function retryUntilReady() {
+    if (apply()) {
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimer = null;
+      return;
+    }
+    retryCount += 1;
+    if (retryCount >= MAX_RETRIES) return;
+    retryTimer = setTimeout(retryUntilReady, 100);
   }
 
   function boot() {
-    hookRenderStores();
-    apply();
+    retryCount = 0;
+    retryUntilReady();
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
   else boot();
 
-  window.addEventListener('load', boot);
+  window.addEventListener('load', scheduleApply, { once: true });
+
   document.addEventListener('click', function (event) {
     var button = event.target && event.target.closest ? event.target.closest('button') : null;
-    if (button && /magasins/i.test(button.textContent || '')) {
-      setTimeout(apply, 20);
-      setTimeout(apply, 120);
-      setTimeout(apply, 350);
-    }
+    if (button && /magasins/i.test(button.textContent || '')) scheduleApply();
   }, true);
 
-  var observer = new MutationObserver(function () {
-    hookRenderStores();
-    apply();
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) scheduleApply();
   });
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-
-  setInterval(function () {
-    hookRenderStores();
-    apply();
-  }, 1000);
 })();
