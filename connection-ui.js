@@ -5,14 +5,19 @@
     if(!home||!badge||!status||document.getElementById('calendarHomeStatus'))return;
     const card=document.createElement('div');card.id='calendarHomeStatus';
     card.innerHTML='<div class="calendarHomeCopy" role="status"><strong></strong><small></small></div><button type="button"></button>';
-    home.insertBefore(card,home.firstChild);
+    const header=document.querySelector('.top .toprow');
+    if(header)header.appendChild(card);else home.insertBefore(card,home.firstChild);
     const title=card.querySelector('strong'),detail=card.querySelector('small'),action=card.querySelector('button');
     function render(){
       const connected=badge.classList.contains('on');
-      const heading='Google Agenda · '+(badge.textContent.trim()||'État en cours de vérification');
+      const heading='Google Agenda';
       if(title.textContent!==heading)title.textContent=heading;
       if(detail.textContent!==status.textContent)detail.textContent=status.textContent;
-      const label=connected?'Synchroniser':'Connecter';if(action.textContent!==label)action.textContent=label;
+      const issue=/impossible|expirée|refusée|erreur/i.test(status.textContent);
+      card.dataset.issue=String(issue);
+      action.title=status.textContent;
+      action.setAttribute('aria-label',connected?'Google Agenda connecté. Synchroniser maintenant.':'Connecter Google Agenda');
+      const label=issue?'À vérifier':connected?'Connecté':'Connecter';if(action.textContent!==label)action.textContent=label;
       card.dataset.connected=String(connected);
     }
     action.addEventListener('click',function(){if(badge.classList.contains('on'))window.syncGoogleCalendar();else window.connectGoogleCalendar()});

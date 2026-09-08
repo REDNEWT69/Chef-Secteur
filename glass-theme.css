@@ -52,3 +52,20 @@ html body .top #appContextTitle{font-size:0!important;line-height:0!important;le
 body.glassHome .top{display:block!important;position:relative!important;padding:18px 28px 8px!important;background:transparent!important;border:0!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 body.glassHome .top .toprow{max-width:984px;margin:auto}
 body.glassHome .top #titleSub,body.glassHome .top .departureShortcut,body.glassHome .top .tabs{display:none!important}
+
+/* Compact home header: connection beside the logo, title immediately below. */
+#calendarHomeStatus{display:none}
+body.glassHome .top .toprow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+body.glassHome #calendarHomeStatus{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;max-width:170px;margin:0;padding:0;border:0;background:transparent;box-shadow:none;font-size:11px}
+body.glassHome #calendarHomeStatus .calendarHomeCopy{flex:0 1 auto}
+body.glassHome #calendarHomeStatus strong{font-size:11px;font-weight:500;color:#6a7892}
+body.glassHome #calendarHomeStatus small{display:none}
+body.glassHome #calendarHomeStatus button{background:transparent;font-size:11px;font-weight:600;padding:6px 0 6px 3px;min-height:36px;color:#63748d}
+body.glassHome #calendarHomeStatus button::before{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;margin-right:4px;background:#92a0b4;vertical-align:middle}
+body.glassHome #calendarHomeStatus[data-connected="true"] button::before{background:#40966a}
+body.glassHome #calendarHomeStatus[data-issue="true"] button{color:#a56b19}
+body.glassHome #calendarHomeStatus[data-issue="true"] button::before{background:#c48b31}
+body.glassHome .wrap{padding-top:4px!important}
+#premiumHomeV2 .phTop{padding-top:4px!important;margin-bottom:15px!important}
+#premiumHomeV2 .phBase{position:static;order:3;align-self:flex-end;margin-top:5px;font-size:12px;min-height:32px}
+@media(max-width:370px){body.glassHome .top{padding-left:18px!important;padding-right:18px!important}body.glassHome .top #appContextTitle{width:124px;height:21px}}
