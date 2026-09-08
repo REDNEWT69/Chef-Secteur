@@ -1,6 +1,6 @@
-const CACHE_NAME = "chef-secteur-storageheal1";
+const CACHE_NAME = "chef-secteur-official20";
 const APP_SHELL = [
-  "./region-stores.js?rev=region18", "./region-stores.css?rev=region18",
+  "./region-stores.js?rev=official20", "./region-stores.css?rev=region18",
   "./",
   "./index.html",
   "./manifest.webmanifest?rev=pwa2",
@@ -71,3 +71,4 @@ self.addEventListener('fetch', event => {
     }
   })());
 });
+

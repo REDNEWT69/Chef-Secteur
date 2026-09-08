@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - tools/update_official_stores.py
+      - tools/official_directory_parsers.py
       - .github/workflows/update-official-stores.yml
 
 permissions:
@@ -23,6 +24,8 @@ jobs:
           python-version: '3.12'
       - name: Installer les dépendances
         run: pip install requests beautifulsoup4
+      - name: Vérifier les parseurs officiels
+        run: python tests/official_catalog_test.py
       - name: Collecter les annuaires officiels
         run: python tools/update_official_stores.py
       - name: Enregistrer le snapshot s'il a changé
@@ -36,3 +39,4 @@ jobs:
           git add data/official-stores.json
           git commit -m "Met à jour les annuaires officiels"
           git push
+

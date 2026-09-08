@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import json,re,time,unicodedata
 from urllib.parse import urljoin,urlparse
+from official_directory_parsers import collect, REGIONS
 import requests
 from bs4 import BeautifulSoup
 
 SOURCES={
- 'Boulanger':('https://www.boulanger.com/info/magasins/france',r'/info/magasins/'),
+ 'Boulanger':('https://www.boulanger.com/magasins/',r'/magasins/'),
  'Darty':('https://magasin.darty.com/fr',r'/fr/'),
  'Fnac':('https://www.fnac.com/localiser-magasin-fnac/w-4',r'(magasin|localiser-magasin-fnac)'),
  'Conforama':('https://www.conforama.fr/magasins-conforama',r'magasins-conforama'),
@@ -101,13 +102,28 @@ def main():
  except:pass
  all_rows=[]; stats={}
  for brand,(seed,pat) in SOURCES.items():
-  rows=dedupe(crawl_brand(brand,seed,pat))
+  regional={}
+  if brand in ('Boulanger','Darty'):
+   rows=[]
+   for code in REGIONS:
+    try:coverage,found=collect(brand,code)
+    except Exception as e:coverage,found={'status':'unavailable','count':0,'errors':[str(e)]},[]
+    old=[x for x in previous.get('stores',[]) if x.get('enseigne')==brand and str(x.get('regionCode'))==code]
+    if coverage['status'] in ('unavailable','partial'):
+     found=dedupe(found+old)
+     if old:coverage['status']='partial (previous records retained)'
+    regional[code]={**coverage,'count':len(found)};rows.extend(found)
+    print(brand,code,coverage['status'],len(found),flush=True)
+   rows=dedupe(rows)
+  else:
+   rows=dedupe(crawl_brand(brand,seed,pat))
   if not rows:
    old=[x for x in previous.get('stores',[]) if x.get('enseigne')==brand]
    rows=old; status='previous snapshot retained' if old else 'no high-confidence store parsed'
-  else: status='ok'
-  stats[brand]={'url':seed,'count':len(rows),'status':status}; all_rows.extend(rows)
+  else: status='partial' if regional and any(v['status'] not in ('collected','unsupported') for v in regional.values()) else 'ok'
+  stats[brand]={'url':seed,'count':len(rows),'status':status,'regions':regional}; all_rows.extend(rows)
  out={'generatedAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'sources':stats,'stores':dedupe(all_rows)}
  with open('data/official-stores.json','w',encoding='utf-8') as f:json.dump(out,f,ensure_ascii=False,indent=2)
  print('stores',len(out['stores']),stats)
 if __name__=='__main__':main()
+
