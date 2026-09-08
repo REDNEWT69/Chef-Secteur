@@ -19,9 +19,7 @@
 
   loadScript('boulanger-national-script', './boulanger-national.js?rev=20260908-1', function () {
     loadScript('national-sectors-script', './national-sectors.js?rev=20260908-1', function () {
-      loadScript('sector-admin-script', './sector-admin.js?rev=20260909-5', function () {
-        loadScript('stores-simple-ui-script', './stores-simple-ui.js?rev=20260909-1');
-      });
+      loadScript('sector-admin-script', './sector-admin.js?rev=20260909-5');
     });
   });
 
