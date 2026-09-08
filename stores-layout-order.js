@@ -37,6 +37,20 @@
     document.head.appendChild(style);
   }
 
+  function normalizeLabel(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  function removeRedundantStoreActions(toolbar) {
+    if (!toolbar) return;
+    Array.prototype.slice.call(toolbar.querySelectorAll('button')).forEach(function (button) {
+      var label = normalizeLabel(button.textContent);
+      var isRegionButton = button.id === 'regionDiscover' || label === '+ ajouter une région' || label === '＋ ajouter une région' || label === 'ajouter une région';
+      var isLegacyAddButton = label === '+ ajouter' || label === '＋ ajouter' || label === 'ajouter';
+      if (isRegionButton || isLegacyAddButton) button.remove();
+    });
+  }
+
   function arrangeStoresPanel() {
     var panel = document.getElementById('storesPanel');
     var search = document.getElementById('storeSearch');
@@ -47,6 +61,7 @@
     if (!panel || !toolbar || !storeList || !listCard || !kpis) return false;
 
     ensureStyle();
+    removeRedundantStoreActions(toolbar);
 
     var searchTop = document.getElementById('storesSearchTop');
     if (!searchTop) {
