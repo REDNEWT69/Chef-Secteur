@@ -7,9 +7,8 @@ var runtimeBase=null;
 
 var GOOGLE_TOKEN_KEY='chef_secteur_google_token_v2';
 var GOOGLE_EXPIRY_KEY='chef_google_token_expiry_v1';
-var GOOGLE_PERSIST_TOKEN='chef_google_token_persist_v1';
-var GOOGLE_PERSIST_EXPIRY='chef_google_token_persist_expiry_v1';
 var GOOGLE_CONFIG_KEY='chef_secteur_google_calendar_v2';
+var LEGACY_GOOGLE_TOKEN_KEYS=['chef_google_token_persist_v1','chef_google_token_persist_expiry_v1'];
 
 function valid(n){return isFinite(Number(n))&&Math.abs(Number(n))>1}
 function loadRuntime(){
@@ -99,24 +98,16 @@ function installAutoApply(){
 }
 
 function sget(storage,key){try{return storage.getItem(key)||''}catch(e){return''}}
-function sset(storage,key,value){try{storage.setItem(key,String(value));return true}catch(e){return false}}
-function sremove(storage,key){try{storage.removeItem(key)}catch(e){}}
 function googleTokenValid(token,expiry){return !!token&&Number(expiry)>Date.now()+15000}
+function purgeLegacyGoogleTokens(){
+  try{LEGACY_GOOGLE_TOKEN_KEYS.forEach(function(key){localStorage.removeItem(key)})}catch(e){}
+}
 function restoreGoogleToken(){
   var token=sget(sessionStorage,GOOGLE_TOKEN_KEY),expiry=sget(sessionStorage,GOOGLE_EXPIRY_KEY);
-  if(googleTokenValid(token,expiry))return true;
-  token=sget(localStorage,GOOGLE_PERSIST_TOKEN);expiry=sget(localStorage,GOOGLE_PERSIST_EXPIRY);
-  if(googleTokenValid(token,expiry)){sset(sessionStorage,GOOGLE_TOKEN_KEY,token);sset(sessionStorage,GOOGLE_EXPIRY_KEY,expiry);return true}
-  if(expiry&&Number(expiry)<=Date.now()){sremove(localStorage,GOOGLE_PERSIST_TOKEN);sremove(localStorage,GOOGLE_PERSIST_EXPIRY)}
-  return false;
-}
-function mirrorGoogleToken(){
-  var token=sget(sessionStorage,GOOGLE_TOKEN_KEY),expiry=sget(sessionStorage,GOOGLE_EXPIRY_KEY);
-  if(!googleTokenValid(token,expiry))return false;
-  sset(localStorage,GOOGLE_PERSIST_TOKEN,token);sset(localStorage,GOOGLE_PERSIST_EXPIRY,expiry);return true;
+  return googleTokenValid(token,expiry);
 }
 function hasGoogleConfig(){try{var c=JSON.parse(localStorage.getItem(GOOGLE_CONFIG_KEY)||'{}');return !!(c&&c.clientId)}catch(e){return false}}
-function waitGoogleToken(ms){var start=Date.now();return new Promise(function(resolve){(function tick(){if(restoreGoogleToken()||mirrorGoogleToken())return resolve(true);if(Date.now()-start>=ms)return resolve(false);setTimeout(tick,120)})()})}
+function waitGoogleToken(ms){var start=Date.now();return new Promise(function(resolve){(function tick(){if(restoreGoogleToken())return resolve(true);if(Date.now()-start>=ms)return resolve(false);setTimeout(tick,120)})()})}
 function googleFallbackStatus(reason){
   var status=document.getElementById('googleCalendarStatus'),badge=document.getElementById('googleCalendarBadge');
   var last=window.state&&state.calendarLastSync?new Date(state.calendarLastSync).toLocaleString('fr-FR'):'';
@@ -133,16 +124,15 @@ function installGooglePlanningFix(){
   if(window.__chefGooglePlanningFix||typeof window.syncGoogleCalendar!=='function')return false;
   var base=window.syncGoogleCalendar;
   window.syncGoogleCalendar=async function(silent){
+    purgeLegacyGoogleTokens();
     restoreGoogleToken();
     var result;
     try{result=await base.apply(this,arguments)}catch(e){result={ok:false,reason:e&&e.message||'error'}}
-    mirrorGoogleToken();
     if(result&&result.ok)return result;
     if(silent){
       var reason=result&&result.reason||'error';
       if((reason==='disconnected'||reason==='expired')&&await silentGoogleReconnect()){
         try{result=await base.call(this,true)}catch(e2){result={ok:false,reason:e2&&e2.message||'error'}}
-        mirrorGoogleToken();
         if(result&&result.ok)return result;
       }
       googleFallbackStatus(reason);
@@ -155,9 +145,10 @@ function installGooglePlanningFix(){
 
 function boot(){
   if(!window.state||!state.profile){setTimeout(boot,50);return}
-  loadRuntime();ensureHome(true);installBaseOverrides();installProfileGuard();installAutoApply();installDepartureUi();hideTechnicalBaseFields();refreshDepartureUi();restoreGoogleToken();mirrorGoogleToken();installGooglePlanningFix();
+  purgeLegacyGoogleTokens();
+  loadRuntime();ensureHome(true);installBaseOverrides();installProfileGuard();installAutoApply();installDepartureUi();hideTechnicalBaseFields();refreshDepartureUi();restoreGoogleToken();installGooglePlanningFix();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 window.addEventListener('load',boot);
-setInterval(function(){ensureHome(false);installBaseOverrides();installProfileGuard();installAutoApply();installDepartureUi();hideTechnicalBaseFields();refreshDepartureUi();restoreGoogleToken();mirrorGoogleToken();installGooglePlanningFix()},1200);
+setInterval(function(){ensureHome(false);installBaseOverrides();installProfileGuard();installAutoApply();installDepartureUi();hideTechnicalBaseFields();refreshDepartureUi();restoreGoogleToken();installGooglePlanningFix()},1200);
 })();
