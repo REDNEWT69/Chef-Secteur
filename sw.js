@@ -1,4 +1,4 @@
-const CACHE_NAME = "chef-secteur-region18";
+const CACHE_NAME = "chef-secteur-layout4";
 const APP_SHELL = [
   "./region-stores.js?rev=region18", "./region-stores.css?rev=region18",
   "./",
@@ -30,7 +30,8 @@ const APP_SHELL = [
   "./connection-ui.js?rev=safe16",
   "./reliability-core.js?rev=safe16",
   "./glass-theme.css?rev=safe16",
-  "./reliability-ui.js?rev=safe16"
+  "./reliability-ui.js?rev=safe16",
+  "./stores-layout-order.js?rev=20260908-4"
 ];
 const SCOPE = self.registration.scope;
 self.addEventListener('install', event => {
@@ -60,7 +61,6 @@ self.addEventListener('fetch', event => {
     } catch (error) {
       const cached = await cache.match(event.request);
       if (cached) return cached;
-      // Only page navigation may use the app entry point; never scripts or CSS.
       if (event.request.mode === 'navigate') {
         const entry = await cache.match(new URL('./index.html',SCOPE).href);
         if (entry) return entry;
