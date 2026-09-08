@@ -1,6 +1,13 @@
 (function () {
   'use strict';
 
+  if (!document.getElementById('planning-autofix-script')) {
+    var hotfix = document.createElement('script');
+    hotfix.id = 'planning-autofix-script';
+    hotfix.src = './planning-autofix.js?rev=20260908-1';
+    document.head.appendChild(hotfix);
+  }
+
   function ensureStyle() {
     if (document.getElementById('stores-layout-order-style')) return;
     var style = document.createElement('style');
@@ -33,17 +40,14 @@
       searchTop.className = 'card';
     }
 
-    /* Recherche + actions seules dans leur propre zone, tout en haut. */
     if (toolbar.parentNode !== searchTop) searchTop.appendChild(toolbar);
     if (panel.firstElementChild !== searchTop) panel.insertBefore(searchTop, panel.firstElementChild || null);
 
-    /* La liste des magasins reste dans sa carte, séparée de la recherche. */
     listCard.classList.add('storesListCard');
     if (listCard.parentNode !== panel || listCard.previousElementSibling !== searchTop) {
       panel.insertBefore(listCard, searchTop.nextSibling);
     }
 
-    /* Les 4 tuiles passent réellement tout en bas, après la liste. */
     if (kpis.parentNode !== panel || panel.lastElementChild !== kpis) {
       panel.appendChild(kpis);
     }
