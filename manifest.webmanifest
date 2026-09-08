@@ -1,11 +1,22 @@
 {
+  "id": "./",
   "name": "Chef Secteur SAMSUNG",
   "short_name": "Chef Secteur",
   "description": "Planning terrain automatique pour chef de secteur Samsung",
-  "start_url": "./",
+  "start_url": "./?source=home-screen",
   "scope": "./",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#f4f6fa",
-  "theme_color": "#1769ff",
-  "lang": "fr-FR"
+  "theme_color": "#1428A0",
+  "lang": "fr-FR",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "./app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }
