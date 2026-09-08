@@ -1,4 +1,4 @@
-const CACHE_NAME = "chef-secteur-googlefix1";
+const CACHE_NAME = "chef-secteur-storagefix3";
 const APP_SHELL = [
   "./region-stores.js?rev=region18", "./region-stores.css?rev=region18",
   "./",
@@ -6,7 +6,7 @@ const APP_SHELL = [
   "./manifest.webmanifest?rev=pwa2",
   "./app-icon.svg",
   "./samsung-wordmark.svg",
-  "./src/chef-secteur.html?rev=storagefix2",
+  "./src/chef-secteur.html?rev=storagefix3",
   "./calendar-oauth.js?rev=safe16",
   "./calendar-enhancements.js?rev=20260907-4",
   "./ui-polish.js?rev=20260907-2",
