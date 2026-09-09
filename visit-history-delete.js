@@ -1,5 +1,6 @@
 (function(){
   'use strict';
+  var historyObserver=null,observedHistoryList=null;
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function rows(){
     var out=[];
@@ -22,6 +23,7 @@
       h.splice(idx,1);v.history=h;v.lastVisit=h.length?h[h.length-1]:'';state.visits[storeId]=v;
       if(typeof save==='function')save();
       if(typeof renderAll==='function')renderAll();
+      setTimeout(render,20);
     }catch(e){console.warn(e)}
   };
   function render(){
@@ -37,13 +39,20 @@
     list.innerHTML=h||'<div class="empty">Aucune visite enregistrée pour le moment.</div>';
     return true;
   }
-  function install(){
-    if(typeof window.renderHistory==='function'&&!window.__visitDeleteWrapped){
-      var old=window.renderHistory;window.renderHistory=function(){try{old.apply(this,arguments)}catch(e){}return render()};window.__visitDeleteWrapped=true;
-    }
-    render();
-    return !!window.__visitDeleteWrapped;
+  function observeHistory(){
+    var list=document.getElementById('historyList');if(!list)return false;
+    if(historyObserver&&observedHistoryList===list)return true;
+    if(historyObserver)historyObserver.disconnect();
+    observedHistoryList=list;
+    historyObserver=new MutationObserver(function(){
+      var current=document.getElementById('historyList');
+      if(!current)return;
+      if(rows().length&&!current.querySelector('.visitDeleteBtn'))setTimeout(render,20);
+    });
+    historyObserver.observe(list,{childList:true,subtree:true});
+    return true;
   }
+  function install(){render();observeHistory();return !!observedHistoryList}
   var st=document.createElement('style');st.textContent='.historyRow{align-items:center}.visitDeleteBtn{border:1px solid #ffd0cb;background:#fff8f7;color:#b42318;border-radius:10px;padding:7px 9px;font-size:10.5px;font-weight:750}.visitDeleteBtn:active{transform:scale(.98)}@media(max-width:650px){.historyRow{grid-template-columns:auto 1fr auto}.historyTag{display:none}.visitDeleteBtn{grid-column:3}}';document.head.appendChild(st);
   function boot(){
     if(install())return;
