@@ -48,6 +48,12 @@ for(const [label,re] of [
   ['rafraîchissement planning pro',/scheduleInstall/]
 ])requireMatch('planning-pro-plus.js',label,re);
 
+forbidMany('period-day-slider.js',[
+  ['wrapper renderWeek',/window\.renderWeek\s*=\s*function/],
+  ['wrapper renderAll',/window\.renderAll\s*=\s*function/]
+]);
+requireMatch('period-day-slider.js','écoute événement planning',/store-runner:planning-updated/);
+
 forbidMany('auto-planning-fix.js',[['sauvegarde profil',/window\.saveProfile\s*=/],['override baseObj',/window\.baseObj\s*=/],['override havBase',/window\.havBase\s*=/],['base Francheville codée en dur',/Francheville/],['départ temporaire session',/chef_departure_override_v1/],['wrapper Google Agenda',/window\.syncGoogleCalendar\s*=(?!=)/],['token Google',/chef_secteur_google_token_v2/]]);
 requireMatch('auto-planning-fix.js','application automatique Reliability',/R\.propose/);
 
@@ -83,6 +89,7 @@ if((generation.match(/window\.generateWeek\s*=/g)||[]).length!==1)throw new Erro
 requireMatch('planning-generation-controller.js','marqueur propriétaire génération',/__storeRunnerPlanningGenerateOwner/);
 requireMatch('planning-generation-controller.js','préparation Agenda appelée',/chefSecteurPrepareCalendarForPlanning/);
 requireMatch('planning-generation-controller.js','jours Agenda appliqués après génération',/chefSecteurEnforceBlockedDays/);
+requireMatch('planning-generation-controller.js','événement planning publié',/store-runner:planning-updated/);
 
 const ai=read('ai-gateway-config.js');
 if(/\b(?:client_secret|api[_-]?key)\b\s*[:=]\s*['"][^'"]{12,}['"]/i.test(ai))throw new Error('IA: secret ou clé API détecté côté navigateur');

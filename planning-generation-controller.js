@@ -2,6 +2,10 @@
   'use strict';
   let attempts=0;
 
+  function emitPlanningUpdated(){
+    try{document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{source:'generateWeek'}}))}catch(e){}
+  }
+
   function install(){
     if(window.__storeRunnerPlanningGenerateOwner)return true;
     if(typeof window.generateWeek!=='function')return false;
@@ -14,6 +18,7 @@
       if(typeof window.chefSecteurEnforceBlockedDays==='function'){
         try{window.chefSecteurEnforceBlockedDays()}catch(e){console.warn('Application des jours bloqués impossible :',e)}
       }
+      emitPlanningUpdated();
       return out;
     };
     owned.__storeRunnerPlanningGenerateOwner=true;
