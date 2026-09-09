@@ -11,7 +11,7 @@ forbidMany('manager-home-fixes.js',[['wrapper renderAll',/window\.renderAll\s*=\
 forbidMany('calendar-enhancements.js',[['wrapper renderHeader',/window\.renderHeader\s*=\s*function/],['wrapper renderHome',/window\.renderHome\s*=\s*function/],['wrapper renderWeek',/window\.renderWeek\s*=\s*function/]]);
 for(const [label,re] of [['observer contexte header',/headerContextObserver/],['observer contexte accueil',/homeContextObserver/],['observer semaine',/weekObserver/],['cible semaine observée',/observedWeek/]])requireMatch('calendar-enhancements.js',label,re);
 
-forbidMany('auto-planning-fix.js',[['sauvegarde profil',/window\.saveProfile\s*=/],['override baseObj',/window\.baseObj\s*=/],['override havBase',/window\.havBase\s*=/],['base Francheville codée en dur',/Francheville/],['départ temporaire session',/chef_departure_override_v1/],['wrapper Google Agenda',/window\.syncGoogleCalendar\s*=/],['token Google',/chef_secteur_google_token_v2/]]);
+forbidMany('auto-planning-fix.js',[['sauvegarde profil',/window\.saveProfile\s*=/],['override baseObj',/window\.baseObj\s*=/],['override havBase',/window\.havBase\s*=/],['base Francheville codée en dur',/Francheville/],['départ temporaire session',/chef_departure_override_v1/],['wrapper Google Agenda',/window\.syncGoogleCalendar\s*=(?!=)/],['token Google',/chef_secteur_google_token_v2/]]);
 requireMatch('auto-planning-fix.js','application automatique Reliability',/R\.propose/);
 
 forbid('sector-admin.js','ancienne limite 500 magasins',/\.slice\(\s*0\s*,\s*500\s*\)/);
@@ -36,7 +36,7 @@ const calendar=read('calendar-oauth.js');
 if(/client_secret/i.test(calendar))throw new Error('Agenda: client_secret interdit côté navigateur');
 if(/localStorage\.(?:getItem|setItem)\(\s*TOKEN_KEY/.test(calendar))throw new Error('Agenda: token Google interdit dans localStorage');
 if(!/sessionStorage\.getItem\(TOKEN_KEY\)|sget\(sessionStorage,TOKEN_KEY\)/.test(calendar))throw new Error('Agenda: token Google doit rester en sessionStorage');
-if((calendar.match(/window\.syncGoogleCalendar\s*=/g)||[]).length!==1)throw new Error('Agenda: un seul propriétaire syncGoogleCalendar attendu');
+if((calendar.match(/window\.syncGoogleCalendar\s*=(?!=)/g)||[]).length!==1)throw new Error('Agenda: un seul propriétaire syncGoogleCalendar attendu');
 requireMatch('calendar-oauth.js','marqueur propriétaire synchro',/__storeRunnerCalendarSyncOwner/);
 
 const ai=read('ai-gateway-config.js');
