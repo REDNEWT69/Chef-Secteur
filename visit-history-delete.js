@@ -1,6 +1,6 @@
 (function(){
   'use strict';
-  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]})}
   function rows(){
     var out=[];
     try{
@@ -42,8 +42,15 @@
       var old=window.renderHistory;window.renderHistory=function(){try{old.apply(this,arguments)}catch(e){}return render()};window.__visitDeleteWrapped=true;
     }
     render();
+    return !!window.__visitDeleteWrapped;
   }
   var st=document.createElement('style');st.textContent='.historyRow{align-items:center}.visitDeleteBtn{border:1px solid #ffd0cb;background:#fff8f7;color:#b42318;border-radius:10px;padding:7px 9px;font-size:10.5px;font-weight:750}.visitDeleteBtn:active{transform:scale(.98)}@media(max-width:650px){.historyRow{grid-template-columns:auto 1fr auto}.historyTag{display:none}.visitDeleteBtn{grid-column:3}}';document.head.appendChild(st);
-  let n=0,t=setInterval(function(){n++;install();if(window.__visitDeleteWrapped||n>100)clearInterval(t)},100);
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else setTimeout(install,0);
+  function boot(){
+    if(install())return;
+    [100,250,600,1200,2400].forEach(function(delay){setTimeout(install,delay)});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
+  window.addEventListener('load',install,{once:true});
+  window.addEventListener('focus',install);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)install()});
 })();
