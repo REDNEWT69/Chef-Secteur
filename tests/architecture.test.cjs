@@ -53,6 +53,9 @@ forbid('stores-layout-order.js',[
 ]);
 requireMatch('stores-layout-order.js','lecture de la révision du module',/document\.currentScript/);
 requireMatch('stores-layout-order.js','héritage de révision des sous-modules',/withModuleRev/);
+requireMatch('stores-layout-order.js','cible observée du filtre régional',/observedRegionResults/);
+requireMatch('stores-layout-order.js','reconnexion observer sur nouvelle liste',/observedRegionResults\s*!==\s*results/);
+requireMatch('stores-layout-order.js','déconnexion ancien observer régional',/regionResultsObserver\.disconnect\(\)/);
 
 const deployWorkflow=read('.github/workflows/deploy-pages.yml');
 if(!/^name:\s*Deploy Store Runner/m.test(deployWorkflow))throw new Error('Workflow: nom Store Runner absent');
