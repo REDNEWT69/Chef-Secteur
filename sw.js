@@ -15,6 +15,7 @@ const OPTIONAL_SHELL = [
   "./store-runner-logo.jpg",
   "./store-runner-branding.js",
   "./navigation-controller.js",
+  "./profile-controller.js",
   "./samsung-wordmark.svg",
   "./calendar-oauth.js",
   "./calendar-enhancements.js",
