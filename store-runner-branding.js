@@ -19,7 +19,6 @@
       .top .srTopBrand{display:flex;align-items:center;gap:10px}
       .top .srTopBrand img{width:46px;height:46px;aspect-ratio:1/1;object-fit:contain;object-position:center;border-radius:12px;box-shadow:0 6px 18px rgba(30,45,70,.08);flex:0 0 46px}
       .top .srTopBrandText{min-width:0}
-      #planPanel #iosDayHero{display:none!important}
       @media(max-width:700px){
         .srBrandLogo{width:88px;height:88px;max-width:24vw;max-height:24vw;border-radius:20px}
         #premiumHomeV2 .phBrand{column-gap:12px}

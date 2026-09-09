@@ -96,6 +96,7 @@
     #planPanel .timelineRow{min-width:0!important}#planPanel .tlMain{min-width:0!important}#planPanel .timelineRow *{max-width:100%}
     #planPanel .applePlan{padding-top:2px!important}
     body:has(#planPanel.active) #smartBrief{display:none!important}
+    #planPanel #iosDayHero{display:none!important}
     .planningHeroV2{margin:0 0 8px;padding:8px 2px 2px;background:transparent;border:0;box-shadow:none}
     .planningHeroTop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
     .planningHeroPill{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.78);border:1px solid rgba(60,60,67,.12);font-size:11px;font-weight:800;color:#667085;box-shadow:0 4px 14px rgba(31,41,55,.04)}
