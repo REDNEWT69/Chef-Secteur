@@ -2,7 +2,7 @@
   'use strict';
   const TOKEN_KEY='chef_secteur_google_token_v2';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-  let busy=false,timer=null;
+  let busy=false;
 
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
   function hasToken(){try{return !!sessionStorage.getItem(TOKEN_KEY)}catch(e){return false}}
@@ -65,6 +65,17 @@
   function simplifyNativeCalendarCard(){const input=document.getElementById('googleClientId');if(!input)return;const connected=hasToken()||calendarCount()>0,card=input.closest('.calendarConnect');if(!card)return;const label=card.querySelector('label[for="googleClientId"]'),p=Array.from(card.querySelectorAll('p.tiny')).find(x=>/Configuration unique/i.test(x.textContent||''));if(connected){if(label)label.style.display='none';input.style.display='none';if(p)p.style.display='none'}else{if(label)label.style.display='';input.style.display='';if(p)p.style.display=''}}
   function polish(){if(busy)return;busy=true;try{syncCalendarBadges();ensureHotelBanner();markHotelDayTab();simplifyNativeCalendarCard()}finally{busy=false}}
   function hook(){if(!window.__polishRenderWeek&&typeof window.renderWeek==='function'){const base=window.renderWeek;window.renderWeek=function(){const out=base.apply(this,arguments);setTimeout(polish,0);return out};window.__polishRenderWeek=true}if(!window.__polishRenderAll&&typeof window.renderAll==='function'){const base=window.renderAll;window.renderAll=function(){const out=base.apply(this,arguments);setTimeout(polish,0);return out};window.__polishRenderAll=true}if(!window.__polishSync&&typeof window.syncGoogleCalendar==='function'){const base=window.syncGoogleCalendar;window.syncGoogleCalendar=async function(){const out=await base.apply(this,arguments);setTimeout(polish,0);return out};window.__polishSync=true}}
-  async function boot(){for(let i=0;i<50;i++){hook();polish();if(window.__polishRenderWeek&&window.__polishSync)break;await new Promise(r=>setTimeout(r,120))}document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(polish,30)},true);const root=document.querySelector('.wrap')||document.body;const obs=new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(polish,80)});obs.observe(root,{childList:true,subtree:true,characterData:true});polish()}
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
+  function refresh(){hook();polish()}
+  function installEvents(){
+    if(window.__uiPolishEvents)return;
+    document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(polish,30)},true);
+    window.addEventListener('focus',refresh);
+    document.addEventListener('visibilitychange',function(){if(!document.hidden)refresh()});
+    window.addEventListener('chef-range-generated',function(){setTimeout(refresh,40)});
+    window.addEventListener('storage',function(e){if(e&&e.key&&/chef_sector|calendar|google/i.test(e.key))setTimeout(refresh,0)});
+    window.__uiPolishEvents=true;
+  }
+  function boot(){installEvents();refresh();[80,180,350,700,1400,2600].forEach(delay=>setTimeout(refresh,delay))}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
+  window.addEventListener('load',refresh,{once:true});
 })();
