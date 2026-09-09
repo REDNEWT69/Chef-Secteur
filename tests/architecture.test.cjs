@@ -41,10 +41,13 @@ forbid('timeline-end-times.js',[
 
 forbid('calendar-enhancements.js',[
   ['wrapper renderHeader',/window\.renderHeader\s*=\s*function/],
-  ['wrapper renderHome',/window\.renderHome\s*=\s*function/]
+  ['wrapper renderHome',/window\.renderHome\s*=\s*function/],
+  ['wrapper renderWeek',/window\.renderWeek\s*=\s*function/]
 ]);
 requireMatch('calendar-enhancements.js','observer contexte header',/headerContextObserver/);
 requireMatch('calendar-enhancements.js','observer contexte accueil',/homeContextObserver/);
+requireMatch('calendar-enhancements.js','observer semaine',/weekObserver/);
+requireMatch('calendar-enhancements.js','cible semaine observée',/observedWeek/);
 
 forbid('auto-planning-fix.js',[
   ['sauvegarde profil',/window\.saveProfile\s*=/],
