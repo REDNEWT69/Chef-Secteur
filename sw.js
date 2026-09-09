@@ -1,12 +1,14 @@
-const CACHE_NAME = "chef-secteur-stable-20260909-2";
-const APP_SHELL = [
-  "./region-stores.js?rev=official20", "./region-stores.css?rev=region18",
+const CACHE_NAME = "chef-secteur-stable-20260909-3";
+const CORE_SHELL = [
   "./",
   "./index.html",
+  "./src/chef-secteur.html?rev=storagefix3"
+];
+const OPTIONAL_SHELL = [
+  "./region-stores.js?rev=official20", "./region-stores.css?rev=region18",
   "./manifest.webmanifest?rev=pwa2",
   "./app-icon.svg",
   "./samsung-wordmark.svg",
-  "./src/chef-secteur.html?rev=storagefix3",
   "./calendar-oauth.js?rev=safe16",
   "./calendar-enhancements.js?rev=20260907-4",
   "./ui-polish.js?rev=20260907-2",
@@ -39,10 +41,12 @@ const APP_SHELL = [
   "./sector-admin.js?rev=20260909-5"
 ];
 const SCOPE = self.registration.scope;
+function requestFor(path){return new Request(new URL(path,SCOPE), {cache:'reload'});}
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(APP_SHELL.map(path => new Request(new URL(path,SCOPE), {cache:'reload'})));
+    await cache.addAll(CORE_SHELL.map(requestFor));
+    await Promise.allSettled(OPTIONAL_SHELL.map(path => cache.add(requestFor(path))));
     await self.skipWaiting();
   })());
 });
