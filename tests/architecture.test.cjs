@@ -34,6 +34,11 @@ forbid('timeline-end-times.js',[
   ['wrapper renderWeek',/window\.renderWeek\s*=\s*function/]
 ]);
 
+['route-polish.js','visual-refresh-v1.js'].forEach(file=>forbid(file,[
+  ['wrapper renderAll',/window\.renderAll\s*=\s*function/],
+  ['wrapper renderWeek',/window\.renderWeek\s*=\s*function/]
+]));
+
 const index=read('index.html');
 const sw=read('sw.js');
 const indexRev=requireMatch('index.html','BUILD_REV',/const BUILD_REV=['\"]([^'\"]+)['\"]/)[1];
