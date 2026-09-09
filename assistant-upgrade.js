@@ -54,6 +54,16 @@
   function hookModes(){
     if(!window.__assistantModeWrapped&&typeof window.setAssistantMode==='function'){const base=window.setAssistantMode;window.setAssistantMode=function(){const out=base.apply(this,arguments);setTimeout(updateAssistantStatus,0);return out};window.__assistantModeWrapped=true}
   }
-  async function boot(){for(let i=0;i<60;i++){enrichContext();hookLocal();hookModes();updateAssistantStatus();if(window.__assistantContextWrapped&&window.__assistantLocalWrapped){installed=true;break}await new Promise(r=>setTimeout(r,120))}updateAssistantStatus()}
+  function install(){
+    enrichContext();hookLocal();hookModes();updateAssistantStatus();
+    installed=!!(window.__assistantContextWrapped&&window.__assistantLocalWrapped);
+    return installed;
+  }
+  function boot(){
+    if(install())return;
+    [100,250,600,1200,2400].forEach(delay=>setTimeout(install,delay));
+  }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
+  window.addEventListener('focus',()=>setTimeout(install,0));
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)setTimeout(install,0)});
 })();
