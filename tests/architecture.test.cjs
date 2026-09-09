@@ -57,13 +57,17 @@ requireMatch('official-catalog.js','bouton afficher plus du carnet',/Afficher pl
 requireMatch('official-catalog.js','réinitialisation pagination sur filtres',/resetAndRender/);
 
 forbid('stores-layout-order.js',[
-  ['révision datée codée en dur',/\?rev=20\d{6}/]
+  ['révision datée codée en dur',/\?rev=20\d{6}/],
+  ['wrapper renderStores',/window\.renderStores\s*=\s*function/]
 ]);
 requireMatch('stores-layout-order.js','lecture de la révision du module',/document\.currentScript/);
 requireMatch('stores-layout-order.js','héritage de révision des sous-modules',/withModuleRev/);
 requireMatch('stores-layout-order.js','cible observée du filtre régional',/observedRegionResults/);
 requireMatch('stores-layout-order.js','reconnexion observer sur nouvelle liste',/observedRegionResults\s*!==\s*results/);
 requireMatch('stores-layout-order.js','déconnexion ancien observer régional',/regionResultsObserver\.disconnect\(\)/);
+requireMatch('stores-layout-order.js','observer dédié à la liste magasins',/storeListObserver/);
+requireMatch('stores-layout-order.js','reconnexion observer magasins',/observedStoreList\s*===\s*list/);
+requireMatch('stores-layout-order.js','déconnexion ancien observer magasins',/storeListObserver\.disconnect\(\)/);
 
 const branding=read('store-runner-branding.js');
 if(/\bsetInterval\s*\(/.test(branding))throw new Error('Branding: setInterval interdit');
