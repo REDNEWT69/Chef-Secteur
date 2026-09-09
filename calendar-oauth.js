@@ -119,8 +119,28 @@
     window.__storeRunnerCalendarSyncOwner=true;
     return true;
   }
-  function wrapGenerate(){if(window.__nativeCalendarGenerateWrapped||typeof window.generateWeek!=='function')return false;const base=window.generateWeek;window.generateWeek=async function(){try{setClientId();if(hasToken()&&typeof window.syncGoogleCalendar==='function'){const s=document.getElementById('googleCalendarStatus');if(s)s.textContent='Mise à jour de l’agenda avant génération…';await window.syncGoogleCalendar(true)}}catch(e){console.warn('Pré-synchronisation Calendar :',e)}installSemanticCalendarBlocks();const out=await base.apply(this,arguments);enforceBlockedDays();return out};window.__nativeCalendarGenerateWrapped=true;return true}
-  async function boot(){purgeLegacyTokens();setClientId();for(let i=0;i<50;i++){setClientId();installSemanticCalendarBlocks();wrapSync();wrapGenerate();if(window.__storeRunnerCalendarSyncOwner&&window.__nativeCalendarGenerateWrapped)break;await new Promise(r=>setTimeout(r,120))}if(hasToken()&&typeof window.syncGoogleCalendar==='function')try{await window.syncGoogleCalendar(true)}catch(e){}}
+
+  window.chefSecteurPrepareCalendarForPlanning=async function(){
+    try{
+      setClientId();
+      if(hasToken()&&typeof window.syncGoogleCalendar==='function'){
+        const s=document.getElementById('googleCalendarStatus');if(s)s.textContent='Mise à jour de l’agenda avant génération…';
+        await window.syncGoogleCalendar(true);
+      }
+    }catch(e){console.warn('Pré-synchronisation Calendar :',e)}
+    installSemanticCalendarBlocks();
+    return true;
+  };
+
+  async function boot(){
+    purgeLegacyTokens();setClientId();
+    for(let i=0;i<50;i++){
+      setClientId();installSemanticCalendarBlocks();wrapSync();
+      if(window.__storeRunnerCalendarSyncOwner)break;
+      await new Promise(r=>setTimeout(r,120));
+    }
+    if(hasToken()&&typeof window.syncGoogleCalendar==='function')try{await window.syncGoogleCalendar(true)}catch(e){}
+  }
   window.chefSecteurCalendarPlanningBlock=isPlanningBlock;
   window.chefSecteurAwayRanges=inferAwayRanges;
   window.chefSecteurEventCoversDate=eventCoversDate;

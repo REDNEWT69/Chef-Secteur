@@ -53,7 +53,15 @@ if(/client_secret/i.test(calendar))throw new Error('Agenda: client_secret interd
 if(/localStorage\.(?:getItem|setItem)\(\s*TOKEN_KEY/.test(calendar))throw new Error('Agenda: token Google interdit dans localStorage');
 if(!/sessionStorage\.getItem\(TOKEN_KEY\)|sget\(sessionStorage,TOKEN_KEY\)/.test(calendar))throw new Error('Agenda: token Google doit rester en sessionStorage');
 if((calendar.match(/window\.syncGoogleCalendar\s*=(?!=)/g)||[]).length!==1)throw new Error('Agenda: un seul propriétaire syncGoogleCalendar attendu');
+if(/window\.generateWeek\s*=/.test(calendar))throw new Error('Agenda: generateWeek doit appartenir au contrôleur planning');
 requireMatch('calendar-oauth.js','marqueur propriétaire synchro',/__storeRunnerCalendarSyncOwner/);
+requireMatch('calendar-oauth.js','préparation Agenda avant planning',/chefSecteurPrepareCalendarForPlanning/);
+
+const generation=read('planning-generation-controller.js');
+if((generation.match(/window\.generateWeek\s*=/g)||[]).length!==1)throw new Error('Planning: un seul propriétaire generateWeek attendu');
+requireMatch('planning-generation-controller.js','marqueur propriétaire génération',/__storeRunnerPlanningGenerateOwner/);
+requireMatch('planning-generation-controller.js','préparation Agenda appelée',/chefSecteurPrepareCalendarForPlanning/);
+requireMatch('planning-generation-controller.js','jours Agenda appliqués après génération',/chefSecteurEnforceBlockedDays/);
 
 const ai=read('ai-gateway-config.js');
 if(/\b(?:client_secret|api[_-]?key)\b\s*[:=]\s*['"][^'"]{12,}['"]/i.test(ai))throw new Error('IA: secret ou clé API détecté côté navigateur');
@@ -70,7 +78,7 @@ if(!/CACHE_NAME\s*=\s*['\"]chef-secteur-stable-['\"]\s*\+\s*BUILD_REV/.test(sw))
 if(!/skipWaiting\(\)/.test(sw)||!/clients\.claim\(\)/.test(sw))throw new Error('PWA: activation immédiate incomplète');
 
 for(const asset of ['./region-fetch-resilience.js','./official-catalog.js','./data/official-stores.json'])if(!sw.includes(`"${asset}"`)&&!sw.includes(`'${asset}'`))throw new Error(`PWA: ressource magasins absente du cache: ${asset}`);
-for(const asset of ['./navigation-controller.js','./profile-controller.js','./store-runner-branding.js','./planning-autofix.js','./boulanger-national.js','./national-sectors.js','./sector-admin.js','./stores-layout-order.js'])if(!index.includes(`'${asset}'`)&&!index.includes(`"${asset}"`))throw new Error(`Chargeur principal: module explicite absent: ${asset}`);
+for(const asset of ['./navigation-controller.js','./profile-controller.js','./store-runner-branding.js','./planning-generation-controller.js','./planning-autofix.js','./boulanger-national.js','./national-sectors.js','./sector-admin.js','./stores-layout-order.js'])if(!index.includes(`'${asset}'`)&&!index.includes(`"${asset}"`))throw new Error(`Chargeur principal: module explicite absent: ${asset}`);
 const runtimeAssets=[...index.matchAll(/['\"](\.\/[A-Za-z0-9_./-]+\.(?:js|css))['\"]/g)].map(m=>m[1]);
 for(const asset of new Set(runtimeAssets.filter(a=>a!=='./sw.js')))if(!sw.includes(`"${asset}"`)&&!sw.includes(`'${asset}'`))throw new Error(`PWA: ressource runtime absente du cache: ${asset}`);
 

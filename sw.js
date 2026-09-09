@@ -18,6 +18,7 @@ const OPTIONAL_SHELL = [
   "./profile-controller.js",
   "./samsung-wordmark.svg",
   "./calendar-oauth.js",
+  "./planning-generation-controller.js",
   "./calendar-enhancements.js",
   "./ui-polish.js",
   "./route-polish.js",
