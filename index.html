@@ -3,22 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Chef Secteur SAMSUNG</title>
+  <title>Store Runner</title>
   <meta name="theme-color" content="#1428A0">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Chef Secteur">
+  <meta name="apple-mobile-web-app-title" content="Store Runner">
+  <meta name="application-name" content="Store Runner">
   <link rel="manifest" href="./manifest.webmanifest?rev=20260909-7">
   <link rel="icon" href="./app-icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./app-icon.svg">
   <style>
     html,body{margin:0;min-height:100%;background:#fbfaf8;color:#111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
-    .boot{min-height:100vh;display:grid;place-items:center;padding:24px;text-align:center}.boot div{max-width:520px}.boot h1{font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:34px;margin:0 0 10px}.boot p{color:#77716a;line-height:1.45}.boot .err{color:#b43a32;white-space:pre-wrap}
+    .boot{min-height:100vh;display:grid;place-items:center;padding:24px;text-align:center}.boot div{max-width:520px}.boot img{display:block;width:min(280px,72vw);height:auto;margin:0 auto 18px;border-radius:24px;box-shadow:0 16px 42px rgba(25,42,80,.10)}.boot h1{font-weight:800;font-size:34px;letter-spacing:-.04em;margin:0 0 6px}.boot .sig{font-size:14px;color:#8b8b8b;margin:0 0 14px}.boot p{color:#77716a;line-height:1.45}.boot .err{color:#b43a32;white-space:pre-wrap}
   </style>
 </head>
 <body>
-  <div class="boot"><div><h1>Chef Secteur SAMSUNG</h1><p id="bootText">Chargement de l’application…</p></div></div>
+  <div class="boot"><div><img src="./store-runner-logo.jpg" alt="S-RUNNER"><h1>Store Runner</h1><p class="sig">S-RUNNER By Red①</p><p id="bootText">Chargement de l’application…</p></div></div>
   <script>
   (async function(){
     const BUILD_REV='20260909-7';
@@ -106,11 +107,13 @@
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js', {updateViaCache:'none'}).then(function(reg){return reg.update()}).catch(function(e){console.warn('Mise à jour hors ligne indisponible',e)});
       }
-      status.textContent='Chargement du fichier principal…';
+      status.textContent='Chargement de Store Runner…';
       const r=await fetch(withRev('./src/chef-secteur.html'),{cache:'no-store'});
       if(!r.ok) throw new Error('Impossible de charger l’application ('+r.status+').');
       let html=await r.text();
       if(!html || html.length<1000) throw new Error('Le fichier principal est vide ou incomplet.');
+
+      html=html.replace(/Chef Secteur SAMSUNG/g,'Store Runner').replace(/Chef Secteur/g,'Store Runner');
 
       const beforePatch=html;
       html=html.replace(
