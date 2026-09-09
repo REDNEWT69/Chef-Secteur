@@ -39,6 +39,13 @@ forbid('timeline-end-times.js',[
   ['wrapper renderWeek',/window\.renderWeek\s*=\s*function/]
 ]));
 
+forbid('calendar-enhancements.js',[
+  ['wrapper renderHeader',/window\.renderHeader\s*=\s*function/],
+  ['wrapper renderHome',/window\.renderHome\s*=\s*function/]
+]);
+requireMatch('calendar-enhancements.js','observer contexte header',/headerContextObserver/);
+requireMatch('calendar-enhancements.js','observer contexte accueil',/homeContextObserver/);
+
 forbid('sector-admin.js',[
   ['ancienne limite 500 magasins',/\.slice\(\s*0\s*,\s*500\s*\)/]
 ]);
