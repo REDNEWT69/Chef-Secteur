@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-  let busy=false,timer=null;
+  let busy=false;
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
   function selectedDay(){try{const active=document.querySelector('#dayTabs .dayTab.active');if(active){const t=active.textContent||'';const d=DAYS.find(x=>norm(t).includes(norm(x)));if(d)return d}return window.selectedPlanningDay||((state.settings&&state.settings.days)||DAYS)[0]||'Lundi'}catch(e){return'Lundi'}}
   function toMin(v){if(v==null)return null;const m=String(v).match(/(\d{1,2}):(\d{2})/);return m?(+m[1])*60+(+m[2]):null}
@@ -35,7 +35,22 @@
   }
   function css(){if(document.getElementById('planning-fix-css'))return;const s=document.createElement('style');s.id='planning-fix-css';s.textContent='#planPanel .timelineRow{min-width:0!important}#planPanel .tlMain{min-width:0!important}#planPanel .timelineRow *{max-width:100%}';document.head.appendChild(s)}
   function run(){if(busy)return;busy=true;try{css();decorateFinishTimes();restoreHotelStars()}finally{busy=false}}
-  function hook(){if(!window.__finishWeekHook&&typeof window.renderWeek==='function'){const base=window.renderWeek;window.renderWeek=function(){const out=base.apply(this,arguments);setTimeout(run,0);return out};window.__finishWeekHook=true}if(!window.__finishAllHook&&typeof window.renderAll==='function'){const base=window.renderAll;window.renderAll=function(){const out=base.apply(this,arguments);setTimeout(run,0);return out};window.__finishAllHook=true}}
-  async function boot(){for(let i=0;i<50;i++){hook();run();if(window.__finishWeekHook)break;await new Promise(r=>setTimeout(r,120))}document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(run,40)},true);const root=document.querySelector('.wrap')||document.body;const obs=new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(run,120)});obs.observe(root,{childList:true,subtree:true});run()}
+  function hook(){
+    let hooked=false;
+    if(!window.__finishWeekHook&&typeof window.renderWeek==='function'){
+      const base=window.renderWeek;window.renderWeek=function(){const out=base.apply(this,arguments);setTimeout(run,0);return out};window.__finishWeekHook=true;hooked=true;
+    }
+    if(!window.__finishAllHook&&typeof window.renderAll==='function'){
+      const base=window.renderAll;window.renderAll=function(){const out=base.apply(this,arguments);setTimeout(run,0);return out};window.__finishAllHook=true;hooked=true;
+    }
+    return hooked||window.__finishWeekHook||window.__finishAllHook;
+  }
+  function boot(){
+    hook();run();
+    [120,300,700,1400].forEach(delay=>setTimeout(function(){hook();run()},delay));
+  }
+  document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(run,40)},true);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden){hook();setTimeout(run,40)}});
+  window.addEventListener('focus',function(){hook();setTimeout(run,40)});
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
 })();
