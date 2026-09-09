@@ -2,6 +2,7 @@
   'use strict';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   let decorating=false;
+  let headerContextObserver=null,homeContextObserver=null;
 
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
   function tmin(v){if(!v)return null;const p=String(v).split(':');if(p.length<2)return null;const h=Number(p[0]),m=Number(p[1]);return Number.isFinite(h)&&Number.isFinite(m)?h*60+m:null}
@@ -10,15 +11,19 @@
 
   function cleanContextText(){
     const label='Samsung Rhône-Alpes · '+activeCount()+' magasins';
-    const sub=document.getElementById('titleSub');if(sub)sub.textContent=label;
-    const home=document.getElementById('homeSub');if(home)home.textContent=label;
+    const sub=document.getElementById('titleSub');if(sub&&sub.textContent!==label)sub.textContent=label;
+    const home=document.getElementById('homeSub');if(home&&home.textContent!==label)home.textContent=label;
   }
-  function wrapContextRenderers(){
-    if(!window.__contextHeaderWrapped&&typeof window.renderHeader==='function'){
-      const base=window.renderHeader;window.renderHeader=function(){const out=base.apply(this,arguments);cleanContextText();return out};window.__contextHeaderWrapped=true;
+  function observeContextText(){
+    const top=document.querySelector('.top');
+    if(top&&!headerContextObserver){
+      headerContextObserver=new MutationObserver(function(){requestAnimationFrame(cleanContextText)});
+      headerContextObserver.observe(top,{childList:true,subtree:true,characterData:true});
     }
-    if(!window.__contextHomeWrapped&&typeof window.renderHome==='function'){
-      const base=window.renderHome;window.renderHome=function(){const out=base.apply(this,arguments);cleanContextText();return out};window.__contextHomeWrapped=true;
+    const home=document.getElementById('homePanel');
+    if(home&&!homeContextObserver){
+      homeContextObserver=new MutationObserver(function(){requestAnimationFrame(cleanContextText)});
+      homeContextObserver.observe(home,{childList:true,subtree:true,characterData:true});
     }
   }
 
@@ -125,7 +130,7 @@
     }finally{decorating=false}
   }
 
-  function refresh(){wrapContextRenderers();wrapStoreDialog();installOpeningAwareSchedule();wrapWeekRender();cleanContextText();decorateOpeningHours();decorateOvernights()}
+  function refresh(){observeContextText();wrapStoreDialog();installOpeningAwareSchedule();wrapWeekRender();cleanContextText();decorateOpeningHours();decorateOvernights()}
   function installEvents(){
     if(window.__calendarEnhancementEvents)return;
     document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(refresh,40)},true);
