@@ -4,6 +4,7 @@
   let decorating=false;
   let headerContextObserver=null,homeContextObserver=null;
   let weekObserver=null,observedWeek=null,weekRefreshTimer=null,suppressWeekObserver=false;
+  let storeDialogObserver=null,observedStoreDialog=null;
 
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
   function tmin(v){if(!v)return null;const p=String(v).split(':');if(p.length<2)return null;const h=Number(p[0]),m=Number(p[1]);return Number.isFinite(h)&&Number.isFinite(m)?h*60+m:null}
@@ -35,26 +36,44 @@
     box.innerHTML='<div><label>Ouverture habituelle</label><input id="fOpenTime" type="time"><div class="tiny">Laisse vide si non vérifié.</div></div><div><label>Fermeture habituelle</label><input id="fCloseTime" type="time"><div class="tiny">Le planning n’invente aucun horaire.</div></div>';
     note.parentNode.insertBefore(box,note);
   }
-  function wrapStoreDialog(){
+  function hydrateOpeningFields(){
     ensureOpeningFields();
-    if(!window.__storeOpenWrapped&&typeof window.openStore==='function'){
-      const base=window.openStore;window.openStore=function(id){const out=base.apply(this,arguments);ensureOpeningFields();try{const s=id&&typeof window.byId==='function'?window.byId(id):null;const a=document.getElementById('fOpenTime'),b=document.getElementById('fCloseTime');if(a)a.value=s&&s.openTime?s.openTime:'';if(b)b.value=s&&s.closeTime?s.closeTime:''}catch(e){}return out};window.__storeOpenWrapped=true;
-    }
-    if(!window.__storeSaveWrapped&&typeof window.saveStore==='function'){
-      const base=window.saveStore;window.saveStore=function(){
-        const open=(document.getElementById('fOpenTime')||{}).value||'';
-        const close=(document.getElementById('fCloseTime')||{}).value||'';
-        const before=window.state&&state.stores?state.stores.length:0;
-        const editId=typeof window.currentEditId!=='undefined'?window.currentEditId:null;
-        const out=base.apply(this,arguments);
-        try{
-          let s=editId&&typeof window.byId==='function'?window.byId(editId):null;
-          if(!s&&state.stores&&state.stores.length>before)s=state.stores[state.stores.length-1];
-          if(s){if(open)s.openTime=open;else delete s.openTime;if(close)s.closeTime=close;else delete s.closeTime;if(typeof window.save==='function')window.save();}
-        }catch(e){}
-        return out;
-      };window.__storeSaveWrapped=true;
-    }
+    try{
+      const id=typeof window.currentEditId!=='undefined'?window.currentEditId:null;
+      const s=id&&typeof window.byId==='function'?window.byId(id):null;
+      const a=document.getElementById('fOpenTime'),b=document.getElementById('fCloseTime');
+      if(a)a.value=s&&s.openTime?s.openTime:'';
+      if(b)b.value=s&&s.closeTime?s.closeTime:'';
+    }catch(e){}
+  }
+  function observeStoreDialog(){
+    ensureOpeningFields();
+    const dlg=document.getElementById('storeDlg');if(!dlg)return false;
+    if(observedStoreDialog===dlg&&storeDialogObserver)return true;
+    if(storeDialogObserver)storeDialogObserver.disconnect();
+    storeDialogObserver=new MutationObserver(function(){if(dlg.open)requestAnimationFrame(hydrateOpeningFields)});
+    storeDialogObserver.observe(dlg,{attributes:true,attributeFilter:['open']});
+    observedStoreDialog=dlg;
+    if(dlg.open)hydrateOpeningFields();
+    return true;
+  }
+  function rememberOpeningSave(){
+    const dlg=document.getElementById('storeDlg');if(!dlg)return;
+    const open=(document.getElementById('fOpenTime')||{}).value||'';
+    const close=(document.getElementById('fCloseTime')||{}).value||'';
+    const before=window.state&&state.stores?state.stores.length:0;
+    const editId=typeof window.currentEditId!=='undefined'?window.currentEditId:null;
+    setTimeout(function(){
+      if(dlg.open)return;
+      try{
+        let s=editId&&typeof window.byId==='function'?window.byId(editId):null;
+        if(!s&&state.stores&&state.stores.length>before)s=state.stores[state.stores.length-1];
+        if(!s)return;
+        if(open)s.openTime=open;else delete s.openTime;
+        if(close)s.closeTime=close;else delete s.closeTime;
+        if(typeof window.save==='function')window.save();
+      }catch(e){}
+    },0);
   }
 
   function storeWindow(store,day){
@@ -149,10 +168,14 @@
     return true;
   }
 
-  function refresh(){observeContextText();wrapStoreDialog();installOpeningAwareSchedule();observeWeek();cleanContextText();scheduleWeekDecorations()}
+  function refresh(){observeContextText();observeStoreDialog();installOpeningAwareSchedule();observeWeek();cleanContextText();scheduleWeekDecorations()}
   function installEvents(){
     if(window.__calendarEnhancementEvents)return;
-    document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(refresh,40)},true);
+    document.addEventListener('click',function(e){
+      if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(refresh,40);
+      const saveBtn=e.target&&e.target.closest?e.target.closest('[onclick*="saveStore"]'):null;
+      if(saveBtn)rememberOpeningSave();
+    },true);
     window.addEventListener('focus',refresh);
     document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(refresh,0)});
     window.addEventListener('chef-range-generated',function(){setTimeout(refresh,40)});
