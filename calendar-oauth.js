@@ -3,11 +3,30 @@
   const CLIENT_ID='59370123885-qe3r60bm3bjgc9jlnmn8qb6342lthhr6.apps.googleusercontent.com';
   const CONFIG_KEY='chef_secteur_google_calendar_v2';
   const TOKEN_KEY='chef_secteur_google_token_v2';
+  const EXPIRY_KEY='chef_google_token_expiry_v1';
+  const LEGACY_TOKEN_KEYS=['chef_google_token_persist_v1','chef_google_token_persist_expiry_v1'];
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
-  function hasToken(){try{return !!sessionStorage.getItem(TOKEN_KEY)}catch(e){return false}}
+  function sget(storage,key){try{return storage.getItem(key)||''}catch(e){return''}}
+  function hasToken(){return !!sget(sessionStorage,TOKEN_KEY)}
+  function tokenValid(){return hasToken()&&Number(sget(sessionStorage,EXPIRY_KEY))>Date.now()+15000}
   function setClientId(){try{localStorage.setItem(CONFIG_KEY,JSON.stringify({clientId:CLIENT_ID}))}catch(e){}const input=document.getElementById('googleClientId');if(input&&!input.value)input.value=CLIENT_ID}
+  function purgeLegacyTokens(){try{LEGACY_TOKEN_KEYS.forEach(key=>localStorage.removeItem(key))}catch(e){}}
+  function hasGoogleConfig(){try{const c=JSON.parse(localStorage.getItem(CONFIG_KEY)||'{}');return !!(c&&c.clientId)}catch(e){return false}}
+  function waitGoogleToken(ms){const start=Date.now();return new Promise(resolve=>(function tick(){if(tokenValid())return resolve(true);if(Date.now()-start>=ms)return resolve(false);setTimeout(tick,120)})())}
+  function fallbackStatus(reason){
+    const status=document.getElementById('googleCalendarStatus'),badge=document.getElementById('googleCalendarBadge');
+    const last=window.state&&state.calendarLastSync?new Date(state.calendarLastSync).toLocaleString('fr-FR'):'';
+    if(status)status.textContent=last?'Agenda temporairement non vérifié · dernière synchro conservée : '+last:'Agenda temporairement non vérifié · génération du planning non bloquée.';
+    if(badge&&last){badge.textContent='Connecté';badge.classList.add('on')}
+    window.chefGoogleStatus={phase:'cached',connected:!!last,canRetry:true,lastSync:window.state&&state.calendarLastSync||null,message:reason||''};
+  }
+  async function silentReconnect(){
+    if(tokenValid())return true;
+    if(!hasGoogleConfig()||typeof window.connectGoogleCalendar!=='function')return false;
+    try{await window.connectGoogleCalendar();return await waitGoogleToken(4500)}catch(e){return false}
+  }
   function dateOnly(v){const m=String(v||'').match(/^(\d{4}-\d{2}-\d{2})/);return m?m[1]:''}
   function addDays(iso,n){const p=String(iso||'').split('-');if(p.length!==3)return iso;const d=new Date(+p[0],+p[1]-1,+p[2],12);d.setDate(d.getDate()+n);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
   function eventText(ev){return norm((ev&&ev.title||'')+' '+(ev&&ev.location||'')+' '+(ev&&ev.calendar||''))}
@@ -35,7 +54,7 @@
   }
   function inferredAwayBlock(date){for(const r of inferAwayRanges())if(date>=r.start&&date<=r.end)return{id:'inferred-away-'+date,title:'Déplacement professionnel · '+r.city,location:r.city,calendar:'Déduit de Google Agenda',allDay:true,startMin:0,endMin:1440,planningBlock:true,inferredAway:true};return null}
   function installSemanticCalendarBlocks(){
-    if(window.__calendarSemanticBlocks||typeof window.calendarEventsForDate!=='function')return;
+    if(window.__calendarSemanticBlocks||typeof window.calendarEventsForDate!=='function')return false;
     const base=window.calendarEventsForDate;
     window.calendarEventsForDate=function(date){
       let rows=base(date)||[];
@@ -46,6 +65,7 @@
       return rows.sort((a,b)=>Number(a.startMin||0)-Number(b.startMin||0));
     };
     window.__calendarSemanticBlocks=true;
+    return true;
   }
   function weekMonday(){
     const raw=(state.settings&&state.settings.weekDate)||new Date().toISOString().slice(0,10),d=new Date(raw+'T12:00:00'),w=d.getDay()||7;d.setDate(d.getDate()-w+1);return d;
@@ -76,9 +96,34 @@
     if(typeof window.save==='function')window.save();
     if(typeof window.renderAll==='function')window.renderAll();
   }
-  function wrapSync(){if(window.__nativeCalendarSyncWrapped||typeof window.syncGoogleCalendar!=='function')return;const base=window.syncGoogleCalendar;window.syncGoogleCalendar=async function(){const out=await base.apply(this,arguments);installSemanticCalendarBlocks();return out};window.__nativeCalendarSyncWrapped=true}
-  function wrapGenerate(){if(window.__nativeCalendarGenerateWrapped||typeof window.generateWeek!=='function')return;const base=window.generateWeek;window.generateWeek=async function(){try{setClientId();if(hasToken()&&typeof window.syncGoogleCalendar==='function'){const s=document.getElementById('googleCalendarStatus');if(s)s.textContent='Mise à jour de l’agenda avant génération…';await window.syncGoogleCalendar(true)}}catch(e){console.warn('Pré-synchronisation Calendar :',e)}installSemanticCalendarBlocks();const out=await base.apply(this,arguments);enforceBlockedDays();return out};window.__nativeCalendarGenerateWrapped=true}
-  async function boot(){setClientId();for(let i=0;i<50;i++){setClientId();installSemanticCalendarBlocks();wrapSync();wrapGenerate();if(window.__nativeCalendarSyncWrapped&&window.__nativeCalendarGenerateWrapped)break;await new Promise(r=>setTimeout(r,120))}if(hasToken()&&typeof window.syncGoogleCalendar==='function')try{await window.syncGoogleCalendar(true)}catch(e){}}
-  window.chefSecteurCalendarPlanningBlock=isPlanningBlock;window.chefSecteurAwayRanges=inferAwayRanges;window.chefSecteurEventCoversDate=eventCoversDate;window.chefSecteurEnforceBlockedDays=enforceBlockedDays;
+  function wrapSync(){
+    if(window.__storeRunnerCalendarSyncOwner||typeof window.syncGoogleCalendar!=='function')return false;
+    const base=window.syncGoogleCalendar;
+    window.syncGoogleCalendar=async function(silent){
+      purgeLegacyTokens();
+      let result;
+      try{result=await base.apply(this,arguments)}catch(e){result={ok:false,reason:e&&e.message||'error'}}
+      if(result&&result.ok){installSemanticCalendarBlocks();return result}
+      if(silent){
+        const reason=result&&result.reason||'error';
+        if((reason==='disconnected'||reason==='expired')&&await silentReconnect()){
+          try{result=await base.call(this,true)}catch(e2){result={ok:false,reason:e2&&e2.message||'error'}}
+          if(result&&result.ok){installSemanticCalendarBlocks();return result}
+        }
+        fallbackStatus(reason);
+        installSemanticCalendarBlocks();
+        return {ok:true,cached:true,reason:reason,lastSync:window.state&&state.calendarLastSync||null};
+      }
+      return result||{ok:false,reason:'error'};
+    };
+    window.__storeRunnerCalendarSyncOwner=true;
+    return true;
+  }
+  function wrapGenerate(){if(window.__nativeCalendarGenerateWrapped||typeof window.generateWeek!=='function')return false;const base=window.generateWeek;window.generateWeek=async function(){try{setClientId();if(hasToken()&&typeof window.syncGoogleCalendar==='function'){const s=document.getElementById('googleCalendarStatus');if(s)s.textContent='Mise à jour de l’agenda avant génération…';await window.syncGoogleCalendar(true)}}catch(e){console.warn('Pré-synchronisation Calendar :',e)}installSemanticCalendarBlocks();const out=await base.apply(this,arguments);enforceBlockedDays();return out};window.__nativeCalendarGenerateWrapped=true;return true}
+  async function boot(){purgeLegacyTokens();setClientId();for(let i=0;i<50;i++){setClientId();installSemanticCalendarBlocks();wrapSync();wrapGenerate();if(window.__storeRunnerCalendarSyncOwner&&window.__nativeCalendarGenerateWrapped)break;await new Promise(r=>setTimeout(r,120))}if(hasToken()&&typeof window.syncGoogleCalendar==='function')try{await window.syncGoogleCalendar(true)}catch(e){}}
+  window.chefSecteurCalendarPlanningBlock=isPlanningBlock;
+  window.chefSecteurAwayRanges=inferAwayRanges;
+  window.chefSecteurEventCoversDate=eventCoversDate;
+  window.chefSecteurEnforceBlockedDays=enforceBlockedDays;
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
 })();
