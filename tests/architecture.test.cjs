@@ -48,6 +48,12 @@ forbid('store-runner-branding.js',[
 requireMatch('sector-admin.js','filtre enseigne intégré',/saBrandFilter/);
 requireMatch('sector-admin.js','chargement progressif du catalogue',/Afficher plus/);
 
+forbid('stores-layout-order.js',[
+  ['révision datée codée en dur',/\?rev=20\d{6}/]
+]);
+requireMatch('stores-layout-order.js','lecture de la révision du module',/document\.currentScript/);
+requireMatch('stores-layout-order.js','héritage de révision des sous-modules',/withModuleRev/);
+
 const deployWorkflow=read('.github/workflows/deploy-pages.yml');
 if(!/^name:\s*Deploy Store Runner/m.test(deployWorkflow))throw new Error('Workflow: nom Store Runner absent');
 if(/Chef Secteur SAMSUNG/.test(deployWorkflow))throw new Error('Workflow: ancien branding encore présent');
