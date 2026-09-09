@@ -16,6 +16,14 @@ function requireMatch(file,label,re){
   return match;
 }
 
+function localAssets(src){
+  const out=new Set();
+  const re=/['\"](\.\/[^'\"]+\.(?:js|css))['\"]/g;
+  let match;
+  while((match=re.exec(src)))out.add(match[1]);
+  return out;
+}
+
 const noPermanentLoop=[['boucle setInterval',/\bsetInterval\s*\(/]];
 ['stores-layout-order.js','auto-planning-fix.js','connection-ui.js','ai-gateway-config.js'].forEach(file=>forbid(file,noPermanentLoop));
 
@@ -74,7 +82,7 @@ if(/localStorage\.(?:getItem|setItem)\(\s*TOKEN_KEY/.test(calendarOauth))throw n
 if(!/sessionStorage\.getItem\(TOKEN_KEY\)/.test(calendarOauth))throw new Error('Agenda: token Google doit rester en sessionStorage');
 
 const aiGateway=read('ai-gateway-config.js');
-if(/\b(?:client_secret|api[_-]?key)\b\s*[:=]\s*['"][^'"]{12,}['"]/i.test(aiGateway))throw new Error('IA: secret ou clé API détecté côté navigateur');
+if(/\b(?:client_secret|api[_-]?key)\b\s*[:=]\s*['\"][^'\"]{12,}['\"]/i.test(aiGateway))throw new Error('IA: secret ou clé API détecté côté navigateur');
 if(!/workers\.dev/.test(aiGateway))throw new Error('IA: passerelle publique attendue absente');
 if(!/MAX_TRIES\s*=\s*\d+/.test(aiGateway)||!/setTimeout\(retry,\s*100\)/.test(aiGateway))throw new Error('IA: retry borné attendu absent');
 
@@ -93,8 +101,15 @@ if(!/CACHE_NAME\s*=\s*['\"]chef-secteur-stable-['\"]\s*\+\s*BUILD_REV/.test(sw))
 if(!/skipWaiting\(\)/.test(sw)||!/clients\.claim\(\)/.test(sw))throw new Error('PWA: activation immédiate du nouveau worker incomplète');
 
 ['./region-fetch-resilience.js','./official-catalog.js','./data/official-stores.json'].forEach(asset=>{
-  if(!sw.includes(`"${asset}"`)&&!sw.includes(`'${asset}'`))throw new Error(`PWA: ressource magasins absente du cache hors ligne: ${asset}`);
+  if(!sw.includes(`\"${asset}\"`)&&!sw.includes(`'${asset}'`))throw new Error(`PWA: ressource magasins absente du cache hors ligne: ${asset}`);
 });
 if(!index.includes("'./region-fetch-resilience.js'")||!index.includes("'./official-catalog.js'"))throw new Error('PWA: modules magasins attendus absents du chargeur principal');
 
-console.log(`Architecture guards: OK · PWA ${indexRev}`);
+const runtimeAssets=new Set([...localAssets(index),...localAssets(read('stores-layout-order.js'))]);
+runtimeAssets.delete('./sw.js');
+for(const asset of runtimeAssets){
+  if(!sw.includes(`\"${asset}\"`)&&!sw.includes(`'${asset}'`))throw new Error(`PWA: ressource runtime absente du cache hors ligne: ${asset}`);
+}
+if(runtimeAssets.size<25)throw new Error('PWA: détection des ressources runtime anormalement faible');
+
+console.log(`Architecture guards: OK · PWA ${indexRev} · ${runtimeAssets.size} ressources runtime vérifiées`);
