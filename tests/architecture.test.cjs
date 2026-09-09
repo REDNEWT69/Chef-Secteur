@@ -57,6 +57,13 @@ requireMatch('stores-layout-order.js','cible observée du filtre régional',/obs
 requireMatch('stores-layout-order.js','reconnexion observer sur nouvelle liste',/observedRegionResults\s*!==\s*results/);
 requireMatch('stores-layout-order.js','déconnexion ancien observer régional',/regionResultsObserver\.disconnect\(\)/);
 
+const branding=read('store-runner-branding.js');
+if(/\bsetInterval\s*\(/.test(branding))throw new Error('Branding: setInterval interdit');
+if(!/observerHost/.test(branding))throw new Error('Branding: cible observer dédiée absente');
+if(!/observer\.disconnect\(\)/.test(branding))throw new Error('Branding: reconnexion observer sans déconnexion');
+if(!/if\(!ready&&retry<20\)/.test(branding))throw new Error('Branding: les retries doivent s’arrêter dès que l’interface est prête');
+if(!/observerHost===host/.test(branding))throw new Error('Branding: observer doit être conservé uniquement sur la bonne cible');
+
 const deployWorkflow=read('.github/workflows/deploy-pages.yml');
 if(!/^name:\s*Deploy Store Runner/m.test(deployWorkflow))throw new Error('Workflow: nom Store Runner absent');
 if(/Chef Secteur SAMSUNG/.test(deployWorkflow))throw new Error('Workflow: ancien branding encore présent');

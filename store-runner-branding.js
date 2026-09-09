@@ -3,7 +3,7 @@
   const APP_NAME='Store Runner';
   const SIGNATURE='S-RUNNER By Red①';
   const LOGO='./store-runner-logo.jpg';
-  let observer=null,retry=0;
+  let observer=null,observerHost=null,retry=0;
 
   function ensureCss(){
     if(document.getElementById('store-runner-branding-css'))return;
@@ -74,18 +74,21 @@
   function apply(){ensureCss();applyMeta();const top=applyTop();const home=applyHome();return top&&home}
 
   function observe(){
-    if(observer)return;
     const host=document.getElementById('homePanel')||document.body;
-    observer=new MutationObserver(function(){requestAnimationFrame(apply)});
+    if(observer&&observerHost===host)return;
+    if(observer)observer.disconnect();
+    observerHost=host;
+    observer=new MutationObserver(function(){requestAnimationFrame(function(){apply();observe()})});
     observer.observe(host,{childList:true,subtree:true});
   }
 
   function boot(){
-    apply();observe();
-    if(retry<20){retry++;setTimeout(boot,150)}
+    const ready=apply();
+    observe();
+    if(!ready&&retry<20){retry++;setTimeout(boot,150)}
   }
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
-  window.addEventListener('focus',function(){setTimeout(apply,30)});
-  document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(apply,30)});
+  window.addEventListener('focus',function(){setTimeout(function(){apply();observe()},30)});
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(function(){apply();observe()},30)});
 })();
