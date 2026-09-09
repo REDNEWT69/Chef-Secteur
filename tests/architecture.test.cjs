@@ -29,13 +29,6 @@ for(const [label,re] of [
 
 forbidMany('auto-planning-fix.js',[['sauvegarde profil',/window\.saveProfile\s*=/],['override baseObj',/window\.baseObj\s*=/],['override havBase',/window\.havBase\s*=/],['base Francheville codée en dur',/Francheville/],['départ temporaire session',/chef_departure_override_v1/],['wrapper Google Agenda',/window\.syncGoogleCalendar\s*=(?!=)/],['token Google',/chef_secteur_google_token_v2/]]);
 requireMatch('auto-planning-fix.js','application automatique Reliability',/R\.propose/);
-forbidMany('planning-autofix.js',[
-  ['override hav',/window\.hav\s*=/],
-  ['override havBase',/window\.havBase\s*=/],
-  ['override baseObj',/window\.baseObj\s*=/],
-  ['sauvegarde profil',/window\.saveProfile\s*=/],
-  ['géolocalisation profil',/window\.useCurrentLocation\s*=/]
-]);
 
 forbid('sector-admin.js','ancienne limite 500 magasins',/\.slice\(\s*0\s*,\s*500\s*\)/);
 requireMatch('sector-admin.js','filtre enseigne intégré',/saBrandFilter/);
@@ -85,7 +78,7 @@ if(!/CACHE_NAME\s*=\s*['\"]chef-secteur-stable-['\"]\s*\+\s*BUILD_REV/.test(sw))
 if(!/skipWaiting\(\)/.test(sw)||!/clients\.claim\(\)/.test(sw))throw new Error('PWA: activation immédiate incomplète');
 
 for(const asset of ['./region-fetch-resilience.js','./official-catalog.js','./data/official-stores.json'])if(!sw.includes(`"${asset}"`)&&!sw.includes(`'${asset}'`))throw new Error(`PWA: ressource magasins absente du cache: ${asset}`);
-for(const asset of ['./navigation-controller.js','./profile-controller.js','./store-runner-branding.js','./planning-generation-controller.js','./planning-autofix.js','./boulanger-national.js','./national-sectors.js','./sector-admin.js','./stores-layout-order.js'])if(!index.includes(`'${asset}'`)&&!index.includes(`"${asset}"`))throw new Error(`Chargeur principal: module explicite absent: ${asset}`);
+for(const asset of ['./navigation-controller.js','./profile-controller.js','./store-runner-branding.js','./planning-generation-controller.js','./boulanger-national.js','./national-sectors.js','./sector-admin.js','./stores-layout-order.js'])if(!index.includes(`'${asset}'`)&&!index.includes(`"${asset}"`))throw new Error(`Chargeur principal: module explicite absent: ${asset}`);
 const runtimeAssets=[...index.matchAll(/['\"](\.\/[A-Za-z0-9_./-]+\.(?:js|css))['\"]/g)].map(m=>m[1]);
 for(const asset of new Set(runtimeAssets.filter(a=>a!=='./sw.js')))if(!sw.includes(`"${asset}"`)&&!sw.includes(`'${asset}'`))throw new Error(`PWA: ressource runtime absente du cache: ${asset}`);
 
