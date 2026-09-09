@@ -19,3 +19,4 @@ jobs:
       - run: node tests/calendar.test.cjs
       - run: node tests/planning.test.cjs
       - run: node tests/region-stores.test.cjs
+      - run: node tests/architecture.test.cjs
