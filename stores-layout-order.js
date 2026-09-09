@@ -15,6 +15,8 @@
     document.head.appendChild(script);
   }
 
+  loadScript('store-runner-branding-script', './store-runner-branding.js?rev=20260909-1');
+
   if (!document.getElementById('planning-autofix-script')) {
     var hotfix = document.createElement('script');
     hotfix.id = 'planning-autofix-script';
