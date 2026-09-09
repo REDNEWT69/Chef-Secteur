@@ -82,7 +82,36 @@
     return true;
   }
 
-  function apply(){ensureCss();applyMeta();const top=applyTop();const home=applyHome();return top&&home}
+  function installDepartureReturn(){
+    if(!window.__srDepartureOpenWrapped&&typeof window.openDepartureSettings==='function'){
+      const baseOpen=window.openDepartureSettings;
+      window.openDepartureSettings=function(){
+        const plan=document.getElementById('planPanel');
+        window.__srReturnToPlanningAfterProfileSave=!!(plan&&plan.classList.contains('active'));
+        return baseOpen.apply(this,arguments);
+      };
+      window.__srDepartureOpenWrapped=true;
+    }
+    if(!window.__srProfileSaveWrapped&&typeof window.saveProfile==='function'){
+      const baseSave=window.saveProfile;
+      window.saveProfile=function(){
+        const shouldReturn=!!window.__srReturnToPlanningAfterProfileSave;
+        const out=baseSave.apply(this,arguments);
+        if(shouldReturn){
+          window.__srReturnToPlanningAfterProfileSave=false;
+          setTimeout(function(){
+            if(typeof window.goTab==='function')window.goTab('planPanel');
+            if(typeof window.syncBottomNav==='function')try{window.syncBottomNav('planPanel')}catch(e){}
+            window.scrollTo({top:0,behavior:'smooth'});
+          },120);
+        }
+        return out;
+      };
+      window.__srProfileSaveWrapped=true;
+    }
+  }
+
+  function apply(){ensureCss();applyMeta();const top=applyTop();const home=applyHome();installDepartureReturn();return top&&home}
 
   function observe(){
     const host=document.getElementById('homePanel')||document.body;
