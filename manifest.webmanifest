@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "Chef Secteur SAMSUNG",
-  "short_name": "Chef Secteur",
-  "description": "Planning terrain automatique pour chef de secteur Samsung",
+  "name": "Store Runner",
+  "short_name": "Store Runner",
+  "description": "Application terrain de planification, gestion de secteur et tournées magasins",
   "start_url": "./?source=home-screen",
   "scope": "./",
   "display": "standalone",
