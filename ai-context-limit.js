@@ -81,11 +81,13 @@
     return true;
   }
 
-  let tries=0;
-  const timer=setInterval(function(){
-    tries++;
-    if(install()||tries>100)clearInterval(timer);
-  },100);
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);
-  else setTimeout(install,0);
+  function boot(){
+    if(install())return;
+    [100,250,600,1200,2400].forEach(function(delay){setTimeout(install,delay)});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});
+  else boot();
+  window.addEventListener('load',install,{once:true});
+  window.addEventListener('focus',install);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)install()});
 })();
