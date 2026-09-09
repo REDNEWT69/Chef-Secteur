@@ -6,151 +6,130 @@ Objectif : inventorier les risques techniques actuels sans modifier le comportem
 
 ## Conclusion rapide
 
-L’application possède déjà de bonnes protections de données et des tests automatisés, mais elle est devenue fragile à cause d’un grand nombre de scripts correctifs qui se superposent, remplacent des fonctions globales et réappliquent régulièrement des modifications d’interface.
+L’application a déjà été fortement consolidée : les boucles permanentes identifiées dans le premier audit ont été supprimées, plusieurs initialisations ont été rendues événementielles et le fallback Overpass a été renforcé.
 
-Priorité générale : conserver le fonctionnement actuel, puis réduire progressivement les surcharges de fonctions et les boucles permanentes.
+La priorité n’est plus de supprimer des timers globaux inexistants, mais de réduire progressivement la complexité de chargement et les surcharges de fonctions globales, sans régression visuelle ni fonctionnelle.
 
 ## Points solides à conserver
 
 ### 1. Sauvegardes et restauration
 
-`reliability-core.js` valide les données, bloque les clés dangereuses (`__proto__`, `constructor`, `prototype`), conserve jusqu’à huit points de restauration et utilise un journal de transaction pour revenir à l’état précédent si une écriture échoue.
+`reliability-core.js` valide les données, bloque les clés dangereuses (`__proto__`, `constructor`, `prototype`), conserve plusieurs points de restauration et utilise un journal de transaction pour revenir à l’état précédent si une écriture échoue.
 
 ### 2. Tests automatisés
 
-Le workflow `Reliability checks` exécute déjà :
+Le workflow `Reliability checks` contrôle notamment :
 
-- contrôle syntaxique de tous les scripts ;
-- tests des sauvegardes et restaurations ;
-- tests Google Agenda ;
-- tests du moteur de planning ;
-- tests de recherche de magasins par région.
+- la syntaxe des scripts ;
+- les sauvegardes et restaurations ;
+- Google Agenda ;
+- le moteur de planning ;
+- la recherche de magasins par région.
 
 ### 3. Passerelle IA
 
-`ai-gateway-config.js` ne contient pas de clé API. La clé Groq est attendue dans `env.GROQ_API_KEY` côté Cloudflare Worker. C’est le bon modèle de sécurité pour GitHub Pages.
+`ai-gateway-config.js` ne contient pas de clé API. La clé Groq reste attendue côté Cloudflare Worker.
 
 ### 4. Client OAuth Google
 
-L’identifiant client OAuth Google est public par nature et peut rester côté navigateur. Le token d’accès principal est placé dans `sessionStorage` par `calendar-oauth.js`.
+Le token Google principal reste dans `sessionStorage`.
 
-## Risques identifiés
-
-### P0 — Token Google recopié dans localStorage
-
-`auto-planning-fix.js` contient un mécanisme qui copie le token Google depuis `sessionStorage` vers :
+`auto-planning-fix.js` supprime désormais les anciennes clés persistantes :
 
 - `chef_google_token_persist_v1`
 - `chef_google_token_persist_expiry_v1`
 
-Cela rend la session Google persistante dans le stockage local du navigateur. Ce n’est pas cohérent avec le principe plus sûr utilisé ailleurs, où le token reste dans `sessionStorage` et n’est pas inclus dans les sauvegardes.
+La persistance OAuth en `localStorage` signalée dans le premier audit n’est donc plus active.
 
-Action recommandée : supprimer progressivement cette persistance locale tout en conservant la reconnexion utilisateur normale.
+### 5. Recherche magasins par région
 
-### P0 — Surcharge répétée des fonctions globales
+`region-fetch-resilience.js` reconnaît les différents endpoints Overpass configurés, conserve les paramètres d’URL pendant un basculement, respecte mieux l’annulation et peut essayer les serveurs de secours successivement.
 
-Plusieurs scripts remplacent des fonctions déjà existantes :
+## Consolidations déjà réalisées
 
-- `renderAll`
-- `renderWeek`
-- `renderHeader`
-- `syncGoogleCalendar`
-- `generateWeek`
-- `calendarEventsForDate`
-- `baseObj`
-- `havBase`
-- `saveProfile`
-- `ChefReliability.propose`
-- fonctions de l’assistant
+### Boucles permanentes supprimées
 
-Chaque wrapper possède généralement un marqueur (`window.__...`) pour éviter une double installation, ce qui limite le danger, mais l’ordre de chargement devient critique.
+Les boucles `setInterval` identifiées auparavant ont été retirées des modules concernés.
 
-Action recommandée : créer à terme des hooks/events officiels au lieu de remplacer les fonctions les unes après les autres.
+`stores-layout-order.js` utilise maintenant :
 
-### P1 — Boucles permanentes inutiles
+- un hook ciblé sur `renderStores` ;
+- quelques réessais courts au démarrage ;
+- des déclenchements sur navigation, focus ou retour dans l’application.
 
-Scripts actuellement concernés :
+`connection-ui.js` n’exécute plus `healStorage` toutes les 1,5 seconde. La réparation du stockage est maintenant déclenchée au démarrage, après certains rendus et lors du retour dans l’application.
 
-- `stores-layout-order.js` : `MutationObserver` sur tout le document + `setInterval(..., 1000)` permanent ;
-- `auto-planning-fix.js` : `setInterval(..., 1200)` permanent ;
-- `connection-ui.js` : `setInterval(healStorage, 1500)` permanent.
+`auto-planning-fix.js` ne contient plus de boucle permanente.
 
-Ces mécanismes continuent de travailler même lorsque rien ne change. Sur iPhone/PWA, ils peuvent participer aux gels, à la consommation CPU et à des conflits de rendu.
+### Observers globaux supprimés ou réduits
 
-Action recommandée : les remplacer progressivement par des événements ciblés et des appels après les vrais rendus.
+`planning-ui-fixes.js` ne surveille plus tout le document avec un `MutationObserver` global. Il s’appuie principalement sur les hooks de rendu et quelques déclenchements ciblés.
 
-### P1 — MutationObservers trop larges
+`connection-ui.js` conserve seulement des observers ciblés sur les éléments Google Agenda et certains boutons de l’assistant.
 
-`planning-ui-fixes.js` observe tout `.wrap` (ou `document.body`) avec `{childList:true, subtree:true}`.
+## Risques encore actifs
 
-`stores-layout-order.js` observe `document.documentElement` avec `{childList:true, subtree:true}`.
+### P0 — Surcharges répétées de fonctions globales
 
-Les observateurs ciblés sur un élément précis, comme celui de `assistant-sheet-drag.js` qui ne surveille que la classe de la fenêtre IA, sont beaucoup plus sûrs.
+Plusieurs modules remplacent encore ponctuellement des fonctions globales existantes, notamment autour de :
 
-Action recommandée : réduire le périmètre des observers et les supprimer lorsqu’un hook de rendu existe déjà.
+- `renderAll` ;
+- `renderWeek` ;
+- `renderHeader` ;
+- `renderStores` ;
+- `syncGoogleCalendar` ;
+- `generateWeek` ;
+- `baseObj` / `havBase` ;
+- `saveProfile` ;
+- `ChefReliability.propose`.
 
-### P1 — Plusieurs couches d’interface d’accueil
+Les marqueurs `window.__...` limitent les doubles installations, mais l’ordre de chargement reste important.
 
-`home-refresh-v2.js`, `manager-showcase-home.js`, `manager-home-fixes.js` et `connection-ui.js` interviennent tous sur l’accueil, la navigation ou le statut Google.
+Action recommandée : créer progressivement des hooks ou événements officiels, module par module, sans réécriture massive.
 
-Action recommandée : fusionner à terme ces responsabilités dans un seul module d’accueil.
+### P1 — Révisions de fichiers dispersées dans `index.html`
+
+Le service worker utilise déjà un nom de cache global, mais `index.html` charge encore de nombreux scripts avec des paramètres `?rev=` différents (`safe16`, dates, noms de correctifs, etc.).
+
+Ce double système de versionnement augmente le risque qu’une PWA installée conserve temporairement un mélange de versions lors d’une évolution du chargeur.
+
+Action recommandée : utiliser une révision de build unique dans le chargeur, puis faire correspondre cette révision au cache du service worker.
 
 ### P1 — Plusieurs couches de planning
 
-Le planning est actuellement complété ou modifié par plusieurs scripts :
+Le planning reste réparti entre plusieurs modules spécialisés. C’est fonctionnel, mais la multiplication des wrappers rend les dépendances difficiles à suivre.
 
-- `calendar-oauth.js`
-- `calendar-enhancements.js`
-- `planning-ui-fixes.js`
-- `range-planner-v2.js`
-- `working-hours-end.js`
-- `daily-capacity.js`
-- `planning-pro-plus.js`
-- `period-day-slider.js`
-- `workdays-enforcer.js`
-- `auto-planning-fix.js`
-- `planning-autofix.js`
+Action recommandée : définir à terme un point d’entrée central pour le calcul et des hooks explicites pour :
 
-Action recommandée : séparer à terme clairement :
+1. les contraintes Agenda ;
+2. les horaires ;
+3. le stockage ;
+4. le rendu ;
+5. les décorations visuelles.
 
-1. moteur de calcul ;
-2. contraintes Agenda ;
-3. stockage ;
-4. rendu de l’interface.
+### P2 — Plusieurs couches d’accueil
 
-### P2 — Cache PWA très dépendant des numéros de révision
+L’accueil reste partagé entre plusieurs modules. Ce n’est plus la priorité immédiate tant que le rendu reste stable.
 
-`sw.js` met en cache une longue liste de fichiers portant chacun leur propre paramètre `?rev=...`.
+Action recommandée : fusion progressive après stabilisation du chargeur et du planning.
 
-C’est fonctionnel, mais chaque changement important doit être reflété à la fois dans le chargeur et dans le service worker. Une incohérence peut laisser un iPhone sur un mélange d’anciennes et de nouvelles versions.
+## Ordre de consolidation recommandé à partir de maintenant
 
-Action recommandée : centraliser plus tard un numéro de build/version unique.
+### Étape 1 — version de build unique
 
-## Ordre de consolidation recommandé
+Centraliser les paramètres `?rev=` de `index.html` autour d’une seule révision de build et vérifier le comportement PWA/cache.
 
-### Étape 1 — sécurité Google
+### Étape 2 — hooks de rendu
 
-Supprimer la copie persistante du token OAuth dans `localStorage`, puis adapter la reconnexion sans casser la synchronisation.
-
-### Étape 2 — magasins
-
-Nettoyer `stores-layout-order.js` :
-
-- retirer le `setInterval` permanent ;
-- supprimer l’observer global si les hooks `renderStores` suffisent ;
-- conserver uniquement les actions `Carnet officiel` et `Gérer mon secteur`.
+Commencer par une seule famille de wrappers, idéalement le planning ou les magasins, et introduire un mécanisme de hooks explicite sans changement visuel.
 
 ### Étape 3 — accueil
 
-Fusionner les responsabilités de `home-refresh-v2.js`, `manager-showcase-home.js`, `manager-home-fixes.js` et la partie accueil de `connection-ui.js`.
+Regrouper progressivement les responsabilités des modules d’accueil après validation des étapes précédentes.
 
 ### Étape 4 — planning
 
-Créer un module central de planning et convertir les scripts de correctifs en fonctions explicites appelées par ce module.
-
-### Étape 5 — cache PWA
-
-Remplacer les nombreuses révisions indépendantes par une version de build globale afin d’éviter les mélanges de cache.
+Poursuivre la séparation entre moteur, Agenda, contraintes, stockage et rendu.
 
 ## Règle pour les prochaines modifications
 
@@ -164,4 +143,4 @@ Pour chaque étape :
 
 ## État actuel
 
-Aucun comportement de l’application n’a été modifié par cet audit. Ce fichier documente uniquement les risques et l’ordre de nettoyage recommandé.
+Le dernier contrôle du 9 septembre 2026 confirme que les anciennes boucles permanentes signalées dans l’audit initial ne sont plus présentes dans les modules inspectés. Le prochain chantier technique prioritaire est la centralisation des révisions de build dans le chargeur PWA.
