@@ -1,4 +1,4 @@
-name: Deploy Chef Secteur SAMSUNG
+name: Deploy Store Runner
 
 on:
   push:
@@ -36,7 +36,6 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: .
-      - name: Publier Chef Secteur SAMSUNG
+      - name: Publier Store Runner
         id: deployment
         uses: actions/deploy-pages@v4
-
