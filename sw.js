@@ -37,6 +37,7 @@ const OPTIONAL_SHELL = [
   "./visual-refresh-v1.js",
   "./home-refresh-v2.js",
   "./auto-planning-fix.js",
+  "./planning-autofix.js",
   "./connection-ui.js",
   "./reliability-core.js",
   "./glass-theme.css",
