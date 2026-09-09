@@ -8,8 +8,22 @@ function forbidMany(file,pairs){for(const [label,re] of pairs)forbid(file,label,
 for(const file of ['stores-layout-order.js','auto-planning-fix.js','connection-ui.js','ai-gateway-config.js'])forbid(file,'boucle setInterval',/\bsetInterval\s*\(/);
 for(const file of ['planning-ui-fixes.js','timeline-end-times.js','route-polish.js','visual-refresh-v1.js'])forbidMany(file,[['wrapper renderAll',/window\.renderAll\s*=\s*function/],['wrapper renderWeek',/window\.renderWeek\s*=\s*function/]]);
 forbidMany('manager-home-fixes.js',[['wrapper renderAll',/window\.renderAll\s*=\s*function/],['wrapper syncGoogleCalendar',/window\.syncGoogleCalendar\s*=\s*async\s+function/]]);
-forbidMany('calendar-enhancements.js',[['wrapper renderHeader',/window\.renderHeader\s*=\s*function/],['wrapper renderHome',/window\.renderHome\s*=\s*function/],['wrapper renderWeek',/window\.renderWeek\s*=\s*function/]]);
-for(const [label,re] of [['observer contexte header',/headerContextObserver/],['observer contexte accueil',/homeContextObserver/],['observer semaine',/weekObserver/],['cible semaine observée',/observedWeek/]])requireMatch('calendar-enhancements.js',label,re);
+forbidMany('calendar-enhancements.js',[
+  ['wrapper renderHeader',/window\.renderHeader\s*=\s*function/],
+  ['wrapper renderHome',/window\.renderHome\s*=\s*function/],
+  ['wrapper renderWeek',/window\.renderWeek\s*=\s*function/],
+  ['wrapper openStore',/window\.openStore\s*=\s*function/],
+  ['wrapper saveStore',/window\.saveStore\s*=\s*function/]
+]);
+for(const [label,re] of [
+  ['observer contexte header',/headerContextObserver/],
+  ['observer contexte accueil',/homeContextObserver/],
+  ['observer semaine',/weekObserver/],
+  ['cible semaine observée',/observedWeek/],
+  ['observer formulaire magasin',/storeDialogObserver/],
+  ['cible formulaire magasin',/observedStoreDialog/],
+  ['persistance horaires par événement',/rememberOpeningSave/]
+])requireMatch('calendar-enhancements.js',label,re);
 
 forbidMany('auto-planning-fix.js',[['sauvegarde profil',/window\.saveProfile\s*=/],['override baseObj',/window\.baseObj\s*=/],['override havBase',/window\.havBase\s*=/],['base Francheville codée en dur',/Francheville/],['départ temporaire session',/chef_departure_override_v1/],['wrapper Google Agenda',/window\.syncGoogleCalendar\s*=(?!=)/],['token Google',/chef_secteur_google_token_v2/]]);
 requireMatch('auto-planning-fix.js','application automatique Reliability',/R\.propose/);
@@ -54,7 +68,7 @@ if(!/CACHE_NAME\s*=\s*['\"]chef-secteur-stable-['\"]\s*\+\s*BUILD_REV/.test(sw))
 if(!/skipWaiting\(\)/.test(sw)||!/clients\.claim\(\)/.test(sw))throw new Error('PWA: activation immédiate incomplète');
 
 for(const asset of ['./region-fetch-resilience.js','./official-catalog.js','./data/official-stores.json'])if(!sw.includes(`"${asset}"`)&&!sw.includes(`'${asset}'`))throw new Error(`PWA: ressource magasins absente du cache: ${asset}`);
-for(const asset of ['./navigation-controller.js','./profile-controller.js','./store-runner-branding.js','./planning-autofix.js','./boulanger-national.js','./national-sectors.js','./sector-admin.js','./stores-layout-order.js'])if(!index.includes(`'${asset}'`)&&!index.includes(`"${asset}"`))throw new Error(`Chargeur principal: module explicite absent: ${asset}`);
+for(const asset of ['./navigation-controller.js','./profile-controller.js','./store-runner-branding.js','./planning-autofix.js','./boulanger-national.js','./national-sectors.js','./sector-admin.js','./stores-layout-order.js'])if(!index.includes(`'${asset}'`)&&!index.includes(`"${asset}'`))throw new Error(`Chargeur principal: module explicite absent: ${asset}`);
 const runtimeAssets=[...index.matchAll(/['\"](\.\/[A-Za-z0-9_./-]+\.(?:js|css))['\"]/g)].map(m=>m[1]);
 for(const asset of new Set(runtimeAssets.filter(a=>a!=='./sw.js')))if(!sw.includes(`"${asset}"`)&&!sw.includes(`'${asset}'`))throw new Error(`PWA: ressource runtime absente du cache: ${asset}`);
 
