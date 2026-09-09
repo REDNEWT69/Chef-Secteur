@@ -92,4 +92,9 @@ if(!/serviceWorker\.register\(['\"]\.\/sw\.js['\"],\s*\{updateViaCache:['\"]none
 if(!/CACHE_NAME\s*=\s*['\"]chef-secteur-stable-['\"]\s*\+\s*BUILD_REV/.test(sw))throw new Error('PWA: cache non dérivé de BUILD_REV');
 if(!/skipWaiting\(\)/.test(sw)||!/clients\.claim\(\)/.test(sw))throw new Error('PWA: activation immédiate du nouveau worker incomplète');
 
+['./region-fetch-resilience.js','./official-catalog.js','./data/official-stores.json'].forEach(asset=>{
+  if(!sw.includes(`"${asset}"`)&&!sw.includes(`'${asset}'`))throw new Error(`PWA: ressource magasins absente du cache hors ligne: ${asset}`);
+});
+if(!index.includes("'./region-fetch-resilience.js'")||!index.includes("'./official-catalog.js'"))throw new Error('PWA: modules magasins attendus absents du chargeur principal');
+
 console.log(`Architecture guards: OK · PWA ${indexRev}`);
