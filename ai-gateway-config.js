@@ -1,6 +1,9 @@
 (function(){
   'use strict';
   const DEFAULT_GATEWAY='https://chef-secteur-ai.rednewtizi.workers.dev';
+  const MAX_TRIES=80;
+  let tries=0;
+  let retryTimer=null;
 
   function apply(){
     try{
@@ -31,12 +34,19 @@
     }
   }
 
-  let tries=0;
-  const timer=setInterval(function(){
-    tries++;
-    if(apply() || tries>80) clearInterval(timer);
-  },100);
+  function retry(){
+    retryTimer=null;
+    tries+=1;
+    if(apply() || tries>=MAX_TRIES) return;
+    retryTimer=setTimeout(retry,100);
+  }
 
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',apply);
-  else setTimeout(apply,0);
+  function boot(){
+    if(retryTimer) clearTimeout(retryTimer);
+    tries=0;
+    retry();
+  }
+
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot,{once:true});
+  else setTimeout(boot,0);
 })();
