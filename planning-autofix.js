@@ -60,14 +60,16 @@ function installAutoApply(){
   return true;
 }
 
-var tries=0;
-var timer=setInterval(function(){
-  tries++;
-  installAutoApply();
-  if(tries>120) clearInterval(timer);
-},100);
+function retryInstall(){
+  if(installAutoApply()) return;
+  [80,180,350,700,1400,2600].forEach(function(delay){
+    setTimeout(function(){installAutoApply()},delay);
+  });
+}
 
-if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',installAutoApply);
-else installAutoApply();
-window.addEventListener('load',installAutoApply);
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',retryInstall,{once:true});
+else retryInstall();
+window.addEventListener('load',installAutoApply,{once:true});
+window.addEventListener('focus',installAutoApply);
+document.addEventListener('visibilitychange',function(){if(!document.hidden)installAutoApply()});
 })();
