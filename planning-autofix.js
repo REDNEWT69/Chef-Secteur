@@ -1,35 +1,6 @@
 (function(){
 'use strict';
 
-function hasBase(){
-  try{
-    return !!(window.state&&state.profile&&Number.isFinite(Number(state.profile.baseLat))&&Number.isFinite(Number(state.profile.baseLon)));
-  }catch(e){return false}
-}
-
-var originalHav=window.hav;
-var originalHavBase=window.havBase;
-var originalBaseObj=window.baseObj;
-
-if(typeof originalHav==='function'){
-  window.hav=function(a,b){
-    if((a&&a.__chefNoBase)||(b&&b.__chefNoBase)) return 0;
-    return originalHav.apply(this,arguments);
-  };
-}
-if(typeof originalHavBase==='function'){
-  window.havBase=function(store){
-    if(!hasBase()) return 0;
-    return originalHavBase.apply(this,arguments);
-  };
-}
-if(typeof originalBaseObj==='function'){
-  window.baseObj=function(){
-    if(!hasBase()) return {lat:null,lon:null,__chefNoBase:true};
-    return originalBaseObj.apply(this,arguments);
-  };
-}
-
 function installAutoApply(){
   var R=window.ChefReliability;
   if(!R||typeof R.capture!=='function') return false;
