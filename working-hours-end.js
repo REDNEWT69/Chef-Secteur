@@ -44,13 +44,14 @@
     return true;
   }
   function hooks(){
-    if(!window.__workingEndGenerate&&typeof window.generateWeek==='function'){
-      var g=window.generateWeek;window.generateWeek=function(){return g.apply(this,arguments)};window.__workingEndGenerate=true;
-    }
     if(!window.__workingEndRead&&typeof window.readPlanningControls==='function'){
       var b=window.readPlanningControls;window.readPlanningControls=function(){var r=b.apply(this,arguments);ensure();var el=document.getElementById('endTime');if(el&&el.value)state.settings.endTime=el.value;return r};window.__workingEndRead=true;
     }
   }
-  let n=0,t=setInterval(function(){n++;installField();hooks();if(n>120)clearInterval(t)},100);
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){installField();hooks()});else setTimeout(function(){installField();hooks()},0);
+  function boot(){installField();hooks()}
+  function scheduleBoot(){[0,80,220,500,1000,1800].forEach(function(delay){setTimeout(boot,delay)})}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',scheduleBoot,{once:true});else scheduleBoot();
+  window.addEventListener('load',boot,{once:true});
+  window.addEventListener('focus',boot);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)boot()});
 })();
