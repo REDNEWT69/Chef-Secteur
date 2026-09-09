@@ -2,7 +2,7 @@
 'use strict';
 const R=window.ChefReliability;let busy=false;
 function notice(message){const n=document.getElementById('backupFeedback');if(n)n.textContent=message;else if(typeof showError==='function')showError(message)}
-function label(b){return b.state.stores.length+' magasins · '+Object.keys(b.archive).length+' semaines archivées'}
+function label(b){return b.state.stores.length+' magasins · '+Object.keys(b.archive).length+' semaines archivées'+(Array.isArray(b.catalog)?' · '+b.catalog.length+' ajout(s) carnet':'')}
 function preview(title,message,accept){return new Promise(resolve=>{
  const d=document.createElement('dialog');d.className='recoveryDialog';
  const h=document.createElement('h2');h.textContent=title;const p=document.createElement('p');p.textContent=message;
