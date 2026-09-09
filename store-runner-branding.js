@@ -3,7 +3,7 @@
   const APP_NAME='Store Runner';
   const SIGNATURE='S-RUNNER By Red①';
   const LOGO='./app-icon.svg';
-  let observer=null,observerHost=null,retry=0;
+  let observer=null,observerHost=null,retry=0,returnToPlanning=false,departureNavInstalled=false;
 
   function ensureCss(){
     if(document.getElementById('store-runner-branding-css'))return;
@@ -83,35 +83,41 @@
   }
 
   function installDepartureReturn(){
-    if(!window.__srDepartureOpenWrapped&&typeof window.openDepartureSettings==='function'){
-      const baseOpen=window.openDepartureSettings;
-      window.openDepartureSettings=function(){
-        const plan=document.getElementById('planPanel');
-        window.__srReturnToPlanningAfterProfileSave=!!(plan&&plan.classList.contains('active'));
-        return baseOpen.apply(this,arguments);
-      };
-      window.__srDepartureOpenWrapped=true;
-    }
-    if(!window.__srProfileSaveWrapped&&typeof window.saveProfile==='function'){
-      const baseSave=window.saveProfile;
-      window.saveProfile=function(){
-        const shouldReturn=!!window.__srReturnToPlanningAfterProfileSave;
-        const out=baseSave.apply(this,arguments);
-        if(shouldReturn){
-          window.__srReturnToPlanningAfterProfileSave=false;
-          setTimeout(function(){
-            if(typeof window.goTab==='function')window.goTab('planPanel');
-            if(typeof window.syncBottomNav==='function')try{window.syncBottomNav('planPanel')}catch(e){}
-            window.scrollTo({top:0,behavior:'smooth'});
-          },120);
-        }
-        return out;
-      };
-      window.__srProfileSaveWrapped=true;
-    }
+    if(departureNavInstalled)return;
+    departureNavInstalled=true;
+    document.addEventListener('click',function(e){
+      const btn=e.target&&e.target.closest?e.target.closest('button'):null;
+      if(!btn)return;
+
+      if(btn.closest('#planPanel .departureCard')){
+        returnToPlanning=true;
+        return;
+      }
+
+      if(!returnToPlanning||!btn.closest('#departureSettings'))return;
+      const action=btn.getAttribute('onclick')||'';
+      if(action.indexOf('saveProfile')<0)return;
+
+      setTimeout(function(){
+        try{
+          const latInput=document.getElementById('pBaseLat');
+          const lonInput=document.getElementById('pBaseLon');
+          const lat=latInput?parseFloat(latInput.value):NaN;
+          const lon=lonInput?parseFloat(lonInput.value):NaN;
+          const profile=window.state&&state.profile?state.profile:null;
+          const saved=profile&&isFinite(lat)&&isFinite(lon)&&Math.abs(Number(profile.baseLat)-lat)<0.000001&&Math.abs(Number(profile.baseLon)-lon)<0.000001;
+          if(!saved)return;
+          returnToPlanning=false;
+          if(typeof window.goTab==='function')window.goTab('planPanel');
+          else if(typeof window.switchTab==='function')window.switchTab('planPanel',null);
+          if(typeof window.syncBottomNav==='function')try{window.syncBottomNav('planPanel')}catch(err){}
+          window.scrollTo({top:0,behavior:'smooth'});
+        }catch(err){console.warn('Retour planning indisponible',err)}
+      },180);
+    },true);
   }
 
-  function apply(){ensureCss();applyMeta();const top=applyTop();const home=applyHome();installDepartureReturn();return top&&home}
+  function apply(){ensureCss();applyMeta();installDepartureReturn();const top=applyTop();const home=applyHome();return top&&home}
 
   function observe(){
     const host=document.getElementById('homePanel')||document.body;
