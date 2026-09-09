@@ -22,4 +22,9 @@ forbid('manager-home-fixes.js',[
   ['wrapper syncGoogleCalendar',/window\.syncGoogleCalendar\s*=\s*async\s+function/]
 ]);
 
+forbid('timeline-end-times.js',[
+  ['wrapper renderAll',/window\.renderAll\s*=\s*function/],
+  ['wrapper renderWeek',/window\.renderWeek\s*=\s*function/]
+]);
+
 console.log('Architecture guards: OK');
