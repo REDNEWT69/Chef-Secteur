@@ -30,6 +30,15 @@
     }
     try{if(typeof save==='function')save()}catch(e){}
   }
+  function persistEndTime(value,trim){
+    if(!ensure())return;
+    state.settings.endTime=value||'18:00';
+    try{if(typeof save==='function')save()}catch(e){}
+    if(trim){
+      trimToEnd();
+      try{if(typeof renderAll==='function')renderAll()}catch(e){}
+    }
+  }
   function installField(){
     if(!ensure())return false;
     if(document.getElementById('endTime'))return true;
@@ -40,15 +49,11 @@
     div.innerHTML='<label>Heure de fin (lundi–vendredi)</label><input id="endTime" type="time" value="'+String(state.settings.endTime||'18:00')+'">';
     if(grid&&grid.classList.contains('premium-time'))grid.insertBefore(div,cell.nextSibling);else cell.insertAdjacentElement('afterend',div);
     var el=document.getElementById('endTime');
-    el.addEventListener('change',function(){ensure();state.settings.endTime=this.value||'18:00';try{if(typeof save==='function')save()}catch(e){};trimToEnd();try{if(typeof renderAll==='function')renderAll()}catch(e){}});
+    el.addEventListener('input',function(){persistEndTime(this.value,false)});
+    el.addEventListener('change',function(){persistEndTime(this.value,true)});
     return true;
   }
-  function hooks(){
-    if(!window.__workingEndRead&&typeof window.readPlanningControls==='function'){
-      var b=window.readPlanningControls;window.readPlanningControls=function(){var r=b.apply(this,arguments);ensure();var el=document.getElementById('endTime');if(el&&el.value)state.settings.endTime=el.value;return r};window.__workingEndRead=true;
-    }
-  }
-  function boot(){installField();hooks()}
+  function boot(){installField()}
   function scheduleBoot(){[0,80,220,500,1000,1800].forEach(function(delay){setTimeout(boot,delay)})}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',scheduleBoot,{once:true});else scheduleBoot();
   window.addEventListener('load',boot,{once:true});

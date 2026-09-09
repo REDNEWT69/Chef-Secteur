@@ -25,6 +25,16 @@
     try{if(typeof save==='function')save()}catch(e){}
   }
 
+  function persistMaxVisits(value,applyCap){
+    if(!ensure())return;
+    state.settings.maxVisitsPerDay=Math.max(1,Math.min(8,Number(value)||4));
+    try{if(typeof save==='function')save()}catch(e){}
+    if(applyCap){
+      capPlan();
+      try{if(typeof renderAll==='function')renderAll()}catch(e){}
+    }
+  }
+
   function installField(){
     if(!ensure())return false;
     if(document.getElementById('maxVisitsPerDay'))return true;
@@ -49,32 +59,12 @@
     hint.insertAdjacentElement('beforebegin',input);
     input.insertAdjacentElement('beforebegin',label);
 
-    input.addEventListener('change',function(){
-      state.settings.maxVisitsPerDay=Math.max(1,Math.min(8,Number(this.value)||4));
-      capPlan();
-      try{if(typeof renderAll==='function')renderAll()}catch(e){}
-    });
+    input.addEventListener('input',function(){persistMaxVisits(this.value,false)});
+    input.addEventListener('change',function(){persistMaxVisits(this.value,true)});
     return true;
   }
 
-  function installReadHook(){
-    if(window.__dailyCapRead||typeof window.readPlanningControls!=='function')return false;
-    const base=window.readPlanningControls;
-    window.readPlanningControls=function(){
-      const result=base.apply(this,arguments);
-      ensure();
-      const el=document.getElementById('maxVisitsPerDay');
-      if(el)state.settings.maxVisitsPerDay=Math.max(1,Math.min(8,Number(el.value)||4));
-      return result;
-    };
-    window.__dailyCapRead=true;
-    return true;
-  }
-
-  function boot(){
-    installField();
-    installReadHook();
-  }
+  function boot(){installField()}
 
   function scheduleBoot(){
     [0,80,250,700,1500].forEach(function(delay){setTimeout(boot,delay)});
