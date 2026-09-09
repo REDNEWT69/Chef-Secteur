@@ -22,5 +22,14 @@
   window.chefSecteurStoreScheduleAnswer=answer;
   function install(){if(window.__storeScheduleAssistantInstalledV2||typeof window.assistantSend!=='function')return false;const base=window.assistantSend;window.assistantSend=function(){snapshotCurrentWeek();const input=document.getElementById('assistantInput'),text=input&&input.value?input.value.trim():'';if(text){const a=answer(text);if(a){input.value='';if(typeof window.assistantAdd==='function')window.assistantAdd(text,'user');if(typeof window.assistantBot==='function')window.assistantBot(a);return}}return base.apply(this,arguments)};window.__storeScheduleAssistantInstalledV2=true;return true}
   function hookSnapshots(){if(!window.__planArchiveRenderHook&&typeof window.renderAll==='function'){const b=window.renderAll;window.renderAll=function(){const r=b.apply(this,arguments);setTimeout(snapshotCurrentWeek,50);return r};window.__planArchiveRenderHook=true}if(!window.__planArchiveGenerateHook&&typeof window.generateWeek==='function'){const b=window.generateWeek;window.generateWeek=function(){const r=b.apply(this,arguments);setTimeout(snapshotCurrentWeek,120);return r};window.__planArchiveGenerateHook=true}}
-  let tries=0;const timer=setInterval(function(){tries++;hookSnapshots();snapshotCurrentWeek();if(install()&&window.__planArchiveRenderHook||tries>100)clearInterval(timer)},100);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){hookSnapshots();install();snapshotCurrentWeek()});else setTimeout(function(){hookSnapshots();install();snapshotCurrentWeek()},0);
+  function refreshHooks(){hookSnapshots();return install()}
+  function boot(){
+    refreshHooks();
+    snapshotCurrentWeek();
+    [100,250,600,1200,2400].forEach(function(delay){setTimeout(refreshHooks,delay)});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
+  window.addEventListener('load',function(){refreshHooks();snapshotCurrentWeek()},{once:true});
+  window.addEventListener('focus',refreshHooks);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)refreshHooks()});
 })();
