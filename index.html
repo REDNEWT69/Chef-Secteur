@@ -127,9 +127,9 @@
       const scriptTag=(src)=>'<script src="'+withRev(src)+'"><\/script>';
       const styleTag=(href)=>'<link rel="stylesheet" href="'+withRev(href)+'">';
       const calendarOauthShim=[
-        './calendar-oauth.js','./calendar-enhancements.js','./ui-polish.js','./route-polish.js','./planning-ui-fixes.js','./ai-gateway-config.js','./assistant-upgrade.js','./ai-context-limit.js','./assistant-store-lookup.js','./map-layer-fix.js','./timeline-end-times.js','./range-planner-v2.js','./working-hours-end.js','./daily-capacity.js','./planning-pro-plus.js','./period-day-slider.js','./workdays-enforcer.js','./visit-history-delete.js','./assistant-sheet-drag.js','./visual-refresh-v1.js','./home-refresh-v2.js','./auto-planning-fix.js'
+        './calendar-oauth.js','./calendar-enhancements.js','./ui-polish.js','./route-polish.js','./navigation-controller.js','./profile-controller.js','./store-runner-branding.js','./planning-ui-fixes.js','./ai-gateway-config.js','./assistant-upgrade.js','./ai-context-limit.js','./assistant-store-lookup.js','./map-layer-fix.js','./timeline-end-times.js','./range-planner-v2.js','./working-hours-end.js','./daily-capacity.js','./planning-pro-plus.js','./period-day-slider.js','./workdays-enforcer.js','./visit-history-delete.js','./assistant-sheet-drag.js','./visual-refresh-v1.js','./home-refresh-v2.js','./planning-autofix.js','./auto-planning-fix.js'
       ].map(scriptTag).join('');
-      const regionUi=styleTag('./region-stores.css')+['./region-fetch-resilience.js','./region-stores.js','./official-catalog.js','./stores-layout-order.js'].map(scriptTag).join('');
+      const regionUi=styleTag('./region-stores.css')+['./region-fetch-resilience.js','./region-stores.js','./official-catalog.js','./boulanger-national.js','./national-sectors.js','./sector-admin.js','./stores-layout-order.js'].map(scriptTag).join('');
       const connectionUi=scriptTag('./connection-ui.js');
       const patchedHtml=html.replace('<head>','<head>'+scriptTag('./reliability-core.js')+runtimeScopeShim+assistantUiShim+styleTag('./glass-theme.css')).replace('</body>',calendarOauthShim+connectionUi+regionUi+scriptTag('./reliability-ui.js')+'</body>');
       document.open();

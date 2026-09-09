@@ -6,8 +6,9 @@ function forbid(file,label,re){if(re.test(read(file)))throw new Error(`${file}: 
 
 forbid('store-runner-branding.js','état de retour au planning',/returnToPlanning|departureNavInstalled/);
 forbid('store-runner-branding.js','logique de sauvegarde profil',/saveProfile/);
-must('store-runner-branding.js','chargement du contrôleur de navigation',/navigation-controller\.js/);
-must('store-runner-branding.js','chargement du contrôleur profil',/profile-controller\.js/);
+forbid('store-runner-branding.js','chargement de contrôleurs',/navigation-controller\.js|profile-controller\.js|createElement\(['"]script['"]\)/);
+must('index.html','chargement du contrôleur de navigation',/'\.\/navigation-controller\.js'/);
+must('index.html','chargement du contrôleur profil',/'\.\/profile-controller\.js'/);
 
 must('navigation-controller.js','origine planning',/#planPanel \.departureCard/);
 must('navigation-controller.js','retour planning',/goTab\(['"]planPanel['"]\)/);

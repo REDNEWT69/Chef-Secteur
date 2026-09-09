@@ -59,7 +59,8 @@ forbid('sector-admin.js',[
   ['ancienne limite 500 magasins',/\.slice\(\s*0\s*,\s*500\s*\)/]
 ]);
 forbid('store-runner-branding.js',[
-  ['ancien chargeur de filtre secteur',/sector-brand-filter\.js/]
+  ['ancien chargeur de filtre secteur',/sector-brand-filter\.js/],
+  ['chargement dynamique de scripts',/createElement\(['"]script['"]\)/]
 ]);
 requireMatch('sector-admin.js','filtre enseigne intégré',/saBrandFilter/);
 requireMatch('sector-admin.js','chargement progressif du catalogue',/Afficher plus/);
@@ -73,11 +74,9 @@ requireMatch('official-catalog.js','bouton afficher plus du carnet',/Afficher pl
 requireMatch('official-catalog.js','réinitialisation pagination sur filtres',/resetAndRender/);
 
 forbid('stores-layout-order.js',[
-  ['révision datée codée en dur',/\?rev=20\d{6}/],
-  ['wrapper renderStores',/window\.renderStores\s*=\s*function/]
+  ['wrapper renderStores',/window\.renderStores\s*=\s*function/],
+  ['chargeur de scripts imbriqué',/createElement\(['"]script['"]\)|loadScript\s*\(|withModuleRev\s*\(/]
 ]);
-requireMatch('stores-layout-order.js','lecture de la révision du module',/document\.currentScript/);
-requireMatch('stores-layout-order.js','héritage de révision des sous-modules',/withModuleRev/);
 requireMatch('stores-layout-order.js','cible observée du filtre régional',/observedRegionResults/);
 requireMatch('stores-layout-order.js','reconnexion observer sur nouvelle liste',/observedRegionResults\s*!==\s*results/);
 requireMatch('stores-layout-order.js','déconnexion ancien observer régional',/regionResultsObserver\.disconnect\(\)/);
@@ -123,11 +122,17 @@ if(!/skipWaiting\(\)/.test(sw)||!/clients\.claim\(\)/.test(sw))throw new Error('
 ['./region-fetch-resilience.js','./official-catalog.js','./data/official-stores.json'].forEach(asset=>{
   if(!sw.includes(`"${asset}"`)&&!sw.includes(`'${asset}'`))throw new Error(`PWA: ressource magasins absente du cache hors ligne: ${asset}`);
 });
+
+[
+  './navigation-controller.js','./profile-controller.js','./store-runner-branding.js','./planning-autofix.js',
+  './boulanger-national.js','./national-sectors.js','./sector-admin.js','./stores-layout-order.js'
+].forEach(asset=>{
+  if(!index.includes(`'${asset}'`)&&!index.includes(`"${asset}"`))throw new Error(`Chargeur principal: module explicite absent: ${asset}`);
+});
 if(!index.includes("'./region-fetch-resilience.js'")||!index.includes("'./official-catalog.js'"))throw new Error('PWA: modules magasins attendus absents du chargeur principal');
 
 const runtimeAssets=[...index.matchAll(/['\"](\.\/[A-Za-z0-9_./-]+\.(?:js|css))['\"]/g)].map(m=>m[1]);
-const nestedAssets=[...read('stores-layout-order.js').matchAll(/['\"](\.\/[A-Za-z0-9_./-]+\.js)['\"]/g)].map(m=>m[1]);
-for(const asset of new Set(runtimeAssets.concat(nestedAssets).filter(asset=>asset!=='./sw.js'))){
+for(const asset of new Set(runtimeAssets.filter(asset=>asset!=='./sw.js'))){
   if(!sw.includes(`"${asset}"`)&&!sw.includes(`'${asset}'`))throw new Error(`PWA: ressource runtime absente du cache hors ligne: ${asset}`);
 }
 

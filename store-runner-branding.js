@@ -5,27 +5,6 @@
   const LOGO='./app-icon.svg';
   let observer=null,observerHost=null,retry=0;
 
-  function controllerSrc(path){
-    try{
-      const current=document.currentScript;
-      const rev=current&&current.src?new URL(current.src,window.location.href).searchParams.get('rev')||'':'';
-      return path+(rev?'?rev='+encodeURIComponent(rev):'');
-    }catch(e){return path}
-  }
-
-  function loadController(id,path){
-    if(document.getElementById(id))return;
-    const s=document.createElement('script');
-    s.id=id;
-    s.src=controllerSrc(path);
-    document.head.appendChild(s);
-  }
-
-  function loadControllers(){
-    loadController('store-runner-navigation-controller','./navigation-controller.js');
-    loadController('store-runner-profile-controller','./profile-controller.js');
-  }
-
   function ensureCss(){
     if(document.getElementById('store-runner-branding-css'))return;
     const s=document.createElement('style');
@@ -103,7 +82,7 @@
     return true;
   }
 
-  function apply(){ensureCss();applyMeta();loadControllers();const top=applyTop();const home=applyHome();return top&&home}
+  function apply(){ensureCss();applyMeta();const top=applyTop();const home=applyHome();return top&&home}
 
   function observe(){
     const host=document.getElementById('homePanel')||document.body;
