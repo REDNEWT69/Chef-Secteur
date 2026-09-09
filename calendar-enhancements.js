@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-  let installed=false,decorating=false,decorateTimer=null;
+  let decorating=false;
 
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
   function tmin(v){if(!v)return null;const p=String(v).split(':');if(p.length<2)return null;const h=Number(p[0]),m=Number(p[1]);return Number.isFinite(h)&&Number.isFinite(m)?h*60+m:null}
@@ -124,17 +124,17 @@
       sources.forEach(src=>{const inside=src.closest('.day');if(inside){makeProminent(src);return}const target=findDayForOvernight(src,cards);if(target){const body=target.querySelector('.daybody')||target,clone=src.cloneNode(true);clone.classList.add('gcal-overnight-copy');makeProminent(clone);body.appendChild(clone)}else makeProminent(src)});
     }finally{decorating=false}
   }
-  function observe(){
-    if(window.__chefEnhancementObserver)return;const target=document.querySelector('.wrap')||document.body;const obs=new MutationObserver(()=>{clearTimeout(decorateTimer);decorateTimer=setTimeout(function(){cleanContextText();decorateOpeningHours();decorateOvernights()},100)});obs.observe(target,{childList:true,subtree:true});window.__chefEnhancementObserver=obs;
-  }
 
-  async function boot(){
-    for(let i=0;i<50;i++){
-      wrapContextRenderers();wrapStoreDialog();installOpeningAwareSchedule();wrapWeekRender();cleanContextText();observe();decorateOvernights();
-      if(window.__contextHeaderWrapped&&window.__openingScheduleWrapped&&window.__openingRenderWrapped){installed=true;break}
-      await new Promise(r=>setTimeout(r,120));
-    }
-    cleanContextText();decorateOpeningHours();decorateOvernights();
+  function refresh(){wrapContextRenderers();wrapStoreDialog();installOpeningAwareSchedule();wrapWeekRender();cleanContextText();decorateOpeningHours();decorateOvernights()}
+  function installEvents(){
+    if(window.__calendarEnhancementEvents)return;
+    document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(refresh,40)},true);
+    window.addEventListener('focus',refresh);
+    document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(refresh,0)});
+    window.addEventListener('chef-range-generated',function(){setTimeout(refresh,40)});
+    window.__calendarEnhancementEvents=true;
   }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
+  function boot(){installEvents();refresh();[80,180,350,700,1400,2600].forEach(delay=>setTimeout(refresh,delay))}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
+  window.addEventListener('load',refresh,{once:true});
 })();
