@@ -39,6 +39,19 @@ forbid('timeline-end-times.js',[
   ['wrapper renderWeek',/window\.renderWeek\s*=\s*function/]
 ]));
 
+forbid('sector-admin.js',[
+  ['ancienne limite 500 magasins',/\.slice\(\s*0\s*,\s*500\s*\)/]
+]);
+forbid('store-runner-branding.js',[
+  ['ancien chargeur de filtre secteur',/sector-brand-filter\.js/]
+]);
+requireMatch('sector-admin.js','filtre enseigne intégré',/saBrandFilter/);
+requireMatch('sector-admin.js','chargement progressif du catalogue',/Afficher plus/);
+
+const deployWorkflow=read('.github/workflows/deploy-pages.yml');
+if(!/^name:\s*Deploy Store Runner/m.test(deployWorkflow))throw new Error('Workflow: nom Store Runner absent');
+if(/Chef Secteur SAMSUNG/.test(deployWorkflow))throw new Error('Workflow: ancien branding encore présent');
+
 const index=read('index.html');
 const sw=read('sw.js');
 const indexRev=requireMatch('index.html','BUILD_REV',/const BUILD_REV=['\"]([^'\"]+)['\"]/)[1];
