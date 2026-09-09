@@ -14,7 +14,8 @@
       if(typeof window.chefSecteurPrepareCalendarForPlanning==='function'){
         try{await window.chefSecteurPrepareCalendarForPlanning()}catch(e){console.warn('Préparation Agenda ignorée :',e)}
       }
-      const out=await base.apply(this,arguments);
+      const generator=typeof window.storeRunnerGenerateSingleWeek==='function'?window.storeRunnerGenerateSingleWeek:base;
+      const out=await generator.apply(this,arguments);
       if(typeof window.chefSecteurEnforceBlockedDays==='function'){
         try{window.chefSecteurEnforceBlockedDays()}catch(e){console.warn('Application des jours bloqués impossible :',e)}
       }

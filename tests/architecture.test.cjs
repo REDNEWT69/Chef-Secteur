@@ -54,6 +54,12 @@ forbidMany('period-day-slider.js',[
 ]);
 requireMatch('period-day-slider.js','écoute événement planning',/store-runner:planning-updated/);
 
+forbidMany('range-planner-v2.js',[
+  ['override generateWeek',/window\.generateWeek\s*=/],
+  ['wrapper renderAll',/window\.renderAll\s*=\s*function/]
+]);
+requireMatch('range-planner-v2.js','générateur semaine spécialisé',/storeRunnerGenerateSingleWeek\s*=\s*strictSingleWeek/);
+
 forbidMany('auto-planning-fix.js',[['sauvegarde profil',/window\.saveProfile\s*=/],['override baseObj',/window\.baseObj\s*=/],['override havBase',/window\.havBase\s*=/],['base Francheville codée en dur',/Francheville/],['départ temporaire session',/chef_departure_override_v1/],['wrapper Google Agenda',/window\.syncGoogleCalendar\s*=(?!=)/],['token Google',/chef_secteur_google_token_v2/]]);
 requireMatch('auto-planning-fix.js','application automatique Reliability',/R\.propose/);
 
@@ -90,6 +96,7 @@ requireMatch('planning-generation-controller.js','marqueur propriétaire génér
 requireMatch('planning-generation-controller.js','préparation Agenda appelée',/chefSecteurPrepareCalendarForPlanning/);
 requireMatch('planning-generation-controller.js','jours Agenda appliqués après génération',/chefSecteurEnforceBlockedDays/);
 requireMatch('planning-generation-controller.js','événement planning publié',/store-runner:planning-updated/);
+requireMatch('planning-generation-controller.js','moteur semaine spécialisé consulté',/storeRunnerGenerateSingleWeek/);
 
 const ai=read('ai-gateway-config.js');
 if(/\b(?:client_secret|api[_-]?key)\b\s*[:=]\s*['"][^'"]{12,}['"]/i.test(ai))throw new Error('IA: secret ou clé API détecté côté navigateur');
