@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-  let busy=false,timer=null,mapInstance=null,leafletLoading=null,routeSeq=0;
+  let busy=false,timer=null,mapInstance=null,leafletLoading=null,routeSeq=0,observer=null,refreshTimer=null;
 
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -29,15 +29,16 @@
   function ensureResponsiveCss(){if(document.getElementById('route-polish-responsive'))return;const s=document.createElement('style');s.id='route-polish-responsive';s.textContent='#routeCompactCard{width:100%!important;max-width:100%!important;min-width:0!important;overflow:hidden!important}#routeCompactCard>div{min-width:0!important}#freeRouteMap{width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important}.leaflet-container{width:100%!important;max-width:100%!important;box-sizing:border-box!important}@media(max-width:700px){#freeRouteMap{height:300px!important}#routeCompactCard{padding:12px!important;border-radius:15px!important}}';document.head.appendChild(s)}
   function renderCompactRoute(){const shell=document.querySelector('#planPanel .timelineShell');if(!shell)return;let box=document.getElementById('routeCompactCard');if(!box){box=document.createElement('div');box.id='routeCompactCard';shell.parentNode.insertBefore(box,shell.nextSibling)}const day=selectedDay(),route=routeForDay(day);if(!route.length){box.style.display='none';return}box.style.display='block';box.style.cssText='margin:12px 0 0;padding:14px 16px;border:1px solid #e1e5ed;border-radius:18px;background:#fff;box-shadow:0 4px 14px rgba(25,42,80,.045);width:100%;max-width:100%;min-width:0;overflow:hidden';const names=route.slice(0,5).map((s,i)=>(i+1)+'. '+esc((s.enseigne||'')+' '+(s.ville||''))).join(' · ')+(route.length>5?' · +'+(route.length-5)+' autres':'');box.innerHTML='<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;min-width:0"><div style="min-width:0;flex:1"><b style="font-size:14px">🗺 Tournée du '+esc(day)+'</b><div id="freeMapStats" style="font-size:11px;color:#667085;margin-top:4px">'+route.length+' visite'+(route.length>1?'s':'')+' · calcul routier en cours</div><div style="font-size:10.5px;color:#7b8494;margin-top:5px;line-height:1.4;overflow-wrap:anywhere">'+names+'</div></div><button class="secondary" type="button" onclick="openSelectedDayRoute()"> Ouvrir la tournée dans Plans</button></div><div id="freeRouteMap" style="width:100%;max-width:100%;height:340px;margin-top:12px;border-radius:16px;overflow:hidden;background:#f5f5f7"></div><div style="font-size:9.5px;color:#98a2b3;margin-top:6px">Carte OpenStreetMap · tracé routier calculé en ligne, sans abonnement ni clé API.</div>';setTimeout(renderFreeMap,40)}
   function polish(){if(busy)return;busy=true;try{ensureResponsiveCss();hideLegacyMap();renderCompactRoute()}finally{busy=false}}
-  function hook(){if(!window.__routePolishWeek&&typeof window.renderWeek==='function'){const base=window.renderWeek;window.renderWeek=function(){const out=base.apply(this,arguments);setTimeout(polish,0);return out};window.__routePolishWeek=true}if(!window.__routePolishAll&&typeof window.renderAll==='function'){const base=window.renderAll;window.renderAll=function(){const out=base.apply(this,arguments);setTimeout(polish,0);return out};window.__routePolishAll=true}}
-  function refresh(){hook();polish()}
+  function schedulePolish(delay){clearTimeout(refreshTimer);refreshTimer=setTimeout(polish,delay==null?40:delay)}
+  function observeTimeline(){if(observer)return true;const shell=document.querySelector('#planPanel .timelineShell');if(!shell)return false;observer=new MutationObserver(function(records){for(const r of records){if((r.addedNodes&&r.addedNodes.length)||(r.removedNodes&&r.removedNodes.length)||r.type==='characterData'){schedulePolish(50);return}}});observer.observe(shell,{childList:true,subtree:true,characterData:true});return true}
+  function refresh(){observeTimeline();polish()}
   function installEvents(){
     if(window.__routePolishEvents)return;
-    document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(polish,40)},true);
+    document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))schedulePolish(40)},true);
     window.addEventListener('resize',()=>{clearTimeout(timer);timer=setTimeout(()=>{if(mapInstance)mapInstance.invalidateSize(true)},120)});
-    window.addEventListener('focus',refresh);
-    document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
-    window.addEventListener('chef-range-generated',()=>setTimeout(refresh,40));
+    window.addEventListener('focus',()=>schedulePolish(30));
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)schedulePolish(30)});
+    window.addEventListener('chef-range-generated',()=>schedulePolish(40));
     window.__routePolishEvents=true;
   }
   function boot(){installEvents();refresh();[80,180,350,700,1400,2600].forEach(delay=>setTimeout(refresh,delay))}
