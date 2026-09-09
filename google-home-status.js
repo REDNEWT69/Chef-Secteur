@@ -1,7 +1,6 @@
 (function(){
   'use strict';
   const TOKEN_KEY='chef_secteur_google_token_v2';
-  let timer=null;
 
   function hasToken(){try{return !!sessionStorage.getItem(TOKEN_KEY)}catch(e){return false}}
   function eventCount(){try{return Array.isArray(state.calendarEvents)?state.calendarEvents.length:0}catch(e){return 0}}
@@ -67,9 +66,10 @@
     }
   }
 
-  let tries=0;
-  const boot=setInterval(function(){tries++;hook();render();if(tries>120)clearInterval(boot)},100);
-  document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(render,50)});
+  function boot(){hook();render()}
+  [0,100,250,600,1200].forEach(function(delay){setTimeout(boot,delay)});
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(boot,50)});
+  window.addEventListener('focus',function(){setTimeout(boot,30)});
   window.addEventListener('storage',function(){setTimeout(render,30)});
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){hook();render()});else setTimeout(function(){hook();render()},0);
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
