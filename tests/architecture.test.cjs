@@ -52,6 +52,15 @@ const deployWorkflow=read('.github/workflows/deploy-pages.yml');
 if(!/^name:\s*Deploy Store Runner/m.test(deployWorkflow))throw new Error('Workflow: nom Store Runner absent');
 if(/Chef Secteur SAMSUNG/.test(deployWorkflow))throw new Error('Workflow: ancien branding encore présent');
 
+const calendarOauth=read('calendar-oauth.js');
+if(/client_secret/i.test(calendarOauth))throw new Error('Agenda: client_secret ne doit jamais être embarqué côté navigateur');
+if(/localStorage\.(?:getItem|setItem)\(\s*TOKEN_KEY/.test(calendarOauth))throw new Error('Agenda: token Google interdit dans localStorage');
+if(!/sessionStorage\.getItem\(TOKEN_KEY\)/.test(calendarOauth))throw new Error('Agenda: token Google doit rester en sessionStorage');
+
+const aiGateway=read('ai-gateway-config.js');
+if(/\b(?:client_secret|api[_-]?key)\b\s*[:=]\s*['"][^'"]{12,}['"]/i.test(aiGateway))throw new Error('IA: secret ou clé API détecté côté navigateur');
+if(!/workers\.dev/.test(aiGateway))throw new Error('IA: passerelle publique attendue absente');
+
 const index=read('index.html');
 const sw=read('sw.js');
 const indexRev=requireMatch('index.html','BUILD_REV',/const BUILD_REV=['\"]([^'\"]+)['\"]/)[1];
