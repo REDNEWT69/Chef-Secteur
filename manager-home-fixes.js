@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   const TOKEN_KEY='chef_secteur_google_token_v2';
-  let timer=null;
+  let timer=null,homeObserver=null,googleObserver=null;
 
   function hasToken(){try{return !!sessionStorage.getItem(TOKEN_KEY)}catch(e){return false}}
   function eventCount(){try{return Array.isArray(state.calendarEvents)?state.calendarEvents.length:0}catch(e){return 0}}
@@ -37,23 +37,36 @@
     return true;
   }
 
-  function hook(){
-    if(!window.__managerHomeFixRender&&typeof window.renderAll==='function'){const base=window.renderAll;window.renderAll=function(){const out=base.apply(this,arguments);setTimeout(render,40);return out};window.__managerHomeFixRender=true}
-    if(!window.__managerHomeFixSync&&typeof window.syncGoogleCalendar==='function'){const base=window.syncGoogleCalendar;window.syncGoogleCalendar=async function(){const out=await base.apply(this,arguments);setTimeout(render,40);return out};window.__managerHomeFixSync=true}
-    return window.__managerHomeFixRender&&window.__managerHomeFixSync;
+  function observeGoogleStatus(){
+    if(googleObserver)return;
+    const badge=document.getElementById('googleCalendarBadge'),status=document.getElementById('googleCalendarStatus');
+    if(!badge&&!status)return;
+    googleObserver=new MutationObserver(function(){setTimeout(render,20)});
+    if(badge)googleObserver.observe(badge,{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['class']});
+    if(status)googleObserver.observe(status,{childList:true,characterData:true,subtree:true});
   }
 
-  async function boot(){
-    for(let i=0;i<40;i++){
-      hook();
-      render();
-      if(window.__managerHomeFixRender&&document.getElementById('premiumHomeV2'))break;
-      await new Promise(r=>setTimeout(r,100));
-    }
+  function observeHome(){
+    if(homeObserver)return;
+    const host=document.getElementById('homePanel')||document.body;if(!host)return;
+    homeObserver=new MutationObserver(function(records){
+      for(const r of records){
+        if(!r.addedNodes||!r.addedNodes.length)continue;
+        for(const node of r.addedNodes){
+          if(node&&node.nodeType===1&&(node.id==='premiumHomeV2'||(node.querySelector&&node.querySelector('#premiumHomeV2')))){setTimeout(render,0);return}
+        }
+      }
+    });
+    homeObserver.observe(host,{childList:true,subtree:true});
   }
 
-  document.addEventListener('visibilitychange',function(){if(!document.hidden){hook();setTimeout(render,40)}});
-  window.addEventListener('focus',function(){hook();setTimeout(render,40)});
+  function boot(){
+    css();render();observeGoogleStatus();observeHome();
+    [80,220,600,1200].forEach(function(delay){setTimeout(function(){render();observeGoogleStatus()},delay)});
+  }
+
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(render,40)});
+  window.addEventListener('focus',function(){setTimeout(render,40)});
   window.addEventListener('resize',function(){clearTimeout(timer);timer=setTimeout(render,80)});
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
 })();
