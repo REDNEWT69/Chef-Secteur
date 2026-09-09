@@ -54,6 +54,13 @@
     return hero;
   }
 
+  function syncSmartBrief(){
+    const brief=document.getElementById('smartBrief');
+    const plan=document.getElementById('planPanel');
+    if(!brief||!plan)return;
+    brief.style.display=plan.classList.contains('active')?'none':'';
+  }
+
   function reorderPlanning(){
     const plan=document.querySelector('#planPanel .applePlan');
     const title=plan&&plan.querySelector('.applePlanTitle');
@@ -114,14 +121,20 @@
       const btn=document.querySelector('#departureSettings button[onclick="useCurrentLocation()"]');
       if(!navigator.geolocation){feedback('Localisation indisponible sur cet appareil.','bad');return}
       if(btn){btn.disabled=true;btn.dataset.oldText=btn.textContent;btn.textContent='⌖ Localisation…'}
-      feedback('Recherche de ta position…','busy');
+      feedback('Recherche d’une position GPS précise…','busy');
       navigator.geolocation.getCurrentPosition(async function(pos){
+        const accuracy=Math.round(Number(pos.coords.accuracy)||0);
+        if(accuracy>250){
+          feedback('Position trop imprécise (±'+accuracy+' m). Active « Localisation précise » pour Store Runner puis réessaie.','bad');
+          if(btn){btn.disabled=false;btn.textContent=btn.dataset.oldText||'⌖ Utiliser ma position actuelle'}
+          return;
+        }
         const lat=Number(pos.coords.latitude),lon=Number(pos.coords.longitude),latInput=document.getElementById('pBaseLat'),lonInput=document.getElementById('pBaseLon'),nameInput=document.getElementById('pBaseName'),addressInput=document.getElementById('pBaseAddress');
         if(latInput)latInput.value=lat.toFixed(6);if(lonInput)lonInput.value=lon.toFixed(6);if(nameInput)nameInput.value='Ma position actuelle';if(addressInput)addressInput.value='Position GPS · '+lat.toFixed(5)+', '+lon.toFixed(5);
-        feedback('Position récupérée ✓','ok');
-        const address=await reverseGeocode(lat,lon);if(address&&addressInput){addressInput.value=address;feedback('Position et adresse récupérées ✓','ok')}
+        feedback('Position récupérée à ±'+accuracy+' m ✓','ok');
+        const address=await reverseGeocode(lat,lon);if(address&&addressInput){addressInput.value=address;feedback('Position et adresse récupérées à ±'+accuracy+' m ✓','ok')}
         if(btn){btn.disabled=false;btn.textContent=btn.dataset.oldText||'⌖ Utiliser ma position actuelle'}
-      },function(err){let msg='Impossible de récupérer ta position.';if(err&&err.code===1)msg='Localisation refusée. Autorise Store Runner à accéder à ta position.';else if(err&&err.code===2)msg='Position GPS indisponible pour le moment.';else if(err&&err.code===3)msg='La localisation a pris trop de temps.';feedback(msg,'bad');if(btn){btn.disabled=false;btn.textContent=btn.dataset.oldText||'⌖ Utiliser ma position actuelle'}},{enableHighAccuracy:true,timeout:12000,maximumAge:30000});
+      },function(err){let msg='Impossible de récupérer ta position.';if(err&&err.code===1)msg='Localisation refusée. Autorise Store Runner et active « Localisation précise ».';else if(err&&err.code===2)msg='Position GPS indisponible pour le moment.';else if(err&&err.code===3)msg='La localisation a pris trop de temps.';feedback(msg,'bad');if(btn){btn.disabled=false;btn.textContent=btn.dataset.oldText||'⌖ Utiliser ma position actuelle'}},{enableHighAccuracy:true,timeout:15000,maximumAge:0});
     };
 
     window.saveProfile=function(){
@@ -143,6 +156,7 @@
   function css(){if(document.getElementById('planning-fix-css'))return;const s=document.createElement('style');s.id='planning-fix-css';s.textContent=`
     #planPanel .timelineRow{min-width:0!important}#planPanel .tlMain{min-width:0!important}#planPanel .timelineRow *{max-width:100%}
     #planPanel .applePlan{padding-top:2px!important}
+    body:has(#planPanel.active) #smartBrief{display:none!important}
     .planningHeroV2{margin:0 0 8px;padding:8px 2px 2px;background:transparent;border:0;box-shadow:none}
     .planningHeroTop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
     .planningHeroPill{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.78);border:1px solid rgba(60,60,67,.12);font-size:11px;font-weight:800;color:#667085;box-shadow:0 4px 14px rgba(31,41,55,.04)}
@@ -164,10 +178,11 @@
     @media(max-width:650px){.planningHeroV2{padding-top:2px}.planningHeroTop{align-items:flex-start}.planningHeroWeek{max-width:58%;line-height:1.3}.planningHeroDay{font-size:50px}.planningHeroFull{font-size:13px}.planningToolsV2{margin-bottom:10px}.planningToolsV2 button{flex:1 1 0}.storeRunnerToast{bottom:92px}}
   `;document.head.appendChild(s)}
 
-  function run(){css();reorderPlanning();restoreHotelStars();ensureProfileFeedback();installProfileFixes();installPersistedBaseOverride()}
+  function run(){css();syncSmartBrief();reorderPlanning();restoreHotelStars();ensureProfileFeedback();installProfileFixes();installPersistedBaseOverride()}
   function schedule(){if(scheduled)return;scheduled=true;requestAnimationFrame(function(){scheduled=false;run()})}
   function observeDayTabs(){const tabs=document.getElementById('dayTabs');if(!tabs||tabs.__planningFixObserver)return;const observer=new MutationObserver(schedule);observer.observe(tabs,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});tabs.__planningFixObserver=observer}
-  function boot(){run();observeDayTabs();[120,500,900].forEach(function(delay){setTimeout(function(){run();observeDayTabs()},delay)})}
+  function observePlanPanel(){const plan=document.getElementById('planPanel');if(!plan||plan.__planningActiveObserver)return;const observer=new MutationObserver(schedule);observer.observe(plan,{attributes:true,attributeFilter:['class']});plan.__planningActiveObserver=observer}
+  function boot(){run();observeDayTabs();observePlanPanel();[120,500,900].forEach(function(delay){setTimeout(function(){run();observeDayTabs();observePlanPanel()},delay)})}
   document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(schedule,60)},true);
   document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(run,120)});
   window.addEventListener('focus',function(){setTimeout(run,120)});
