@@ -9,6 +9,8 @@ const OPTIONAL_SHELL = [
   "./region-stores.js", "./region-stores.css",
   "./manifest.webmanifest",
   "./app-icon.svg",
+  "./store-runner-logo.jpg",
+  "./store-runner-branding.js",
   "./samsung-wordmark.svg",
   "./calendar-oauth.js",
   "./calendar-enhancements.js",
