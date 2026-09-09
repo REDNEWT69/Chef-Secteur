@@ -4,6 +4,7 @@
   var retryTimer = null;
   var retryCount = 0;
   var MAX_RETRIES = 30;
+  var regionResultsObserver = null;
 
   function loadScript(id, src, onload) {
     if (document.getElementById(id)) { if (onload) onload(); return; }
@@ -38,7 +39,12 @@
       '#storesSearchTop .toolbar{margin:0!important}',
       '#storesPanel>#storeKpis{margin:22px 0 0!important}',
       '#storesPanel>.storesListCard{margin-bottom:0!important}',
-      '@media(max-width:700px){#storesSearchTop{margin-bottom:14px!important;padding:14px!important}#storesPanel>#storeKpis{margin-top:18px!important}}'
+      '#regionStoreChooser{margin:14px 0;padding:14px;border:1px solid rgba(120,125,140,.16);border-radius:18px;background:rgba(255,255,255,.72)}',
+      '#regionStoreChooser .regionChooserTitle{font-weight:800;font-size:14px;margin-bottom:9px}',
+      '#regionStoreChooser .regionChooserRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}',
+      '#regionStoreChooser select{min-width:180px;flex:1}',
+      '#regionStoreChooser .regionChooserCount{font-size:11px;color:#747981;margin-top:8px}',
+      '@media(max-width:700px){#storesSearchTop{margin-bottom:14px!important;padding:14px!important}#storesPanel>#storeKpis{margin-top:18px!important}#regionStoreChooser .regionChooserRow>*{width:100%}}'
     ].join('');
     document.head.appendChild(style);
   }
@@ -91,8 +97,93 @@
     return true;
   }
 
+  function regionBrands() {
+    if (window.RegionStores && Array.isArray(window.RegionStores.BRANDS)) return window.RegionStores.BRANDS.slice();
+    return ['Boulanger', 'Darty', 'Fnac', 'Conforama', 'Cuisinella', 'Carrefour'];
+  }
+
+  function cardBrand(card) {
+    var text = normalizeLabel(card && card.textContent);
+    var brands = regionBrands();
+    for (var i = 0; i < brands.length; i += 1) {
+      if (text.indexOf(normalizeLabel(brands[i])) !== -1) return brands[i];
+    }
+    return '';
+  }
+
+  function dispatchSelectionChange(input) {
+    if (!input) return;
+    try { input.dispatchEvent(new Event('change', { bubbles: true })); }
+    catch (e) { var evt = document.createEvent('Event'); evt.initEvent('change', true, false); input.dispatchEvent(evt); }
+  }
+
+  function applyRegionStoreFilter() {
+    var chooser = document.getElementById('regionStoreChooser');
+    var results = document.querySelector('.regionDialog .regionResults');
+    if (!chooser || !results) return;
+    var select = chooser.querySelector('#regionResultBrandFilter');
+    var wanted = select ? select.value : 'all';
+    var cards = Array.prototype.slice.call(results.querySelectorAll('.regionResult'));
+    var visible = 0;
+    cards.forEach(function (card) {
+      var brand = cardBrand(card);
+      var show = wanted === 'all' || brand === wanted;
+      card.hidden = !show;
+      card.style.display = show ? '' : 'none';
+      if (show) visible += 1;
+    });
+    var count = chooser.querySelector('.regionChooserCount');
+    if (count) count.textContent = visible + ' magasin' + (visible > 1 ? 's' : '') + ' affiché' + (visible > 1 ? 's' : '');
+  }
+
+  function ensureRegionStoreChooser() {
+    var dialog = document.querySelector('.regionDialog');
+    var results = dialog && dialog.querySelector('.regionResults');
+    if (!dialog || !results) return false;
+    ensureStyle();
+
+    var chooser = document.getElementById('regionStoreChooser');
+    if (!chooser) {
+      chooser = document.createElement('section');
+      chooser.id = 'regionStoreChooser';
+      chooser.innerHTML = '<div class="regionChooserTitle">Choisir mes magasins</div><div class="regionChooserRow"><select id="regionResultBrandFilter" aria-label="Filtrer les résultats par enseigne"><option value="all">Toutes les enseignes</option></select><button type="button" class="secondary" id="regionSelectVisible">Sélectionner les visibles</button><button type="button" class="secondary" id="regionClearSelection">Tout désélectionner</button></div><div class="regionChooserCount">0 magasin affiché</div>';
+      results.parentNode.insertBefore(chooser, results);
+      var select = chooser.querySelector('#regionResultBrandFilter');
+      regionBrands().forEach(function (brand) {
+        var option = document.createElement('option');
+        option.value = brand;
+        option.textContent = brand;
+        select.appendChild(option);
+      });
+      select.addEventListener('change', applyRegionStoreFilter);
+      chooser.querySelector('#regionSelectVisible').addEventListener('click', function () {
+        Array.prototype.slice.call(results.querySelectorAll('.regionResult')).forEach(function (card) {
+          if (card.hidden || card.style.display === 'none') return;
+          var input = card.querySelector('input[data-select]');
+          if (input && !input.disabled && !input.checked) { input.checked = true; dispatchSelectionChange(input); }
+        });
+        applyRegionStoreFilter();
+      });
+      chooser.querySelector('#regionClearSelection').addEventListener('click', function () {
+        Array.prototype.slice.call(results.querySelectorAll('input[data-select]:checked')).forEach(function (input) {
+          input.checked = false;
+          dispatchSelectionChange(input);
+        });
+        applyRegionStoreFilter();
+      });
+    }
+
+    if (!regionResultsObserver) {
+      regionResultsObserver = new MutationObserver(function () { requestAnimationFrame(applyRegionStoreFilter); });
+      regionResultsObserver.observe(results, { childList: true, subtree: false });
+    }
+    applyRegionStoreFilter();
+    return true;
+  }
+
   function apply() {
     hookRenderStores();
+    ensureRegionStoreChooser();
     return arrangeStoresPanel();
   }
 
@@ -140,7 +231,7 @@
 
   document.addEventListener('click', function (event) {
     var button = event.target && event.target.closest ? event.target.closest('button') : null;
-    if (button && /magasins/i.test(button.textContent || '')) scheduleApply();
+    if (button && /magasins|région/i.test(button.textContent || '')) scheduleApply();
   }, true);
 
   document.addEventListener('visibilitychange', function () {
