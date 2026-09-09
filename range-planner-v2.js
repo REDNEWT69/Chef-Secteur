@@ -44,5 +44,13 @@ async function generateRange(){if(generationBusy)return;const se=document.getEle
  showStatus('Période appliquée : '+weeks+' semaines · '+totalVisits+' visites · '+unique.size+' magasins distincts · '+(calendarSynced?'Agenda Google vérifié.':'Agenda Google non vérifié, données conservées utilisées.'));
  window.dispatchEvent(new CustomEvent('chef-range-generated',{detail:{start:iso(start),end:iso(end),weeks,workDays:days,uniqueStores:unique.size}}))}catch(e){showStatus('Erreur pendant la génération : '+(e.message||String(e)),true)}finally{generationBusy=false;if(btn)btn.disabled=false}}
 function install(){if(installed)return true;const settings=document.querySelector('#planningSettings .settingsInner'),week=document.getElementById('weekDate');if(!settings||!week)return false;const lab=week.previousElementSibling;if(lab&&lab.tagName==='LABEL')lab.style.display='none';week.style.display='none';let box=document.getElementById('rangePlannerCard');if(box)box.remove();const base=monday(parse(state.settings&&state.settings.weekDate)||new Date()),end=addDays(base,4);box=document.createElement('div');box.id='rangePlannerCard';box.style.cssText='margin:0 0 14px;padding:14px;border:1px solid #dfe5ef;border-radius:16px;background:#f8faff';box.innerHTML='<label style="margin-top:0">Période du planning</label><div class="formgrid"><div><label>Date de début</label><input id="rangeStart" type="date" value="'+iso(base)+'"></div><div><label>Date de fin</label><input id="rangeEnd" type="date" value="'+iso(end)+'"></div></div><button id="generateRangeBtn" class="primary full" type="button">Générer la période</button><div id="rangePlanStatus" class="tiny" style="margin-top:9px">Moteur V3 : chaque magasin physique ne peut apparaître qu’une seule fois dans une même semaine. La disponibilité Google est vérifiée avant une proposition à valider.</div>';settings.insertBefore(box,settings.firstChild);document.getElementById('generateRangeBtn').onclick=generateRange;window.generateWeek=strictSingleWeek;installed=true;return true}
-window.generatePlanningRange=generateRange;let n=0,t=setInterval(()=>{n++;if(install()||n>120)clearInterval(t)},100);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else setTimeout(install,0);
+window.generatePlanningRange=generateRange;
+function bootInstall(){
+  if(install())return;
+  [80,180,350,700,1400,2600].forEach(ms=>setTimeout(install,ms));
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bootInstall);else bootInstall();
+window.addEventListener('load',install);
+window.addEventListener('focus',install);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)install()});
 })();
