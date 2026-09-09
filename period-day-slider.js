@@ -36,7 +36,11 @@
   }
   function css(){if(document.getElementById('periodDaySliderCss'))return;const s=document.createElement('style');s.id='periodDaySliderCss';s.textContent='.periodDayTabs{display:flex!important;gap:8px!important;overflow-x:auto!important;overflow-y:hidden!important;grid-template-columns:none!important;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:4px 1px 8px!important;scrollbar-width:none}.periodDayTabs::-webkit-scrollbar{display:none}.periodDayTab{flex:0 0 72px!important;min-width:72px!important;scroll-snap-align:center;border:1px solid #e1e5ed;background:#fff;border-radius:16px;padding:8px 6px!important;text-align:center;color:#667085;min-height:66px}.periodDayTab span,.periodDayTab small{display:block;font-size:10px;line-height:1.1}.periodDayTab b{display:block;font-size:18px;line-height:1.2;color:#1d2939;margin:2px 0}.periodDayTab.active{background:#111318!important;color:#fff!important;border-color:#111318!important}.periodDayTab.active b{color:#fff!important}';document.head.appendChild(s)}
   function hooks(){if(!window.__periodDaySliderRender&&typeof window.renderWeek==='function'){const base=window.renderWeek;window.renderWeek=function(){const r=base.apply(this,arguments);setTimeout(renderTabs,30);return r};window.__periodDaySliderRender=true}}
+  function boot(){css();hooks();renderTabs()}
+  function scheduleBoot(){[0,80,220,500,1000,1800].forEach(delay=>setTimeout(boot,delay))}
   window.addEventListener('chef-range-generated',function(){activeDate='';setTimeout(renderTabs,20)});
-  let n=0,t=setInterval(function(){n++;css();hooks();if(renderTabs()&&window.__periodDaySliderRender&&n>10)clearInterval(t);if(n>120)clearInterval(t)},100);
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){css();hooks();renderTabs()});else setTimeout(function(){css();hooks();renderTabs()},0);
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',scheduleBoot,{once:true});else scheduleBoot();
+  window.addEventListener('load',boot,{once:true});
+  window.addEventListener('focus',boot);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)boot()});
 })();
