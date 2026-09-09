@@ -44,12 +44,16 @@
     if(!brand){
       brand=document.createElement('div');
       brand.className='srTopBrand';
-      brand.innerHTML='<img src="'+LOGO+'" alt="S-RUNNER"><div class="srTopBrandText"><h1>'+APP_NAME+'</h1><p>'+SIGNATURE+'</p></div>';
+      brand.innerHTML='<img src="'+LOGO+'" alt="S-RUNNER"><div class="srTopBrandText"><h1 id="appContextTitle">'+APP_NAME+'</h1><p id="titleSub">'+SIGNATURE+'</p></div>';
       first.replaceChildren(brand);
     }else{
       const img=brand.querySelector('img');if(img&&img.getAttribute('src')!==LOGO)img.setAttribute('src',LOGO);
-      const h=brand.querySelector('h1');if(h)h.textContent=APP_NAME;
-      const p=brand.querySelector('p');if(p)p.textContent=SIGNATURE;
+      let h=brand.querySelector('#appContextTitle')||brand.querySelector('h1');
+      if(!h){h=document.createElement('h1');const box=brand.querySelector('.srTopBrandText');if(box)box.prepend(h)}
+      if(h){h.id='appContextTitle';h.textContent=APP_NAME}
+      let p=brand.querySelector('#titleSub')||brand.querySelector('p');
+      if(!p){p=document.createElement('p');const box=brand.querySelector('.srTopBrandText');if(box)box.appendChild(p)}
+      if(p){p.id='titleSub';p.textContent=SIGNATURE}
     }
     return true;
   }
