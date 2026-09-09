@@ -21,3 +21,4 @@ jobs:
       - run: node tests/region-stores.test.cjs
       - run: node tests/architecture.test.cjs
       - run: node tests/navigation-architecture.test.cjs
+      - run: node tests/calendar-ownership.test.cjs
