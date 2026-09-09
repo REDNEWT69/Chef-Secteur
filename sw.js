@@ -7,6 +7,9 @@ const CORE_SHELL = [
 ];
 const OPTIONAL_SHELL = [
   "./region-stores.js", "./region-stores.css",
+  "./region-fetch-resilience.js",
+  "./official-catalog.js",
+  "./data/official-stores.json",
   "./manifest.webmanifest",
   "./app-icon.svg",
   "./store-runner-logo.jpg",
