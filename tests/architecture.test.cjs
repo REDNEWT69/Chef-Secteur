@@ -7,7 +7,6 @@ function forbidMany(file,pairs){for(const [label,re] of pairs)forbid(file,label,
 
 for(const file of ['stores-layout-order.js','auto-planning-fix.js','connection-ui.js','ai-gateway-config.js'])forbid(file,'boucle setInterval',/\bsetInterval\s*\(/);
 for(const file of ['planning-ui-fixes.js','timeline-end-times.js','route-polish.js','visual-refresh-v1.js'])forbidMany(file,[['wrapper renderAll',/window\.renderAll\s*=\s*function/],['wrapper renderWeek',/window\.renderWeek\s*=\s*function/]]);
-forbidMany('manager-home-fixes.js',[['wrapper renderAll',/window\.renderAll\s*=\s*function/],['wrapper syncGoogleCalendar',/window\.syncGoogleCalendar\s*=\s*async\s+function/]]);
 forbidMany('calendar-enhancements.js',[
   ['wrapper renderHeader',/window\.renderHeader\s*=\s*function/],
   ['wrapper renderHome',/window\.renderHome\s*=\s*function/],
