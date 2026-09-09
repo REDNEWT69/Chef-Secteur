@@ -15,6 +15,7 @@
   function purgeLegacyTokens(){try{LEGACY_TOKEN_KEYS.forEach(key=>localStorage.removeItem(key))}catch(e){}}
   function hasGoogleConfig(){try{const c=JSON.parse(localStorage.getItem(CONFIG_KEY)||'{}');return !!(c&&c.clientId)}catch(e){return false}}
   function waitGoogleToken(ms){const start=Date.now();return new Promise(resolve=>(function tick(){if(tokenValid())return resolve(true);if(Date.now()-start>=ms)return resolve(false);setTimeout(tick,120)})())}
+  function emitCalendarUpdated(detail){try{document.dispatchEvent(new CustomEvent('store-runner:calendar-updated',{detail:detail||{}}))}catch(e){}}
   function fallbackStatus(reason){
     const status=document.getElementById('googleCalendarStatus'),badge=document.getElementById('googleCalendarBadge');
     const last=window.state&&state.calendarLastSync?new Date(state.calendarLastSync).toLocaleString('fr-FR'):'';
@@ -100,21 +101,29 @@
     if(window.__storeRunnerCalendarSyncOwner||typeof window.syncGoogleCalendar!=='function')return false;
     const base=window.syncGoogleCalendar;
     window.syncGoogleCalendar=async function(silent){
-      purgeLegacyTokens();
-      let result;
-      try{result=await base.apply(this,arguments)}catch(e){result={ok:false,reason:e&&e.message||'error'}}
-      if(result&&result.ok){installSemanticCalendarBlocks();return result}
-      if(silent){
-        const reason=result&&result.reason||'error';
-        if((reason==='disconnected'||reason==='expired')&&await silentReconnect()){
-          try{result=await base.call(this,true)}catch(e2){result={ok:false,reason:e2&&e2.message||'error'}}
-          if(result&&result.ok){installSemanticCalendarBlocks();return result}
+      let finalResult=null;
+      try{
+        purgeLegacyTokens();
+        let result;
+        try{result=await base.apply(this,arguments)}catch(e){result={ok:false,reason:e&&e.message||'error'}}
+        if(result&&result.ok){installSemanticCalendarBlocks();finalResult=result;return result}
+        if(silent){
+          const reason=result&&result.reason||'error';
+          if((reason==='disconnected'||reason==='expired')&&await silentReconnect()){
+            try{result=await base.call(this,true)}catch(e2){result={ok:false,reason:e2&&e2.message||'error'}}
+            if(result&&result.ok){installSemanticCalendarBlocks();finalResult=result;return result}
+          }
+          fallbackStatus(reason);
+          installSemanticCalendarBlocks();
+          finalResult={ok:true,cached:true,reason:reason,lastSync:window.state&&state.calendarLastSync||null};
+          return finalResult;
         }
-        fallbackStatus(reason);
-        installSemanticCalendarBlocks();
-        return {ok:true,cached:true,reason:reason,lastSync:window.state&&state.calendarLastSync||null};
+        finalResult=result||{ok:false,reason:'error'};
+        return finalResult;
+      }finally{
+        const detail={ok:!!(finalResult&&finalResult.ok),cached:!!(finalResult&&finalResult.cached),connected:hasToken(),lastSync:window.state&&state.calendarLastSync||null};
+        setTimeout(function(){emitCalendarUpdated(detail)},0);
       }
-      return result||{ok:false,reason:'error'};
     };
     window.__storeRunnerCalendarSyncOwner=true;
     return true;
