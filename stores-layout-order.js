@@ -6,6 +6,8 @@
   var MAX_RETRIES = 30;
   var regionResultsObserver = null;
   var observedRegionResults = null;
+  var storeListObserver = null;
+  var observedStoreList = null;
   var moduleRevision = '';
 
   try {
@@ -206,10 +208,22 @@
     return true;
   }
 
+  function observeStoreList() {
+    var list = document.getElementById('storeList');
+    if (!list) return false;
+    if (observedStoreList === list && storeListObserver) return true;
+    if (storeListObserver) storeListObserver.disconnect();
+    storeListObserver = new MutationObserver(function () { scheduleApply(); });
+    storeListObserver.observe(list, { childList: true, subtree: false });
+    observedStoreList = list;
+    return true;
+  }
+
   function apply() {
-    hookRenderStores();
     ensureRegionStoreChooser();
-    return arrangeStoresPanel();
+    var arranged = arrangeStoresPanel();
+    observeStoreList();
+    return arranged;
   }
 
   function scheduleApply() {
@@ -218,19 +232,6 @@
       setTimeout(apply, 40);
       setTimeout(apply, 160);
     });
-  }
-
-  function hookRenderStores() {
-    if (window.__storeLayoutOrderHooked) return true;
-    if (typeof window.renderStores !== 'function') return false;
-    var base = window.renderStores;
-    window.renderStores = function () {
-      var out = base.apply(this, arguments);
-      scheduleApply();
-      return out;
-    };
-    window.__storeLayoutOrderHooked = true;
-    return true;
   }
 
   function retryUntilReady() {
