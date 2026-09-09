@@ -90,36 +90,36 @@
   }
   window.chefSecteurStoreOpeningWindow=storeWindow;
 
-  function installOpeningAwareSchedule(){
-    if(window.__openingScheduleWrapped||typeof window.daySchedule!=='function')return;
-    const base=window.daySchedule;
-    window.daySchedule=function(day){
-      let rows=base(day)||[];
-      let cursor=null;
-      for(let i=0;i<rows.length;i++){
-        const row=rows[i];if(row.kind!=='store'||!row.store)continue;
-        const w=storeWindow(row.store,day);if(!w)continue;
-        let arr=tmin(row.arrival);if(arr==null)continue;
-        if(cursor!=null&&arr<cursor)arr=cursor;
-        if(arr<w.openMin)arr=w.openMin;
-        row.openingWindow=w;
-        row.afterClose=arr+Number(row.duration||60)>w.closeMin;
-        row.arrival=fmt(arr);row.sortMin=arr;cursor=arr+Number(row.duration||60);
-      }
-      rows.sort(function(a,b){return Number(a.sortMin||0)-Number(b.sortMin||0)});
-      return rows;
-    };
-    window.__openingScheduleWrapped=true;
+  function openingAwareRows(day){
+    if(typeof window.daySchedule!=='function')return[];
+    const baseRows=window.daySchedule(day)||[];
+    const rows=baseRows.map(function(row){return Object.assign({},row)});
+    let cursor=null;
+    for(let i=0;i<rows.length;i++){
+      const row=rows[i];if(row.kind!=='store'||!row.store)continue;
+      const w=storeWindow(row.store,day);if(!w)continue;
+      let arr=tmin(row.arrival);if(arr==null)continue;
+      if(cursor!=null&&arr<cursor)arr=cursor;
+      if(arr<w.openMin)arr=w.openMin;
+      row.openingWindow=w;
+      row.afterClose=arr+Number(row.duration||60)>w.closeMin;
+      row.arrival=fmt(arr);row.sortMin=arr;
+      cursor=arr+Number(row.duration||60);
+    }
+    rows.sort(function(a,b){return Number(a.sortMin||0)-Number(b.sortMin||0)});
+    return rows;
   }
 
   function decorateOpeningHours(){
     try{
-      const day=typeof window.selectedPlanningDay!=='undefined'?window.selectedPlanningDay:null;if(!day||typeof window.daySchedule!=='function')return;
-      const stores=(window.daySchedule(day)||[]).filter(x=>x.kind==='store');
+      const day=typeof window.selectedPlanningDay!=='undefined'?window.selectedPlanningDay:null;if(!day)return;
+      const stores=openingAwareRows(day).filter(x=>x.kind==='store');
       const rows=Array.from(document.querySelectorAll('#week .timelineRow:not(.calendarEvent)'));
       rows.forEach((row,i)=>{
         const s=stores[i],existing=row.querySelector('.openingHint');
         if(!s||!s.openingWindow){if(existing)existing.remove();return}
+        const time=row.querySelector('.tlTime');if(time&&time.textContent!==s.arrival)time.textContent=s.arrival;
+        row.dataset.openingArrival=s.arrival;
         const text=s.afterClose?'⚠ Créneau hors horaires '+s.openingWindow.open+'–'+s.openingWindow.close:'Ouvert '+s.openingWindow.open+'–'+s.openingWindow.close;
         const color=s.afterClose?'#b42318':'#667085';
         let d=existing;
@@ -168,7 +168,7 @@
     return true;
   }
 
-  function refresh(){observeContextText();observeStoreDialog();installOpeningAwareSchedule();observeWeek();cleanContextText();scheduleWeekDecorations()}
+  function refresh(){observeContextText();observeStoreDialog();observeWeek();cleanContextText();scheduleWeekDecorations()}
   function installEvents(){
     if(window.__calendarEnhancementEvents)return;
     document.addEventListener('click',function(e){
