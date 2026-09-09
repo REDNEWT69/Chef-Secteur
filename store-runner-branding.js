@@ -5,6 +5,13 @@
   const LOGO='./store-runner-logo.jpg';
   let observer=null,retry=0;
 
+  if(!document.getElementById('sector-brand-filter-script')){
+    const script=document.createElement('script');
+    script.id='sector-brand-filter-script';
+    script.src='./sector-brand-filter.js?rev=20260909-1';
+    document.head.appendChild(script);
+  }
+
   function ensureCss(){
     if(document.getElementById('store-runner-branding-css'))return;
     const s=document.createElement('style');
