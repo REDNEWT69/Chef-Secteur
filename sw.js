@@ -1,4 +1,4 @@
-const CACHE_NAME = "chef-secteur-stable-20260909-1";
+const CACHE_NAME = "chef-secteur-stable-20260909-2";
 const APP_SHELL = [
   "./region-stores.js?rev=official20", "./region-stores.css?rev=region18",
   "./",
@@ -64,10 +64,11 @@ self.addEventListener('fetch', event => {
       await cache.put(event.request,response.clone());
       return response;
     } catch (error) {
-      const cached = await cache.match(event.request);
+      let cached = await cache.match(event.request);
+      if (!cached) cached = await cache.match(event.request, {ignoreSearch:true});
       if (cached) return cached;
       if (event.request.mode === 'navigate') {
-        const entry = await cache.match(new URL('./index.html',SCOPE).href);
+        const entry = await cache.match(new URL('./index.html',SCOPE).href, {ignoreSearch:true});
         if (entry) return entry;
       }
       return new Response('Fichier indisponible hors ligne', {status:503,headers:{'Content-Type':'text/plain; charset=utf-8'}});
