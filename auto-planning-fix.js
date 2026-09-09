@@ -143,12 +143,16 @@ function installGooglePlanningFix(){
   window.__chefGooglePlanningFix=true;return true;
 }
 
+function stabilize(){
+  ensureHome(false);installBaseOverrides();installProfileGuard();installAutoApply();installDepartureUi();hideTechnicalBaseFields();refreshDepartureUi();restoreGoogleToken();installGooglePlanningFix();
+}
 function boot(){
   if(!window.state||!state.profile){setTimeout(boot,50);return}
   purgeLegacyGoogleTokens();
-  loadRuntime();ensureHome(true);installBaseOverrides();installProfileGuard();installAutoApply();installDepartureUi();hideTechnicalBaseFields();refreshDepartureUi();restoreGoogleToken();installGooglePlanningFix();
+  loadRuntime();ensureHome(true);stabilize();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 window.addEventListener('load',boot);
-setInterval(function(){ensureHome(false);installBaseOverrides();installProfileGuard();installAutoApply();installDepartureUi();hideTechnicalBaseFields();refreshDepartureUi();restoreGoogleToken();installGooglePlanningFix()},1200);
+document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(stabilize,40)});
+window.addEventListener('focus',function(){setTimeout(stabilize,40)});
 })();
