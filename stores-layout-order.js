@@ -5,6 +5,7 @@
   var retryCount = 0;
   var MAX_RETRIES = 30;
   var regionResultsObserver = null;
+  var observedRegionResults = null;
   var moduleRevision = '';
 
   try {
@@ -154,7 +155,14 @@
   function ensureRegionStoreChooser() {
     var dialog = document.querySelector('.regionDialog');
     var results = dialog && dialog.querySelector('.regionResults');
-    if (!dialog || !results) return false;
+    if (!dialog || !results) {
+      if (regionResultsObserver && observedRegionResults && !observedRegionResults.isConnected) {
+        regionResultsObserver.disconnect();
+        regionResultsObserver = null;
+        observedRegionResults = null;
+      }
+      return false;
+    }
     ensureStyle();
 
     var chooser = document.getElementById('regionStoreChooser');
@@ -188,9 +196,11 @@
       });
     }
 
-    if (!regionResultsObserver) {
+    if (observedRegionResults !== results) {
+      if (regionResultsObserver) regionResultsObserver.disconnect();
       regionResultsObserver = new MutationObserver(function () { requestAnimationFrame(applyRegionStoreFilter); });
       regionResultsObserver.observe(results, { childList: true, subtree: false });
+      observedRegionResults = results;
     }
     applyRegionStoreFilter();
     return true;
