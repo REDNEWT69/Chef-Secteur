@@ -26,6 +26,18 @@ for(const [label,re] of [
   ['projection horaires sans override',/openingAwareRows/]
 ])requireMatch('calendar-enhancements.js',label,re);
 
+forbidMany('home-refresh-v2.js',[
+  ['wrapper renderHome',/window\.renderHome\s*=\s*function/],
+  ['wrapper switchTab',/window\.switchTab\s*=\s*function/],
+  ['wrapper renderAll',/window\.renderAll\s*=\s*function/]
+]);
+for(const [label,re] of [
+  ['observer données accueil',/homeObserver/],
+  ['observer navigation panneaux',/panelObserver/],
+  ['panneaux observés sans doublon',/observedPanels/],
+  ['rafraîchissement différé',/scheduleRun/]
+])requireMatch('home-refresh-v2.js',label,re);
+
 forbidMany('auto-planning-fix.js',[['sauvegarde profil',/window\.saveProfile\s*=/],['override baseObj',/window\.baseObj\s*=/],['override havBase',/window\.havBase\s*=/],['base Francheville codée en dur',/Francheville/],['départ temporaire session',/chef_departure_override_v1/],['wrapper Google Agenda',/window\.syncGoogleCalendar\s*=(?!=)/],['token Google',/chef_secteur_google_token_v2/]]);
 requireMatch('auto-planning-fix.js','application automatique Reliability',/R\.propose/);
 

@@ -2,7 +2,8 @@
   'use strict';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   const RANGE_KEY='chef_sector_range_v1';
-  let busy=false;
+  let busy=false,homeObserver=null,panelObserver=null,refreshTimer=null;
+  const observedPanels=new WeakSet();
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]||c))}
   function icon(name){const paths={home:'<path d="m3 10 9-8 9 8v11h-6v-7H9v7H3Z" fill="currentColor"/>',calendar:'<rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8 2v6m8-6v6M4 11h16M8 15h2m4 0h2m-8 3h2"/>',store:'<path d="M3 10 5 3h14l2 7c0 4-5 4-6 1-1 3-5 3-6 0-1 3-6 3-6-1ZM5 14v7h14v-7"/>',pin:'<path d="M19 10c0 5-7 12-7 12S5 15 5 10a7 7 0 1 1 14 0Z"/><circle cx="12" cy="9" r="2"/>',navigation:'<path d="m3 11 18-8-7 18-3-8Z" fill="currentColor"/>',spark:'<path d="M12 1c-2 8-3 9-11 11 8 2 9 3 11 11 2-8 3-9 11-11-8-2-9-3-11-11Z" fill="currentColor" stroke="none"/>',chevron:'<path d="m9 4 8 8-8 8"/>',chart:'<rect x="3" y="12" width="4" height="9" rx="1" fill="currentColor" stroke="none"/><rect x="10" y="7" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="17" y="2" width="4" height="19" rx="1" fill="currentColor" stroke="none"/>',check:'<circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/>',more:'<circle cx="4" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="20" cy="12" r="2" fill="currentColor"/>'};return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[name]||paths.spark)+'</svg>'}
   function parse(v){const d=new Date(String(v||'')+'T12:00:00');return isNaN(d)?null:d}
@@ -43,9 +44,28 @@
   function setActive(panel){document.body.classList.toggle('glassHome',panel==='homePanel');const nav=document.getElementById('bottomAppNav');if(!nav)return;nav.querySelectorAll('.bottomNavBtn').forEach(b=>b.classList.toggle('active',b.dataset.panel===panel))}
   function activePanel(){const p=document.querySelector('.panel.active');return p&&p.id}
   function run(){if(busy)return;busy=true;try{ensureCss();buildHome();rebuildBottomNav();installMoreSheet();setActive(activePanel()||'homePanel')}finally{busy=false}}
-  function hook(){if(!window.__homeRefreshRender&&typeof window.renderHome==='function'){const base=window.renderHome;window.renderHome=function(){const out=base.apply(this,arguments);setTimeout(buildHome,20);return out};window.__homeRefreshRender=true}if(!window.__homeRefreshTab&&typeof window.switchTab==='function'){const base=window.switchTab;window.switchTab=function(id,btn){const out=base.apply(this,arguments);setTimeout(()=>setActive(id),20);return out};window.__homeRefreshTab=true}}
-  async function boot(){for(let i=0;i<60;i++){hook();run();if(document.getElementById('homePanel')&&document.getElementById('bottomAppNav'))break;await new Promise(r=>setTimeout(r,100))}run()}
-  function refreshWhenVisible(){if(document.hidden)return;hook();run()}
+  function scheduleRun(delay){clearTimeout(refreshTimer);refreshTimer=setTimeout(run,delay==null?30:delay)}
+  function observeHomeSignals(){
+    if(homeObserver)return true;
+    const targets=['homeKpis','homePriority','homeNext'].map(id=>document.getElementById(id)).filter(Boolean);
+    if(!targets.length)return false;
+    homeObserver=new MutationObserver(function(){scheduleRun(30)});
+    targets.forEach(function(el){homeObserver.observe(el,{childList:true,subtree:true,characterData:true})});
+    return true;
+  }
+  function observePanels(){
+    if(!panelObserver)panelObserver=new MutationObserver(function(){setTimeout(function(){setActive(activePanel()||'homePanel')},0)});
+    let found=false;
+    document.querySelectorAll('.panel').forEach(function(panel){
+      found=true;
+      if(observedPanels.has(panel))return;
+      panelObserver.observe(panel,{attributes:true,attributeFilter:['class']});
+      observedPanels.add(panel);
+    });
+    return found;
+  }
+  async function boot(){for(let i=0;i<60;i++){run();observeHomeSignals();observePanels();if(document.getElementById('homePanel')&&document.getElementById('bottomAppNav')&&homeObserver)break;await new Promise(r=>setTimeout(r,100))}run();observeHomeSignals();observePanels()}
+  function refreshWhenVisible(){if(document.hidden)return;run();observeHomeSignals();observePanels()}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
   window.addEventListener('focus',refreshWhenVisible);
   document.addEventListener('visibilitychange',refreshWhenVisible);
