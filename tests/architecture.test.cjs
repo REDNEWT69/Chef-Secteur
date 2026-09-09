@@ -17,7 +17,7 @@ function requireMatch(file,label,re){
 }
 
 const noPermanentLoop=[['boucle setInterval',/\bsetInterval\s*\(/]];
-['stores-layout-order.js','auto-planning-fix.js','connection-ui.js'].forEach(file=>forbid(file,noPermanentLoop));
+['stores-layout-order.js','auto-planning-fix.js','connection-ui.js','ai-gateway-config.js'].forEach(file=>forbid(file,noPermanentLoop));
 
 forbid('planning-ui-fixes.js',[
   ['wrapper renderAll',/window\.renderAll\s*=\s*function/],
@@ -66,6 +66,7 @@ if(!/sessionStorage\.getItem\(TOKEN_KEY\)/.test(calendarOauth))throw new Error('
 const aiGateway=read('ai-gateway-config.js');
 if(/\b(?:client_secret|api[_-]?key)\b\s*[:=]\s*['"][^'"]{12,}['"]/i.test(aiGateway))throw new Error('IA: secret ou clé API détecté côté navigateur');
 if(!/workers\.dev/.test(aiGateway))throw new Error('IA: passerelle publique attendue absente');
+if(!/MAX_TRIES\s*=\s*\d+/.test(aiGateway)||!/setTimeout\(retry,\s*100\)/.test(aiGateway))throw new Error('IA: retry borné attendu absent');
 
 const index=read('index.html');
 const sw=read('sw.js');
