@@ -29,6 +29,13 @@ for(const [label,re] of [
 
 forbidMany('auto-planning-fix.js',[['sauvegarde profil',/window\.saveProfile\s*=/],['override baseObj',/window\.baseObj\s*=/],['override havBase',/window\.havBase\s*=/],['base Francheville codée en dur',/Francheville/],['départ temporaire session',/chef_departure_override_v1/],['wrapper Google Agenda',/window\.syncGoogleCalendar\s*=(?!=)/],['token Google',/chef_secteur_google_token_v2/]]);
 requireMatch('auto-planning-fix.js','application automatique Reliability',/R\.propose/);
+forbidMany('planning-autofix.js',[
+  ['override hav',/window\.hav\s*=/],
+  ['override havBase',/window\.havBase\s*=/],
+  ['override baseObj',/window\.baseObj\s*=/],
+  ['sauvegarde profil',/window\.saveProfile\s*=/],
+  ['géolocalisation profil',/window\.useCurrentLocation\s*=/]
+]);
 
 forbid('sector-admin.js','ancienne limite 500 magasins',/\.slice\(\s*0\s*,\s*500\s*\)/);
 requireMatch('sector-admin.js','filtre enseigne intégré',/saBrandFilter/);
