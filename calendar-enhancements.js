@@ -3,6 +3,7 @@
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   let decorating=false;
   let headerContextObserver=null,homeContextObserver=null;
+  let weekObserver=null,observedWeek=null,weekRefreshTimer=null,suppressWeekObserver=false;
 
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
   function tmin(v){if(!v)return null;const p=String(v).split(':');if(p.length<2)return null;const h=Number(p[0]),m=Number(p[1]);return Number.isFinite(h)&&Number.isFinite(m)?h*60+m:null}
@@ -98,17 +99,16 @@
       const stores=(window.daySchedule(day)||[]).filter(x=>x.kind==='store');
       const rows=Array.from(document.querySelectorAll('#week .timelineRow:not(.calendarEvent)'));
       rows.forEach((row,i)=>{
-        row.querySelectorAll('.openingHint').forEach(x=>x.remove());
-        const s=stores[i];if(!s||!s.openingWindow)return;
-        const d=document.createElement('div');d.className='openingHint';d.style.cssText='font-size:10.5px;margin-top:6px;color:'+(s.afterClose?'#b42318':'#667085');
-        d.textContent=s.afterClose?'⚠ Créneau hors horaires '+s.openingWindow.open+'–'+s.openingWindow.close:'Ouvert '+s.openingWindow.open+'–'+s.openingWindow.close;
-        const main=row.querySelector('.tlMain>div:first-child')||row.querySelector('.tlMain');if(main)main.appendChild(d);
+        const s=stores[i],existing=row.querySelector('.openingHint');
+        if(!s||!s.openingWindow){if(existing)existing.remove();return}
+        const text=s.afterClose?'⚠ Créneau hors horaires '+s.openingWindow.open+'–'+s.openingWindow.close:'Ouvert '+s.openingWindow.open+'–'+s.openingWindow.close;
+        const color=s.afterClose?'#b42318':'#667085';
+        let d=existing;
+        if(!d){d=document.createElement('div');d.className='openingHint';const main=row.querySelector('.tlMain>div:first-child')||row.querySelector('.tlMain');if(main)main.appendChild(d)}
+        if(d&&d.textContent!==text)d.textContent=text;
+        if(d)d.style.cssText='font-size:10.5px;margin-top:6px;color:'+color;
       });
     }catch(e){}
-  }
-  function wrapWeekRender(){
-    if(window.__openingRenderWrapped||typeof window.renderWeek!=='function')return;
-    const base=window.renderWeek;window.renderWeek=function(){const out=base.apply(this,arguments);cleanContextText();setTimeout(function(){decorateOpeningHours();decorateOvernights()},0);return out};window.__openingRenderWrapped=true;
   }
 
   function words(s){return Array.from(new Set(norm(s).replace(/[^a-z0-9 ]+/g,' ').split(/\s+/).filter(w=>w.length>=5)))}
@@ -130,7 +130,26 @@
     }finally{decorating=false}
   }
 
-  function refresh(){observeContextText();wrapStoreDialog();installOpeningAwareSchedule();wrapWeekRender();cleanContextText();decorateOpeningHours();decorateOvernights()}
+  function scheduleWeekDecorations(){
+    clearTimeout(weekRefreshTimer);
+    weekRefreshTimer=setTimeout(function(){
+      suppressWeekObserver=true;
+      try{cleanContextText();decorateOpeningHours();decorateOvernights()}
+      finally{setTimeout(function(){suppressWeekObserver=false},0)}
+    },25);
+  }
+  function observeWeek(){
+    const week=document.getElementById('week');
+    if(!week)return false;
+    if(observedWeek===week&&weekObserver)return true;
+    if(weekObserver)weekObserver.disconnect();
+    weekObserver=new MutationObserver(function(){if(!suppressWeekObserver)scheduleWeekDecorations()});
+    weekObserver.observe(week,{childList:true,subtree:true});
+    observedWeek=week;
+    return true;
+  }
+
+  function refresh(){observeContextText();wrapStoreDialog();installOpeningAwareSchedule();observeWeek();cleanContextText();scheduleWeekDecorations()}
   function installEvents(){
     if(window.__calendarEnhancementEvents)return;
     document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(refresh,40)},true);
