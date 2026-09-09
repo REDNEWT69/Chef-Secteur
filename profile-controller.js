@@ -66,6 +66,17 @@
     }
   }
 
+  function emitProfileSaved(){
+    try{
+      document.dispatchEvent(new CustomEvent('store-runner:profile-saved',{detail:{
+        baseName:state.profile.baseName||'Départ',
+        baseAddress:state.profile.baseAddress||'',
+        baseLat:Number(state.profile.baseLat),
+        baseLon:Number(state.profile.baseLon)
+      }}));
+    }catch(e){}
+  }
+
   function ensureCss(){
     if(document.getElementById('profile-controller-css'))return;
     const s=document.createElement('style');
@@ -130,6 +141,7 @@
       if(typeof renderAll==='function')renderAll();
       feedback('Réglages enregistrés ✓','ok');
       toast('Réglages enregistrés ✓');
+      emitProfileSaved();
     }catch(e){
       feedback(e&&e.message?e.message:'Enregistrement impossible.','bad');
       if(typeof showError==='function')showError(e.message||String(e));
