@@ -5,28 +5,41 @@
   var retryCount = 0;
   var MAX_RETRIES = 30;
   var regionResultsObserver = null;
+  var moduleRevision = '';
+
+  try {
+    var currentScript = document.currentScript;
+    if (currentScript && currentScript.src) {
+      moduleRevision = new URL(currentScript.src, window.location.href).searchParams.get('rev') || '';
+    }
+  } catch (e) {}
+
+  function withModuleRev(path) {
+    if (!moduleRevision) return path;
+    return path + (path.indexOf('?') === -1 ? '?' : '&') + 'rev=' + encodeURIComponent(moduleRevision);
+  }
 
   function loadScript(id, src, onload) {
     if (document.getElementById(id)) { if (onload) onload(); return; }
     var script = document.createElement('script');
     script.id = id;
-    script.src = src;
+    script.src = withModuleRev(src);
     if (onload) script.onload = onload;
     document.head.appendChild(script);
   }
 
-  loadScript('store-runner-branding-script', './store-runner-branding.js?rev=20260909-1');
+  loadScript('store-runner-branding-script', './store-runner-branding.js');
 
   if (!document.getElementById('planning-autofix-script')) {
     var hotfix = document.createElement('script');
     hotfix.id = 'planning-autofix-script';
-    hotfix.src = './planning-autofix.js?rev=20260908-1';
+    hotfix.src = withModuleRev('./planning-autofix.js');
     document.head.appendChild(hotfix);
   }
 
-  loadScript('boulanger-national-script', './boulanger-national.js?rev=20260908-1', function () {
-    loadScript('national-sectors-script', './national-sectors.js?rev=20260908-1', function () {
-      loadScript('sector-admin-script', './sector-admin.js?rev=20260909-6', function () {
+  loadScript('boulanger-national-script', './boulanger-national.js', function () {
+    loadScript('national-sectors-script', './national-sectors.js', function () {
+      loadScript('sector-admin-script', './sector-admin.js', function () {
         scheduleApply();
       });
     });
