@@ -1,4 +1,4 @@
-const CACHE_NAME = "chef-secteur-freeze-rollback1";
+const CACHE_NAME = "chef-secteur-stable-20260909-1";
 const APP_SHELL = [
   "./region-stores.js?rev=official20", "./region-stores.css?rev=region18",
   "./",
@@ -29,11 +29,11 @@ const APP_SHELL = [
   "./visual-refresh-v1.js?rev=20260907-glass4",
   "./home-refresh-v2.js?rev=safe16",
   "./auto-planning-fix.js?rev=20260908-1",
-  "./connection-ui.js?rev=storageheal1",
+  "./connection-ui.js?rev=safe16",
   "./reliability-core.js?rev=safe16",
   "./glass-theme.css?rev=safe16",
   "./reliability-ui.js?rev=auto1",
-  "./stores-layout-order.js?rev=20260908-4",
+  "./stores-layout-order.js?rev=20260909-1",
   "./boulanger-national.js?rev=20260908-1",
   "./national-sectors.js?rev=20260908-1",
   "./sector-admin.js?rev=20260909-5"
