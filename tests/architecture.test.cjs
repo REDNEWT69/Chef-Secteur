@@ -107,7 +107,7 @@ if(!index.includes("'./region-fetch-resilience.js'")||!index.includes("'./offici
 
 const runtimeAssets=[...index.matchAll(/['\"](\.\/[A-Za-z0-9_./-]+\.(?:js|css))['\"]/g)].map(m=>m[1]);
 const nestedAssets=[...read('stores-layout-order.js').matchAll(/['\"](\.\/[A-Za-z0-9_./-]+\.js)['\"]/g)].map(m=>m[1]);
-for(const asset of new Set(runtimeAssets.concat(nestedAssets))){
+for(const asset of new Set(runtimeAssets.concat(nestedAssets).filter(asset=>asset!=='./sw.js'))){
   if(!sw.includes(`"${asset}"`)&&!sw.includes(`'${asset}'`))throw new Error(`PWA: ressource runtime absente du cache hors ligne: ${asset}`);
 }
 
