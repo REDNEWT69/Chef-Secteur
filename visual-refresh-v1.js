@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-  let busy=false,timer=null;
+  let busy=false;
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
   function selectedDay(){try{const b=document.querySelector('#dayTabs .dayTab.active');if(b){for(const d of DAYS)if(norm(b.textContent).includes(norm(d)))return d}return window.selectedPlanningDay||((state.settings&&state.settings.days)||DAYS)[0]||'Lundi'}catch(e){return'Lundi'}}
@@ -34,6 +34,9 @@ body:after{content:"";position:fixed;inset:0;z-index:-1;backdrop-filter:blur(42p
   function polishLabels(){try{document.querySelectorAll('#googleCalendarStatus').forEach(el=>{if(el.textContent&&/synchronis/i.test(el.textContent))el.style.color='#4b8f65'})}catch(e){}}
   function run(){if(busy)return;busy=true;try{ensureCss();renderHero();polishLabels()}finally{busy=false}}
   function hook(){if(!window.__iosRefreshWeek&&typeof window.renderWeek==='function'){const base=window.renderWeek;window.renderWeek=function(){const out=base.apply(this,arguments);setTimeout(run,20);return out};window.__iosRefreshWeek=true}if(!window.__iosRefreshAll&&typeof window.renderAll==='function'){const base=window.renderAll;window.renderAll=function(){const out=base.apply(this,arguments);setTimeout(run,20);return out};window.__iosRefreshAll=true}}
-  async function boot(){for(let i=0;i<60;i++){hook();run();if(window.__iosRefreshWeek)break;await new Promise(r=>setTimeout(r,100))}document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(run,80)},true);const root=document.querySelector('.wrap')||document.body;const obs=new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(run,120)});obs.observe(root,{childList:true,subtree:true});run()}
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
+  function refresh(){hook();run()}
+  function installEvents(){if(window.__iosRefreshEvents)return;document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(run,80)},true);window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});window.addEventListener('chef-range-generated',()=>setTimeout(refresh,40));window.__iosRefreshEvents=true}
+  function boot(){installEvents();refresh();[80,180,350,700,1400,2600].forEach(delay=>setTimeout(refresh,delay))}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
+  window.addEventListener('load',refresh,{once:true});
 })();
