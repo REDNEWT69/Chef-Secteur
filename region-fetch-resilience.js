@@ -9,7 +9,14 @@ const OVERPASS=[
   'https://overpass-api.de/api/interpreter',
   'https://overpass.private.coffee/api/interpreter'
 ];
-function isRegionOverpass(url){return typeof url==='string'&&url.indexOf('overpass.private.coffee/api/interpreter')!==-1}
+const OVERPASS_HOSTS=new Set(OVERPASS.map(u=>new URL(u).host));
+function isRegionOverpass(url){
+  if(typeof url!=='string'||!url)return false;
+  try{const u=new URL(url,root.location&&root.location.href||undefined);return OVERPASS_HOSTS.has(u.host)&&u.pathname.indexOf('/api/interpreter')!==-1}catch(e){return false}
+}
+function endpointUrl(base,original){
+  try{const src=new URL(original,root.location&&root.location.href||undefined),dst=new URL(base);dst.search=src.search;return dst.toString()}catch(e){return base}
+}
 async function tryEndpoint(url,options,outerSignal){
   const local=new AbortController();
   let timedOut=false;
@@ -33,10 +40,10 @@ async function tryEndpoint(url,options,outerSignal){
 root.fetch=async function(input,options){
   const url=typeof input==='string'?input:(input&&input.url)||'';
   if(!isRegionOverpass(url))return nativeFetch(input,options);
-  const outerSignal=options&&options.signal;
+  const outerSignal=(options&&options.signal)||(input&&input.signal)||null;
   let lastError=null;
   for(let i=0;i<OVERPASS.length;i++){
-    try{return await tryEndpoint(OVERPASS[i],options,outerSignal)}catch(e){
+    try{return await tryEndpoint(endpointUrl(OVERPASS[i],url),options,outerSignal)}catch(e){
       if(e&&e.name==='AbortError'&&outerSignal&&outerSignal.aborted)throw e;
       lastError=e;
     }
