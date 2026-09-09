@@ -5,6 +5,18 @@
   const LOGO='./app-icon.svg';
   let observer=null,observerHost=null,retry=0;
 
+  function loadNavigationController(){
+    if(document.getElementById('store-runner-navigation-controller'))return;
+    const s=document.createElement('script');
+    s.id='store-runner-navigation-controller';
+    try{
+      const current=document.currentScript;
+      const rev=current&&current.src?new URL(current.src,window.location.href).searchParams.get('rev')||'':'';
+      s.src='./navigation-controller.js'+(rev?'?rev='+encodeURIComponent(rev):'');
+    }catch(e){s.src='./navigation-controller.js'}
+    document.head.appendChild(s);
+  }
+
   function ensureCss(){
     if(document.getElementById('store-runner-branding-css'))return;
     const s=document.createElement('style');
@@ -82,7 +94,7 @@
     return true;
   }
 
-  function apply(){ensureCss();applyMeta();const top=applyTop();const home=applyHome();return top&&home}
+  function apply(){ensureCss();applyMeta();loadNavigationController();const top=applyTop();const home=applyHome();return top&&home}
 
   function observe(){
     const host=document.getElementById('homePanel')||document.body;
