@@ -38,6 +38,16 @@ for(const [label,re] of [
   ['rafraîchissement différé',/scheduleRun/]
 ])requireMatch('home-refresh-v2.js',label,re);
 
+forbidMany('planning-pro-plus.js',[
+  ['wrapper renderAll',/window\.renderAll\s*=\s*function/],
+  ['wrapper renderWeek',/window\.renderWeek\s*=\s*function/]
+]);
+for(const [label,re] of [
+  ['observer planning pro',/refreshObserver/],
+  ['cibles planning pro sans doublon',/observedRefreshTargets/],
+  ['rafraîchissement planning pro',/scheduleInstall/]
+])requireMatch('planning-pro-plus.js',label,re);
+
 forbidMany('auto-planning-fix.js',[['sauvegarde profil',/window\.saveProfile\s*=/],['override baseObj',/window\.baseObj\s*=/],['override havBase',/window\.havBase\s*=/],['base Francheville codée en dur',/Francheville/],['départ temporaire session',/chef_departure_override_v1/],['wrapper Google Agenda',/window\.syncGoogleCalendar\s*=(?!=)/],['token Google',/chef_secteur_google_token_v2/]]);
 requireMatch('auto-planning-fix.js','application automatique Reliability',/R\.propose/);
 
