@@ -9,6 +9,7 @@ var GOOGLE_TOKEN_KEY='chef_secteur_google_token_v2';
 var GOOGLE_EXPIRY_KEY='chef_google_token_expiry_v1';
 var GOOGLE_CONFIG_KEY='chef_secteur_google_calendar_v2';
 var LEGACY_GOOGLE_TOKEN_KEYS=['chef_google_token_persist_v1','chef_google_token_persist_expiry_v1'];
+var bootAttempts=0;
 
 function valid(n){return isFinite(Number(n))&&Math.abs(Number(n))>1}
 function loadRuntime(){
@@ -147,7 +148,11 @@ function stabilize(){
   ensureHome(false);installBaseOverrides();installProfileGuard();installAutoApply();installDepartureUi();hideTechnicalBaseFields();refreshDepartureUi();restoreGoogleToken();installGooglePlanningFix();
 }
 function boot(){
-  if(!window.state||!state.profile){setTimeout(boot,50);return}
+  if(!window.state||!state.profile){
+    if(bootAttempts++<40)setTimeout(boot,50);
+    return;
+  }
+  bootAttempts=0;
   purgeLegacyGoogleTokens();
   loadRuntime();ensureHome(true);stabilize();
 }
