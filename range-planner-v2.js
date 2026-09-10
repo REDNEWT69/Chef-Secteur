@@ -24,7 +24,21 @@ function readControls(){
   const max=document.getElementById('maxVisitsPerDay');if(max&&max.value)state.settings.maxVisitsPerDay=Math.max(1,Math.min(8,Number(max.value)||4));
   return days;
 }
+function repairStaleBrandFilter(){
+  try{
+    const selected=state.settings&&Array.isArray(state.settings.brands)?state.settings.brands.filter(Boolean):[];
+    if(!selected.length)return false;
+    const activeBrands=new Set((state.stores||[]).filter(s=>s&&s.active!==false).map(s=>String(s.enseigne||'')));
+    if(selected.some(b=>activeBrands.has(String(b))))return false;
+    state.settings.brands=[];
+    document.querySelectorAll('[data-brand]').forEach(box=>{box.checked=true});
+    if(typeof save==='function')save();
+    showStatus('Les anciennes enseignes sélectionnées ne sont plus dans ce secteur. Filtre remis sur toutes les enseignes.');
+    return true;
+  }catch(e){return false}
+}
 function eligible(){
+  repairStaleBrandFilter();
   const out=[],seen=new Set(),ex=state.excluded||{};
   for(const s of (state.stores||[])){
     if(!s||s.active===false||ex[s.id])continue;
