@@ -48,13 +48,16 @@ function eligible(){
   return out;
 }
 function scoreOf(s){try{return typeof score==='function'?Number(score(s))||0:Number(s.priority)||0}catch(e){return Number(s.priority)||0}}
+function forcedRank(s){const id=s&&s.id;return (state.locks&&state.locks[id]?2:0)+(state.included&&state.included[id]?1:0)}
 function chooseStores(pool,usedKeys,lastUsedWeek,target){
-  const fresh=pool.filter(s=>!usedKeys.has(storeKey(s))).sort((a,b)=>scoreOf(b)-scoreOf(a));
-  const chosen=[],keys=new Set();
-  for(const s of fresh){const k=storeKey(s);if(chosen.length>=target)break;if(keys.has(k))continue;chosen.push(s);keys.add(k)}
+  const chosen=[],keys=new Set(),add=s=>{const k=storeKey(s);if(!k||keys.has(k)||chosen.length>=target)return false;chosen.push(s);keys.add(k);return true};
+  const forced=pool.filter(s=>forcedRank(s)>0).sort((a,b)=>forcedRank(b)-forcedRank(a)||scoreOf(b)-scoreOf(a));
+  for(const s of forced)add(s);
+  const fresh=pool.filter(s=>!keys.has(storeKey(s))&&!usedKeys.has(storeKey(s))).sort((a,b)=>scoreOf(b)-scoreOf(a));
+  for(const s of fresh)add(s);
   if(chosen.length<target){
     const old=pool.filter(s=>!keys.has(storeKey(s))).sort((a,b)=>{const ka=storeKey(a),kb=storeKey(b),la=lastUsedWeek.get(ka),lb=lastUsedWeek.get(kb);if(la!==lb)return (la==null?-999:la)-(lb==null?-999:lb);return scoreOf(b)-scoreOf(a)});
-    for(const s of old){const k=storeKey(s);if(chosen.length>=target)break;if(keys.has(k))continue;chosen.push(s);keys.add(k)}
+    for(const s of old)add(s);
   }
   return chosen;
 }
@@ -77,20 +80,20 @@ function buildWeekUnique(chosen,days){
   for(const s of chosen){const k=storeKey(s);if(k&&!seen.has(k)){seen.add(k);unique.push(s)}}
   unique.sort((a,b)=>{const la=Number(a.lat)||0,lb=Number(b.lat)||0;if(la!==lb)return la-lb;return (Number(a.lon)||0)-(Number(b.lon)||0)});
   const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
-  const pending=unique.slice(),deferred=[];
-
-  for(let di=0;di<days.length;di++){
-    const day=days[di],remaining=pending.length,slotsLeft=days.length-di;
-    const qty=Math.min(max,Math.max(0,Math.ceil(remaining/Math.max(1,slotsLeft))));
-    let route=optimizeRoute(pending.splice(0,qty));
-    const lim=limitFor(day);
-    while(route.length&&finish(route,day)>lim)deferred.unshift(route.pop());
-    plan[day]=route;
+  const free=[];
+  for(const store of unique){
+    const locked=state.locks&&state.locks[store.id];
+    if(!locked){free.push(store);continue}
+    if(!days.includes(locked))throw new Error((store.enseigne||'Magasin')+' '+(store.ville||'')+' est verrouillé sur '+locked+', mais ce jour n’est pas disponible. Le planning précédent est conservé.');
+    plan[locked].push(store);
   }
-  deferred.push.apply(deferred,pending.splice(0));
-
+  for(const day of days){
+    if(plan[day].length>max)throw new Error('Trop de magasins sont verrouillés sur '+day+' pour la capacité journalière. Le planning précédent est conservé.');
+    plan[day]=optimizeRoute(plan[day]);
+    if(plan[day].length&&finish(plan[day],day)>limitFor(day))throw new Error('Les magasins verrouillés sur '+day+' ne tiennent pas dans les horaires. Le planning précédent est conservé.');
+  }
   const unplaced=[];
-  for(const store of deferred){
+  for(const store of free){
     let placed=false;
     const candidates=days.slice().sort((a,b)=>(plan[a]||[]).length-(plan[b]||[]).length);
     for(const day of candidates){
@@ -100,7 +103,6 @@ function buildWeekUnique(chosen,days){
     }
     if(!placed)unplaced.push(store);
   }
-
   const global=new Set();
   for(const d of DAYS){
     const clean=[];
@@ -139,8 +141,6 @@ function eventBlocksPlanning(e){
   const hard=['formation','deplacement','seminaire','conge','vacances','salon professionnel','indisponible','indisponibilite','absence','absent','journee bloquee','jour bloque','repos','hors secteur'];
   for(const word of hard)if(text.includes(word))return true;
   if(/\bparis\b/.test(text))return true;
-  /* Un événement Google « toute la journée » (anniversaire, rappel, etc.)
-     n'est pas une indisponibilité par défaut. */
   return !!(e.planningBlock&&!e.allDay);
 }
 function dateBlocked(date){try{const rows=typeof window.calendarEventsForDate==='function'?window.calendarEventsForDate(date):[];return rows.some(eventBlocksPlanning)}catch(e){return false}}
@@ -196,7 +196,7 @@ async function generateRange(){
       archive[iso(mon)]=snapshot(mon,start,end,plan,days);mon=addDays(mon,7);weekIndex++;weeks++;await new Promise(r=>setTimeout(r,10));
     }
     if(!totalVisits)throw new Error('La période donnerait 0 visite. Rien n’a été remplacé : vérifie les jours, les horaires et les indisponibilités Agenda.');
-    const range={start:iso(start),end:iso(end),weeks,workDays:days,uniqueStores:unique.size,totalVisits,rotation:'hard-unique-v4',calendarSynced,updatedAt:new Date().toISOString()};
+    const range={start:iso(start),end:iso(end),weeks,workDays:days,uniqueStores:unique.size,totalVisits,rotation:'hard-unique-v5',calendarSynced,updatedAt:new Date().toISOString()};
     const firstSnap=archive[iso(first)],candidate={};for(const d of DAYS)candidate[d]=firstSnap&&firstSnap.plan?(firstSnap.plan[d]||[]).map(x=>(state.stores||[]).find(s=>String(s.id)===String(x.id))||x):[];
     if(!await ChefReliability.propose({plan:candidate,weekDate:iso(first),archive,range})){showStatus('Planning précédent conservé.');return}
     showStatus('Période appliquée : '+weeks+' semaines · '+totalVisits+' visites · '+unique.size+' magasins distincts'+(totalUnplaced?' · '+totalUnplaced+' visite'+(totalUnplaced>1?'s':'')+' non placée'+(totalUnplaced>1?'s':''):'')+' · '+(calendarSynced?'Agenda Google vérifié.':'Agenda Google non vérifié, données conservées utilisées.'));
