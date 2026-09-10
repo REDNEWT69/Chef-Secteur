@@ -22,3 +22,4 @@ jobs:
       - run: node tests/architecture.test.cjs
       - run: node tests/navigation-architecture.test.cjs
       - run: node tests/calendar-ownership.test.cjs
+      - run: node tests/assistant-architecture.test.cjs
