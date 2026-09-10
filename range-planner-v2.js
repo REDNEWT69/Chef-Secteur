@@ -203,8 +203,11 @@ async function generateRange(){
     }
     if(!totalVisits)throw new Error('La période donnerait 0 visite. Rien n’a été remplacé : vérifie les jours, les horaires et les indisponibilités Agenda.');
     const range={start:iso(start),end:iso(end),weeks,workDays:days,uniqueStores:unique.size,totalVisits,rotation:'hard-unique-v6',calendarSynced,updatedAt:new Date().toISOString()};
-    const firstSnap=archive[iso(first)],candidate={};for(const d of DAYS)candidate[d]=firstSnap&&firstSnap.plan?(firstSnap.plan[d]||[]).map(x=>(state.stores||[]).find(s=>String(s.id)===String(x.id))||x):[];
-    if(!await ChefReliability.propose({plan:candidate,weekDate:iso(first),archive,range})){showStatus('Planning précédent conservé.');return}
+    let displayMon=new Date(first),displaySnap=null;
+    while(displayMon<=last){const snap=archive[iso(displayMon)];if(snap&&countPlan(snap.plan,DAYS)>0){displaySnap=snap;break}displayMon=addDays(displayMon,7)}
+    if(!displaySnap)throw new Error('La période contient des visites mais aucune semaine affichable n’a été retrouvée. Le planning précédent est conservé.');
+    const candidate={};for(const d of DAYS)candidate[d]=(displaySnap.plan[d]||[]).map(x=>(state.stores||[]).find(s=>String(s.id)===String(x.id))||x);
+    if(!await ChefReliability.propose({plan:candidate,weekDate:iso(displayMon),archive,range})){showStatus('Planning précédent conservé.');return}
     showStatus('Période appliquée : '+weeks+' semaines · '+totalVisits+' visites · '+unique.size+' magasins distincts'+(totalUnplaced?' · '+totalUnplaced+' visite'+(totalUnplaced>1?'s':'')+' non placée'+(totalUnplaced>1?'s':''):'')+' · '+(calendarSynced?'Agenda Google vérifié.':'Agenda Google non vérifié, données conservées utilisées.'));
     window.dispatchEvent(new CustomEvent('chef-range-generated',{detail:{start:iso(start),end:iso(end),weeks,workDays:days,uniqueStores:unique.size}}));
   }catch(e){showStatus('Erreur pendant la génération : '+(e.message||String(e)),true)}finally{generationBusy=false;if(btn)btn.disabled=false}
