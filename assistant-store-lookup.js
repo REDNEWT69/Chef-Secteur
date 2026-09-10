@@ -13,8 +13,9 @@
   function dateFromMonday(mon,day){const d=new Date(mon+'T12:00:00');d.setDate(d.getDate()+Math.max(0,DAYS.indexOf(day)));return d}
   function frDate(d){return d.toLocaleDateString('fr-FR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}
   function allStores(){try{return (state.stores&&state.stores.length?state.stores:(typeof DEFAULT_STORES!=='undefined'?DEFAULT_STORES:[]))||[]}catch(e){return[]}}
-  function loadArchive(){try{return JSON.parse(localStorage.getItem(ARCHIVE_KEY)||'{}')||{}}catch(e){return{}}}
-  function saveArchive(a){try{localStorage.setItem(ARCHIVE_KEY,JSON.stringify(a))}catch(e){}}
+  function archiveStorage(){try{return window.__chefStorage||window.localStorage||null}catch(e){return window.__chefStorage||null}}
+  function loadArchive(){try{const s=archiveStorage();return s?JSON.parse(s.getItem(ARCHIVE_KEY)||'{}')||{}:{}}catch(e){return{}}}
+  function saveArchive(a){try{const s=archiveStorage();if(s)s.setItem(ARCHIVE_KEY,JSON.stringify(a))}catch(e){}}
   function snapshotCurrentWeek(){try{if(!state||!state.plan)return;const mon=iso(currentMonday()),out={weekMonday:mon,plan:{}};for(const day of DAYS){out.plan[day]=((state.plan&&state.plan[day])||[]).map(s=>({id:s.id||'',enseigne:s.enseigne||'',ville:s.ville||'',adresse:s.adresse||''}))}const a=loadArchive();a[mon]=out;saveArchive(a)}catch(e){}}
   function scheduleSnapshot(delay){if(snapshotTimer)clearTimeout(snapshotTimer);snapshotTimer=setTimeout(function(){snapshotTimer=null;snapshotCurrentWeek()},Number(delay)||60)}
   function currentPlanEntry(){const mon=iso(currentMonday()),out={weekMonday:mon,plan:{}};for(const d of DAYS)out.plan[d]=((state.plan&&state.plan[d])||[]);return out}

@@ -26,5 +26,7 @@ if(!/window\.chefSecteurStoreScheduleAnswer\s*=/.test(storeLookup))throw new Err
 if(!/storeRunnerRegisterAssistantResolver/.test(storeLookup))throw new Error('Assistant magasins: résolveur non enregistré');
 if(!/store-runner:planning-updated/.test(storeLookup))throw new Error('Assistant magasins: écoute planning-updated absente');
 if(!/MutationObserver/.test(storeLookup)||!/observedPlanHost/.test(storeLookup))throw new Error('Assistant magasins: observation du planning absente');
+if(!/__chefStorage/.test(storeLookup))throw new Error('Assistant magasins: archive doit utiliser le stockage robuste de l’application');
+if(/localStorage\.getItem\(ARCHIVE_KEY\)|localStorage\.setItem\(ARCHIVE_KEY/.test(storeLookup))throw new Error('Assistant magasins: archive ne doit pas dépendre directement de localStorage');
 
 console.log('Assistant architecture guards: OK');
