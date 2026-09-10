@@ -39,9 +39,16 @@
       try{if(typeof renderAll==='function')renderAll()}catch(e){}
     }
   }
+  function syncField(){
+    if(!ensure())return false;
+    var el=document.getElementById('endTime');
+    if(!el)return false;
+    el.value=String(state.settings.endTime||'18:00');
+    return true;
+  }
   function installField(){
     if(!ensure())return false;
-    if(document.getElementById('endTime'))return true;
+    if(document.getElementById('endTime'))return syncField();
     var start=document.getElementById('startTime');if(!start)return false;
     var cell=start.parentElement;if(!cell)return false;
     var grid=cell.parentElement;
@@ -54,9 +61,7 @@
     return true;
   }
   function boot(){installField()}
-  function scheduleBoot(){[0,80,220,500,1000,1800].forEach(function(delay){setTimeout(boot,delay)})}
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',scheduleBoot,{once:true});else scheduleBoot();
-  window.addEventListener('load',boot,{once:true});
-  window.addEventListener('focus',boot);
-  document.addEventListener('visibilitychange',function(){if(!document.hidden)boot()});
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
+  document.addEventListener('store-runner:data-restored',syncField);
+  document.addEventListener('store-runner:planning-updated',function(){if(!document.getElementById('endTime'))installField()});
 })();
