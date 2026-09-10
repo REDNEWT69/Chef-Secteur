@@ -32,6 +32,7 @@ if(!/store-runner:planning-updated/.test(storeLookup))throw new Error('Assistant
 if(!/MutationObserver/.test(storeLookup)||!/observedPlanHost/.test(storeLookup))throw new Error('Assistant magasins: observation du planning absente');
 if(!/__chefStorage/.test(storeLookup))throw new Error('Assistant magasins: archive doit utiliser le stockage robuste de l’application');
 if(/localStorage\.getItem\(ARCHIVE_KEY\)|localStorage\.setItem\(ARCHIVE_KEY/.test(storeLookup))throw new Error('Assistant magasins: archive ne doit pas dépendre directement de localStorage');
+if(/addEventListener\(['"]load['"],[\s\S]{0,160}(?:observePlanning|scheduleSnapshot)/.test(storeLookup))throw new Error('Assistant magasins: initialisation redondante au load interdite');
 
 if(!/MutationObserver/.test(sheetDrag))throw new Error('Assistant mobile: observation de l’état du panneau absente');
 if(/\[100,250,600,1200,2400\]/.test(sheetDrag)||/setTimeout\s*\(\s*install/.test(sheetDrag))throw new Error('Assistant mobile: réinstallation différée répétée interdite');

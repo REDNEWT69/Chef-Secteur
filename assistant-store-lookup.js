@@ -42,7 +42,6 @@
   function boot(){observePlanning();scheduleSnapshot(0)}
   document.addEventListener('store-runner:planning-updated',function(){observePlanning();scheduleSnapshot(40)});
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
-  window.addEventListener('load',function(){observePlanning();scheduleSnapshot(0)},{once:true});
   window.addEventListener('focus',function(){observePlanning();scheduleSnapshot(50)});
   document.addEventListener('visibilitychange',function(){if(!document.hidden){observePlanning();scheduleSnapshot(50)}});
 })();
