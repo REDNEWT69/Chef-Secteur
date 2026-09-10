@@ -1,7 +1,6 @@
 (function(){
   'use strict';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-  let installed=false;
   const resolverEntries=[];
   const contextTransforms=[];
 
@@ -28,6 +27,9 @@
   }
   window.storeRunnerRegisterAssistantResolver=registerAssistantResolver;
   window.storeRunnerRegisterAssistantContextTransform=registerAssistantContextTransform;
+  window.storeRunnerRunAssistantResolvers=runAssistantResolvers;
+  window.storeRunnerApplyAssistantContextTransforms=applyAssistantContextTransforms;
+
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
   function todayISO(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
   function mondayISO(){try{const raw=(state.settings&&state.settings.weekDate)||todayISO(),d=new Date(raw+'T12:00:00'),w=d.getDay()||7;d.setDate(d.getDate()-w+1);return d}catch(e){return new Date()}}
@@ -108,15 +110,13 @@
     window.__assistantStatusEvents=true;
   }
   function install(){
-    enrichContext();hookLocal();installStatusEvents();updateAssistantStatus();
-    installed=!!(window.__assistantContextWrapped&&window.__assistantLocalWrapped);
-    return installed;
+    enrichContext();
+    hookLocal();
+    installStatusEvents();
+    updateAssistantStatus();
   }
-  function boot(){
-    if(install())return;
-    [100,250,600,1200,2400].forEach(delay=>setTimeout(install,delay));
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
-  window.addEventListener('focus',()=>setTimeout(install,0));
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)setTimeout(install,0)});
+  function boot(){install()}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
+  window.addEventListener('focus',updateAssistantStatus);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateAssistantStatus()});
 })();
