@@ -2,7 +2,8 @@
 
 Date : 10 septembre 2026  
 Dépôt : REDNEWT69/Chef-Secteur  
-Base vérifiée : `main`, commit `44deaca4f2fa101e0396463a76f54dae91618a85`  
+Base de rédaction vérifiée : `main`, commit `44deaca4f2fa101e0396463a76f54dae91618a85`  
+Complément vérifié pendant la rédaction : `52206719be3604a22f46f3df7489918d417df184` (garde architecture assistant)  
 Statut : plan de réalisation terminé ; développement fonctionnel suspendu à la demande de l’utilisateur.
 
 ## 1. Point de reprise et travail conservé
@@ -13,6 +14,7 @@ Ce document prolonge l’audit déjà réalisé. Il ne relance pas un audit gén
 
 - La version distante a évolué depuis la base du 9 septembre `ea8e7c6a194a91a2d5e585c2df8f0e0461f03d7e`.
 - La consolidation a séparé notamment profil/GPS, navigation, génération du planning et synchronisation Agenda. Des wrappers ont été retirés et des gardes Reliability ajoutées.
+- Pendant la rédaction, le commit `52206719be3604a22f46f3df7489918d417df184` a ajouté `tests/assistant-architecture.test.cjs` au workflow Reliability. Cette évolution distante est conservée et incluse dans la recette future ; aucun fichier correspondant n’est remplacé par ce plan.
 - Les exécutions [Reliability checks](https://github.com/REDNEWT69/Chef-Secteur/actions/runs/34445940478) et [Deploy Store Runner](https://github.com/REDNEWT69/Chef-Secteur/actions/runs/34445940685) de cette base sont terminées avec succès.
 - Aucun `PLAN_METIER_STORE_RUNNER.md` n’était présent dans l’arbre de `main` ni dans les fichiers locaux inspectés. Aucune pull request ouverte n’a été trouvée au contrôle initial.
 - La copie locale de travail provient d’une archive GitHub ; elle ne contient pas de répertoire `.git`. L’état distant a donc été vérifié par les références et comparaisons GitHub, et les différences locales par comparaison de fichiers avec l’archive initiale. Un `git status` local n’est pas disponible sur cette copie.
@@ -258,7 +260,7 @@ Les contrôles suivants constituent des critères futurs, pas des tests prétend
 
 | Axe | Scénarios de validation |
 | --- | --- |
-| Non-régression | Suites syntax, backups, calendar, planning, region-stores, architecture, navigation-architecture, calendar-ownership actuellement exécutées par Reliability |
+| Non-régression | Suites syntax, backups, calendar, planning, region-stores, architecture, navigation-architecture, calendar-ownership et assistant-architecture actuellement exécutées par Reliability |
 | Modèle | Identifiants uniques, magasin/contact cohérents, visite source valide, versions inconnues refusées |
 | Reprise | Saisie partielle, changement d’étape, fermeture, réouverture et reprise du même brouillon |
 | Actions / opportunités | Constats distincts, conversion répétée, modification du responsable, échéance, réalisation/réouverture |
