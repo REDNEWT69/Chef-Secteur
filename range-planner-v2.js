@@ -226,10 +226,14 @@ function install(){
   window.storeRunnerGenerateSingleWeek=strictSingleWeek;
   installed=true;return true;
 }
+function recoverInstall(){
+  if(document.getElementById('rangePlannerCard'))return;
+  installed=false;
+  install();
+}
 window.generatePlanningRange=generateRange;
-function bootInstall(){if(install())return;[80,180,350,700,1400,2600].forEach(ms=>setTimeout(install,ms))}
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bootInstall);else bootInstall();
-window.addEventListener('load',install);
-window.addEventListener('focus',install);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)install()});
+function boot(){install()}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
+document.addEventListener('store-runner:planning-updated',recoverInstall);
+document.addEventListener('store-runner:data-restored',recoverInstall);
 })();
