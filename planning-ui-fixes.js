@@ -1,6 +1,7 @@
 (function(){
   'use strict';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const SHORT={Lundi:'Lun',Mardi:'Mar',Mercredi:'Mer',Jeudi:'Jeu',Vendredi:'Ven',Samedi:'Sam'};
   let scheduled=false;
 
   function dateOnly(v){const m=String(v||'').match(/^(\d{4}-\d{2}-\d{2})/);return m?m[1]:''}
@@ -19,108 +20,108 @@
     if(banner&&!banner.querySelector('.hotelCornerStar')){const s=document.createElement('div');s.className='hotelCornerStar';s.textContent='✦';s.style.cssText='position:absolute;right:14px;top:10px;font-size:18px;color:#c98a00';banner.style.position='relative';banner.appendChild(s)}
   }
 
-  function selectedDayIndex(){
-    const tabs=[...document.querySelectorAll('#dayTabs .dayTab')];
-    const idx=tabs.findIndex(b=>b.classList.contains('active'));
-    return idx>=0?idx:0;
-  }
+  function selectedDayIndex(){const tabs=[...document.querySelectorAll('#dayTabs .dayTab')],idx=tabs.findIndex(b=>b.classList.contains('active'));return idx>=0?idx:0}
   function selectedDayDate(){const d=weekMonday();d.setDate(d.getDate()+selectedDayIndex());return d}
-  function dayHeroLabel(){
-    const d=selectedDayDate();
-    const day=new Intl.DateTimeFormat('fr-FR',{weekday:'long'}).format(d);
-    return day.charAt(0).toUpperCase()+day.slice(1)+' '+d.getDate();
-  }
-  function fullDayLabel(){
-    const d=selectedDayDate();
-    return new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'long',year:'numeric'}).format(d);
-  }
-  function weekLabel(){
-    const m=weekMonday(),end=new Date(m);end.setDate(end.getDate()+5);
-    const a=new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'long'}).format(m);
-    const b=new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'long',year:'numeric'}).format(end);
-    return 'Semaine du '+a+' au '+b;
-  }
+  function dayHeroLabel(){const d=selectedDayDate(),day=new Intl.DateTimeFormat('fr-FR',{weekday:'long'}).format(d);return day.charAt(0).toUpperCase()+day.slice(1)+' '+d.getDate()}
+  function fullDayLabel(){return new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'long',year:'numeric'}).format(selectedDayDate())}
+  function weekLabel(){const m=weekMonday(),end=new Date(m);end.setDate(end.getDate()+5);const a=new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'long'}).format(m),b=new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'long',year:'numeric'}).format(end);return 'Semaine du '+a+' au '+b}
 
   function ensurePlanningHero(plan,title){
     let hero=document.getElementById('planningHeroV2');
-    if(!hero){
-      hero=document.createElement('section');hero.id='planningHeroV2';hero.className='planningHeroV2';
-      hero.innerHTML='<div class="planningHeroTop"><span class="planningHeroPill">Cette semaine</span><span id="planningHeroWeek" class="planningHeroWeek"></span></div><div id="planningHeroDay" class="planningHeroDay"></div><div id="planningHeroFull" class="planningHeroFull"></div>';
-    }
+    if(!hero){hero=document.createElement('section');hero.id='planningHeroV2';hero.className='planningHeroV2';hero.innerHTML='<div class="planningHeroTop"><span class="planningHeroPill">Cette semaine</span><span id="planningHeroWeek" class="planningHeroWeek"></span></div><div id="planningHeroDay" class="planningHeroDay"></div><div id="planningHeroFull" class="planningHeroFull"></div>'}
     if(hero.parentNode!==plan)plan.insertBefore(hero,plan.firstChild);
     const day=document.getElementById('planningHeroDay'),full=document.getElementById('planningHeroFull'),week=document.getElementById('planningHeroWeek');
-    if(day)day.textContent=dayHeroLabel();if(full)full.textContent=fullDayLabel();if(week)week.textContent=weekLabel();
-    if(title)title.style.display='none';
-    return hero;
+    if(day)day.textContent=dayHeroLabel();if(full)full.textContent=fullDayLabel();if(week)week.textContent=weekLabel();if(title)title.style.display='none';return hero;
   }
 
-  function syncSmartBrief(){
-    const brief=document.getElementById('smartBrief');
-    const plan=document.getElementById('planPanel');
-    if(!brief||!plan)return;
-    brief.style.display=plan.classList.contains('active')?'none':'';
-  }
+  function syncSmartBrief(){const brief=document.getElementById('smartBrief'),plan=document.getElementById('planPanel');if(!brief||!plan)return;brief.style.display=plan.classList.contains('active')?'none':''}
 
   function reorderPlanning(){
-    const plan=document.querySelector('#planPanel .applePlan');
-    const title=plan&&plan.querySelector('.applePlanTitle');
-    const tabs=document.getElementById('dayTabs');
-    const timeline=plan&&plan.querySelector('.timelineShell');
-    const metrics=document.getElementById('planMetrics');
-    const saturday=document.getElementById('saturdayRecommendation');
-    const departure=plan&&plan.querySelector('.departureCard');
-    const settings=document.getElementById('planningSettings');
+    const plan=document.querySelector('#planPanel .applePlan'),title=plan&&plan.querySelector('.applePlanTitle'),tabs=document.getElementById('dayTabs'),timeline=plan&&plan.querySelector('.timelineShell'),metrics=document.getElementById('planMetrics'),saturday=document.getElementById('saturdayRecommendation'),departure=plan&&plan.querySelector('.departureCard'),settings=document.getElementById('planningSettings');
     if(!plan||!tabs||!timeline)return;
-
-    const hero=ensurePlanningHero(plan,title);
-    hero.insertAdjacentElement('afterend',tabs);
-
+    const hero=ensurePlanningHero(plan,title);hero.insertAdjacentElement('afterend',tabs);
     let tools=document.getElementById('planningToolsV2');
-    if(!tools){
-      tools=document.createElement('div');tools.id='planningToolsV2';tools.className='planningToolsV2';
-      tools.innerHTML='<button class="secondary" type="button" onclick="showPlanMap()">⌖ Ouvrir la tournée</button><button class="secondary" type="button" onclick="generateWeek()">↝ Réorganiser</button>';
-    }
-    tabs.insertAdjacentElement('afterend',tools);
-    tools.insertAdjacentElement('afterend',timeline);
-
-    const monthly=document.querySelector('#planPanel #managerPlanningMonth, #planPanel .managerPlanningMonth, #planPanel .monthPlanning, #planPanel [data-planning-month]');
-    let anchor=timeline;
-    if(monthly){anchor.insertAdjacentElement('afterend',monthly);anchor=monthly}
-    if(metrics){anchor.insertAdjacentElement('afterend',metrics);anchor=metrics}
-    if(saturday){anchor.insertAdjacentElement('afterend',saturday);anchor=saturday}
-    if(departure){anchor.insertAdjacentElement('afterend',departure);anchor=departure}
-    if(settings)plan.appendChild(settings);
+    if(!tools){tools=document.createElement('div');tools.id='planningToolsV2';tools.className='planningToolsV2';tools.innerHTML='<button class="secondary" type="button" onclick="showPlanMap()">⌖ Ouvrir la tournée</button><button class="primary" type="button" onclick="generateWeek()">✦ Générer ma semaine</button>'}
+    const generation=tools.querySelector('button[onclick*="generateWeek"]');if(generation){generation.className='primary';generation.textContent='✦ Générer ma semaine'}
+    tabs.insertAdjacentElement('afterend',tools);tools.insertAdjacentElement('afterend',timeline);
+    const monthly=document.querySelector('#planPanel #managerPlanningMonth, #planPanel .managerPlanningMonth, #planPanel .monthPlanning, #planPanel [data-planning-month]');let anchor=timeline;
+    if(monthly){anchor.insertAdjacentElement('afterend',monthly);anchor=monthly}if(metrics){anchor.insertAdjacentElement('afterend',metrics);anchor=metrics}if(saturday){anchor.insertAdjacentElement('afterend',saturday);anchor=saturday}if(departure){anchor.insertAdjacentElement('afterend',departure);anchor=departure}if(settings)plan.appendChild(settings);
   }
+
+  function choiceSummary(boxId,type){
+    const all=[...document.querySelectorAll('#'+boxId+' input[type="checkbox"]')],checked=all.filter(x=>x.checked);
+    if(type==='days')return checked.length?checked.map(x=>SHORT[x.value]||x.value).join(', '):'Aucun jour';
+    if(!all.length||checked.length===all.length)return'Toutes';
+    if(!checked.length)return'Aucune';
+    if(checked.length<=2)return checked.map(x=>x.value).join(', ');
+    return checked.length+' sélectionnées';
+  }
+
+  function ensureChoiceDetails(boxId,detailsId,title,type){
+    const box=document.getElementById(boxId);if(!box)return;
+    let details=document.getElementById(detailsId);
+    if(!details){
+      const parent=box.parentNode,label=box.previousElementSibling&&box.previousElementSibling.tagName==='LABEL'?box.previousElementSibling:null;
+      details=document.createElement('details');details.id=detailsId;details.className='planningChoice';
+      const summary=document.createElement('summary');summary.innerHTML='<span>'+title+'</span><small data-choice-summary></small>';
+      const body=document.createElement('div');body.className='planningChoiceBody';
+      parent.insertBefore(details,label||box);details.appendChild(summary);details.appendChild(body);if(label)body.appendChild(label);body.appendChild(box);
+    }
+    const summary=details.querySelector('[data-choice-summary]');if(summary)summary.textContent=choiceSummary(boxId,type);
+  }
+
+  function ensureAdvancedDetails(){
+    const settings=document.querySelector('#planningSettings .settingsInner'),strategy=document.getElementById('strategy');if(!settings||!strategy)return;
+    let details=document.getElementById('planningAdvancedDetails');
+    if(!details){
+      const label=strategy.previousElementSibling&&strategy.previousElementSibling.tagName==='LABEL'?strategy.previousElementSibling:null,grid=settings.querySelector('.premium-time');
+      details=document.createElement('details');details.id='planningAdvancedDetails';details.className='planningChoice planningAdvancedDetails';details.innerHTML='<summary><span>Horaires & stratégie</span><small>Avancé</small></summary><div class="planningChoiceBody"></div>';
+      settings.insertBefore(details,label||strategy);const body=details.querySelector('.planningChoiceBody');if(label)body.appendChild(label);body.appendChild(strategy);
+      if(grid){const hint=grid.nextElementSibling&&grid.nextElementSibling.classList.contains('tiny')?grid.nextElementSibling:null;body.appendChild(grid);if(hint)body.appendChild(hint)}
+    }
+  }
+
+  function ensureCalendarDetails(){
+    const card=document.querySelector('#planningSettings .calendarConnect');if(!card)return;
+    let details=document.getElementById('planningCalendarDetails');
+    if(!details){details=document.createElement('details');details.id='planningCalendarDetails';details.className='planningChoice planningCalendarDetails';details.innerHTML='<summary><span>Google Agenda</span><small data-calendar-summary>Connexion</small></summary><div class="planningChoiceBody"></div>';card.parentNode.insertBefore(details,card);details.querySelector('.planningChoiceBody').appendChild(card)}
+    const badge=document.getElementById('googleCalendarBadge'),small=details.querySelector('[data-calendar-summary]');if(small)small.textContent=badge&&badge.textContent?badge.textContent:'Connexion';
+  }
+
+  function suppressDuplicateGeneration(){
+    const settings=document.querySelector('#planningSettings .settingsInner');if(!settings)return;
+    settings.querySelectorAll('button[onclick*="generateWeek"]').forEach(btn=>btn.classList.add('planningDuplicateGenerate'));
+    const target=document.getElementById('target');if(target){const label=target.previousElementSibling;if(label&&label.tagName==='LABEL')label.textContent='Objectif de visites par semaine'}
+  }
+
+  function syncDynamicStoreCount(){
+    let total=0,active=0;
+    try{const stores=Array.isArray(state.stores)?state.stores:[];total=stores.length;active=stores.filter(s=>s&&s.active!==false).length}catch(e){}
+    document.querySelectorAll('#profilePanel .notice').forEach(el=>{
+      if(/\b83\s+magasins\b|magasins\s+rh[oô]ne-alpes\s+sont\s+conserv[eé]s/i.test(el.textContent||''))el.textContent=active+' magasin'+(active>1?'s':'')+' actif'+(active>1?'s':'')+' dans ton secteur'+(total!==active?' · '+total+' au total':'')+'. Le compteur suit automatiquement tes données.';
+    });
+    const settings=document.querySelector('#planningSettings .settingsInner');if(settings){let line=document.getElementById('planningDynamicStoreCount');if(!line){line=document.createElement('div');line.id='planningDynamicStoreCount';line.className='planningStoreCount tiny';const target=document.getElementById('target');if(target)target.insertAdjacentElement('afterend',line)}if(line)line.textContent=active+' magasin'+(active>1?'s':'')+' actif'+(active>1?'s':'')+' disponible'+(active>1?'s':'')+' pour le planning.'}
+  }
+
+  function compactSettings(){ensureChoiceDetails('daysBox','planningDaysDetails','Jours travaillés','days');ensureChoiceDetails('brandsBox','planningBrandsDetails','Enseignes','brands');ensureAdvancedDetails();ensureCalendarDetails();suppressDuplicateGeneration();syncDynamicStoreCount()}
 
   function css(){if(document.getElementById('planning-fix-css'))return;const s=document.createElement('style');s.id='planning-fix-css';s.textContent=`
     #planPanel .timelineRow{min-width:0!important}#planPanel .tlMain{min-width:0!important}#planPanel .timelineRow *{max-width:100%}
-    #planPanel .applePlan{padding-top:2px!important}
-    body:has(#planPanel.active) #smartBrief{display:none!important}
-    #planPanel #iosDayHero{display:none!important}
-    .planningHeroV2{margin:0 0 8px;padding:8px 2px 2px;background:transparent;border:0;box-shadow:none}
-    .planningHeroTop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
-    .planningHeroPill{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.78);border:1px solid rgba(60,60,67,.12);font-size:11px;font-weight:800;color:#667085;box-shadow:0 4px 14px rgba(31,41,55,.04)}
-    .planningHeroWeek{font-size:11px;color:#8a93a2;font-weight:650;text-align:right}
-    .planningHeroDay{font-family:Georgia,"Times New Roman",serif;font-size:44px;line-height:.98;letter-spacing:-.045em;font-weight:500;color:#111318;margin:0}
-    .planningHeroFull{font-size:14px;color:#717987;margin-top:8px;font-weight:600}
-    #planPanel #dayTabs{margin:10px 0 8px;padding-bottom:2px}
-    .planningToolsV2{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
-    .planningToolsV2 button{min-height:40px;padding:9px 13px}
-    #planPanel .timelineShell{margin-bottom:20px}
-    #planPanel #planMetrics{margin:18px 0 14px!important}
-    #planPanel .departureCard{margin:8px 0 14px!important}
-    #planPanel #saturdayRecommendation:empty{display:none}
-    @media(max-width:650px){.planningHeroV2{padding-top:2px}.planningHeroTop{align-items:flex-start}.planningHeroWeek{max-width:58%;line-height:1.3}.planningHeroDay{font-size:50px}.planningHeroFull{font-size:13px}.planningToolsV2{margin-bottom:10px}.planningToolsV2 button{flex:1 1 0}}
+    #planPanel .applePlan{padding-top:2px!important}body:has(#planPanel.active) #smartBrief{display:none!important}#planPanel #iosDayHero{display:none!important}
+    .planningHeroV2{margin:0 0 8px;padding:8px 2px 2px;background:transparent;border:0;box-shadow:none}.planningHeroTop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}.planningHeroPill{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.78);border:1px solid rgba(60,60,67,.12);font-size:11px;font-weight:800;color:#667085;box-shadow:0 4px 14px rgba(31,41,55,.04)}.planningHeroWeek{font-size:11px;color:#8a93a2;font-weight:650;text-align:right}.planningHeroDay{font-family:Georgia,"Times New Roman",serif;font-size:44px;line-height:.98;letter-spacing:-.045em;font-weight:500;color:#111318;margin:0}.planningHeroFull{font-size:14px;color:#717987;margin-top:8px;font-weight:600}
+    #planPanel #dayTabs{margin:10px 0 8px;padding-bottom:2px}.planningToolsV2{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}.planningToolsV2 button{min-height:42px;padding:9px 13px;flex:1 1 180px}#planPanel .timelineShell{margin-bottom:20px}#planPanel #planMetrics{margin:18px 0 14px!important}#planPanel .departureCard{margin:8px 0 14px!important}#planPanel #saturdayRecommendation:empty{display:none}
+    #planningSettings .settingsInner{display:block!important}.planningChoice{margin:10px 0;border:1px solid rgba(120,125,140,.15);border-radius:16px;background:rgba(255,255,255,.58);overflow:hidden}.planningChoice>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:12px 14px;cursor:pointer;font-weight:800;color:#1f2937}.planningChoice>summary::-webkit-details-marker{display:none}.planningChoice>summary:after{content:'＋';font-size:18px;color:#1674d9;margin-left:6px}.planningChoice[open]>summary:after{content:'−'}.planningChoice>summary small{margin-left:auto;color:#7a8290;font-size:11px;font-weight:650;white-space:nowrap;max-width:58%;overflow:hidden;text-overflow:ellipsis}.planningChoiceBody{padding:0 12px 13px}.planningChoiceBody>label:first-child{display:none}.planningChoiceBody .checkgrid{display:grid!important;grid-template-columns:1fr!important;gap:6px!important;max-height:170px;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2px}.planningChoiceBody .checkitem{min-height:42px;margin:0}.planningAdvancedDetails .premium-time{margin-top:6px}.planningCalendarDetails .calendarConnect{margin:0!important;border:0!important;box-shadow:none!important;background:transparent!important;padding:4px 0!important}.planningRangeDetails .formgrid{margin-top:4px}.planningDuplicateGenerate{display:none!important}.planningStoreCount{margin:6px 0 2px;color:#697386}.planningRangeDetails{order:20}
+    @media(max-width:650px){.planningHeroV2{padding-top:2px}.planningHeroTop{align-items:flex-start}.planningHeroWeek{max-width:58%;line-height:1.3}.planningHeroDay{font-size:50px}.planningHeroFull{font-size:13px}.planningToolsV2{margin-bottom:10px}.planningToolsV2 button{flex:1 1 0;min-width:0}.planningChoice{border-radius:15px}.planningChoice>summary{padding:11px 12px}.planningChoiceBody{padding:0 10px 11px}.planningChoiceBody .checkgrid{max-height:150px}.planningAdvancedDetails .formgrid,.planningRangeDetails .formgrid{grid-template-columns:1fr!important}}
   `;document.head.appendChild(s)}
 
-  function run(){css();syncSmartBrief();reorderPlanning();restoreHotelStars()}
+  function run(){css();syncSmartBrief();reorderPlanning();compactSettings();restoreHotelStars()}
   function schedule(){if(scheduled)return;scheduled=true;requestAnimationFrame(function(){scheduled=false;run()})}
   function observeDayTabs(){const tabs=document.getElementById('dayTabs');if(!tabs||tabs.__planningFixObserver)return;const observer=new MutationObserver(schedule);observer.observe(tabs,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});tabs.__planningFixObserver=observer}
   function observePlanPanel(){const plan=document.getElementById('planPanel');if(!plan||plan.__planningActiveObserver)return;const observer=new MutationObserver(schedule);observer.observe(plan,{attributes:true,attributeFilter:['class']});plan.__planningActiveObserver=observer}
   function boot(){run();observeDayTabs();observePlanPanel();[120,500,900].forEach(function(delay){setTimeout(function(){run();observeDayTabs();observePlanPanel()},delay)})}
-  document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(schedule,60)},true);
-  document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(run,120)});
-  window.addEventListener('focus',function(){setTimeout(run,120)});
-  window.addEventListener('load',function(){setTimeout(run,180)});
+  document.addEventListener('click',e=>{if(e.target&&e.target.closest&&(e.target.closest('#dayTabs .dayTab')||e.target.closest('.tab')))setTimeout(schedule,60)},true);
+  document.addEventListener('change',e=>{if(e.target&&e.target.matches&&e.target.matches('[data-day],[data-brand]'))setTimeout(schedule,20)},true);
+  document.addEventListener('store-runner:planning-updated',schedule);document.addEventListener('store-runner:data-restored',schedule);document.addEventListener('store-runner:calendar-updated',schedule);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(run,120)});window.addEventListener('focus',function(){setTimeout(run,120)});window.addEventListener('load',function(){setTimeout(run,180)});
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
 })();
