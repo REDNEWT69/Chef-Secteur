@@ -35,9 +35,17 @@
     }
   }
 
+  function syncField(){
+    if(!ensure())return false;
+    const input=document.getElementById('maxVisitsPerDay');
+    if(!input)return false;
+    input.value=String(state.settings.maxVisitsPerDay||4);
+    return true;
+  }
+
   function installField(){
     if(!ensure())return false;
-    if(document.getElementById('maxVisitsPerDay'))return true;
+    if(document.getElementById('maxVisitsPerDay'))return syncField();
     const target=document.getElementById('target');
     if(!target)return false;
 
@@ -65,15 +73,9 @@
   }
 
   function boot(){installField()}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});
+  else boot();
 
-  function scheduleBoot(){
-    [0,80,250,700,1500].forEach(function(delay){setTimeout(boot,delay)});
-  }
-
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',scheduleBoot);
-  else scheduleBoot();
-
-  window.addEventListener('load',boot);
-  window.addEventListener('focus',boot);
-  document.addEventListener('visibilitychange',function(){if(!document.hidden)boot()});
+  document.addEventListener('store-runner:data-restored',syncField);
+  document.addEventListener('store-runner:planning-updated',function(){if(!document.getElementById('maxVisitsPerDay'))installField()});
 })();
