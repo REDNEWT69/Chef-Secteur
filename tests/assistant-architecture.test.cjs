@@ -12,6 +12,9 @@ if(!/store-runner:assistant-mode-changed/.test(assistant))throw new Error('Assis
 if(!/installStatusEvents/.test(assistant))throw new Error('Assistant: gestion événementielle du statut absente');
 if(!/storeRunnerRegisterAssistantResolver/.test(assistant)||!/runAssistantResolvers/.test(assistant))throw new Error('Assistant: registre de résolveurs absent');
 if(!/storeRunnerRegisterAssistantContextTransform/.test(assistant)||!/applyAssistantContextTransforms/.test(assistant))throw new Error('Assistant: registre de transformations de contexte absent');
+if(!/window\.storeRunnerRunAssistantResolvers\s*=/.test(assistant))throw new Error('Assistant: exécuteur public de résolveurs absent');
+if(!/window\.storeRunnerApplyAssistantContextTransforms\s*=/.test(assistant))throw new Error('Assistant: exécuteur public de transformations absent');
+if(/setTimeout\s*\(\s*install/.test(assistant))throw new Error('Assistant: réinstallation différée répétée interdite');
 
 if(/window\.sectorContext\s*=/.test(contextLimit))throw new Error('Assistant: ai-context-limit.js ne doit plus wrapper sectorContext');
 if(!/window\.storeRunnerLimitAssistantContext\s*=/.test(contextLimit))throw new Error('Assistant: limiteur de contexte public absent');
