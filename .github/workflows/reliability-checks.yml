@@ -16,6 +16,8 @@ jobs:
           node-version: '22'
       - run: node tests/syntax.test.cjs
       - run: node tests/backups.test.cjs
+      - run: node tests/visit-workflow.test.cjs
+      - run: node tests/visit-storage.test.cjs
       - run: node tests/calendar.test.cjs
       - run: node tests/planning.test.cjs
       - run: node tests/region-stores.test.cjs

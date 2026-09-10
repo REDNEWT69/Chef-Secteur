@@ -1,6 +1,7 @@
 /* Durable application data only. OAuth tokens are never exported. */
 (function(root){
 'use strict';
+const VisitModel=root.StoreRunnerVisitModel||(typeof require==='function'?require('./store-runner-visit-model.js'):null);
 const MAIN='sector_planner_universal_v1', ARCHIVE='chef_sector_plan_archive_v1', RANGE='chef_sector_range_v1';
 const BACKUPS='chef_recovery_backups_v1', JOURNAL='chef_recovery_transaction_v1', EXPORT='chef_last_export_v1';
 const CATALOG='chef-secteur-official-catalog-local-v1';
@@ -16,7 +17,7 @@ function validateState(s){
  for(const k of ['visits','notes','included','excluded','locks','plan'])if(s[k]!==undefined&&!object(s[k]))throw Error('Données invalides : '+k);
  if(s.appointments!==undefined&&(!Array.isArray(s.appointments)||s.appointments.some(a=>!object(a)||!ids.has(String(a.storeId))||!/^\d{4}-\d{2}-\d{2}$/.test(a.date)||!/^\d{2}:\d{2}$/.test(a.time))))throw Error('Rendez-vous invalides.');
  if(s.calendarEvents!==undefined&&(!Array.isArray(s.calendarEvents)||s.calendarEvents.some(e=>!object(e)||typeof e.date!=='string')))throw Error('Agenda invalide.');
- validatePlanShape(s.plan||{},ids);return s;
+ validatePlanShape(s.plan||{},ids);if(s.businessV2!==undefined){if(!VisitModel)throw Error('Module Visit/Action indisponible.');VisitModel.validate(s)}return s;
 }
 function validatePlanShape(plan,ids){if(!object(plan))throw Error('Planning invalide.');for(const [day,list] of Object.entries(plan)){if(!DAYS.includes(day)||!Array.isArray(list)||list.some(s=>!object(s)||!ids.has(String(s.id))))throw Error('Planning contenant un jour ou un magasin inconnu.')}}
 function validate(bundle){
@@ -29,23 +30,23 @@ function validate(bundle){
  if(!object(snap.plan))throw Error('Planning archivé invalide.');for(const [day,rows] of Object.entries(snap.plan))if(!DAYS.includes(day)||!Array.isArray(rows)||rows.some(x=>!object(x)||!x.id))throw Error('Visites archivées invalides.');}
  return bundle;
 }
-function capture(s=root.state,db=root.localStorage){return validate({format:'ChefSecteurBackup',version:1,createdAt:new Date().toISOString(),state:copy(s),archive:JSON.parse(db.getItem(ARCHIVE)||'{}'),range:JSON.parse(db.getItem(RANGE)||'null'),catalog:JSON.parse(db.getItem(CATALOG)||'[]')})}
-function backups(db=root.localStorage){const rows=JSON.parse(db.getItem(BACKUPS)||'[]');if(!Array.isArray(rows))throw Error('Historique de sauvegardes illisible.');return rows}
-function checkpoint(reason,db=root.localStorage,bundle=capture(root.state,db)){
+function capture(s=root.state,db=(root.__chefStorage||root.localStorage)){return validate({format:'ChefSecteurBackup',version:1,createdAt:new Date().toISOString(),state:copy(s),archive:JSON.parse(db.getItem(ARCHIVE)||'{}'),range:JSON.parse(db.getItem(RANGE)||'null'),catalog:JSON.parse(db.getItem(CATALOG)||'[]')})}
+function backups(db=(root.__chefStorage||root.localStorage)){const rows=JSON.parse(db.getItem(BACKUPS)||'[]');if(!Array.isArray(rows))throw Error('Historique de sauvegardes illisible.');return rows}
+function checkpoint(reason,db=(root.__chefStorage||root.localStorage),bundle=capture(root.state,db)){
  if(blocked)throw Error('Restaure une sauvegarde avant de modifier les données.');
  const row={id:Date.now()+'-'+Math.random().toString(36).slice(2,7),reason,date:new Date().toISOString(),bundle:copy(bundle)};
  let rows=backups(db);rows.unshift(row);rows=rows.slice(0,8);
  while(true){try{db.setItem(BACKUPS,JSON.stringify(rows));break}catch(e){if(rows.length<=2)throw Error('Espace insuffisant : exporte une sauvegarde avant de continuer.');rows.pop()}}
  return row;
 }
-function recover(db=root.localStorage){const raw=db.getItem(JOURNAL);if(!raw)return;const before=JSON.parse(raw);for(const k of [MAIN,ARCHIVE,RANGE,CATALOG]){if(!Object.prototype.hasOwnProperty.call(before,k))continue;if(before[k]===null)db.removeItem(k);else if(typeof before[k]==='string')db.setItem(k,before[k]);else throw Error('Journal de récupération invalide.')}db.removeItem(JOURNAL)}
-function persist(bundle,db=root.localStorage){
+function recover(db=(root.__chefStorage||root.localStorage)){const raw=db.getItem(JOURNAL);if(!raw)return;const before=JSON.parse(raw);for(const k of [MAIN,ARCHIVE,RANGE,CATALOG]){if(!Object.prototype.hasOwnProperty.call(before,k))continue;if(before[k]===null)db.removeItem(k);else if(typeof before[k]==='string')db.setItem(k,before[k]);else throw Error('Journal de récupération invalide.')}db.removeItem(JOURNAL)}
+function persist(bundle,db=(root.__chefStorage||root.localStorage)){
  validate(bundle);const keys=[MAIN,ARCHIVE,RANGE];if(bundle.catalog!==undefined)keys.push(CATALOG);const before=Object.fromEntries(keys.map(k=>[k,db.getItem(k)]));
  db.setItem(JOURNAL,JSON.stringify(before));
  try{db.setItem(ARCHIVE,JSON.stringify(bundle.archive));if(bundle.range===null)db.removeItem(RANGE);else db.setItem(RANGE,JSON.stringify(bundle.range));if(bundle.catalog!==undefined)db.setItem(CATALOG,JSON.stringify(bundle.catalog));db.setItem(MAIN,JSON.stringify(bundle.state));db.removeItem(JOURNAL)}catch(e){try{recover(db)}catch(_){blocked=true}throw Error('Enregistrement interrompu : données précédentes conservées ou récupération requise. '+e.message)}
 }
-function load(db=root.localStorage){try{recover(db);const raw=db.getItem(MAIN);return raw?validateState(JSON.parse(raw)):null}catch(e){blocked=true;throw Error('Données locales illisibles. Elles ne seront pas écrasées. Ouvre Plus → Données → Sauvegardes. '+e.message)}}
-function save(s,db=root.localStorage){if(blocked)throw Error('Écriture bloquée pour protéger les données : utilise la restauration.');validateState(s);const previous=db.getItem(MAIN);if(previous&&previous!==JSON.stringify(s)){
+function load(db=(root.__chefStorage||root.localStorage)){try{recover(db);const raw=db.getItem(MAIN);return raw?validateState(JSON.parse(raw)):null}catch(e){blocked=true;throw Error('Données locales illisibles. Elles ne seront pas écrasées. Ouvre Plus → Données → Sauvegardes. '+e.message)}}
+function save(s,db=(root.__chefStorage||root.localStorage)){if(blocked)throw Error('Écriture bloquée pour protéger les données : utilise la restauration.');validateState(s);const previous=db.getItem(MAIN);if(previous&&previous!==JSON.stringify(s)){
  const rows=backups(db),last=rows[0];if(!last||Date.now()-Date.parse(last.date)>15*60*1000)checkpoint('Avant les dernières modifications',db,capture(JSON.parse(previous),db));
  }db.setItem(MAIN,JSON.stringify(s));return true}
 function decode(text,current){
@@ -55,7 +56,7 @@ function decode(text,current){
  if(data.format==='SectorPlanner'&&Array.isArray(data.stores)){const s=copy(current);Object.assign(s,{schemaVersion:5,profile:data.profile||s.profile,stores:data.stores,visits:data.visits||{},notes:data.notes||{},included:{},excluded:{},locks:{},plan:{},appointments:[],calendarEvents:[]});return validate({format:'ChefSecteurBackup',version:1,state:s,archive:{},range:null})}
  throw Error('Format non reconnu.');
 }
-function restore(bundle,db=root.localStorage){validate(bundle);if(!blocked)checkpoint('Avant restauration',db);persist(bundle,db);blocked=false;return copy(bundle.state)}
+function restore(bundle,db=(root.__chefStorage||root.localStorage)){validate(bundle);if(!blocked)checkpoint('Avant restauration',db);persist(bundle,db);blocked=false;return copy(bundle.state)}
 function planIssues(plan,s,date){
  const issues=[],seen=new Set(),validIds=new Set(s.stores.map(x=>String(x.id)));validatePlanShape(plan,validIds);
  for(const [day,rows] of Object.entries(plan)){
