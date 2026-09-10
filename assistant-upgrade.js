@@ -23,6 +23,12 @@
   }
   function weekSummary(){const days=(state.settings&&state.settings.days)||DAYS.slice(0,5);return days.map(d=>summaryForDay(d)).join('\n\n')}
   function smartAnswer(text){
+    try{
+      if(typeof window.chefSecteurStoreScheduleAnswer==='function'){
+        const storeAnswer=window.chefSecteurStoreScheduleAnswer(text);
+        if(storeAnswer)return storeAnswer;
+      }
+    }catch(e){}
     const n=norm(text),day=dayFromText(text);
     if(day&&(n.includes('visite')||n.includes('planning')||n.includes('quand')||n.includes('agenda')||n.includes('hotel')||n.includes('hôtel')||n.includes('fais')||n.includes('quoi')))return summaryForDay(day);
     if(n.includes('semaine')&&(n.includes('resume')||n.includes('résume')||n.includes('planning')))return weekSummary();
@@ -35,12 +41,27 @@
   function enrichContext(){
     if(window.__assistantContextWrapped||typeof window.sectorContext!=='function')return;
     const base=window.sectorContext;
-    window.sectorContext=function(){const c=base.apply(this,arguments)||{};try{c.calendarEvents=(state.calendarEvents||[]).slice(0,120);c.calendarLastSync=state.calendarLastSync||null;c.awayRanges=typeof window.chefSecteurAwayRanges==='function'?window.chefSecteurAwayRanges():[];c.daySummaries={};for(const d of ((state.settings&&state.settings.days)||DAYS))c.daySummaries[d]=summaryForDay(d);c.overnight=typeof window.overnightCandidate==='function'?window.overnightCandidate():null;c.instructions='Respecte les événements Google Agenda, les déplacements hors secteur, les hôtels et les horaires magasins. Ne programme jamais de visite pendant une journée bloquée. Réponds comme un assistant de chef de secteur Samsung, de façon concise et opérationnelle.'}catch(e){}return c};window.__assistantContextWrapped=true;
+    window.sectorContext=function(){
+      let c=base.apply(this,arguments)||{};
+      try{
+        c.calendarEvents=(state.calendarEvents||[]).slice(0,120);
+        c.calendarLastSync=state.calendarLastSync||null;
+        c.awayRanges=typeof window.chefSecteurAwayRanges==='function'?window.chefSecteurAwayRanges():[];
+        c.daySummaries={};
+        for(const d of ((state.settings&&state.settings.days)||DAYS))c.daySummaries[d]=summaryForDay(d);
+        c.overnight=typeof window.overnightCandidate==='function'?window.overnightCandidate():null;
+        c.instructions='Respecte les événements Google Agenda, les déplacements hors secteur, les hôtels et les horaires magasins. Ne programme jamais de visite pendant une journée bloquée. Réponds comme un assistant de chef de secteur Samsung, de façon concise et opérationnelle.';
+        if(typeof window.storeRunnerLimitAssistantContext==='function')c=window.storeRunnerLimitAssistantContext(c)||c;
+      }catch(e){}
+      return c;
+    };
+    window.__assistantContextWrapped=true;
   }
   function hookLocal(){
     if(window.__assistantLocalWrapped||typeof window.assistantHandle!=='function')return;
     const base=window.assistantHandle;
-    window.assistantHandle=function(text){const s=smartAnswer(text);if(s)return s;return base.apply(this,arguments)};window.__assistantLocalWrapped=true;
+    window.assistantHandle=function(text){const s=smartAnswer(text);if(s)return s;return base.apply(this,arguments)};
+    window.__assistantLocalWrapped=true;
   }
   function gatewayConfigured(){try{return !!(window.aiConfig&&aiConfig.gateway)}catch(e){return false}}
   function updateAssistantStatus(){

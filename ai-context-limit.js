@@ -58,36 +58,22 @@
     };
   }
 
-  function install(){
-    if(window.__aiContextLimitInstalled||typeof window.sectorContext!=='function')return false;
-    const base=window.sectorContext;
-    window.sectorContext=function(){
-      const c=base.apply(this,arguments)||{};
-      return {
-        today:c.today||null,
-        profile:slimProfile(c.profile),
-        settings:slimSettings(c.settings),
-        plan:slimPlan(c.plan),
-        calendarEvents:(c.calendarEvents||[]).slice(0,24).map(slimEvent).filter(Boolean),
-        calendarLastSync:c.calendarLastSync||null,
-        awayRanges:(c.awayRanges||[]).slice(0,12),
-        daySummaries:c.daySummaries||{},
-        overnight:c.overnight||null,
-        instructions:c.instructions||'',
-        stores:(c.stores||[]).slice(0,20).map(slimStore).filter(Boolean)
-      };
+  function limitContext(c){
+    c=c||{};
+    return {
+      today:c.today||null,
+      profile:slimProfile(c.profile),
+      settings:slimSettings(c.settings),
+      plan:slimPlan(c.plan),
+      calendarEvents:(c.calendarEvents||[]).slice(0,24).map(slimEvent).filter(Boolean),
+      calendarLastSync:c.calendarLastSync||null,
+      awayRanges:(c.awayRanges||[]).slice(0,12),
+      daySummaries:c.daySummaries||{},
+      overnight:c.overnight||null,
+      instructions:c.instructions||'',
+      stores:(c.stores||[]).slice(0,20).map(slimStore).filter(Boolean)
     };
-    window.__aiContextLimitInstalled=true;
-    return true;
   }
 
-  function boot(){
-    if(install())return;
-    [100,250,600,1200,2400].forEach(function(delay){setTimeout(install,delay)});
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});
-  else boot();
-  window.addEventListener('load',install,{once:true});
-  window.addEventListener('focus',install);
-  document.addEventListener('visibilitychange',function(){if(!document.hidden)install()});
+  window.storeRunnerLimitAssistantContext=limitContext;
 })();
