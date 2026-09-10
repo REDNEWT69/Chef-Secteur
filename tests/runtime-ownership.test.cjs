@@ -15,21 +15,21 @@ function walk(dir,out=[]){
 const files=walk(root);
 const rel=file=>path.relative(root,file).replace(/\\/g,'/');
 const rules=[
-  ['generateWeek',/window\.generateWeek\s*=/,['planning-generation-controller.js']],
-  ['syncGoogleCalendar',/window\.syncGoogleCalendar\s*=/,['calendar-oauth.js']],
-  ['saveProfile',/window\.saveProfile\s*=/,['profile-controller.js']],
-  ['useCurrentLocation',/window\.useCurrentLocation\s*=/,['profile-controller.js']],
-  ['baseObj',/window\.baseObj\s*=/,['profile-controller.js']],
-  ['havBase',/window\.havBase\s*=/,['profile-controller.js']],
-  ['renderAll',/window\.renderAll\s*=/,[]],
-  ['renderWeek',/window\.renderWeek\s*=/,[]],
-  ['renderHistory',/window\.renderHistory\s*=/,[]],
-  ['switchTab',/window\.switchTab\s*=/,[]],
+  ['generateWeek',/window\.generateWeek\s*=(?!=)/,['planning-generation-controller.js']],
+  ['syncGoogleCalendar',/window\.syncGoogleCalendar\s*=(?!=)/,['calendar-oauth.js']],
+  ['saveProfile',/window\.saveProfile\s*=(?!=)/,['profile-controller.js']],
+  ['useCurrentLocation',/window\.useCurrentLocation\s*=(?!=)/,['profile-controller.js']],
+  ['baseObj',/window\.baseObj\s*=(?!=)/,['profile-controller.js']],
+  ['havBase',/window\.havBase\s*=(?!=)/,['profile-controller.js']],
+  ['renderAll',/window\.renderAll\s*=(?!=)/,[]],
+  ['renderWeek',/window\.renderWeek\s*=(?!=)/,[]],
+  ['renderHistory',/window\.renderHistory\s*=(?!=)/,[]],
+  ['switchTab',/window\.switchTab\s*=(?!=)/,[]],
   // Dette transitoire connue : ces deux hooks restent dans assistant-upgrade.js
   // jusqu'à leur intégration directe dans le propriétaire historique.
-  ['sectorContext',/window\.sectorContext\s*=/,['assistant-upgrade.js']],
-  ['assistantHandle',/window\.assistantHandle\s*=/,['assistant-upgrade.js']],
-  ['setAssistantMode',/window\.setAssistantMode\s*=/,[]]
+  ['sectorContext',/window\.sectorContext\s*=(?!=)/,['assistant-upgrade.js']],
+  ['assistantHandle',/window\.assistantHandle\s*=(?!=)/,['assistant-upgrade.js']],
+  ['setAssistantMode',/window\.setAssistantMode\s*=(?!=)/,[]]
 ];
 
 for(const file of files){
