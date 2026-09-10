@@ -1,9 +1,14 @@
-const BUILD_REV = "20260909-8";
+const BUILD_REV = "20260910-visit1";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
   "./index.html",
-  "./src/chef-secteur.html"
+  "./src/chef-secteur.html",
+  "./store-runner-visit-model.js",
+  "./store-runner-visit-store.js",
+  "./store-runner-visits.js",
+  "./store-runner-visits.css",
+  "./reliability-core.js"
 ];
 const OPTIONAL_SHELL = [
   "./region-stores.js", "./region-stores.css",

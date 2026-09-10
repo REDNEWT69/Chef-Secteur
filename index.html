@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Store Runner">
   <meta name="application-name" content="Store Runner">
-  <link rel="manifest" href="./manifest.webmanifest?rev=20260909-8">
-  <link rel="icon" href="./app-icon.svg?rev=20260909-8" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="./app-icon.svg?rev=20260909-8">
+  <link rel="manifest" href="./manifest.webmanifest?rev=20260910-visit1">
+  <link rel="icon" href="./app-icon.svg?rev=20260910-visit1" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./app-icon.svg?rev=20260910-visit1">
   <style>
     html,body{margin:0;min-height:100%;background:#fbfaf8;color:#111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
     .boot{min-height:100vh;display:grid;place-items:center;padding:24px;text-align:center}.boot div{max-width:520px}.boot img{display:block;width:min(280px,72vw);height:auto;margin:0 auto 18px;border-radius:24px;box-shadow:0 16px 42px rgba(25,42,80,.10)}.boot h1{font-weight:800;font-size:34px;letter-spacing:-.04em;margin:0 0 6px}.boot .sig{font-size:14px;color:#8b8b8b;margin:0 0 14px}.boot p{color:#77716a;line-height:1.45}.boot .err{color:#b43a32;white-space:pre-wrap}
@@ -22,7 +22,7 @@
   <div class="boot"><div><img src="./store-runner-logo.jpg" alt="S-RUNNER"><h1>Store Runner</h1><p class="sig">S-RUNNER By Red①</p><p id="bootText">Chargement de l’application…</p></div></div>
   <script>
   (async function(){
-    const BUILD_REV='20260909-8';
+    const BUILD_REV='20260910-visit1';
     const withRev=(path)=>path+'?rev='+BUILD_REV;
     const status=document.getElementById('bootText');
 
@@ -90,6 +90,11 @@
             setItem(key,value){key=String(key);value=String(value);memory.set(key,value);persist('put',key,value)},
             removeItem(key){key=String(key);memory.delete(key);persist('delete',key)},
             clear(){memory.clear();persist('clear')},
+            flush(){const snapshot=new Map(memory);return new Promise((resolve,reject)=>{
+              const tx=db.transaction('kv','readwrite'),store=tx.objectStore('kv');
+              tx.oncomplete=()=>resolve();tx.onerror=tx.onabort=()=>reject(tx.error||new Error('Écriture IndexedDB interrompue'));
+              store.clear();for(const [key,value] of snapshot)store.put(value,key);
+            })},
             key(index){return Array.from(memory.keys())[Number(index)]??null},
             get length(){return memory.size}
           };
@@ -131,7 +136,7 @@
       ].map(scriptTag).join('');
       const regionUi=styleTag('./region-stores.css')+['./region-fetch-resilience.js','./region-stores.js','./official-catalog.js','./boulanger-national.js','./national-sectors.js','./sector-admin.js','./stores-layout-order.js'].map(scriptTag).join('');
       const connectionUi=scriptTag('./connection-ui.js');
-      const patchedHtml=html.replace('<head>','<head>'+scriptTag('./reliability-core.js')+runtimeScopeShim+assistantUiShim+styleTag('./glass-theme.css')).replace('</body>',calendarOauthShim+connectionUi+regionUi+scriptTag('./reliability-ui.js')+'</body>');
+      const patchedHtml=html.replace('<head>','<head>'+scriptTag('./store-runner-visit-model.js')+scriptTag('./reliability-core.js')+runtimeScopeShim+assistantUiShim+styleTag('./glass-theme.css')).replace('</body>',calendarOauthShim+connectionUi+regionUi+scriptTag('./reliability-ui.js')+styleTag('./store-runner-visits.css')+scriptTag('./store-runner-visit-store.js')+scriptTag('./store-runner-visits.js')+'</body>');
       document.open();
       document.write(patchedHtml);
       document.close();
