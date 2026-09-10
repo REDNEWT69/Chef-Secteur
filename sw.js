@@ -1,4 +1,4 @@
-const BUILD_REV = "20260910-visit1";
+const BUILD_REV = "20260910-assistant-visits1";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -30,6 +30,7 @@ const OPTIONAL_SHELL = [
   "./planning-ui-fixes.js",
   "./ai-gateway-config.js",
   "./assistant-upgrade.js",
+  "./assistant-visit-context.js",
   "./ai-context-limit.js",
   "./assistant-store-lookup.js",
   "./map-layer-fix.js",
