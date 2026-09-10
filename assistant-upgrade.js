@@ -2,6 +2,32 @@
   'use strict';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   let installed=false;
+  const resolverEntries=[];
+  const contextTransforms=[];
+
+  function registerAssistantResolver(fn,priority){
+    if(typeof fn!=='function'||resolverEntries.some(x=>x.fn===fn))return false;
+    resolverEntries.push({fn:fn,priority:Number(priority)||0});
+    resolverEntries.sort((a,b)=>a.priority-b.priority);
+    return true;
+  }
+  function registerAssistantContextTransform(fn,priority){
+    if(typeof fn!=='function'||contextTransforms.some(x=>x.fn===fn))return false;
+    contextTransforms.push({fn:fn,priority:Number(priority)||0});
+    contextTransforms.sort((a,b)=>a.priority-b.priority);
+    return true;
+  }
+  function runAssistantResolvers(text){
+    for(const entry of resolverEntries){try{const answer=entry.fn(text);if(answer)return answer}catch(e){}}
+    return null;
+  }
+  function applyAssistantContextTransforms(context){
+    let out=context||{};
+    for(const entry of contextTransforms){try{out=entry.fn(out)||out}catch(e){}}
+    return out;
+  }
+  window.storeRunnerRegisterAssistantResolver=registerAssistantResolver;
+  window.storeRunnerRegisterAssistantContextTransform=registerAssistantContextTransform;
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
   function todayISO(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
   function mondayISO(){try{const raw=(state.settings&&state.settings.weekDate)||todayISO(),d=new Date(raw+'T12:00:00'),w=d.getDay()||7;d.setDate(d.getDate()-w+1);return d}catch(e){return new Date()}}
@@ -23,12 +49,8 @@
   }
   function weekSummary(){const days=(state.settings&&state.settings.days)||DAYS.slice(0,5);return days.map(d=>summaryForDay(d)).join('\n\n')}
   function smartAnswer(text){
-    try{
-      if(typeof window.chefSecteurStoreScheduleAnswer==='function'){
-        const storeAnswer=window.chefSecteurStoreScheduleAnswer(text);
-        if(storeAnswer)return storeAnswer;
-      }
-    }catch(e){}
+    const extensionAnswer=runAssistantResolvers(text);
+    if(extensionAnswer)return extensionAnswer;
     const n=norm(text),day=dayFromText(text);
     if(day&&(n.includes('visite')||n.includes('planning')||n.includes('quand')||n.includes('agenda')||n.includes('hotel')||n.includes('hôtel')||n.includes('fais')||n.includes('quoi')))return summaryForDay(day);
     if(n.includes('semaine')&&(n.includes('resume')||n.includes('résume')||n.includes('planning')))return weekSummary();
@@ -51,7 +73,7 @@
         for(const d of ((state.settings&&state.settings.days)||DAYS))c.daySummaries[d]=summaryForDay(d);
         c.overnight=typeof window.overnightCandidate==='function'?window.overnightCandidate():null;
         c.instructions='Respecte les événements Google Agenda, les déplacements hors secteur, les hôtels et les horaires magasins. Ne programme jamais de visite pendant une journée bloquée. Réponds comme un assistant de chef de secteur Samsung, de façon concise et opérationnelle.';
-        if(typeof window.storeRunnerLimitAssistantContext==='function')c=window.storeRunnerLimitAssistantContext(c)||c;
+        c=applyAssistantContextTransforms(c);
       }catch(e){}
       return c;
     };

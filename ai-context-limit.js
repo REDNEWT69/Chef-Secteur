@@ -76,4 +76,5 @@
   }
 
   window.storeRunnerLimitAssistantContext=limitContext;
+  if(typeof window.storeRunnerRegisterAssistantContextTransform==='function')window.storeRunnerRegisterAssistantContextTransform(limitContext,100);
 })();

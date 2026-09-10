@@ -36,6 +36,7 @@
 
   window.chefSecteurStoreScheduleAnswer=answer;
   window.chefSecteurSnapshotCurrentWeek=snapshotCurrentWeek;
+  if(typeof window.storeRunnerRegisterAssistantResolver==='function')window.storeRunnerRegisterAssistantResolver(answer,20);
 
   function boot(){observePlanning();scheduleSnapshot(0)}
   document.addEventListener('store-runner:planning-updated',function(){observePlanning();scheduleSnapshot(40)});
