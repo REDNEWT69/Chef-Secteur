@@ -43,7 +43,13 @@ function ids(plan){return Object.values(plan||{}).flat().map(s=>s.id)}
   // Un verrouillage vers un jour non disponible est un conflit, jamais une réaffectation silencieuse.
   t=env();t.state.locks.y='Mercredi';await t.ctx.testPlanning.strictSingleWeek();assert.equal(t.proposals.length,0);assert.equal(t.state.plan.Lundi[0].id,'old');assert.match(t.els.rangePlanStatus.textContent,/verrouillé sur Mercredi/);
 
+  // Les verrous sont des contraintes fortes : ils passent tous même si la cible hebdo est plus basse.
+  t=env();t.state.settings.target=2;t.state.locks={x:'Lundi',y:'Mardi',z:'Lundi'};await t.ctx.testPlanning.strictSingleWeek();assert.equal(t.proposals.length,1);assert.deepEqual(new Set(ids(t.proposals[0].plan)),new Set(['x','y','z']),'la cible hebdo ne doit jamais éliminer un magasin verrouillé');
+
+  // Si les verrous dépassent la capacité physique de la semaine, on bloque au lieu d'en ignorer un.
+  t=env();t.els.maxVisitsPerDay.value='1';t.state.settings.maxVisitsPerDay=1;t.state.settings.target=1;t.state.locks={x:'Lundi',y:'Mardi',z:'Lundi'};await t.ctx.testPlanning.strictSingleWeek();assert.equal(t.proposals.length,0);assert.equal(t.state.plan.Lundi[0].id,'old');assert.match(t.els.rangePlanStatus.textContent,/3 magasins verrouillés|seulement 2 créneaux/);
+
   assert.equal(t.ctx.testPlanning.eventBlocksPlanning({allDay:true,title:'Anniversaire'}),false);
   assert.equal(t.ctx.testPlanning.eventBlocksPlanning({allDay:true,title:'Congé'}),true);
-  console.log('PASS: planning preserves previous data, repairs stale brand filters, respects forced stores and day locks, ignores informational all-day events, blocks real unavailability, rejects zero-visit plans and concurrent generations.');
+  console.log('PASS: planning preserves previous data, repairs stale brand filters, respects forced stores and strong day locks, ignores informational all-day events, blocks real unavailability, rejects zero-visit plans and concurrent generations.');
 })().catch(e=>{console.error(e);process.exitCode=1});

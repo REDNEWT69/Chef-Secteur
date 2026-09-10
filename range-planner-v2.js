@@ -49,6 +49,12 @@ function eligible(){
 }
 function scoreOf(s){try{return typeof score==='function'?Number(score(s))||0:Number(s.priority)||0}catch(e){return Number(s.priority)||0}}
 function forcedRank(s){const id=s&&s.id;return (state.locks&&state.locks[id]?2:0)+(state.included&&state.included[id]?1:0)}
+function lockedCount(pool){return (pool||[]).reduce((n,s)=>n+((state.locks&&state.locks[s&&s.id])?1:0),0)}
+function selectionNeed(pool,usable,target,max){
+  const capacity=max*usable.length,locked=lockedCount(pool);
+  if(locked>capacity)throw new Error('Il y a '+locked+' magasins verrouillés pour seulement '+capacity+' créneau'+(capacity>1?'x':'')+' disponible'+(capacity>1?'s':'')+'. Le planning précédent est conservé.');
+  return Math.min(Math.max(Math.max(1,target),locked),capacity,pool.length);
+}
 function chooseStores(pool,usedKeys,lastUsedWeek,target){
   const chosen=[],keys=new Set(),add=s=>{const k=storeKey(s);if(!k||keys.has(k)||chosen.length>=target)return false;chosen.push(s);keys.add(k);return true};
   const forced=pool.filter(s=>forcedRank(s)>0).sort((a,b)=>forcedRank(b)-forcedRank(a)||scoreOf(b)-scoreOf(a));
@@ -159,7 +165,7 @@ async function strictSingleWeek(){
     if(!usable.length)throw new Error('Aucun jour disponible cette semaine. Vérifie les jours travaillés et les indisponibilités Agenda. Le planning précédent est conservé.');
     const pool=eligible();if(!pool.length)throw new Error('Aucun magasin actif ne correspond aux filtres. Ouvre « Enseignes » et vérifie la sélection.');
     const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
-    const need=Math.min(Math.max(1,Number(state.settings.target)||20),max*usable.length,pool.length);
+    const need=selectionNeed(pool,usable,Number(state.settings.target)||20,max);
     const chosen=chooseStores(pool,new Set(),new Map(),need),built=buildWeekUnique(chosen,usable),visits=countPlan(built.plan,usable);
     if(!visits)throw new Error('0 visite possible avec les réglages actuels. Vérifie l’heure de fin, la durée par magasin et ton point de départ. Le planning précédent est conservé.');
     if(!await ChefReliability.propose({plan:built.plan,weekDate:iso(mon)})){showStatus('Planning précédent conservé.');return{ok:false,cancelled:true}}
@@ -188,7 +194,7 @@ async function generateRange(){
     while(mon<=last){
       const usable=activeDays(mon,days,start,end);
       if(!usable.length){archive[iso(mon)]=snapshot(mon,start,end,Object.fromEntries(DAYS.map(d=>[d,[]])),days);mon=addDays(mon,7);weekIndex++;weeks++;continue}
-      const need=Math.min(target,max*usable.length,pool.length),remaining=pool.filter(s=>!usedKeys.has(storeKey(s))).length;
+      const need=selectionNeed(pool,usable,target,max),remaining=pool.filter(s=>!usedKeys.has(storeKey(s))).length;
       if(usedKeys.size&&remaining<need)usedKeys.clear();
       const chosen=chooseStores(pool,usedKeys,lastUsedWeek,need),built=buildWeekUnique(chosen,usable),plan=built.plan,weekSeen=new Set();
       totalUnplaced+=built.unplaced.length;
@@ -196,7 +202,7 @@ async function generateRange(){
       archive[iso(mon)]=snapshot(mon,start,end,plan,days);mon=addDays(mon,7);weekIndex++;weeks++;await new Promise(r=>setTimeout(r,10));
     }
     if(!totalVisits)throw new Error('La période donnerait 0 visite. Rien n’a été remplacé : vérifie les jours, les horaires et les indisponibilités Agenda.');
-    const range={start:iso(start),end:iso(end),weeks,workDays:days,uniqueStores:unique.size,totalVisits,rotation:'hard-unique-v5',calendarSynced,updatedAt:new Date().toISOString()};
+    const range={start:iso(start),end:iso(end),weeks,workDays:days,uniqueStores:unique.size,totalVisits,rotation:'hard-unique-v6',calendarSynced,updatedAt:new Date().toISOString()};
     const firstSnap=archive[iso(first)],candidate={};for(const d of DAYS)candidate[d]=firstSnap&&firstSnap.plan?(firstSnap.plan[d]||[]).map(x=>(state.stores||[]).find(s=>String(s.id)===String(x.id))||x):[];
     if(!await ChefReliability.propose({plan:candidate,weekDate:iso(first),archive,range})){showStatus('Planning précédent conservé.');return}
     showStatus('Période appliquée : '+weeks+' semaines · '+totalVisits+' visites · '+unique.size+' magasins distincts'+(totalUnplaced?' · '+totalUnplaced+' visite'+(totalUnplaced>1?'s':'')+' non placée'+(totalUnplaced>1?'s':''):'')+' · '+(calendarSynced?'Agenda Google vérifié.':'Agenda Google non vérifié, données conservées utilisées.'));
