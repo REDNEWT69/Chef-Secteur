@@ -8,6 +8,12 @@ function env(){
   ctx.window=ctx;ctx.dispatchEvent=()=>{};ctx.syncGoogleCalendar=async()=>({ok:true});ctx.calendarEventsForDate=()=>[];vm.runInNewContext(source,ctx);return {ctx,state,proposals,els,counts:()=>({checkpoints,archiveWrites})};
 }
 function ids(plan){return Object.values(plan||{}).flat().map(s=>s.id)}
+assert.doesNotMatch(source,/\[80,180,350,700,1400,2600\]/,'le planificateur ne doit plus multiplier les tentatives temporisées');
+assert.doesNotMatch(source,/window\.addEventListener\('(load|focus)'/,'le planificateur ne doit plus se réinstaller sur load ou focus');
+assert.doesNotMatch(source,/visibilitychange/,'le planificateur ne doit plus se réinstaller au retour de visibilité');
+assert.match(source,/DOMContentLoaded',boot,\{once:true\}/,'l’installation initiale doit être unique au DOM prêt');
+assert.match(source,/store-runner:planning-updated/,'une réinstallation ciblée doit rester disponible après mise à jour du planning');
+assert.match(source,/store-runner:data-restored/,'une réinstallation ciblée doit rester disponible après restauration');
 (async()=>{
   let t=env();const old=JSON.stringify(t.state.plan);await t.ctx.testPlanning.strictSingleWeek();assert.equal(t.proposals.length,1);assert.equal(JSON.stringify(t.state.plan),old);assert.equal(t.counts().checkpoints,1);
 
@@ -54,5 +60,5 @@ function ids(plan){return Object.values(plan||{}).flat().map(s=>s.id)}
 
   assert.equal(t.ctx.testPlanning.eventBlocksPlanning({allDay:true,title:'Anniversaire'}),false);
   assert.equal(t.ctx.testPlanning.eventBlocksPlanning({allDay:true,title:'Congé'}),true);
-  console.log('PASS: planning preserves previous data, repairs stale brand filters, respects forced stores and strong day locks, shows the first non-empty range week, ignores informational all-day events, blocks real unavailability, rejects zero-visit plans and concurrent generations.');
+  console.log('PASS: planning preserves previous data, repairs stale brand filters, respects forced stores and strong day locks, shows the first non-empty range week, ignores informational all-day events, blocks real unavailability, rejects zero-visit plans and concurrent generations, and keeps range planner initialization targeted.');
 })().catch(e=>{console.error(e);process.exitCode=1});
