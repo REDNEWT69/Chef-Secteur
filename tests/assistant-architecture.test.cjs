@@ -5,6 +5,7 @@ const read=file=>fs.readFileSync(path.join(process.cwd(),file),'utf8');
 const assistant=read('assistant-upgrade.js');
 const contextLimit=read('ai-context-limit.js');
 const storeLookup=read('assistant-store-lookup.js');
+const sheetDrag=read('assistant-sheet-drag.js');
 
 if(/window\.setAssistantMode\s*=/.test(assistant))throw new Error('Assistant: setAssistantMode ne doit pas être réécrit par assistant-upgrade.js');
 if(/__assistantModeWrapped/.test(assistant))throw new Error('Assistant: ancien wrapper de mode encore présent');
@@ -31,5 +32,9 @@ if(!/store-runner:planning-updated/.test(storeLookup))throw new Error('Assistant
 if(!/MutationObserver/.test(storeLookup)||!/observedPlanHost/.test(storeLookup))throw new Error('Assistant magasins: observation du planning absente');
 if(!/__chefStorage/.test(storeLookup))throw new Error('Assistant magasins: archive doit utiliser le stockage robuste de l’application');
 if(/localStorage\.getItem\(ARCHIVE_KEY\)|localStorage\.setItem\(ARCHIVE_KEY/.test(storeLookup))throw new Error('Assistant magasins: archive ne doit pas dépendre directement de localStorage');
+
+if(!/MutationObserver/.test(sheetDrag))throw new Error('Assistant mobile: observation de l’état du panneau absente');
+if(/\[100,250,600,1200,2400\]/.test(sheetDrag)||/setTimeout\s*\(\s*install/.test(sheetDrag))throw new Error('Assistant mobile: réinstallation différée répétée interdite');
+if(/addEventListener\(['"]focus['"],\s*install/.test(sheetDrag))throw new Error('Assistant mobile: install ne doit pas être relancé à chaque focus');
 
 console.log('Assistant architecture guards: OK');

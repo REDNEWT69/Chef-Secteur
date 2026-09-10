@@ -40,12 +40,6 @@
     new MutationObserver(syncOpen).observe(p,{attributes:true,attributeFilter:['class']});syncOpen();
     return true;
   }
-  function boot(){
-    if(install())return;
-    [100,250,600,1200,2400].forEach(function(delay){setTimeout(install,delay)});
-  }
+  function boot(){install()}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
-  window.addEventListener('load',install,{once:true});
-  window.addEventListener('focus',install);
-  document.addEventListener('visibilitychange',function(){if(!document.hidden)install()});
 })();
