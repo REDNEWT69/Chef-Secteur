@@ -3,7 +3,6 @@
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   let installed=false;
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
-  function escText(v){return String(v==null?'':v)}
   function todayISO(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
   function mondayISO(){try{const raw=(state.settings&&state.settings.weekDate)||todayISO(),d=new Date(raw+'T12:00:00'),w=d.getDay()||7;d.setDate(d.getDate()-w+1);return d}catch(e){return new Date()}}
   function dateForDay(day){const d=mondayISO();d.setDate(d.getDate()+Math.max(0,DAYS.indexOf(day)));return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
@@ -51,11 +50,22 @@
     else if(online&&gatewayConfigured()){status.className='ai-status ok';status.textContent='IA en ligne prête · planning + agenda + hôtels envoyés comme contexte';}
     else{status.className='ai-status';status.textContent='Mode local amélioré · comprend maintenant planning, agenda et déplacements';}
   }
-  function hookModes(){
-    if(!window.__assistantModeWrapped&&typeof window.setAssistantMode==='function'){const base=window.setAssistantMode;window.setAssistantMode=function(){const out=base.apply(this,arguments);setTimeout(updateAssistantStatus,0);return out};window.__assistantModeWrapped=true}
+  function installStatusEvents(){
+    if(window.__assistantStatusEvents)return;
+    const refresh=function(){setTimeout(updateAssistantStatus,0)};
+    document.addEventListener('click',function(e){
+      const el=e.target&&e.target.closest?e.target.closest('[data-assistant-mode],button[onclick*="setAssistantMode"]'):null;
+      if(el)refresh();
+    },true);
+    document.addEventListener('change',function(e){
+      const el=e.target;
+      if(el&&el.matches&&el.matches('[data-assistant-mode],input[name="assistantMode"],select[name="assistantMode"]'))refresh();
+    },true);
+    document.addEventListener('store-runner:assistant-mode-changed',refresh);
+    window.__assistantStatusEvents=true;
   }
   function install(){
-    enrichContext();hookLocal();hookModes();updateAssistantStatus();
+    enrichContext();hookLocal();installStatusEvents();updateAssistantStatus();
     installed=!!(window.__assistantContextWrapped&&window.__assistantLocalWrapped);
     return installed;
   }
