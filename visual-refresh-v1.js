@@ -1,7 +1,6 @@
 (function(){
   'use strict';
-  let busy=false,observer=null,refreshTimer=null;
-  const observed=new WeakSet();
+  let busy=false,refreshTimer=null;
   function ensureCss(){if(document.getElementById('chef-ios-refresh'))return;const s=document.createElement('style');s.id='chef-ios-refresh';s.textContent=`
 :root{--ios-blue:#0a84ff;--ios-ink:#0b0b0f;--ios-muted:#737780;--ios-surface:rgba(255,255,255,.76);--ios-line:rgba(125,130,145,.16);--ios-shadow:0 16px 44px rgba(30,35,50,.10);--ios-radius:28px}
 html,body{background:#f2f3f7!important;color:var(--ios-ink)!important}
@@ -25,11 +24,8 @@ body:after{content:"";position:fixed;inset:0;z-index:-1;backdrop-filter:blur(42p
   function polishLabels(){try{document.querySelectorAll('#googleCalendarStatus').forEach(el=>{if(el.textContent&&/synchronis/i.test(el.textContent))el.style.color='#4b8f65'})}catch(e){}}
   function run(){if(busy)return;busy=true;try{ensureCss();polishLabels()}finally{busy=false}}
   function scheduleRun(delay){clearTimeout(refreshTimer);refreshTimer=setTimeout(run,delay==null?40:delay)}
-  function observeTarget(el){if(!el||observed.has(el))return;if(!observer)observer=new MutationObserver(function(){scheduleRun(45)});observer.observe(el,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['class','data-date']});observed.add(el)}
-  function observeUi(){observeTarget(document.getElementById('dayTabs'));observeTarget(document.querySelector('#planPanel .timelineShell'))}
-  function refresh(){observeUi();run()}
-  function installEvents(){if(window.__iosRefreshEvents)return;document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))scheduleRun(60)},true);window.addEventListener('focus',()=>scheduleRun(30));document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleRun(30)});window.addEventListener('chef-range-generated',()=>scheduleRun(40));window.__iosRefreshEvents=true}
-  function boot(){installEvents();refresh();[80,180,350,700,1400,2600].forEach(delay=>setTimeout(refresh,delay))}
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
-  window.addEventListener('load',refresh,{once:true});
+  function installEvents(){if(window.__iosRefreshEvents)return;window.addEventListener('focus',()=>scheduleRun(30));document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleRun(30)});document.addEventListener('store-runner:calendar-updated',()=>scheduleRun(20));window.__iosRefreshEvents=true}
+  function boot(){installEvents();run();setTimeout(run,300)}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
+  window.addEventListener('load',()=>scheduleRun(0),{once:true});
 })();
