@@ -20,6 +20,8 @@ if(!/planningAdvancedDetails/.test(planning))fail('les horaires et la stratégie
 if(!/planningCalendarDetails/.test(planning))fail('Google Agenda doit être repliable dans les réglages');
 if(!/planningDuplicateGenerate/.test(planning))fail('le bouton de génération historique dans les réglages doit être masqué');
 if(!/planningDynamicStoreCount/.test(planning))fail('le nombre de magasins affiché doit être dynamique');
+if(/#planningSettings \.settingsInner\{display:block!important\}/.test(planning))fail('les réglages fermés ne doivent pas forcer leur contenu visible');
+if(!/#planningSettings\[open\]>\.settingsInner\{display:block!important\}/.test(planning))fail('le contenu des réglages doit être affiché uniquement quand le détail est ouvert');
 if(!/Générer ma semaine/.test(planning))fail('une action hebdomadaire principale doit rester visible');
 if(!/Planifier plusieurs semaines/.test(range)||!/document\.createElement\('details'\)/.test(range))fail('la génération de période doit être une option repliable et secondaire');
 
