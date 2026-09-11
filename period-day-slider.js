@@ -42,13 +42,47 @@
     scheduleRender();
     return true;
   }
+  function navigateAdjacent(box,step){
+    const tabs=[...box.querySelectorAll('.periodDayTab[data-date]')];if(!tabs.length)return false;
+    let idx=tabs.findIndex(x=>x.classList.contains('active'));if(idx<0)idx=0;
+    const target=tabs[idx+step];if(!target)return false;
+    const date=parse(target.dataset.date);if(!date)return false;
+    return loadDate(date);
+  }
+  function bindTouchSwipe(box){
+    if(!box||box.dataset.periodSwipeBound==='1')return false;
+    box.dataset.periodSwipeBound='1';
+    let startX=0,startY=0,lastX=0,startScroll=0,dragging=false,suppressClickUntil=0;
+    box.addEventListener('touchstart',function(e){
+      const t=e.touches&&e.touches[0];if(!t)return;
+      startX=lastX=t.clientX;startY=t.clientY;startScroll=box.scrollLeft;dragging=false;
+    },{passive:true});
+    box.addEventListener('touchmove',function(e){
+      const t=e.touches&&e.touches[0];if(!t)return;
+      const dx=t.clientX-startX,dy=t.clientY-startY;lastX=t.clientX;
+      if(!dragging&&Math.abs(dx)>8&&Math.abs(dx)>Math.abs(dy)*1.15)dragging=true;
+      if(!dragging)return;
+      box.scrollLeft=startScroll-dx;
+      if(e.cancelable)e.preventDefault();
+    },{passive:false});
+    box.addEventListener('touchend',function(){
+      if(!dragging)return;
+      const dx=lastX-startX;dragging=false;suppressClickUntil=Date.now()+350;
+      if(Math.abs(dx)>=42)navigateAdjacent(box,dx<0?1:-1);
+    },{passive:true});
+    box.addEventListener('touchcancel',function(){dragging=false},{passive:true});
+    box.addEventListener('click',function(e){
+      if(Date.now()<suppressClickUntil){e.preventDefault();e.stopPropagation();if(typeof e.stopImmediatePropagation==='function')e.stopImmediatePropagation()}
+    },true);
+    return true;
+  }
   function renderTabs(){const box=document.getElementById('dayTabs');if(!box)return false;const r=range(),frag=document.createDocumentFragment();box.innerHTML='';box.classList.add('periodDayTabs');
     let d=new Date(r.start),count=0;while(d<=r.end&&count<100){const name=dayName(d);if(name!=='Dimanche'&&r.workDays.includes(name)){const b=document.createElement('button');b.type='button';b.className='dayTab periodDayTab'+(iso(d)===activeDate?' active':'');b.dataset.date=iso(d);b.innerHTML='<span>'+shortDay(d)+'</span><b>'+d.getDate()+'</b><small>'+d.toLocaleDateString('fr-FR',{month:'short'}).replace('.','')+'</small>';const copy=new Date(d);b.onclick=function(){loadDate(copy)};frag.appendChild(b)}d=addDays(d,1);count++}
-    box.appendChild(frag);
+    box.appendChild(frag);bindTouchSwipe(box);
     if(!activeDate||!box.querySelector('[data-date="'+activeDate+'"]')){const first=box.firstElementChild;if(first){first.classList.add('active');activeDate=first.dataset.date||''}}
     const active=box.querySelector('.periodDayTab.active');if(active){syncPlanningHero();setTimeout(()=>active.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'}),30)}return true
   }
-  function css(){if(document.getElementById('periodDaySliderCss'))return;const s=document.createElement('style');s.id='periodDaySliderCss';s.textContent='.periodDayTabs{display:flex!important;gap:8px!important;overflow-x:auto!important;overflow-y:hidden!important;grid-template-columns:none!important;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:4px 1px 8px!important;scrollbar-width:none}.periodDayTabs::-webkit-scrollbar{display:none}.periodDayTab{flex:0 0 72px!important;min-width:72px!important;scroll-snap-align:center;border:1px solid #e1e5ed;background:#fff;border-radius:16px;padding:8px 6px!important;text-align:center;color:#667085;min-height:66px}.periodDayTab span,.periodDayTab small{display:block;font-size:10px;line-height:1.1}.periodDayTab b{display:block;font-size:18px;line-height:1.2;color:#1d2939;margin:2px 0}.periodDayTab.active{background:#111318!important;color:#fff!important;border-color:#111318!important}.periodDayTab.active b{color:#fff!important}';document.head.appendChild(s)}
+  function css(){if(document.getElementById('periodDaySliderCss'))return;const s=document.createElement('style');s.id='periodDaySliderCss';s.textContent='.periodDayTabs{display:flex!important;gap:8px!important;overflow-x:auto!important;overflow-y:hidden!important;grid-template-columns:none!important;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;touch-action:pan-y!important;overscroll-behavior-x:contain;padding:4px 1px 8px!important;scrollbar-width:none}.periodDayTabs::-webkit-scrollbar{display:none}.periodDayTab{flex:0 0 72px!important;min-width:72px!important;scroll-snap-align:center;touch-action:pan-y!important;border:1px solid #e1e5ed;background:#fff;border-radius:16px;padding:8px 6px!important;text-align:center;color:#667085;min-height:66px}.periodDayTab span,.periodDayTab small{display:block;font-size:10px;line-height:1.1}.periodDayTab b{display:block;font-size:18px;line-height:1.2;color:#1d2939;margin:2px 0}.periodDayTab.active{background:#111318!important;color:#fff!important;border-color:#111318!important}.periodDayTab.active b{color:#fff!important}';document.head.appendChild(s)}
   function observeTabs(){if(tabObserver||typeof MutationObserver==='undefined')return;const box=document.getElementById('dayTabs');if(!box)return;tabObserver=new MutationObserver(()=>{if(!box.querySelector('.periodDayTab'))scheduleRender()});tabObserver.observe(box,{childList:true})}
   function boot(){css();observeTabs();renderTabs()}
   window.addEventListener('chef-range-generated',function(){activeDate='';scheduleRender()});
