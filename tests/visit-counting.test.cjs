@@ -4,9 +4,12 @@ const archive={
   '2026-09-07':{weekMonday:'2026-09-07',plan:{Lundi:[{id:'d1',enseigne:'Darty',ville:'Lyon'}],Mardi:[{id:'c1',enseigne:'Carrefour',ville:'Bron'}],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}},
   '2026-09-14':{weekMonday:'2026-09-14',plan:{Lundi:[{id:'b1',enseigne:'Boulanger',ville:'Saint-Priest'}],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}}
 };
+const range={start:'2026-09-07',end:'2026-09-20',weeks:2,totalStores:999,totalVisits:999,uniqueStores:999};
+const storageData={chef_sector_plan_archive_v1:JSON.stringify(archive),chef_sector_range_v1:JSON.stringify(range)};
 const state={settings:{visitCreditsByBrand:{fnac:3}},stores:[],plan:{Lundi:[{id:'d1',enseigne:'Darty'},{id:'b1',enseigne:'Boulanger'},{id:'c1',enseigne:'Carrefour'}]},visits:{}};
 const listeners={};
-const ctx={state,console,Date,Map,Set,RegExp,JSON,Object,Array,String,Number,Math,setTimeout,requestAnimationFrame:fn=>fn(),localStorage:{getItem:key=>key==='chef_sector_plan_archive_v1'?JSON.stringify(archive):null,setItem(){},removeItem(){}},document:{readyState:'loading',addEventListener:(name,fn)=>{listeners[name]=fn},getElementById:()=>null,querySelector:()=>null,querySelectorAll:()=>[]},CustomEvent:class{}};
+const localStorage={getItem:key=>Object.prototype.hasOwnProperty.call(storageData,key)?storageData[key]:null,setItem(key,value){storageData[key]=String(value)},removeItem(key){delete storageData[key]}};
+const ctx={state,console,Date,Map,Set,RegExp,JSON,Object,Array,String,Number,Math,setTimeout,requestAnimationFrame:fn=>fn(),localStorage,document:{readyState:'loading',addEventListener:(name,fn)=>{listeners[name]=fn},getElementById:()=>null,querySelector:()=>null,querySelectorAll:()=>[]},CustomEvent:class{}};
 ctx.window=ctx;vm.runInNewContext(source,ctx);
 const V=ctx.StoreVisitCounting;
 assert(V,'le module de comptage doit exposer son API de test');
@@ -24,9 +27,19 @@ assert.equal(candidate.visitCredits,6,'la proposition hebdomadaire doit porter l
 assert.equal(candidate.range.totalStores,2,'la période testée contient deux magasins physiques');
 assert.equal(candidate.range.totalVisits,4,'la période testée vaut quatre visites métier : Darty x2 + Carrefour x2');
 assert.equal(candidate.range.uniqueStores,2);
+const reconciled=V.reconcileStoredRangeStats();
+assert(reconciled,'le recalcul de période doit retourner les statistiques persistées');
+assert.equal(reconciled.totalStores,3,'un recentrage manuel doit conserver trois arrêts physiques dans la période');
+assert.equal(reconciled.totalVisits,6,'un recentrage manuel ne doit jamais écraser les six visites métier par trois magasins physiques');
+assert.equal(reconciled.uniqueStores,3,'les magasins distincts doivent être recalculés depuis l’archive');
+const persistedRange=JSON.parse(storageData.chef_sector_range_v1);
+assert.equal(persistedRange.totalStores,3);
+assert.equal(persistedRange.totalVisits,6);
+assert.equal(persistedRange.visitCreditRules.carrefour,2,'la période persistée doit conserver la règle Carrefour x2');
 const month=V.monthArchiveStats(2026,8);
 assert.equal(month.stores,3,'septembre doit contenir trois passages physiques dans l’archive de test');
 assert.equal(month.visits,6,'septembre doit compter six visites métier');
 assert.doesNotMatch(source,/visitMinutes\s*=/,'le double comptage ne doit jamais doubler la durée de visite');
 assert.match(source,/darty:2,boulanger:2,carrefour:2/,'Darty, Boulanger et Carrefour doivent être les trois règles par défaut');
-console.log('PASS: Darty, Boulanger et Carrefour comptent chacun pour deux visites métier, les autres restent à une visite, les arrêts physiques et durées restent séparés, et les règles sont extensibles.');
+assert.match(source,/detail\.reason==='day-store-recenter'/,'le recalcul de période doit rester ciblé sur un recentrage manuel');
+console.log('PASS: Darty, Boulanger et Carrefour comptent chacun pour deux visites métier, les arrêts physiques restent séparés, et un recentrage manuel conserve les totaux pondérés de période.');
