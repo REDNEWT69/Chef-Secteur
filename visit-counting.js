@@ -2,6 +2,7 @@
 'use strict';
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 const ARCHIVE_KEY='chef_sector_plan_archive_v1';
+const RANGE_KEY='chef_sector_range_v1';
 const DEFAULT_RULES={darty:2,boulanger:2,carrefour:2};
 let patchScheduled=false,uiObserver=null;
 
@@ -58,6 +59,26 @@ function normalizeCandidate(candidate){
   }
   return candidate;
 }
+function reconcileStoredRangeStats(){
+  const db=storage();if(!db)return null;
+  let archive={},range=null;
+  try{archive=JSON.parse(db.getItem(ARCHIVE_KEY)||'{}')||{};range=JSON.parse(db.getItem(RANGE_KEY)||'null')}catch(e){return null}
+  if(!range||!range.start||!range.end)return null;
+  const stats=archiveStats(archive,range.start,range.end);
+  range.totalStores=stats.stores;
+  range.totalVisits=stats.visits;
+  range.uniqueStores=stats.uniqueStores;
+  range.visitCreditRules=rules();
+  range.updatedAt=new Date().toISOString();
+  try{
+    db.setItem(RANGE_KEY,JSON.stringify(range));
+    if(typeof db.flush==='function'){
+      const flushed=db.flush();
+      if(flushed&&typeof flushed.catch==='function')flushed.catch(e=>console.warn('Statistiques de période non synchronisées',e));
+    }
+  }catch(e){console.warn('Statistiques de période non persistées',e);return null}
+  return range;
+}
 function planStats(plan){return{stores:planStores(plan),visits:planCredits(plan)}}
 function currentPlanStats(){try{return planStats(state.plan||{})}catch(e){return{stores:0,visits:0}}}
 function setText(el,text){if(el&&el.textContent!==text)el.textContent=text}
@@ -105,13 +126,17 @@ function hookReliability(){
   const R=window.ChefReliability;if(!R||typeof R.propose!=='function'||R.propose.__visitCreditsWrapped)return false;const original=R.propose;
   const wrapped=async function(candidate){normalizeCandidate(candidate);const ok=await original.apply(this,arguments);if(ok){schedulePatch();setTimeout(()=>patchRangeStatus(candidate),0)}return ok};wrapped.__visitCreditsWrapped=true;wrapped.__original=original;R.propose=wrapped;return true;
 }
-function boot(){ensureRules();window.assistantSummary=formatAssistantSummary;hookReliability();observeUi();schedulePatch();document.addEventListener('store-runner:planning-updated',schedulePatch);document.addEventListener('store-runner:data-restored',()=>{ensureRules();schedulePatch()});document.addEventListener('chef-range-generated',schedulePatch);document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('.proMonthPrev,.proMonthNext'))schedulePatch()});document.addEventListener('touchend',e=>{if(e.target&&e.target.closest&&e.target.closest('#proMonthBody'))schedulePatch()},{passive:true})}
+function onPlanningUpdated(e){
+  if(e&&e.detail&&e.detail.reason==='day-store-recenter')reconcileStoredRangeStats();
+  schedulePatch();
+}
+function boot(){ensureRules();window.assistantSummary=formatAssistantSummary;hookReliability();observeUi();schedulePatch();document.addEventListener('store-runner:planning-updated',onPlanningUpdated);document.addEventListener('store-runner:data-restored',()=>{ensureRules();schedulePatch()});document.addEventListener('chef-range-generated',schedulePatch);document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('.proMonthPrev,.proMonthNext'))schedulePatch()});document.addEventListener('touchend',e=>{if(e.target&&e.target.closest&&e.target.closest('#proMonthBody'))schedulePatch()},{passive:true})}
 
 window.storeVisitCredit=visitCredit;
 window.storeVisitCreditsForRoute=routeCredits;
 window.storeVisitCreditsForPlan=planCredits;
 window.storeVisitStoresForPlan=planStores;
-window.StoreVisitCounting={credit:visitCredit,routeCredits,planCredits,planStores,archiveStats,normalizeCandidate,monthArchiveStats,rules};
+window.StoreVisitCounting={credit:visitCredit,routeCredits,planCredits,planStores,archiveStats,normalizeCandidate,reconcileStoredRangeStats,monthArchiveStats,rules};
 document.addEventListener('store-runner:reliability-propose-ready',hookReliability);
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
