@@ -31,7 +31,7 @@ function visitCredit(store){
 function routeCredits(route){return (route||[]).reduce((n,s)=>n+visitCredit(s),0)}
 function planStores(plan,days){return (days||DAYS).reduce((n,d)=>n+((plan&&Array.isArray(plan[d]))?plan[d].length:0),0)}
 function planCredits(plan,days){return (days||DAYS).reduce((n,d)=>n+routeCredits((plan&&plan[d])||[]),0)}
-function storeKey(s){return norm((s&&s.enseigne)||'')+'|'+norm((s&&s.ville)||'')+'|'+norm((s&&s.adresse)||'')+'|'+String((s&&s.id)||'')}
+function storeKey(s){const b=norm((s&&s.enseigne)||''),v=norm((s&&s.ville)||''),a=norm((s&&s.adresse)||'');return (b||v||a)?b+'|'+v+'|'+a:'id|'+String((s&&s.id)||'')}
 function parse(v){const d=new Date(String(v||'')+'T12:00:00');return isNaN(d)?null:d}
 function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
 function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}

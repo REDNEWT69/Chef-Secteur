@@ -2,7 +2,7 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 const source=fs.readFileSync(__dirname+'/../visit-counting.js','utf8');
 const archive={
   '2026-09-07':{weekMonday:'2026-09-07',plan:{Lundi:[{id:'d1',enseigne:'Darty',ville:'Lyon'}],Mardi:[{id:'c1',enseigne:'Carrefour',ville:'Bron'}],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}},
-  '2026-09-14':{weekMonday:'2026-09-14',plan:{Lundi:[{id:'b1',enseigne:'Boulanger',ville:'Saint-Priest'}],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}}
+  '2026-09-14':{weekMonday:'2026-09-14',plan:{Lundi:[{id:'b1',enseigne:'Boulanger',ville:'Saint-Priest'}],Mardi:[{id:'d2',enseigne:'Darty',ville:'Lyon'}],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}}
 };
 const range={start:'2026-09-07',end:'2026-09-20',weeks:2,totalStores:999,totalVisits:999,uniqueStores:999};
 const storageData={chef_sector_plan_archive_v1:JSON.stringify(archive),chef_sector_range_v1:JSON.stringify(range)};
@@ -29,17 +29,21 @@ assert.equal(candidate.range.totalVisits,4,'la période testée vaut quatre visi
 assert.equal(candidate.range.uniqueStores,2);
 const reconciled=V.reconcileStoredRangeStats();
 assert(reconciled,'le recalcul de période doit retourner les statistiques persistées');
-assert.equal(reconciled.totalStores,3,'un recentrage manuel doit conserver trois arrêts physiques dans la période');
-assert.equal(reconciled.totalVisits,6,'un recentrage manuel ne doit jamais écraser les six visites métier par trois magasins physiques');
-assert.equal(reconciled.uniqueStores,3,'les magasins distincts doivent être recalculés depuis l’archive');
+assert.equal(reconciled.totalStores,4,'les quatre passages physiques doivent rester comptés, même si deux IDs représentent le même Darty');
+assert.equal(reconciled.totalVisits,8,'les quatre passages Darty/Boulanger/Carrefour doivent conserver leurs huit visites métier pondérées');
+assert.equal(reconciled.uniqueStores,3,'deux IDs du même Darty Lyon doivent compter pour un seul magasin physique distinct');
 const persistedRange=JSON.parse(storageData.chef_sector_range_v1);
-assert.equal(persistedRange.totalStores,3);
-assert.equal(persistedRange.totalVisits,6);
+assert.equal(persistedRange.totalStores,4);
+assert.equal(persistedRange.totalVisits,8);
+assert.equal(persistedRange.uniqueStores,3);
 assert.equal(persistedRange.visitCreditRules.carrefour,2,'la période persistée doit conserver la règle Carrefour x2');
 const month=V.monthArchiveStats(2026,8);
-assert.equal(month.stores,3,'septembre doit contenir trois passages physiques dans l’archive de test');
-assert.equal(month.visits,6,'septembre doit compter six visites métier');
+assert.equal(month.stores,4,'septembre doit contenir quatre passages physiques dans l’archive de test');
+assert.equal(month.visits,8,'septembre doit compter huit visites métier');
+assert.equal(month.uniqueStores,3,'les statistiques mensuelles doivent dédupliquer un même magasin physique malgré un nouvel ID');
+const idOnlyArchive={'2026-09-07':{weekMonday:'2026-09-07',plan:{Lundi:[{id:'u1'},{id:'u2'}],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}}};
+assert.equal(V.archiveStats(idOnlyArchive,'2026-09-07','2026-09-07').uniqueStores,2,'sans enseigne, ville ni adresse, deux IDs différents doivent rester deux magasins distincts');
 assert.doesNotMatch(source,/visitMinutes\s*=/,'le double comptage ne doit jamais doubler la durée de visite');
 assert.match(source,/darty:2,boulanger:2,carrefour:2/,'Darty, Boulanger et Carrefour doivent être les trois règles par défaut');
 assert.match(source,/detail\.reason==='day-store-recenter'/,'le recalcul de période doit rester ciblé sur un recentrage manuel');
-console.log('PASS: Darty, Boulanger et Carrefour comptent chacun pour deux visites métier, les arrêts physiques restent séparés, et un recentrage manuel conserve les totaux pondérés de période.');
+console.log('PASS: les visites pondérées restent séparées des arrêts physiques et les statistiques dédupliquent un même magasin physique même si son ID change.');
