@@ -62,7 +62,7 @@ assert.match(source,/bundle\.archive\[weekKey\]/,'une modification manuelle doit
   t=env();t.ctx.calendarEventsForDate=date=>date<'2026-09-14'?[{allDay:true,title:'Formation Samsung'}]:[];await t.ctx.testPlanning.generateRange();assert.equal(t.proposals.length,1);assert.equal(t.proposals[0].weekDate,'2026-09-14','la semaine affichée doit être la première semaine non vide de la période');assert(ids(t.proposals[0].plan).length>0,'la proposition ne doit pas être vide quand une semaine suivante contient des visites');
 
   // Le recentrage remplace les visites libres par des magasins proches de la nouvelle ancre, sans toucher aux autres jours.
-  t=env();{const by=id=>t.state.stores.find(s=>s.id===id);t.state.plan={Lundi:[by('x'),by('y')],Mardi:[by('z')]};t.ctx.hav=(a,b)=>Math.abs(Number(a.lon||0)-Number(b.lon||0))*100;t.ctx.havBase=()=>0;const beforeMardi=JSON.stringify(t.state.plan.Mardi);const result=t.ctx.testPlanning.buildDayReplacement('x',by('w'),'Lundi',true);assert.deepEqual(result.route.map(s=>s.id),['w','v'],'la journée doit se recentrer autour de Saint-Priest/Bron plutôt que conserver Valence');assert.equal(JSON.stringify(t.state.plan.Mardi),beforeMardi,'le calcul ne doit jamais muter un autre jour');}
+  t=env();{const by=id=>t.state.stores.find(s=>s.id===id);t.state.plan={Lundi:[by('x'),by('y')],Mardi:[by('z')]};t.ctx.hav=(a,b)=>Math.abs(Number(a.lon||0)-Number(b.lon||0))*100;t.ctx.havBase=()=>0;const beforeMardi=JSON.stringify(t.state.plan.Mardi);const result=t.ctx.testPlanning.buildDayReplacement('x',by('w'),'Lundi',true);assert.equal(result.route.map(s=>s.id).join(','),'w,v','la journée doit se recentrer autour de Saint-Priest/Bron plutôt que conserver Valence');assert.equal(JSON.stringify(t.state.plan.Mardi),beforeMardi,'le calcul ne doit jamais muter un autre jour');}
 
   // Un magasin imposé ou contraint déjà présent dans la journée doit être conservé pendant le recentrage.
   t=env();{const by=id=>t.state.stores.find(s=>s.id===id);t.state.plan={Lundi:[by('x'),by('y')],Mardi:[by('z')]};t.state.included.y=true;t.ctx.hav=(a,b)=>Math.abs(Number(a.lon||0)-Number(b.lon||0))*100;t.ctx.havBase=()=>0;const result=t.ctx.testPlanning.buildDayReplacement('x',by('w'),'Lundi',true);assert(result.route.some(s=>s.id==='y'),'un magasin explicitement imposé doit rester dans la journée');}
@@ -74,7 +74,7 @@ assert.match(source,/bundle\.archive\[weekKey\]/,'une modification manuelle doit
   t=env();{const by=id=>t.state.stores.find(s=>s.id===id);t.state.plan={Lundi:[by('x'),by('y')],Mardi:[by('z')]};assert.throws(()=>t.ctx.testPlanning.buildDayReplacement('x',by('z'),'Lundi',true),/déjà planifié/);}
 
   // Le mode secondaire remplace uniquement le magasin demandé, sans recentrer le reste de la journée.
-  t=env();{const by=id=>t.state.stores.find(s=>s.id===id);t.state.plan={Lundi:[by('x'),by('y')],Mardi:[by('z')]};const result=t.ctx.testPlanning.buildDayReplacement('x',by('w'),'Lundi',false);assert.deepEqual(result.route.map(s=>s.id),['w','y']);}
+  t=env();{const by=id=>t.state.stores.find(s=>s.id===id);t.state.plan={Lundi:[by('x'),by('y')],Mardi:[by('z')]};const result=t.ctx.testPlanning.buildDayReplacement('x',by('w'),'Lundi',false);assert.equal(result.route.map(s=>s.id).join(','),'w,y');}
 
   assert.equal(t.ctx.testPlanning.eventBlocksPlanning({allDay:true,title:'Anniversaire'}),false);
   assert.equal(t.ctx.testPlanning.eventBlocksPlanning({allDay:true,title:'Congé'}),true);
