@@ -25,7 +25,7 @@ const makeStorage=data=>({getItem:key=>Object.prototype.hasOwnProperty.call(data
 const state={settings:{days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],weekDate:'2026-09-07'},stores:[{id:'new',enseigne:'Darty',ville:'Lyon'}],plan:{Lundi:[{id:'old'}],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}};
 let scheduled=null;
 const weekInput={value:'2026-09-07'};
-const ctx={state,console,Date,JSON,Object,Array,String,Number,Math,Map,Set,setTimeout,requestAnimationFrame:fn=>{scheduled=fn},localStorage:makeStorage(localData),__chefStorage:makeStorage(activeData),save(){},selectPlanningDay(){},document:{readyState:'loading',addEventListener(){},getElementById:id=>id==='weekDate'?weekInput:null},window:null};
+const ctx={state,console,Date,JSON,Object,Array,String,Number,Math,Map,Set,setTimeout,requestAnimationFrame:fn=>{scheduled=fn},localStorage:makeStorage(localData),__chefStorage:makeStorage(activeData),save(){},selectPlanningDay(){},addEventListener(){},document:{readyState:'loading',addEventListener(){},getElementById:id=>id==='weekDate'?weekInput:null},window:null};
 ctx.window=ctx;
 vm.runInNewContext(source,ctx);
 const T=ctx.__periodTest;
