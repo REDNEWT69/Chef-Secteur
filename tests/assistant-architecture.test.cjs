@@ -1,5 +1,7 @@
 const fs=require('fs');
 const path=require('path');
+const vm=require('vm');
+const assert=require('assert/strict');
 const read=file=>fs.readFileSync(path.join(process.cwd(),file),'utf8');
 
 const assistant=read('assistant-upgrade.js');
@@ -18,6 +20,7 @@ if(!/window\.storeRunnerApplyAssistantContextTransforms\s*=/.test(assistant))thr
 if(/setTimeout\s*\(\s*install/.test(assistant))throw new Error('Assistant: réinstallation différée répétée interdite');
 if(/window\.addEventListener\(['"]focus['"],\s*updateAssistantStatus/.test(assistant))throw new Error('Assistant: le statut ne doit plus être rafraîchi globalement à chaque focus');
 if(/visibilitychange/.test(assistant))throw new Error('Assistant: le statut ne doit plus être rafraîchi globalement au retour de visibilité');
+if(!/PLAN_ARCHIVE_KEY='chef_sector_plan_archive_v1'/.test(assistant)||!/dayRefFromText/.test(assistant))throw new Error('Assistant: résolution temporelle et archive de planning absentes');
 
 if(/window\.sectorContext\s*=/.test(contextLimit))throw new Error('Assistant: ai-context-limit.js ne doit plus wrapper sectorContext');
 if(!/window\.storeRunnerLimitAssistantContext\s*=/.test(contextLimit))throw new Error('Assistant: limiteur de contexte public absent');
@@ -40,4 +43,36 @@ if(!/MutationObserver/.test(sheetDrag))throw new Error('Assistant mobile: observ
 if(/\[100,250,600,1200,2400\]/.test(sheetDrag)||/setTimeout\s*\(\s*install/.test(sheetDrag))throw new Error('Assistant mobile: réinstallation différée répétée interdite');
 if(/addEventListener\(['"]focus['"],\s*install/.test(sheetDrag))throw new Error('Assistant mobile: install ne doit pas être relancé à chaque focus');
 
-console.log('Assistant architecture guards: OK');
+// « Aujourd’hui » et « demain » doivent viser la vraie date, même si une autre semaine est affichée.
+class FixedDate extends Date{
+  constructor(...args){super(...(args.length?args:['2026-09-11T10:00:00+02:00']))}
+  static now(){return new Date('2026-09-11T08:00:00Z').getTime()}
+}
+const archivedPlan={
+  '2026-09-07':{weekMonday:'2026-09-07',plan:{Samedi:[{id:'archive',enseigne:'Darty',ville:'Bron'}]}}
+};
+const temporalState={
+  settings:{weekDate:'2026-09-14',days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi']},
+  plan:{Samedi:[{id:'displayed',enseigne:'Boulanger',ville:'Grenoble'}]},
+  calendarEvents:[{date:'2026-09-12',title:'Formation terrain'}]
+};
+const ctx={
+  state:temporalState,
+  Date:FixedDate,
+  console,
+  setTimeout,
+  localStorage:{getItem:key=>key==='chef_sector_plan_archive_v1'?JSON.stringify(archivedPlan):null},
+  document:{readyState:'loading',addEventListener(){},getElementById(){return null}}
+};
+ctx.window=ctx;
+vm.runInNewContext(assistant,ctx);
+const tomorrow=ctx.chefSecteurSmartLocalAnswer('planning demain');
+assert.match(tomorrow,/Samedi 2026-09-12\./,'demain doit conserver la vraie date et non le samedi de la semaine affichée');
+assert.match(tomorrow,/Darty Bron/,'demain doit lire la tournée de la vraie semaine dans l’archive');
+assert.match(tomorrow,/Formation terrain/,'demain doit lire l’Agenda de la vraie date');
+assert.doesNotMatch(tomorrow,/Boulanger Grenoble/,'demain ne doit pas reprendre la tournée de la semaine affichée');
+const namedDay=ctx.chefSecteurSmartLocalAnswer('planning samedi');
+assert.match(namedDay,/Samedi 2026-09-19\./,'un jour nommé explicitement doit rester lié à la semaine affichée');
+assert.match(namedDay,/Boulanger Grenoble/,'un jour nommé explicitement doit continuer à utiliser le planning affiché');
+
+console.log('Assistant architecture guards: OK · relative dates use the real calendar date and archived route when needed');
