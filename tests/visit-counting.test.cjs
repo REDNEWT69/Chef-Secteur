@@ -46,4 +46,7 @@ assert.equal(V.archiveStats(idOnlyArchive,'2026-09-07','2026-09-07').uniqueStore
 assert.doesNotMatch(source,/visitMinutes\s*=/,'le double comptage ne doit jamais doubler la durée de visite');
 assert.match(source,/darty:2,boulanger:2,carrefour:2/,'Darty, Boulanger et Carrefour doivent être les trois règles par défaut');
 assert.match(source,/detail\.reason==='day-store-recenter'/,'le recalcul de période doit rester ciblé sur un recentrage manuel');
-console.log('PASS: les visites pondérées restent séparées des arrêts physiques et les statistiques dédupliquent un même magasin physique même si son ID change.');
+assert.doesNotMatch(source,/observe\(document\.body/,'le module de comptage ne doit jamais observer tout document.body');
+assert.match(source,/OBSERVED_UI_IDS=\['summary','smartBrief','premiumHomeV2','proMonthBody','storeQuickSheet'\]/,'les zones observées doivent rester explicitement limitées aux vues de comptage utiles');
+assert.match(source,/attributeFilter:\['class','aria-hidden','data-sr-start'\]/,'la fiche rapide doit rester rafraîchie quand le magasin affiché change');
+console.log('PASS: les visites pondérées restent séparées des arrêts physiques, les statistiques dédupliquent un même magasin physique et le rafraîchissement UI n’observe plus toute l’application.');

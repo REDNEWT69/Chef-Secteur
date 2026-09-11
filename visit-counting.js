@@ -4,6 +4,7 @@ const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 const ARCHIVE_KEY='chef_sector_plan_archive_v1';
 const RANGE_KEY='chef_sector_range_v1';
 const DEFAULT_RULES={darty:2,boulanger:2,carrefour:2};
+const OBSERVED_UI_IDS=['summary','smartBrief','premiumHomeV2','proMonthBody','storeQuickSheet'];
 let patchScheduled=false,uiObserver=null;
 
 function norm(v){try{return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim()}catch(e){return String(v||'').toLowerCase().trim()}}
@@ -113,7 +114,15 @@ function patchQuickStore(){
 }
 function patchVisibleUi(){if(!window.state)return;patchSummary();patchLegacyBrief();patchPremiumHome();patchProMonth();patchQuickStore()}
 function schedulePatch(){if(patchScheduled)return;patchScheduled=true;const run=()=>{patchScheduled=false;patchVisibleUi()};if(typeof requestAnimationFrame==='function')requestAnimationFrame(run);else setTimeout(run,0)}
-function observeUi(){if(uiObserver||typeof MutationObserver==='undefined'||!document.body)return;uiObserver=new MutationObserver(schedulePatch);uiObserver.observe(document.body,{subtree:true,childList:true,characterData:true})}
+function observeUi(){
+  if(uiObserver||typeof MutationObserver==='undefined')return;
+  const targets=OBSERVED_UI_IDS.map(id=>document.getElementById(id)).filter(Boolean);if(!targets.length)return;
+  uiObserver=new MutationObserver(schedulePatch);
+  for(const target of targets){
+    if(target.id==='storeQuickSheet')uiObserver.observe(target,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['class','aria-hidden','data-sr-start']});
+    else uiObserver.observe(target,{subtree:true,childList:true,characterData:true});
+  }
+}
 function formatAssistantSummary(){
   if(!window.state)return'Aucune semaine générée.';const days=(state.settings&&state.settings.days)||DAYS,lines=[];let stores=0,visits=0,km=0;
   for(const day of days){const route=(state.plan&&state.plan[day])||[],s=route.length,v=routeCredits(route);stores+=s;visits+=v;let dkm=0;try{if(typeof routeCost==='function')dkm=Number(routeCost(route))||0}catch(e){}km+=dkm;lines.push(day+' : '+s+' magasin'+(s>1?'s':'')+' · '+v+' visite'+(v>1?'s':'')+' comptabilisée'+(v>1?'s':'')+' · ~'+Math.round(dkm)+' km')}
