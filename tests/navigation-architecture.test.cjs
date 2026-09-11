@@ -25,6 +25,9 @@ must('profile-controller.js','propriétaire géolocalisation',/window\.useCurren
 must('profile-controller.js','événement de sauvegarde profil',/store-runner:profile-saved/);
 must('profile-controller.js','position GPS non mise en cache',/maximumAge\s*:\s*0/);
 must('profile-controller.js','seuil de précision GPS',/accuracy>250/);
+must('profile-controller.js','géocodage manuel du départ',/async function forwardGeocode\(query\)/);
+must('profile-controller.js','bouton de recherche manuelle',/departureLookupBtn/);
+must('profile-controller.js','sauvegarde capable de géocoder sans GPS',/await geocodeDepartureInputs\(\)/);
 
 must('sw.js','contrôleur de navigation disponible hors ligne',/["']\.\/navigation-controller\.js["']/);
 must('sw.js','contrôleur profil disponible hors ligne',/["']\.\/profile-controller\.js["']/);

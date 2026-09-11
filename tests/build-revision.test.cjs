@@ -9,4 +9,6 @@ assert(swMatch,'BUILD_REV absent de sw.js');
 assert.strictEqual(indexMatch[1],swMatch[1],'index.html et sw.js doivent partager le même BUILD_REV');
 assert(!index.includes('20260910-assistant-visits1'),'ancienne révision encore présente dans index.html');
 assert(!sw.includes('20260910-assistant-visits1'),'ancienne révision encore présente dans sw.js');
+assert(index.includes("navigator.serviceWorker.addEventListener('controllerchange'"),'le bootloader doit recharger une fois quand un nouveau service worker prend le contrôle');
+assert(index.includes("store-runner-sw-reload:"),'le rechargement de version doit être borné pour éviter une boucle');
 console.log('build revision ok:',indexMatch[1]);
