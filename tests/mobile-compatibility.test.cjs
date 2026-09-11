@@ -14,5 +14,8 @@ assert.match(profile,/positionAccuracy\(best\)<=10/,'un très bon fix peut termi
 assert.match(profile,/setTimeout\(function\(\)\{finish\([^)]*\)\},4500\)/,'l’affinage doit rester borné dans le temps');
 assert.match(profile,/await acquireBestPosition/,'le géocodage ne doit commencer qu’après choix du meilleur fix');
 assert.doesNotMatch(profile,/getCurrentPosition\(async function\(pos\)/,'le flux principal ne doit plus géocoder le premier fix reçu');
+assert.match(profile,/nominatim\.openstreetmap\.org\/search\?format=jsonv2/,'un PC sans GPS doit pouvoir rechercher manuellement le départ');
+assert.match(profile,/countrycodes=fr/,'la recherche manuelle doit rester bornée à la France');
+assert.match(profile,/lookupDepartureAddress/,'le profil doit exposer une action explicite de recherche du départ');
 
 console.log('PASS: Android garde les jours accessibles au toucher et la localisation retient le meilleur fix GPS avant géocodage.');

@@ -4,6 +4,16 @@
   function ensureFeedback(){
     const btn=document.querySelector('#departureSettings button[onclick="useCurrentLocation()"]');
     if(!btn)return null;
+    let lookup=document.getElementById('departureLookupBtn');
+    if(!lookup){
+      lookup=document.createElement('button');
+      lookup.id='departureLookupBtn';
+      lookup.type='button';
+      lookup.className='secondary full';
+      lookup.textContent='⌕ Trouver cette ville / adresse';
+      lookup.addEventListener('click',function(){window.lookupDepartureAddress()});
+      btn.insertAdjacentElement('beforebegin',lookup);
+    }
     let box=document.getElementById('departureFeedback');
     if(!box){
       box=document.createElement('div');
@@ -51,6 +61,43 @@
     }catch(e){return ''}
   }
 
+  async function forwardGeocode(query){
+    const text=String(query||'').trim();
+    if(!text)throw new Error('Saisis une ville ou une adresse de départ.');
+    if(navigator.onLine===false)throw new Error('Connexion requise pour rechercher une adresse.');
+    const ctrl=new AbortController();
+    const timer=setTimeout(function(){ctrl.abort()},7000);
+    try{
+      const q=/\bfrance\b/i.test(text)?text:text+', France';
+      const url='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=fr&addressdetails=1&q='+encodeURIComponent(q);
+      const r=await fetch(url,{headers:{Accept:'application/json'},signal:ctrl.signal,cache:'no-store'});
+      if(!r.ok)throw new Error('Service de recherche d’adresse indisponible ('+r.status+').');
+      const rows=await r.json();
+      const row=Array.isArray(rows)&&rows[0];
+      const lat=Number(row&&row.lat),lon=Number(row&&row.lon);
+      if(!row||!isFinite(lat)||!isFinite(lon))throw new Error('Adresse introuvable. Essaie une ville ou une adresse plus précise.');
+      return{lat:lat,lon:lon,address:String(row.display_name||text).trim()};
+    }catch(e){
+      if(e&&e.name==='AbortError')throw new Error('La recherche d’adresse a pris trop de temps.');
+      throw e;
+    }finally{clearTimeout(timer)}
+  }
+
+  async function geocodeDepartureInputs(){
+    const nameInput=document.getElementById('pBaseName'),addressInput=document.getElementById('pBaseAddress');
+    const latInput=document.getElementById('pBaseLat'),lonInput=document.getElementById('pBaseLon');
+    const query=(addressInput&&addressInput.value.trim())||(nameInput&&nameInput.value.trim());
+    if(!query)throw new Error('Saisis une ville ou une adresse de départ.');
+    feedback('Recherche de « '+query+' »…','busy');
+    const found=await forwardGeocode(query);
+    if(latInput)latInput.value=found.lat.toFixed(6);
+    if(lonInput)lonInput.value=found.lon.toFixed(6);
+    if(addressInput)addressInput.value=found.address;
+    if(nameInput&&!nameInput.value.trim())nameInput.value=query;
+    feedback('Départ trouvé ✓ '+found.address,'ok');
+    return found;
+  }
+
   function positionAccuracy(pos){
     const a=Number(pos&&pos.coords&&pos.coords.accuracy);
     return isFinite(a)&&a>0?a:Infinity;
@@ -89,7 +136,7 @@
   }
 
   function validBase(){
-    return window.state&&state.profile&&isFinite(Number(state.profile.baseLat))&&isFinite(Number(state.profile.baseLon))&&Math.abs(Number(state.profile.baseLat))>1&&Math.abs(Number(state.profile.baseLon))>1;
+    const lat=Number(state.profile.baseLat),lon=Number(state.profile.baseLon);return window.state&&state.profile&&isFinite(lat)&&isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180&&!(lat===0&&lon===0);
   }
 
   function installPersistedBase(){
@@ -129,6 +176,24 @@
     document.head.appendChild(s);
   }
 
+  window.storeRunnerToast=toast;
+  window.lookupDepartureAddress=async function(){
+    const btn=document.getElementById('departureLookupBtn');
+    if(btn){btn.disabled=true;btn.dataset.oldText=btn.textContent;btn.textContent='⌕ Recherche…'}
+    try{
+      const found=await geocodeDepartureInputs();
+      toast('Départ trouvé ✓');
+      return found;
+    }catch(e){
+      const message=e&&e.message?e.message:'Adresse introuvable.';
+      feedback(message,'bad');
+      if(typeof showError==='function')showError(message);
+      return null;
+    }finally{
+      if(btn){btn.disabled=false;btn.textContent=btn.dataset.oldText||'⌕ Trouver cette ville / adresse'}
+    }
+  };
+
   window.useCurrentLocation=async function(){
     const btn=document.querySelector('#departureSettings button[onclick="useCurrentLocation()"]');
     if(!navigator.geolocation){feedback('Localisation indisponible sur cet appareil.','bad');return}
@@ -164,10 +229,13 @@
     }
   };
 
-  window.saveProfile=function(){
+  window.saveProfile=async function(){
     try{
-      const lat=parseFloat(document.getElementById('pBaseLat').value),lon=parseFloat(document.getElementById('pBaseLon').value);
-      if(isNaN(lat)||isNaN(lon))throw new Error('Latitude/longitude de base obligatoires.');
+      let lat=parseFloat(document.getElementById('pBaseLat').value),lon=parseFloat(document.getElementById('pBaseLon').value);
+      if(isNaN(lat)||isNaN(lon)){
+        const found=await geocodeDepartureInputs();
+        lat=found.lat;lon=found.lon;
+      }
       state.profile.sectorName=document.getElementById('pSector').value.trim()||'Mon secteur';
       state.profile.repName=document.getElementById('pRep').value.trim();
       state.profile.baseName=document.getElementById('pBaseName').value.trim()||'Départ';
@@ -182,10 +250,12 @@
       feedback('Réglages enregistrés ✓','ok');
       toast('Réglages enregistrés ✓');
       emitProfileSaved();
+      return true;
     }catch(e){
-      feedback(e&&e.message?e.message:'Enregistrement impossible.','bad');
-      if(typeof showError==='function')showError(e.message||String(e));
-      throw e;
+      const message=e&&e.message?e.message:'Enregistrement impossible.';
+      feedback(message,'bad');
+      if(typeof showError==='function')showError(message);
+      return false;
     }
   };
 

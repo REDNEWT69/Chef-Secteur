@@ -11,6 +11,31 @@
     return Object.keys(plan).reduce(function(total,day){return total+(Array.isArray(plan[day])?plan[day].length:0)},0);
   }
 
+  function validBase(){
+    if(!window.state||!state.profile)return false;
+    const lat=Number(state.profile.baseLat),lon=Number(state.profile.baseLon);
+    return Number.isFinite(lat)&&Number.isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180&&!(lat===0&&lon===0);
+  }
+
+  function generationStatus(message,type){
+    let box=document.getElementById('planningGenerateStatus');
+    if(!box){
+      const button=document.querySelector('#planPanel button.primary.full[onclick="generateWeek()"]');
+      if(button){
+        box=document.createElement('div');box.id='planningGenerateStatus';box.setAttribute('role','status');box.setAttribute('aria-live','polite');
+        box.style.margin='9px 2px 0';box.style.fontSize='12px';box.style.lineHeight='1.4';button.insertAdjacentElement('afterend',box);
+      }
+    }
+    if(box){box.textContent=message||'';box.style.color=type==='bad'?'#b42318':type==='ok'?'#137333':'#667085';box.style.fontWeight=type==='bad'||type==='ok'?'700':'500'}
+    if(type==='bad'){
+      if(typeof window.showError==='function')try{window.showError(message)}catch(e){}
+      if(typeof window.storeRunnerToast==='function')try{window.storeRunnerToast(message)}catch(e){}
+    }else if(type==='ok'){
+      const error=document.getElementById('errorBox');if(error)error.style.display='none';
+      if(typeof window.storeRunnerToast==='function')try{window.storeRunnerToast(message)}catch(e){}
+    }
+  }
+
   function install(){
     if(window.__storeRunnerPlanningGenerateOwner)return true;
     if(typeof window.generateWeek!=='function')return false;
@@ -24,6 +49,12 @@
        * Une reconnexion Google ne doit se produire qu'après une action explicite
        * de l'utilisateur dans l'interface Agenda.
        */
+      generationStatus('Génération du planning…','busy');
+      if(!validBase()){
+        const message='Point de départ incomplet. Dans Mon activité, saisis une ville ou une adresse (ex. Francheville), puis enregistre les réglages.';
+        generationStatus(message,'bad');
+        return{ok:false,__storeRunnerRejectedEmpty:true,error:message};
+      }
       const specialized=typeof window.storeRunnerGenerateSingleWeek==='function';
       const generator=specialized?window.storeRunnerGenerateSingleWeek:base;
       const beforeCount=countVisits(window.state&&state.plan);
@@ -43,6 +74,13 @@
       const afterCount=countVisits(window.state&&state.plan);
       if(beforeCount>0&&afterCount===0&&out&&out.__storeRunnerRejectedEmpty!==true){
         console.warn('Le planning est devenu vide après génération. Le moteur spécialisé doit protéger ce cas.');
+      }
+      if(out&&out.ok===false){
+        generationStatus(out.error||'Le planning n’a pas été généré. Vérifie les réglages affichés.','bad');
+      }else if(afterCount>0){
+        generationStatus('Planning généré ✓ '+afterCount+' visite'+(afterCount>1?'s':''),'ok');
+      }else{
+        generationStatus('Aucune visite générée. Vérifie le point de départ, les filtres et les horaires.','bad');
       }
       emitPlanningUpdated();
       return out;
