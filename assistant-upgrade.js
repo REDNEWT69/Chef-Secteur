@@ -115,7 +115,7 @@
     const status=document.getElementById('assistantAIStatus');if(!status)return;
     const online=window.aiConfig&&aiConfig.mode==='online';
     if(online&&!gatewayConfigured()){status.className='ai-status bad';status.textContent='IA en ligne non configurée · une passerelle serveur sécurisée est nécessaire';}
-    else if(online&&gatewayConfigured()){status.className='ai-status ok';status.textContent='IA en ligne prête · planning + agenda + hôtels envoyés comme contexte';}
+    else if(online&&gatewayConfigured()){status.className='ai-status ok';status.textContent='IA en ligne prête · planning transmis · détails Google Agenda conservés localement';}
     else{status.className='ai-status';status.textContent='Mode local amélioré · comprend maintenant planning, agenda et déplacements';}
   }
   function installStatusEvents(){
