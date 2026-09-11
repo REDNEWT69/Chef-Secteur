@@ -19,8 +19,10 @@
       /*
        * La génération du planning doit rester purement locale : elle consomme le
        * dernier cache Agenda disponible mais ne déclenche jamais de synchro réseau
-       * ni d'OAuth. Une reconnexion Google ne doit se produire qu'après une action
-       * explicite de l'utilisateur dans l'interface Agenda.
+       * ni d'OAuth. `chefSecteurPrepareCalendarForPlanning` reste l'API Agenda de
+       * préparation historique, mais elle n'est volontairement pas appelée ici.
+       * Une reconnexion Google ne doit se produire qu'après une action explicite
+       * de l'utilisateur dans l'interface Agenda.
        */
       const specialized=typeof window.storeRunnerGenerateSingleWeek==='function';
       const generator=specialized?window.storeRunnerGenerateSingleWeek:base;
