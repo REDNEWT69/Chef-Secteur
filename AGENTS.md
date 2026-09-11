@@ -7,7 +7,8 @@ Ce dépôt est l’application **Store Runner**. Le dépôt historique s’appel
 1. Travailler sur le `main` GitHub le plus récent, ou sur une branche créée depuis ce `main`.
 2. Vérifier l’état du dépôt avant d’écrire. Ne jamais réappliquer aveuglément un ancien prototype, un ancien diff ou une branche `v3-premium`.
 3. Lire au minimum `ARCHITECTURE_CLEANUP_STATUS.md` et, pour le métier V2, `PLAN_METIER_STORE_RUNNER.md`.
-4. Conserver les fonctionnalités existantes et les données locales. Les changements doivent être progressifs et réversibles.
+4. Vérifier les PR déjà fusionnées avant de reprendre un ancien lot : **Visit + Action + workflow 6P sont déjà intégrés** et ne doivent pas être recréés depuis une ancienne branche locale.
+5. Conserver les fonctionnalités existantes et les données locales. Les changements doivent être progressifs et réversibles.
 
 ## Architecture à respecter
 
@@ -19,6 +20,7 @@ Ce dépôt est l’application **Store Runner**. Le dépôt historique s’appel
 - `planning-ui-fixes.js` possède la hiérarchie d’affichage du planning.
 - `store-runner-branding.js` ne doit gérer que le branding.
 - Les enrichissements assistant utilisent `storeRunnerRegisterAssistantResolver`, `storeRunnerRegisterAssistantContextTransform` et les événements publics existants.
+- Les rafraîchissements doivent être événementiels et ciblés. Éviter les réinstallations globales au `focus`, au `visibilitychange` ou par boucles de temporisation quand un événement métier existe déjà.
 
 Ne pas remplacer une fonction globale métier appartenant à un autre module. Préférer événements, observers bornés, fonctions publiques ou registres d’extensions. Ne pas ajouter de `setInterval` de surveillance permanent.
 
@@ -34,9 +36,11 @@ Ne pas remplacer une fonction globale métier appartenant à un autre module. Pr
 
 Le plan de référence est `PLAN_METIER_STORE_RUNNER.md`.
 
-Priorité actuelle : **Visit + Action + workflow 6P**. Le premier lot doit couvrir création/reprise d’une visite, sauvegarde progressive, Préparation, 360°, six P, conversion d’anomalie en Action sans doublon, clôture, historique compatible et reprise après rechargement.
+État actuel : **Visit + Action + workflow 6P sont intégrés dans `main`** avec sauvegarde/reprise, historique et protections Reliability. L’assistant peut également lire un contexte Visit/Action sans mutation métier.
 
-Ne pas développer KitchenCRM, ServiceCase ou les workflows spécialisés avant le lot demandé. `Appointment` doit prolonger l’existant au lieu de créer un second registre concurrent.
+Priorité métier suivante : **Appointment**, en prolongeant l’existant au lieu de créer un second registre concurrent. Une fois Appointment stabilisé, le prochain domaine prévu est **Opportunity**.
+
+Ne pas redévelopper Visit/Action/6P depuis une ancienne branche ou un ancien résumé Codex. Ne pas développer KitchenCRM, ServiceCase ou des workflows spécialisés tant qu’ils ne sont pas explicitement demandés.
 
 ## Validation obligatoire
 
