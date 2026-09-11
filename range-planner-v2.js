@@ -49,11 +49,11 @@ function eligible(){
 }
 function scoreOf(s){try{return typeof score==='function'?Number(score(s))||0:Number(s.priority)||0}catch(e){return Number(s.priority)||0}}
 function forcedRank(s){const id=s&&s.id;return (state.locks&&state.locks[id]?2:0)+(state.included&&state.included[id]?1:0)}
-function lockedCount(pool){return (pool||[]).reduce((n,s)=>n+((state.locks&&state.locks[s&&s.id])?1:0),0)}
+function forcedCount(pool){return (pool||[]).reduce((n,s)=>n+(forcedRank(s)>0?1:0),0)}
 function selectionNeed(pool,usable,target,max){
-  const capacity=max*usable.length,locked=lockedCount(pool);
-  if(locked>capacity)throw new Error('Il y a '+locked+' magasins verrouillés pour seulement '+capacity+' créneau'+(capacity>1?'x':'')+' disponible'+(capacity>1?'s':'')+'. Le planning précédent est conservé.');
-  return Math.min(Math.max(Math.max(1,target),locked),capacity,pool.length);
+  const capacity=max*usable.length,forced=forcedCount(pool);
+  if(forced>capacity)throw new Error('Il y a '+forced+' magasins imposés ou verrouillés pour seulement '+capacity+' créneau'+(capacity>1?'x':'')+' disponible'+(capacity>1?'s':'')+'. Le planning précédent est conservé.');
+  return Math.min(Math.max(Math.max(1,target),forced),capacity,pool.length);
 }
 function chooseStores(pool,usedKeys,lastUsedWeek,target){
   const chosen=[],keys=new Set(),add=s=>{const k=storeKey(s);if(!k||keys.has(k)||chosen.length>=target)return false;chosen.push(s);keys.add(k);return true};
@@ -117,6 +117,12 @@ function buildWeekUnique(chosen,days){
   }
   return{plan,unplaced};
 }
+function ensureForcedPlaced(built){
+  const blocked=((built&&built.unplaced)||[]).filter(s=>forcedRank(s)>0);
+  if(!blocked.length)return;
+  const plural=blocked.length>1;
+  throw new Error(blocked.length+' magasin'+(plural?'s':'')+' imposé'+(plural?'s':'')+' ou verrouillé'+(plural?'s':'')+' ne '+(plural?'tiennent':'tient')+' pas dans les horaires disponibles. Le planning précédent est conservé.');
+}
 function snapshot(mon,start,end,plan,days){const o={weekMonday:iso(mon),plan:{}};for(let i=0;i<DAYS.length;i++){const d=DAYS[i],dt=addDays(mon,i);o.plan[d]=(dt>=start&&dt<=end&&days.includes(d))?(plan[d]||[]).map(cloneStore):[]}return o}
 function eventKey(e){return String((e&&e.id)||'')+'|'+String((e&&e.date)||'')+'|'+String((e&&e.start)||'')}
 function eventDate(e){const raw=(e&&(e.date||e.start))||'';const m=String(raw).match(/^(\d{4}-\d{2}-\d{2})/);return m?m[1]:''}
@@ -166,7 +172,7 @@ async function strictSingleWeek(){
     const pool=eligible();if(!pool.length)throw new Error('Aucun magasin actif ne correspond aux filtres. Ouvre « Enseignes » et vérifie la sélection.');
     const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
     const need=selectionNeed(pool,usable,Number(state.settings.target)||20,max);
-    const chosen=chooseStores(pool,new Set(),new Map(),need),built=buildWeekUnique(chosen,usable),visits=countPlan(built.plan,usable);
+    const chosen=chooseStores(pool,new Set(),new Map(),need),built=buildWeekUnique(chosen,usable);ensureForcedPlaced(built);const visits=countPlan(built.plan,usable);
     if(!visits)throw new Error('0 visite possible avec les réglages actuels. Vérifie l’heure de fin, la durée par magasin et ton point de départ. Le planning précédent est conservé.');
     if(!await ChefReliability.propose({plan:built.plan,weekDate:iso(mon)})){showStatus('Planning précédent conservé.');return{ok:false,cancelled:true}}
     showStatus('Semaine générée : '+visits+' visites'+(built.unplaced.length?' · '+built.unplaced.length+' non placée'+(built.unplaced.length>1?'s':'')+' faute de créneau':'')+'.');
@@ -196,13 +202,13 @@ async function generateRange(){
       if(!usable.length){archive[iso(mon)]=snapshot(mon,start,end,Object.fromEntries(DAYS.map(d=>[d,[]])),days);mon=addDays(mon,7);weekIndex++;weeks++;continue}
       const need=selectionNeed(pool,usable,target,max),remaining=pool.filter(s=>!usedKeys.has(storeKey(s))).length;
       if(usedKeys.size&&remaining<need)usedKeys.clear();
-      const chosen=chooseStores(pool,usedKeys,lastUsedWeek,need),built=buildWeekUnique(chosen,usable),plan=built.plan,weekSeen=new Set();
+      const chosen=chooseStores(pool,usedKeys,lastUsedWeek,need),built=buildWeekUnique(chosen,usable);ensureForcedPlaced(built);const plan=built.plan,weekSeen=new Set();
       totalUnplaced+=built.unplaced.length;
       for(const d of usable)for(const s of (plan[d]||[])){const k=storeKey(s);if(!k||weekSeen.has(k))continue;weekSeen.add(k);unique.add(k);usedKeys.add(k);lastUsedWeek.set(k,weekIndex);totalVisits++}
       archive[iso(mon)]=snapshot(mon,start,end,plan,days);mon=addDays(mon,7);weekIndex++;weeks++;await new Promise(r=>setTimeout(r,10));
     }
     if(!totalVisits)throw new Error('La période donnerait 0 visite. Rien n’a été remplacé : vérifie les jours, les horaires et les indisponibilités Agenda.');
-    const range={start:iso(start),end:iso(end),weeks,workDays:days,uniqueStores:unique.size,totalVisits,rotation:'hard-unique-v6',calendarSynced,updatedAt:new Date().toISOString()};
+    const range={start:iso(start),end:iso(end),weeks,workDays:days,uniqueStores:unique.size,totalVisits,rotation:'hard-unique-v7',calendarSynced,updatedAt:new Date().toISOString()};
     let displayMon=new Date(first),displaySnap=null;
     while(displayMon<=last){const snap=archive[iso(displayMon)];if(snap&&countPlan(snap.plan,DAYS)>0){displaySnap=snap;break}displayMon=addDays(displayMon,7)}
     if(!displaySnap)throw new Error('La période contient des visites mais aucune semaine affichable n’a été retrouvée. Le planning précédent est conservé.');
