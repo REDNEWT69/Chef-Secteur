@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Store Runner — planification terrain</title>
+  <meta name="description" content="Store Runner aide les chefs de secteur à organiser leurs visites magasins et peut lire Google Agenda pour éviter les conflits de planning.">
+  <style>
+    :root{color-scheme:light;--ink:#111318;--muted:#667085;--line:#e5e7eb;--blue:#0a84ff;--bg:#f5f7fb}
+    *{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#f8fbff,#f4f5f8);color:var(--ink);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+    main{max-width:820px;margin:auto;padding:48px 20px 72px}.brand{display:flex;align-items:center;gap:14px;margin-bottom:36px}.brand img{width:58px;height:58px;border-radius:16px}.brand strong{font-size:25px}.brand span{display:block;color:var(--muted);font-size:14px}
+    h1{font-size:clamp(38px,8vw,68px);line-height:.98;letter-spacing:-.055em;margin:0 0 20px}h2{font-size:24px;letter-spacing:-.025em;margin:34px 0 10px}p{color:#3f4652}.lead{font-size:20px;color:#4c5564;max-width:700px}
+    .card{background:#fff;border:1px solid var(--line);border-radius:24px;padding:24px;margin-top:24px;box-shadow:0 14px 40px rgba(31,41,55,.06)}
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:28px}.btn{display:inline-block;text-decoration:none;border-radius:14px;padding:12px 16px;font-weight:700}.primary{background:var(--blue);color:#fff}.secondary{background:#fff;color:#176fd0;border:1px solid var(--line)}
+    ul{padding-left:20px;color:#3f4652}footer{border-top:1px solid var(--line);margin-top:42px;padding-top:20px;color:var(--muted);font-size:14px}footer a{color:#176fd0;margin-right:16px}
+  </style>
+</head>
+<body>
+<main>
+  <div class="brand"><img src="./app-icon.svg" alt="Icône Store Runner"><div><strong>Store Runner</strong><span>Planification terrain</span></div></div>
+  <h1>Organiser ses tournées sans perdre de vue son agenda.</h1>
+  <p class="lead">Store Runner est une application web de planification pour les équipes terrain. Elle aide à répartir les visites magasins, préparer les tournées et tenir compte des indisponibilités professionnelles.</p>
+
+  <div class="card">
+    <h2>Connexion Google Agenda</h2>
+    <p>La connexion à Google Agenda est facultative. Lorsqu’un utilisateur l’autorise, Store Runner accède à l’agenda en <strong>lecture seule</strong> afin d’identifier les rendez-vous, formations, déplacements et autres créneaux qui doivent être pris en compte dans le planning.</p>
+    <ul>
+      <li>Store Runner ne crée, ne modifie et ne supprime aucun événement Google Agenda.</li>
+      <li>Le jeton OAuth reste dans la session du navigateur et n’est pas inclus dans les sauvegardes.</li>
+      <li>Les détails Google Agenda ne sont pas transmis à l’assistant IA en ligne.</li>
+      <li>L’utilisateur peut déconnecter Google Agenda depuis l’application, ce qui supprime le jeton de session et les événements Google importés dans l’application.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Fonctions principales</h2>
+    <ul>
+      <li>génération de plannings de visites magasins ;</li>
+      <li>organisation des journées et estimation des tournées ;</li>
+      <li>prise en compte optionnelle de Google Agenda ;</li>
+      <li>historique, notes et données de visite conservés localement dans l’application.</li>
+    </ul>
+  </div>
+
+  <div class="actions">
+    <a class="btn primary" href="./">Ouvrir Store Runner</a>
+    <a class="btn secondary" href="./privacy.html">Politique de confidentialité</a>
+    <a class="btn secondary" href="./terms.html">Conditions d’utilisation</a>
+  </div>
+
+  <footer>
+    <a href="./privacy.html">Confidentialité</a>
+    <a href="./terms.html">Conditions</a>
+    <a href="https://github.com/REDNEWT69/Chef-Secteur">Projet GitHub</a>
+    <p>Store Runner est un outil indépendant de planification terrain. Google Agenda est un service tiers facultatif.</p>
+  </footer>
+</main>
+</body>
+</html>
