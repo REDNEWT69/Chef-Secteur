@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Politique de confidentialité — Store Runner</title>
+  <meta name="description" content="Politique de confidentialité de Store Runner, notamment pour l’accès en lecture seule à Google Agenda.">
+  <style>
+    :root{--ink:#111318;--muted:#667085;--line:#e5e7eb;--blue:#176fd0;--bg:#f7f8fb}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}main{max-width:820px;margin:auto;padding:42px 20px 72px}.top{display:flex;align-items:center;gap:12px;margin-bottom:34px}.top img{width:48px;height:48px;border-radius:14px}.top strong{font-size:22px}h1{font-size:clamp(36px,7vw,58px);line-height:1;letter-spacing:-.05em;margin:0 0 14px}h2{font-size:23px;margin:34px 0 8px;letter-spacing:-.025em}p,li{color:#3f4652}.note{background:#fff;border:1px solid var(--line);border-radius:20px;padding:18px 20px;margin:22px 0}a{color:var(--blue)}footer{margin-top:44px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+  </style>
+</head>
+<body>
+<main>
+  <div class="top"><img src="./app-icon.svg" alt="Icône Store Runner"><strong>Store Runner</strong></div>
+  <h1>Politique de confidentialité</h1>
+  <p><strong>Dernière mise à jour : 11 septembre 2026.</strong></p>
+  <p>Cette politique explique comment Store Runner traite les données utilisées par l’application, avec une attention particulière aux données obtenues via les API Google.</p>
+
+  <div class="note"><strong>Principe essentiel :</strong> la connexion Google Agenda est facultative et en lecture seule. Store Runner n’écrit aucun événement dans Google Agenda.</div>
+
+  <h2>1. Données Google auxquelles Store Runner accède</h2>
+  <p>Lorsqu’un utilisateur connecte Google Agenda, Store Runner peut lire la liste des agendas auxquels cet utilisateur est abonné ainsi que les événements accessibles dans ces agendas pour la période de planning consultée.</p>
+  <p>Pour son fonctionnement, l’application utilise notamment le nom ou l’identifiant de l’agenda, le titre de l’événement, sa localisation, ses dates et heures de début et de fin, son caractère « toute la journée » et son statut d’annulation.</p>
+
+  <h2>2. Finalité de cet accès</h2>
+  <p>Ces informations servent uniquement à aider l’utilisateur à organiser ses tournées : détecter les rendez-vous, formations, déplacements, hébergements ou autres indisponibilités, éviter les conflits horaires et présenter le planning pertinent dans Store Runner.</p>
+  <p>Store Runner ne vend pas les données Google, ne les utilise pas à des fins publicitaires et ne les utilise pas pour établir un profil marketing.</p>
+
+  <h2>3. Stockage et transmission</h2>
+  <ul>
+    <li>Le jeton OAuth Google est conservé uniquement dans <code>sessionStorage</code> pendant la session du navigateur.</li>
+    <li>Le jeton OAuth n’est pas inclus dans les sauvegardes ou exports de Store Runner.</li>
+    <li>Les événements Google importés peuvent être conservés localement dans les données de l’application afin de préserver le dernier état synchronisé et peuvent donc apparaître dans une sauvegarde locale/exportée déclenchée par l’utilisateur.</li>
+    <li>Les appels Google Agenda sont effectués directement depuis le navigateur vers les API Google.</li>
+    <li>Les détails des événements Google Agenda ne sont pas envoyés à l’assistant IA en ligne de Store Runner.</li>
+  </ul>
+
+  <h2>4. Suppression et déconnexion</h2>
+  <p>L’utilisateur peut déconnecter Google Agenda depuis Store Runner. Cette action révoque le jeton OAuth lorsqu’il est disponible, supprime le jeton de la session et retire de l’état courant de l’application les événements importés depuis Google.</p>
+  <p>L’utilisateur peut aussi supprimer les données locales de Store Runner depuis les fonctions de gestion des données de l’application ou via les réglages de son navigateur.</p>
+
+  <h2>5. Assistant IA</h2>
+  <p>Store Runner peut proposer un assistant IA en ligne pour des fonctions d’aide générale au planning. Par conception, le contexte envoyé à cet assistant exclut les détails issus de Google Agenda. Les réponses qui nécessitent le contenu de l’agenda sont traitées localement dans l’application lorsque cette fonctionnalité est disponible.</p>
+
+  <h2>6. Google API Services User Data Policy</h2>
+  <p>L’utilisation par Store Runner des informations reçues depuis les API Google respecte la <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, y compris les exigences de <em>Limited Use</em>.</p>
+
+  <h2>7. Sécurité</h2>
+  <p>Store Runner limite l’autorisation Google à un accès en lecture seule. Aucun secret client OAuth n’est intégré dans l’application web. Le jeton d’accès est temporaire et reste dans la session du navigateur.</p>
+
+  <h2>8. Évolutions de cette politique</h2>
+  <p>Cette politique peut être mise à jour si le fonctionnement de Store Runner ou les exigences de Google évoluent. La date de mise à jour affichée en haut de la page permet d’identifier la version applicable.</p>
+
+  <h2>9. Contact</h2>
+  <p>Pour une question relative à Store Runner ou à cette politique, le canal public de contact du projet est le dépôt GitHub <a href="https://github.com/REDNEWT69/Chef-Secteur">REDNEWT69/Chef-Secteur</a>.</p>
+
+  <footer>
+    <a href="./oauth-home.html">Accueil Store Runner</a> · <a href="./terms.html">Conditions d’utilisation</a> · <a href="./">Ouvrir l’application</a>
+  </footer>
+</main>
+</body>
+</html>

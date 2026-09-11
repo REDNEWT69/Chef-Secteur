@@ -15,17 +15,6 @@
     };
   }
 
-  function slimEvent(e){
-    if(!e||typeof e!=='object')return null;
-    return {
-      date:e.date||null,
-      start:e.start||e.startDateTime||null,
-      end:e.end||e.endDateTime||null,
-      title:e.title||e.summary||'',
-      location:e.location||''
-    };
-  }
-
   function slimPlan(plan){
     const out={};
     if(!plan||typeof plan!=='object')return out;
@@ -69,18 +58,19 @@
 
   function limitContext(c){
     c=c||{};
+    const privacyInstruction='Les détails Google Agenda restent locaux à Store Runner et ne sont pas fournis à l’IA en ligne. Ne prétends pas connaître un événement, un hôtel ou un déplacement provenant de Google Agenda si le résolveur local ne l’a pas déjà traité.';
     return {
       today:c.today||null,
       profile:slimProfile(c.profile),
       settings:slimSettings(c.settings),
       plan:slimPlan(c.plan),
-      calendarEvents:(c.calendarEvents||[]).slice(0,24).map(slimEvent).filter(Boolean),
+      calendarEvents:[],
       calendarLastSync:c.calendarLastSync||null,
-      awayRanges:(c.awayRanges||[]).slice(0,12),
-      daySummaries:c.daySummaries||{},
-      overnight:c.overnight||null,
+      awayRanges:[],
+      daySummaries:{},
+      overnight:null,
       businessV2:slimBusinessV2(c.businessV2),
-      instructions:c.instructions||'',
+      instructions:[c.instructions||'',privacyInstruction].filter(Boolean).join(' '),
       stores:(c.stores||[]).slice(0,20).map(slimStore).filter(Boolean)
     };
   }

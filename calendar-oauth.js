@@ -5,6 +5,8 @@
   const TOKEN_KEY='chef_secteur_google_token_v2';
   const EXPIRY_KEY='chef_google_token_expiry_v1';
   const LEGACY_TOKEN_KEYS=['chef_google_token_persist_v1','chef_google_token_persist_expiry_v1'];
+  const PRIVACY_URL='./privacy.html';
+  const TERMS_URL='./terms.html';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
@@ -16,6 +18,27 @@
   function hasGoogleConfig(){try{const c=JSON.parse(localStorage.getItem(CONFIG_KEY)||'{}');return !!(c&&c.clientId)}catch(e){return false}}
   function waitGoogleToken(ms){const start=Date.now();return new Promise(resolve=>(function tick(){if(tokenValid())return resolve(true);if(Date.now()-start>=ms)return resolve(false);setTimeout(tick,120)})())}
   function emitCalendarUpdated(detail){try{document.dispatchEvent(new CustomEvent('store-runner:calendar-updated',{detail:detail||{}}))}catch(e){}}
+  function installOAuthDisclosure(){
+    const box=document.querySelector('.calendarConnect');if(!box)return false;
+    const input=document.getElementById('googleClientId');
+    if(input){input.hidden=true;const label=document.querySelector('label[for="googleClientId"]');if(label)label.hidden=true}
+    const legacy=box.querySelector('p.tiny');
+    if(legacy)legacy.textContent='Google Agenda est facultatif. Store Runner demande uniquement un accès en lecture seule pour tenir compte de tes rendez-vous et indisponibilités.';
+    if(!document.getElementById('googleOAuthDisclosure')){
+      const info=document.createElement('div');
+      info.id='googleOAuthDisclosure';
+      info.className='googleOAuthDisclosure';
+      info.innerHTML='<strong>Confidentialité Google Agenda</strong><span>Les détails des événements restent dans Store Runner et ne sont pas envoyés à l’assistant IA en ligne. Aucun événement Google n’est créé, modifié ou supprimé.</span><div><a href="'+PRIVACY_URL+'">Politique de confidentialité</a><a href="'+TERMS_URL+'">Conditions d’utilisation</a></div>';
+      const status=document.getElementById('googleCalendarStatus');
+      if(status)status.insertAdjacentElement('beforebegin',info);else box.appendChild(info);
+    }
+    if(!document.getElementById('google-oauth-disclosure-css')){
+      const style=document.createElement('style');style.id='google-oauth-disclosure-css';
+      style.textContent='.googleOAuthDisclosure{margin:12px 0;padding:13px 14px;border:1px solid rgba(23,105,255,.14);border-radius:16px;background:rgba(239,246,255,.72);font-size:11.5px;line-height:1.45;color:#4b5565}.googleOAuthDisclosure strong,.googleOAuthDisclosure span{display:block}.googleOAuthDisclosure strong{color:#1d4f91;margin-bottom:4px}.googleOAuthDisclosure div{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}.googleOAuthDisclosure a{color:#176fd0;font-weight:700;text-decoration:none}';
+      document.head.appendChild(style);
+    }
+    return true;
+  }
   function fallbackStatus(reason){
     const status=document.getElementById('googleCalendarStatus'),badge=document.getElementById('googleCalendarBadge');
     const last=window.state&&state.calendarLastSync?new Date(state.calendarLastSync).toLocaleString('fr-FR'):'';
@@ -131,7 +154,7 @@
 
   window.chefSecteurPrepareCalendarForPlanning=async function(){
     try{
-      setClientId();
+      setClientId();installOAuthDisclosure();
       if(hasToken()&&typeof window.syncGoogleCalendar==='function'){
         const s=document.getElementById('googleCalendarStatus');if(s)s.textContent='Mise à jour de l’agenda avant génération…';
         await window.syncGoogleCalendar(true);
@@ -142,9 +165,9 @@
   };
 
   async function boot(){
-    purgeLegacyTokens();setClientId();
+    purgeLegacyTokens();setClientId();installOAuthDisclosure();
     for(let i=0;i<50;i++){
-      setClientId();installSemanticCalendarBlocks();wrapSync();
+      setClientId();installOAuthDisclosure();installSemanticCalendarBlocks();wrapSync();
       if(window.__storeRunnerCalendarSyncOwner)break;
       await new Promise(r=>setTimeout(r,120));
     }
@@ -154,5 +177,6 @@
   window.chefSecteurAwayRanges=inferAwayRanges;
   window.chefSecteurEventCoversDate=eventCoversDate;
   window.chefSecteurEnforceBlockedDays=enforceBlockedDays;
+  window.chefSecteurInstallGoogleDisclosure=installOAuthDisclosure;
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
 })();
