@@ -39,9 +39,9 @@
   window.chefSecteurSnapshotCurrentWeek=snapshotCurrentWeek;
   if(typeof window.storeRunnerRegisterAssistantResolver==='function')window.storeRunnerRegisterAssistantResolver(answer,20);
 
-  function boot(){observePlanning();scheduleSnapshot(0)}
-  document.addEventListener('store-runner:planning-updated',function(){observePlanning();scheduleSnapshot(40)});
+  function refreshPlanningArchive(delay){observePlanning();scheduleSnapshot(delay)}
+  function boot(){refreshPlanningArchive(0)}
+  document.addEventListener('store-runner:planning-updated',function(){refreshPlanningArchive(40)});
+  document.addEventListener('store-runner:data-restored',function(){refreshPlanningArchive(40)});
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
-  window.addEventListener('focus',function(){observePlanning();scheduleSnapshot(50)});
-  document.addEventListener('visibilitychange',function(){if(!document.hidden){observePlanning();scheduleSnapshot(50)}});
 })();
