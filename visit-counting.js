@@ -2,7 +2,7 @@
 'use strict';
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 const ARCHIVE_KEY='chef_sector_plan_archive_v1';
-const DEFAULT_RULES={darty:2,boulanger:2};
+const DEFAULT_RULES={darty:2,boulanger:2,carrefour:2};
 let patchScheduled=false,uiObserver=null;
 
 function norm(v){try{return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim()}catch(e){return String(v||'').toLowerCase().trim()}}
