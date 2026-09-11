@@ -42,15 +42,12 @@
   function fallbackStatus(reason){
     const status=document.getElementById('googleCalendarStatus'),badge=document.getElementById('googleCalendarBadge');
     const last=window.state&&state.calendarLastSync?new Date(state.calendarLastSync).toLocaleString('fr-FR'):'';
-    if(status)status.textContent=last?'Agenda temporairement non vérifié · dernière synchro conservée : '+last:'Agenda temporairement non vérifié · génération du planning non bloquée.';
-    if(badge&&last){badge.textContent='Connecté';badge.classList.add('on')}
-    window.chefGoogleStatus={phase:'cached',connected:!!last,canRetry:true,lastSync:window.state&&state.calendarLastSync||null,message:reason||''};
+    const needsReconnect=reason==='disconnected'||reason==='expired',offline=reason==='offline';
+    if(status)status.textContent=needsReconnect?(last?'Session Google à reconnecter · dernière synchro conservée : '+last:'Session Google à reconnecter.'):offline?(last?'Hors ligne · dernière synchro conservée : '+last:'Hors ligne · aucune synchro disponible.'):(last?'Agenda en cache · dernière synchro conservée : '+last:'Agenda temporairement non vérifié · génération du planning non bloquée.');
+    if(badge){badge.textContent=needsReconnect?'À reconnecter':last?'En cache':'Déconnecté';badge.classList.remove('on')}
+    window.chefGoogleStatus={phase:needsReconnect?'expired':offline?'offline':'cached',connected:false,canRetry:!needsReconnect&&!offline,lastSync:window.state&&state.calendarLastSync||null,message:reason||''};
   }
-  async function silentReconnect(){
-    if(tokenValid())return true;
-    if(!hasGoogleConfig()||typeof window.connectGoogleCalendar!=='function')return false;
-    try{await window.connectGoogleCalendar();return await waitGoogleToken(4500)}catch(e){return false}
-  }
+  async function silentReconnect(){return tokenValid()}
   function dateOnly(v){const m=String(v||'').match(/^(\d{4}-\d{2}-\d{2})/);return m?m[1]:''}
   function addDays(iso,n){const p=String(iso||'').split('-');if(p.length!==3)return iso;const d=new Date(+p[0],+p[1]-1,+p[2],12);d.setDate(d.getDate()+n);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
   function eventText(ev){return norm((ev&&ev.title||'')+' '+(ev&&ev.location||'')+' '+(ev&&ev.calendar||''))}
@@ -127,15 +124,17 @@
       let finalResult=null;
       try{
         purgeLegacyTokens();
+        if(silent&&window.__storeRunnerPlanningGenerationActive){
+          fallbackStatus('planning-cache');installSemanticCalendarBlocks();
+          finalResult={ok:true,cached:true,reason:'planning-cache',lastSync:window.state&&state.calendarLastSync||null};
+          return finalResult;
+        }
         let result;
         try{result=await base.apply(this,arguments)}catch(e){result={ok:false,reason:e&&e.message||'error'}}
         if(result&&result.ok){installSemanticCalendarBlocks();finalResult=result;return result}
         if(silent){
           const reason=result&&result.reason||'error';
-          if((reason==='disconnected'||reason==='expired')&&await silentReconnect()){
-            try{result=await base.call(this,true)}catch(e2){result={ok:false,reason:e2&&e2.message||'error'}}
-            if(result&&result.ok){installSemanticCalendarBlocks();finalResult=result;return result}
-          }
+          await silentReconnect();
           fallbackStatus(reason);
           installSemanticCalendarBlocks();
           finalResult={ok:true,cached:true,reason:reason,lastSync:window.state&&state.calendarLastSync||null};
@@ -153,14 +152,7 @@
   }
 
   window.chefSecteurPrepareCalendarForPlanning=async function(){
-    try{
-      setClientId();installOAuthDisclosure();
-      if(hasToken()&&typeof window.syncGoogleCalendar==='function'){
-        const s=document.getElementById('googleCalendarStatus');if(s)s.textContent='Mise à jour de l’agenda avant génération…';
-        await window.syncGoogleCalendar(true);
-      }
-    }catch(e){console.warn('Pré-synchronisation Calendar :',e)}
-    installSemanticCalendarBlocks();
+    setClientId();installOAuthDisclosure();installSemanticCalendarBlocks();
     return true;
   };
 

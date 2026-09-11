@@ -27,7 +27,10 @@
       const specialized=typeof window.storeRunnerGenerateSingleWeek==='function';
       const generator=specialized?window.storeRunnerGenerateSingleWeek:base;
       const beforeCount=countVisits(window.state&&state.plan);
-      const out=await generator.apply(this,arguments);
+      const previousPlanningFlag=window.__storeRunnerPlanningGenerationActive;
+      window.__storeRunnerPlanningGenerationActive=true;
+      let out;
+      try{out=await generator.apply(this,arguments)}finally{window.__storeRunnerPlanningGenerationActive=previousPlanningFlag}
 
       /* Le moteur spécialisé filtre lui-même les vraies indisponibilités Agenda.
          L'ancien enforceBlockedDays reste réservé au moteur historique afin qu'un
