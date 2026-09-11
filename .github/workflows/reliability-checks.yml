@@ -21,6 +21,7 @@ jobs:
       - run: node tests/assistant-visit-context.test.cjs
       - run: node tests/calendar.test.cjs
       - run: node tests/planning.test.cjs
+      - run: node tests/visit-counting.test.cjs
       - run: node tests/region-stores.test.cjs
       - run: node tests/architecture.test.cjs
       - run: node tests/navigation-architecture.test.cjs
