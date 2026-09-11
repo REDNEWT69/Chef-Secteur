@@ -2,7 +2,7 @@
 'use strict';
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 const ARCHIVE_KEY='chef_sector_plan_archive_v1';
-let installed=false,generationBusy=false;
+let installed=false,generationBusy=false,replaceContext=null,replacePreview=null;
 
 function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function parse(v){const d=new Date(String(v||'')+'T12:00:00');return isNaN(d)?null:d}
@@ -213,7 +213,107 @@ async function generateRange(){
   }catch(e){showStatus('Erreur pendant la génération : '+(e.message||String(e)),true)}finally{generationBusy=false;if(btn)btn.disabled=false}
 }
 
+function dayDate(day){const base=monday(parse(state.settings&&state.settings.weekDate)||new Date()),idx=DAYS.indexOf(day);return iso(addDays(base,Math.max(0,idx)))}
+function plannedDayForStore(id){
+  const wanted=String(id),selected=window.selectedPlanningDay;
+  if(selected&&DAYS.includes(selected)&&((state.plan&&state.plan[selected])||[]).some(s=>String(s.id)===wanted))return selected;
+  for(const day of DAYS)if(((state.plan&&state.plan[day])||[]).some(s=>String(s.id)===wanted))return day;
+  return null;
+}
+function appointmentOnDay(storeId,day){const date=dayDate(day);return (state.appointments||[]).some(a=>String(a.storeId)===String(storeId)&&a.date===date)}
+function distanceBetween(a,b){try{return Number(hav(a,b))||0}catch(e){const la=Number(a&&a.lat),loa=Number(a&&a.lon),lb=Number(b&&b.lat),lob=Number(b&&b.lon);if([la,loa,lb,lob].every(Number.isFinite))return Math.hypot(la-lb,loa-lob)*100;return 9999}}
+function routeKm(route){if(!route||!route.length)return 0;try{let km=havBase(route[0]);for(let i=1;i<route.length;i++)km+=hav(route[i-1],route[i]);km+=hav(route[route.length-1],baseObj());return km*1.22}catch(e){return 0}}
+function clockLabel(minutes){minutes=Math.max(0,Math.round(minutes));return String(Math.floor(minutes/60)%24).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0')}
+function usedElsewhere(storeId,day){const id=String(storeId);return DAYS.some(d=>d!==day&&((state.plan&&state.plan[d])||[]).some(s=>String(s.id)===id))}
+function protectedDayIds(day,oldId){
+  const out=new Set();
+  for(const s of ((state.plan&&state.plan[day])||[])){
+    if(String(s.id)===String(oldId))continue;
+    if((state.locks&&state.locks[s.id]===day)||(state.included&&state.included[s.id])||appointmentOnDay(s.id,day))out.add(String(s.id));
+  }
+  return out;
+}
+function manualCandidatePool(anchor,day,oldId,blocked){
+  const allowed=s=>s&&s.active!==false&&!(state.excluded&&state.excluded[s.id])&&String(s.id)!==String(oldId)&&!blocked.has(storeKey(s))&&!(state.locks&&state.locks[s.id]&&state.locks[s.id]!==day)&&!usedElsewhere(s.id,day);
+  const primary=eligible().filter(allowed),fallback=(state.stores||[]).filter(allowed),seen=new Set(),out=[];
+  for(const s of primary.concat(fallback)){const k=storeKey(s);if(!k||seen.has(k))continue;seen.add(k);out.push(s)}
+  out.sort((a,b)=>distanceBetween(anchor,a)-distanceBetween(anchor,b)||scoreOf(b)-scoreOf(a)||String(a.ville||'').localeCompare(String(b.ville||'')));
+  return out;
+}
+function buildDayReplacement(oldId,anchor,day,recenter=true){
+  if(!anchor||anchor.active===false)throw new Error('Ce magasin n’est pas actif dans ton secteur.');
+  if(state.excluded&&state.excluded[anchor.id])throw new Error('Ce magasin est actuellement exclu du planning.');
+  if(state.locks&&state.locks[anchor.id]&&state.locks[anchor.id]!==day)throw new Error('Ce magasin est verrouillé sur '+state.locks[anchor.id]+'.');
+  const current=((state.plan&&state.plan[day])||[]).slice(),oldIndex=current.findIndex(s=>String(s.id)===String(oldId));
+  if(oldIndex<0)throw new Error('Ce magasin n’est plus présent dans '+day+'. Recharge le planning.');
+  if(appointmentOnDay(oldId,day))throw new Error('Ce magasin a un rendez-vous enregistré '+day+'. Modifie d’abord ce rendez-vous avant de le remplacer.');
+  if(usedElsewhere(anchor.id,day))throw new Error('Ce magasin est déjà planifié un autre jour de cette semaine.');
+  if(current.some(s=>String(s.id)===String(anchor.id)&&String(s.id)!==String(oldId)))throw new Error('Ce magasin est déjà présent dans cette journée.');
+  const protectedIds=protectedDayIds(day,oldId),protectedStores=current.filter(s=>protectedIds.has(String(s.id)));
+  let route;
+  if(!recenter){
+    route=current.map(s=>String(s.id)===String(oldId)?anchor:s);
+    route=optimizeRoute(route);
+  }else{
+    const target=current.length,base=[],seen=new Set(),add=s=>{const k=storeKey(s);if(!k||seen.has(k))return;seen.add(k);base.push(s)};
+    add(anchor);for(const s of protectedStores)add(s);
+    const blocked=new Set();for(const d of DAYS)if(d!==day)for(const s of ((state.plan&&state.plan[d])||[]))blocked.add(storeKey(s));for(const s of base)blocked.add(storeKey(s));
+    const pool=manualCandidatePool(anchor,day,oldId,blocked);
+    for(const s of pool){if(base.length>=target)break;add(s)}
+    route=optimizeRoute(base);
+    const removable=()=>route.filter(s=>String(s.id)!==String(anchor.id)&&!protectedIds.has(String(s.id)));
+    while(route.length>1&&finish(route,day)>limitFor(day)&&removable().length){
+      const candidates=removable().sort((a,b)=>distanceBetween(anchor,b)-distanceBetween(anchor,a));
+      const removeId=String(candidates[0].id);route=optimizeRoute(route.filter(s=>String(s.id)!==removeId));
+    }
+  }
+  const keys=route.map(storeKey);if(new Set(keys).size!==keys.length)throw new Error('Le recalcul créerait un doublon dans la journée.');
+  if(finish(route,day)>limitFor(day))throw new Error('La nouvelle tournée dépasserait l’heure de fin. Choisis une zone plus proche ou moins de contraintes.');
+  return{route,day,anchor,oldId:String(oldId),recenter,protectedIds:[...protectedIds],km:routeKm(route),end:clockLabel(finish(route,day)),reduced:route.length<current.length,previousCount:current.length};
+}
+function refreshRangeStats(bundle){
+  if(!bundle.range||!bundle.archive)return;
+  let total=0;const unique=new Set();
+  for(const snap of Object.values(bundle.archive||{}))for(const day of DAYS)for(const s of ((snap&&snap.plan&&snap.plan[day])||[])){total++;unique.add(storeKey(s))}
+  bundle.range.totalVisits=total;bundle.range.uniqueStores=unique.size;bundle.range.updatedAt=new Date().toISOString();
+}
+async function persistDayReplacement(preview){
+  const R=window.ChefReliability,db=storage();if(!R||typeof R.capture!=='function'||typeof R.persist!=='function')throw new Error('Protection des données indisponible.');
+  R.checkpoint('Avant changement manuel de '+preview.day,db);
+  const bundle=R.capture(state,db),next=JSON.parse(JSON.stringify(state)),weekKey=iso(monday(parse((state.settings&&state.settings.weekDate)||'')||new Date()));
+  next.plan=next.plan||{};next.plan[preview.day]=preview.route.map(s=>(state.stores||[]).find(x=>String(x.id)===String(s.id))||s);
+  bundle.state=next;
+  if(bundle.archive&&bundle.archive[weekKey]){bundle.archive[weekKey].plan=bundle.archive[weekKey].plan||{};bundle.archive[weekKey].plan[preview.day]=preview.route.map(cloneStore);refreshRangeStats(bundle)}
+  R.persist(bundle,db);if(db&&typeof db.flush==='function')await db.flush();window.state=bundle.state;
+  if(typeof initControls==='function')initControls();if(typeof renderAll==='function')renderAll();
+  document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{reason:'day-store-recenter',day:preview.day,weekDate:weekKey}}));
+  return true;
+}
+function ensureReplaceCss(){if(document.getElementById('dayStoreReplaceCss'))return;const style=document.createElement('style');style.id='dayStoreReplaceCss';style.textContent='#dayStoreReplaceDialog{width:min(640px,calc(100% - 20px));max-height:88dvh;padding:0;overflow:hidden;border-radius:26px}#dayStoreReplaceDialog .dsrHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:18px 18px 10px;position:sticky;top:0;background:#fff;z-index:3}#dayStoreReplaceDialog .dsrHead h2{margin:0;font-size:22px}#dayStoreReplaceDialog .dsrHead p{margin:4px 0 0;color:#667085;font-size:12px}#dayStoreReplaceDialog .dsrClose{border:0;background:#f2f3f5;border-radius:999px;width:36px;height:36px;font-size:22px}#dayStoreReplaceDialog .dsrBody{padding:6px 18px 18px;overflow:auto;max-height:calc(88dvh - 74px)}#dayStoreReplaceDialog .dsrFilters{display:grid;grid-template-columns:1fr 180px;gap:8px;position:sticky;top:0;background:#fff;padding:4px 0 10px;z-index:2}#dayStoreReplaceDialog .dsrResults{display:grid;gap:8px;max-height:45dvh;overflow:auto}#dayStoreReplaceDialog .dsrStore{display:flex;justify-content:space-between;gap:12px;text-align:left;border:1px solid #e1e5ed;background:#fff;border-radius:16px;padding:12px}#dayStoreReplaceDialog .dsrStore b{display:block;font-size:14px}#dayStoreReplaceDialog .dsrStore small{display:block;color:#667085;margin-top:3px;line-height:1.35}#dayStoreReplaceDialog .dsrMode{display:flex;gap:9px;align-items:flex-start;border:1px solid #dbe8ff;background:#f6f9ff;border-radius:16px;padding:11px;margin:10px 0}#dayStoreReplaceDialog .dsrMode input{width:20px;height:20px;margin-top:1px}#dayStoreReplaceDialog .dsrPreview{border:1px solid #e1e5ed;border-radius:18px;padding:13px;margin-top:10px;background:#fafbfc}#dayStoreReplaceDialog .dsrRoute{display:grid;gap:6px;margin:10px 0}#dayStoreReplaceDialog .dsrRoute div{background:#fff;border:1px solid #eaecf0;border-radius:12px;padding:9px 10px;font-size:12px}#dayStoreReplaceDialog .dsrButtons{display:grid;grid-template-columns:1fr 1.3fr;gap:8px;margin-top:12px}@media(max-width:560px){#dayStoreReplaceDialog .dsrFilters{grid-template-columns:1fr}#dayStoreReplaceDialog .dsrResults{max-height:40dvh}}';document.head.appendChild(style)}
+function ensureReplaceDialog(){
+  let dlg=document.getElementById('dayStoreReplaceDialog');if(dlg)return dlg;ensureReplaceCss();dlg=document.createElement('dialog');dlg.id='dayStoreReplaceDialog';dlg.innerHTML='<div class="dsrHead"><div><h2>Changer ce magasin</h2><p id="dsrContext"></p></div><button type="button" class="dsrClose" aria-label="Fermer">×</button></div><div class="dsrBody"><div id="dsrChooser"><div class="dsrFilters"><input id="dsrSearch" type="search" placeholder="Enseigne, ville, adresse, département"><select id="dsrBrand"><option value="">Toutes les enseignes</option></select></div><label class="dsrMode"><input id="dsrRecenter" type="checkbox" checked><span><b>Recentrer la journée</b><br><small>Remplace aussi les visites non contraintes par des magasins cohérents autour du magasin choisi. Décoche pour remplacer uniquement ce magasin.</small></span></label><div id="dsrResults" class="dsrResults"></div></div><div id="dsrPreview" class="dsrPreview" hidden></div></div>';
+  document.body.appendChild(dlg);dlg.querySelector('.dsrClose').onclick=()=>dlg.close();dlg.addEventListener('cancel',()=>{replacePreview=null});dlg.querySelector('#dsrSearch').addEventListener('input',renderReplaceResults);dlg.querySelector('#dsrBrand').addEventListener('change',renderReplaceResults);dlg.querySelector('#dsrRecenter').addEventListener('change',()=>{if(replacePreview&&replacePreview.anchor)selectReplacement(replacePreview.anchor.id)});return dlg;
+}
+function renderReplaceResults(){
+  const dlg=ensureReplaceDialog(),host=dlg.querySelector('#dsrResults'),q=norm(dlg.querySelector('#dsrSearch').value),brand=dlg.querySelector('#dsrBrand').value,oldId=replaceContext&&replaceContext.oldId;host.replaceChildren();
+  const rows=(state.stores||[]).filter(s=>s&&s.active!==false&&!(state.excluded&&state.excluded[s.id])&&String(s.id)!==String(oldId)&&(!brand||String(s.enseigne)===brand)&&(!q||norm((s.enseigne||'')+' '+(s.ville||'')+' '+(s.adresse||'')+' '+(s.dept||'')).includes(q))).sort((a,b)=>String(a.enseigne||'').localeCompare(String(b.enseigne||''))||String(a.ville||'').localeCompare(String(b.ville||''))).slice(0,80);
+  if(!rows.length){const p=document.createElement('p');p.textContent='Aucun magasin trouvé avec ces critères.';p.className='tiny';host.appendChild(p);return}
+  for(const s of rows){const b=document.createElement('button');b.type='button';b.className='dsrStore';const left=document.createElement('span'),right=document.createElement('small');const name=document.createElement('b'),meta=document.createElement('small');name.textContent=(s.enseigne||'Magasin')+' '+(s.ville||'');meta.textContent=(s.adresse||'Adresse non renseignée')+(s.dept?' · '+s.dept:'');left.append(name,meta);try{right.textContent='~'+Math.round(havBase(s))+' km'}catch(e){right.textContent='Choisir'}b.append(left,right);b.onclick=()=>selectReplacement(s.id);host.appendChild(b)}
+}
+function selectReplacement(id){
+  const anchor=(state.stores||[]).find(s=>String(s.id)===String(id));if(!anchor||!replaceContext)return;const dlg=ensureReplaceDialog(),recenter=dlg.querySelector('#dsrRecenter').checked,previewHost=dlg.querySelector('#dsrPreview');
+  try{replacePreview=buildDayReplacement(replaceContext.oldId,anchor,replaceContext.day,recenter);previewHost.hidden=false;previewHost.replaceChildren();const h=document.createElement('h3');h.textContent=(recenter?'Nouvelle journée autour de ':'Remplacement par ')+(anchor.enseigne||'')+' '+(anchor.ville||'');const meta=document.createElement('p');meta.className='tiny';meta.textContent=replacePreview.route.length+' visite'+(replacePreview.route.length>1?'s':'')+' · ~'+Math.round(replacePreview.km)+' km · fin estimée '+replacePreview.end+(replacePreview.reduced?' · '+(replacePreview.previousCount-replacePreview.route.length)+' visite retirée pour respecter les horaires':'');const route=document.createElement('div');route.className='dsrRoute';replacePreview.route.forEach((s,i)=>{const row=document.createElement('div');row.textContent=(i+1)+'. '+(s.enseigne||'Magasin')+' '+(s.ville||'')+(replacePreview.protectedIds.includes(String(s.id))?' · conservé (contrainte)':'');route.appendChild(row)});const note=document.createElement('p');note.className='tiny';note.textContent='Seule cette journée sera modifiée. Les autres jours et les autres semaines restent inchangés.';const buttons=document.createElement('div');buttons.className='dsrButtons';const back=document.createElement('button');back.type='button';back.className='secondary';back.textContent='Choisir un autre';back.onclick=()=>{previewHost.hidden=true;replacePreview=null};const apply=document.createElement('button');apply.type='button';apply.className='primary';apply.textContent='Appliquer cette journée';apply.onclick=async()=>{apply.disabled=true;try{await persistDayReplacement(replacePreview);const saved=replacePreview;dlg.close();replaceContext=null;replacePreview=null;showStatus(saved.day+' recalculé autour de '+saved.anchor.enseigne+' '+saved.anchor.ville+'.');setTimeout(()=>{if(typeof window.openStoreQuick==='function')window.openStoreQuick(saved.anchor.id,saved.day)},80)}catch(e){apply.disabled=false;if(typeof showError==='function')showError(e.message||String(e));else alert(e.message||String(e))}};buttons.append(back,apply);previewHost.append(h,meta,route,note,buttons);previewHost.scrollIntoView({behavior:'smooth',block:'start'})}catch(e){replacePreview=null;previewHost.hidden=true;if(typeof showError==='function')showError(e.message||String(e));else alert(e.message||String(e))}
+}
+function openDayStoreReplacement(){
+  const start=document.getElementById('srQuickStart'),oldId=start&&start.dataset&&start.dataset.srStart,day=plannedDayForStore(oldId);if(!oldId||!day){if(typeof showError==='function')showError('Ce magasin n’est pas dans la journée affichée. Ouvre un magasin directement depuis le planning.');return}
+  const old=(state.stores||[]).find(s=>String(s.id)===String(oldId));if(!old)return;replaceContext={oldId:String(oldId),day};replacePreview=null;if(typeof window.closeStoreQuick==='function')window.closeStoreQuick();const dlg=ensureReplaceDialog();dlg.querySelector('#dsrContext').textContent=day+' · remplacer '+old.enseigne+' '+old.ville;dlg.querySelector('#dsrSearch').value='';dlg.querySelector('#dsrRecenter').checked=true;dlg.querySelector('#dsrPreview').hidden=true;const brand=dlg.querySelector('#dsrBrand'),brands=[...new Set((state.stores||[]).filter(s=>s&&s.active!==false).map(s=>String(s.enseigne||'')).filter(Boolean))].sort((a,b)=>a.localeCompare(b));brand.innerHTML='<option value="">Toutes les enseignes</option>';for(const value of brands){const o=document.createElement('option');o.value=value;o.textContent=value;brand.appendChild(o)}renderReplaceResults();dlg.showModal();setTimeout(()=>dlg.querySelector('#dsrSearch').focus(),60)
+}
+function installDayReplaceUi(){
+  const actions=document.querySelector('#storeQuickSheet .sheetActions');if(!actions)return false;let btn=document.getElementById('changeQuickStoreBtn');if(btn)return true;btn=document.createElement('button');btn.type='button';btn.id='changeQuickStoreBtn';btn.className='secondary';btn.textContent='⇄ Changer ce magasin';btn.onclick=openDayStoreReplacement;const full=[...actions.querySelectorAll('button')].find(b=>/Voir la fiche/i.test(b.textContent||''));actions.insertBefore(btn,full||null);ensureReplaceDialog();return true;
+}
+
 function install(){
+  installDayReplaceUi();
   if(installed)return true;
   const settings=document.querySelector('#planningSettings .settingsInner'),week=document.getElementById('weekDate');if(!settings||!week)return false;
   const lab=week.previousElementSibling;if(lab&&lab.tagName==='LABEL')lab.style.display='none';week.style.display='none';
@@ -227,11 +327,13 @@ function install(){
   installed=true;return true;
 }
 function recoverInstall(){
+  installDayReplaceUi();
   if(document.getElementById('rangePlannerCard'))return;
   installed=false;
   install();
 }
 window.generatePlanningRange=generateRange;
+window.openDayStoreReplacement=openDayStoreReplacement;
 function boot(){install()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 document.addEventListener('store-runner:planning-updated',recoverInstall);
