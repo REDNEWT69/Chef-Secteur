@@ -6,14 +6,20 @@ function forbid(file,label,re){if(re.test(read(file)))throw new Error(`${file}: 
 
 const calendar=read('calendar-oauth.js');
 const auto=read('auto-planning-fix.js');
+const generation=read('planning-generation-controller.js');
 const syncAssignment=/window\.syncGoogleCalendar\s*=(?!=)/g;
 
 if((calendar.match(syncAssignment)||[]).length!==1)throw new Error('calendar-oauth.js: un seul propriétaire syncGoogleCalendar est attendu');
 must('calendar-oauth.js','propriétaire unique de la synchro',/__storeRunnerCalendarSyncOwner/);
-must('calendar-oauth.js','reconnexion silencieuse',/silentReconnect/);
+must('calendar-oauth.js','reconnexion silencieuse réservée au propriétaire Agenda',/silentReconnect/);
 must('calendar-oauth.js','fallback agenda conservé',/fallbackStatus/);
 must('calendar-oauth.js','installation des blocs sémantiques après synchro',/installSemanticCalendarBlocks/);
-must('calendar-oauth.js','pré-synchronisation avant génération',/await window\.syncGoogleCalendar\(true\)/);
+
+forbid('planning-generation-controller.js','appel de préparation Agenda pendant generateWeek',/await\s+window\.chefSecteurPrepareCalendarForPlanning\s*\(/);
+forbid('planning-generation-controller.js','synchro Agenda déclenchée pendant generateWeek',/window\.syncGoogleCalendar\s*\(/);
+forbid('planning-generation-controller.js','OAuth Google déclenché pendant generateWeek',/window\.connectGoogleCalendar\s*\(/);
+must('planning-generation-controller.js','génération locale documentée',/génération du planning doit rester purement locale/i);
+must('planning-generation-controller.js','événement planning après génération',/store-runner:planning-updated/);
 
 forbid('auto-planning-fix.js','wrapper syncGoogleCalendar',/window\.syncGoogleCalendar\s*=(?!=)/);
 forbid('auto-planning-fix.js','ancien propriétaire synchro Google',/__chefGooglePlanningFix/);
