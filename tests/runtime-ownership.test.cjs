@@ -38,4 +38,12 @@ if(!runtimeFiles.includes('planning-generation-controller.js'))throw new Error('
 if(!runtimeFiles.includes('calendar-oauth.js'))throw new Error('Runtime: propriétaire Agenda absent du chargeur principal');
 if(!runtimeFiles.includes('profile-controller.js'))throw new Error('Runtime: propriétaire profil absent du chargeur principal');
 
+const autoPlanning=fs.readFileSync(path.join(root,'auto-planning-fix.js'),'utf8');
+const reliabilityUi=fs.readFileSync(path.join(root,'reliability-ui.js'),'utf8');
+if(/bootAttempts|setTimeout\s*\(\s*boot/.test(autoPlanning))throw new Error('Auto-planning: retries temporisés interdits');
+if(/addEventListener\(['"](?:load|focus)['"]/.test(autoPlanning)||/visibilitychange/.test(autoPlanning))throw new Error('Auto-planning: réinstallation load/focus/visibilité interdite');
+if(!/DOMContentLoaded['"],\s*boot,\s*\{once:true\}/.test(autoPlanning))throw new Error('Auto-planning: initialisation unique au DOM prêt absente');
+if(!/store-runner:reliability-propose-ready/.test(autoPlanning)||!/store-runner:reliability-propose-ready/.test(reliabilityUi))throw new Error('Auto-planning: contrat événementiel Reliability absent');
+if(!/R\.propose=fn/.test(autoPlanning)||!/__chefAutoApply/.test(autoPlanning))throw new Error('Auto-planning: application automatique Reliability absente');
+
 console.log(`Runtime ownership guards: OK · ${files.length} module(s) chargé(s) inspecté(s)`);

@@ -36,6 +36,7 @@ function install(){
  if(!await preview('Valider ce nouveau planning ?',text,'Appliquer le planning'))return false;
  const latestIssues=checkIssues();if(latestIssues.length){showError('Les contraintes ont changé : '+[...new Set(latestIssues)].slice(0,10).join(' · '));return false}R.checkpoint('Avant remplacement du planning');bundle.state=JSON.parse(JSON.stringify(state));bundle.state.plan=candidate.plan;bundle.state.settings.weekDate=candidate.weekDate;R.persist(bundle);window.state=bundle.state;initControls();renderAll();refresh();return true;
  };
+ document.dispatchEvent(new CustomEvent('store-runner:reliability-propose-ready'));
  const clearSector=window.loadEmptySector;if(typeof clearSector==='function')window.loadEmptySector=function(){try{R.checkpoint('Avant remise à zéro');return clearSector.apply(this,arguments)}catch(e){notice(e.message)}};
  refresh();window.addEventListener('focus',refresh);
 }
