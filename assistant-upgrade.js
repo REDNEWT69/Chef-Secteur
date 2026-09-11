@@ -1,6 +1,7 @@
 (function(){
   'use strict';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const PLAN_ARCHIVE_KEY='chef_sector_plan_archive_v1';
   const resolverEntries=[];
   const contextTransforms=[];
 
@@ -31,16 +32,38 @@
   window.storeRunnerApplyAssistantContextTransforms=applyAssistantContextTransforms;
 
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
-  function todayISO(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-  function mondayISO(){try{const raw=(state.settings&&state.settings.weekDate)||todayISO(),d=new Date(raw+'T12:00:00'),w=d.getDay()||7;d.setDate(d.getDate()-w+1);return d}catch(e){return new Date()}}
-  function dateForDay(day){const d=mondayISO();d.setDate(d.getDate()+Math.max(0,DAYS.indexOf(day)));return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-  function dayFromText(t){const n=norm(t);for(const d of DAYS)if(n.includes(norm(d)))return d;if(n.includes('demain')){const now=new Date(),x=new Date(now);x.setDate(x.getDate()+1);return DAYS[(x.getDay()+6)%7]||null}if(n.includes('aujourd')){const now=new Date();return DAYS[(now.getDay()+6)%7]||null}return null}
-  function calForDay(day){try{const date=dateForDay(day);if(typeof window.calendarEventsForDate==='function')return window.calendarEventsForDate(date)||[];return(state.calendarEvents||[]).filter(e=>e.date===date)}catch(e){return[]}}
-  function planForDay(day){try{return(state.plan&&state.plan[day])||[]}catch(e){return[]}}
-  function awayForDay(day){try{const date=dateForDay(day),r=typeof window.chefSecteurAwayRanges==='function'?window.chefSecteurAwayRanges():[];return r.find(x=>date>=x.start&&date<=x.end)||null}catch(e){return null}}
-  function hotelForDay(day){const ev=calForDay(day);return ev.find(e=>/(hotel|hôtel|hebergement|hébergement|b&b)/i.test((e.title||'')+' '+(e.location||'')))||null}
-  function summaryForDay(day){
-    const date=dateForDay(day),ev=calForDay(day),route=planForDay(day),away=awayForDay(day),hotel=hotelForDay(day);let lines=[day+' '+date+'.'];
+  function isoDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+  function todayISO(){return isoDate(new Date())}
+  function mondayDate(d){const x=new Date(d),w=x.getDay()||7;x.setDate(x.getDate()-w+1);return x}
+  function mondayISO(){try{const raw=(state.settings&&state.settings.weekDate)||todayISO();return mondayDate(new Date(raw+'T12:00:00'))}catch(e){return mondayDate(new Date())}}
+  function dateForDay(day){const d=mondayISO();d.setDate(d.getDate()+Math.max(0,DAYS.indexOf(day)));return isoDate(d)}
+  function dayForDate(d){return DAYS[(d.getDay()+6)%7]||null}
+  function dayRefFromText(t){
+    const n=norm(t);
+    for(const day of DAYS)if(n.includes(norm(day)))return{day,date:dateForDay(day),relative:false};
+    if(n.includes('demain')){const d=new Date();d.setDate(d.getDate()+1);const day=dayForDate(d);return day?{day,date:isoDate(d),relative:true}:null}
+    if(n.includes('aujourd')){const d=new Date(),day=dayForDate(d);return day?{day,date:isoDate(d),relative:true}:null}
+    return null;
+  }
+  function dayFromText(t){const ref=dayRefFromText(t);return ref&&ref.day}
+  function archiveStorage(){try{return window.__chefStorage||window.localStorage||null}catch(e){return null}}
+  function loadPlanArchive(){try{const s=archiveStorage();return s?JSON.parse(s.getItem(PLAN_ARCHIVE_KEY)||'{}')||{}:{}}catch(e){return{}}}
+  function calForDate(date){try{if(typeof window.calendarEventsForDate==='function')return window.calendarEventsForDate(date)||[];return(state.calendarEvents||[]).filter(e=>e.date===date)}catch(e){return[]}}
+  function calForDay(day){return calForDate(dateForDay(day))}
+  function planForDay(day,dateOverride){
+    try{
+      const date=dateOverride||dateForDay(day),selected=dateForDay(day);
+      if(date===selected)return(state.plan&&state.plan[day])||[];
+      const mon=isoDate(mondayDate(new Date(date+'T12:00:00'))),entry=loadPlanArchive()[mon];
+      return(entry&&entry.plan&&Array.isArray(entry.plan[day]))?entry.plan[day]:[];
+    }catch(e){return[]}
+  }
+  function awayForDate(date){try{const r=typeof window.chefSecteurAwayRanges==='function'?window.chefSecteurAwayRanges():[];return r.find(x=>date>=x.start&&date<=x.end)||null}catch(e){return null}}
+  function awayForDay(day){return awayForDate(dateForDay(day))}
+  function hotelForDate(date){const ev=calForDate(date);return ev.find(e=>/(hotel|hôtel|hebergement|hébergement|b&b)/i.test((e.title||'')+' '+(e.location||'')))||null}
+  function hotelForDay(day){return hotelForDate(dateForDay(day))}
+  function summaryForDay(day,dateOverride){
+    const date=dateOverride||dateForDay(day),ev=calForDate(date),route=planForDay(day,date),away=awayForDate(date),hotel=hotelForDate(date);let lines=[day+' '+date+'.'];
     if(away)lines.push('Déplacement professionnel à '+(away.city||'l’extérieur du secteur')+' : aucune tournée magasin ne doit être prévue.');
     if(hotel)lines.push('Hôtel : '+(hotel.title||'Hôtel')+(hotel.location?' · '+hotel.location:''));
     const other=ev.filter(e=>e!==hotel&&!e.inferredAway);if(other.length)lines.push('Agenda : '+other.slice(0,4).map(e=>e.title||'Événement').join(' · ')+'.');
@@ -53,8 +76,8 @@
   function smartAnswer(text){
     const extensionAnswer=runAssistantResolvers(text);
     if(extensionAnswer)return extensionAnswer;
-    const n=norm(text),day=dayFromText(text);
-    if(day&&(n.includes('visite')||n.includes('planning')||n.includes('quand')||n.includes('agenda')||n.includes('hotel')||n.includes('hôtel')||n.includes('fais')||n.includes('quoi')))return summaryForDay(day);
+    const n=norm(text),ref=dayRefFromText(text),day=ref&&ref.day;
+    if(day&&(n.includes('visite')||n.includes('planning')||n.includes('quand')||n.includes('agenda')||n.includes('hotel')||n.includes('hôtel')||n.includes('fais')||n.includes('quoi')))return summaryForDay(day,ref.date);
     if(n.includes('semaine')&&(n.includes('resume')||n.includes('résume')||n.includes('planning')))return weekSummary();
     if(n.includes('hotel')||n.includes('hôtel')||n.includes('dormir')){const days=(state.settings&&state.settings.days)||DAYS;const hits=days.map(d=>({d,h:hotelForDay(d),a:awayForDay(d)})).filter(x=>x.h||x.a);if(hits.length)return hits.map(x=>x.d+' : '+(x.h?(x.h.title||'Hôtel'):(x.a?'déplacement '+(x.a.city||'hors secteur'):'aucun hôtel'))).join('\n');}
     if(n.includes('paris')){const ranges=typeof window.chefSecteurAwayRanges==='function'?window.chefSecteurAwayRanges():[];if(ranges.length)return 'Déplacement Paris détecté : '+ranges.map(r=>r.start+' → '+r.end).join(', ')+'. Les journées comprises dans cette période doivent rester sans tournée magasin.';}
