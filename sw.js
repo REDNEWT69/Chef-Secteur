@@ -35,6 +35,7 @@ const OPTIONAL_SHELL = [
   "./assistant-store-lookup.js",
   "./map-layer-fix.js",
   "./timeline-end-times.js",
+  "./visit-counting.js",
   "./range-planner-v2.js",
   "./working-hours-end.js",
   "./daily-capacity.js",
