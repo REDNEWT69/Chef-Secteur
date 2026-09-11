@@ -1,4 +1,4 @@
-const BUILD_REV = "20260910-assistant-visits1";
+const BUILD_REV = "20260911-mobile-android2";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
