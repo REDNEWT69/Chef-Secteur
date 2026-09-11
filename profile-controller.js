@@ -51,6 +51,43 @@
     }catch(e){return ''}
   }
 
+  function positionAccuracy(pos){
+    const a=Number(pos&&pos.coords&&pos.coords.accuracy);
+    return isFinite(a)&&a>0?a:Infinity;
+  }
+
+  function acquireBestPosition(onSample){
+    return new Promise(function(resolve,reject){
+      const geo=navigator.geolocation,opts={enableHighAccuracy:true,timeout:7000,maximumAge:0};
+      if(!geo){reject({code:2,message:'Localisation indisponible'});return}
+      if(typeof geo.watchPosition!=='function'){
+        geo.getCurrentPosition(resolve,reject,opts);
+        return;
+      }
+      let best=null,watchId=null,done=false;
+      const finish=function(err){
+        if(done)return;done=true;clearTimeout(timer);
+        if(watchId!==null&&typeof geo.clearWatch==='function')try{geo.clearWatch(watchId)}catch(e){}
+        if(best)resolve(best);else reject(err||{code:3,message:'La localisation a pris trop de temps.'});
+      };
+      const timer=setTimeout(function(){finish({code:3,message:'La localisation a pris trop de temps.'})},4500);
+      try{
+        watchId=geo.watchPosition(function(pos){
+          if(!pos||!pos.coords||!isFinite(Number(pos.coords.latitude))||!isFinite(Number(pos.coords.longitude)))return;
+          if(!best||positionAccuracy(pos)<positionAccuracy(best))best=pos;
+          if(typeof onSample==='function')try{onSample(best)}catch(e){}
+          if(positionAccuracy(best)<=10)finish();
+        },function(err){
+          if(err&&err.code===1)finish(err);
+          else if(!best&&err&&err.code===2)finish(err);
+        },opts);
+      }catch(e){
+        clearTimeout(timer);done=true;
+        try{geo.getCurrentPosition(resolve,reject,opts)}catch(err){reject(err)}
+      }
+    });
+  }
+
   function validBase(){
     return window.state&&state.profile&&isFinite(Number(state.profile.baseLat))&&isFinite(Number(state.profile.baseLon))&&Math.abs(Number(state.profile.baseLat))>1&&Math.abs(Number(state.profile.baseLon))>1;
   }
@@ -92,16 +129,19 @@
     document.head.appendChild(s);
   }
 
-  window.useCurrentLocation=function(){
+  window.useCurrentLocation=async function(){
     const btn=document.querySelector('#departureSettings button[onclick="useCurrentLocation()"]');
     if(!navigator.geolocation){feedback('Localisation indisponible sur cet appareil.','bad');return}
     if(btn){btn.disabled=true;btn.dataset.oldText=btn.textContent;btn.textContent='⌖ Localisation…'}
-    feedback('Recherche d’une position GPS précise…','busy');
-    navigator.geolocation.getCurrentPosition(async function(pos){
-      const accuracy=Math.round(Number(pos.coords.accuracy)||0);
+    feedback('Recherche et affinage de la position GPS…','busy');
+    try{
+      const pos=await acquireBestPosition(function(best){
+        const a=Math.round(positionAccuracy(best));
+        if(isFinite(a))feedback('Affinage GPS… meilleur signal ±'+a+' m','busy');
+      });
+      const accuracy=Math.round(positionAccuracy(pos));
       if(accuracy>250){
         feedback('Position trop imprécise (±'+accuracy+' m). Active « Localisation précise » pour Store Runner puis réessaie.','bad');
-        if(btn){btn.disabled=false;btn.textContent=btn.dataset.oldText||'⌖ Utiliser ma position actuelle'}
         return;
       }
       const lat=Number(pos.coords.latitude),lon=Number(pos.coords.longitude);
@@ -110,18 +150,18 @@
       if(lonInput)lonInput.value=lon.toFixed(6);
       if(nameInput)nameInput.value='Ma position actuelle';
       if(addressInput)addressInput.value='Position GPS · '+lat.toFixed(5)+', '+lon.toFixed(5);
-      feedback('Position récupérée à ±'+accuracy+' m ✓','ok');
+      feedback('Meilleure position retenue à ±'+accuracy+' m ✓','ok');
       const address=await reverseGeocode(lat,lon);
       if(address&&addressInput){addressInput.value=address;feedback('Position et adresse récupérées à ±'+accuracy+' m ✓','ok')}
-      if(btn){btn.disabled=false;btn.textContent=btn.dataset.oldText||'⌖ Utiliser ma position actuelle'}
-    },function(err){
+    }catch(err){
       let msg='Impossible de récupérer ta position.';
       if(err&&err.code===1)msg='Localisation refusée. Autorise Store Runner et active « Localisation précise ».';
       else if(err&&err.code===2)msg='Position GPS indisponible pour le moment.';
       else if(err&&err.code===3)msg='La localisation a pris trop de temps.';
       feedback(msg,'bad');
+    }finally{
       if(btn){btn.disabled=false;btn.textContent=btn.dataset.oldText||'⌖ Utiliser ma position actuelle'}
-    },{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+    }
   };
 
   window.saveProfile=function(){
