@@ -16,6 +16,8 @@ if(!/storeRunnerRegisterAssistantContextTransform/.test(assistant)||!/applyAssis
 if(!/window\.storeRunnerRunAssistantResolvers\s*=/.test(assistant))throw new Error('Assistant: exécuteur public de résolveurs absent');
 if(!/window\.storeRunnerApplyAssistantContextTransforms\s*=/.test(assistant))throw new Error('Assistant: exécuteur public de transformations absent');
 if(/setTimeout\s*\(\s*install/.test(assistant))throw new Error('Assistant: réinstallation différée répétée interdite');
+if(/window\.addEventListener\(['"]focus['"],\s*updateAssistantStatus/.test(assistant))throw new Error('Assistant: le statut ne doit plus être rafraîchi globalement à chaque focus');
+if(/visibilitychange/.test(assistant))throw new Error('Assistant: le statut ne doit plus être rafraîchi globalement au retour de visibilité');
 
 if(/window\.sectorContext\s*=/.test(contextLimit))throw new Error('Assistant: ai-context-limit.js ne doit plus wrapper sectorContext');
 if(!/window\.storeRunnerLimitAssistantContext\s*=/.test(contextLimit))throw new Error('Assistant: limiteur de contexte public absent');

@@ -117,6 +117,4 @@
   }
   function boot(){install()}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
-  window.addEventListener('focus',updateAssistantStatus);
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateAssistantStatus()});
 })();
