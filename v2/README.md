@@ -4,6 +4,8 @@ Store Runner V2 est reconstruit en parallèle de la V1. Ce dossier reste volonta
 
 V2-01 pose uniquement le socle de données et de stockage. Aucun écran métier n'est branché ici.
 
+> Terminologie : le dossier `v2/` désigne la **nouvelle application Store Runner V2** décidée dans #115. Il ne faut pas le confondre avec la propriété historique `state.businessV2`, déjà utilisée dans la V1 pour le domaine Visit/Action/6P. Aucun code de ce domaine historique n'est recopié ici pendant V2-01.
+
 ## Choix techniques
 
 Les modules utilisent **ESM natif** (`.mjs`) afin d'être importables directement par Node 22 et, plus tard, par `<script type="module">` dans un navigateur. Il n'y a ni bundler, ni transpilation, ni dépendance npm, ni `package.json` propre à la V2.
