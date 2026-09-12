@@ -11,10 +11,8 @@
     return Object.keys(plan).reduce(function(total,day){return total+(Array.isArray(plan[day])?plan[day].length:0)},0);
   }
 
-  function validBase(){
-    if(!window.state||!state.profile)return false;
-    const lat=Number(state.profile.baseLat),lon=Number(state.profile.baseLon);
-    return Number.isFinite(lat)&&Number.isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180&&!(lat===0&&lon===0);
+  function hasValidBase(){
+    return typeof window.storeRunnerHasValidBase==='function'&&window.storeRunnerHasValidBase();
   }
 
   function generationStatus(message,type){
@@ -50,7 +48,7 @@
        * de l'utilisateur dans l'interface Agenda.
        */
       generationStatus('Génération du planning…','busy');
-      if(!validBase()){
+      if(!hasValidBase()){
         const message='Point de départ incomplet. Dans Mon activité, saisis une ville ou une adresse (ex. Francheville), puis enregistre les réglages.';
         generationStatus(message,'bad');
         return{ok:false,__storeRunnerRejectedEmpty:true,error:message};
