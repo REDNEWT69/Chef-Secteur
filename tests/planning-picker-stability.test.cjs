@@ -21,11 +21,12 @@ assert(/SETTINGS_FIELD\s*=\s*'#planningSettings input, #planningSettings select,
 assert(/addEventListener\('pointerdown',[^;]*editingLocked=true/.test(src), 'un pointerdown sur un champ des réglages doit poser le verrou');
 assert(/addEventListener\('focusin',[^;]*editingLocked=true/.test(src), 'un focusin sur un champ des réglages doit poser le verrou');
 
-// Le verrou ne se lève qu'au `change` (valeur choisie) ou à la fermeture du panneau -
-// jamais sur un simple changement de focus (focusout), qui est justement ce que déclenche
-// spontanément le sélecteur natif iOS.
+// Le verrou se lève au change, à la fermeture du panneau, ou à la prochaine interaction
+// réellement extérieure au champ. Un simple focusout reste ignoré pendant le picker natif.
 assert(/editingLocked=false;schedule\(\)/.test(src), 'le change doit lever le verrou et replanifier un rendu');
 assert(/document\.addEventListener\('focusout',e=>\{if\(editingLocked\)return;/.test(src), 'un focusout ne doit rien faire tant que le verrou tient');
+assert(/function\s+releaseEditingLock\(\)\{if\(!editingLocked\)return;editingLocked=false;schedule\(\)\}/.test(src), 'une interaction abandonnée doit pouvoir libérer explicitement le verrou');
+assert(/pointerdown',[^\n]*releaseEditingLock\(\)/.test(src) && /focusin',[^\n]*releaseEditingLock\(\)/.test(src), 'pointerdown/focusin hors champ doivent libérer un verrou abandonné');
 assert(/addEventListener\('toggle',e=>\{if\(e\.target&&e\.target\.id==='planningSettings'&&!e\.target\.open\)\{editingLocked=false;schedule\(\)\}/.test(src), 'fermer #planningSettings doit aussi lever le verrou');
 
 // Le panneau ne doit plus être réorganisé pendant la saisie : run() sort tôt tant que le
