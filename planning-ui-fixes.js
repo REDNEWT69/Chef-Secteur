@@ -42,17 +42,20 @@
   }
 
   function syncSmartBrief(){const brief=document.getElementById('smartBrief'),plan=document.getElementById('planPanel');if(!brief||!plan)return;brief.style.display=plan.classList.contains('active')?'none':''}
+  function activePlanningControl(){const el=document.activeElement;return !!(el&&el.matches&&el.matches('#planningSettings input, #planningSettings select, #planningSettings textarea'))}
+  function moveAfter(anchor,node){if(!anchor||!node||anchor.nextElementSibling===node)return;anchor.insertAdjacentElement('afterend',node)}
 
   function reorderPlanning(){
     const plan=document.querySelector('#planPanel .applePlan'),title=plan&&plan.querySelector('.applePlanTitle'),tabs=document.getElementById('dayTabs'),timeline=plan&&plan.querySelector('.timelineShell'),metrics=document.getElementById('planMetrics'),saturday=document.getElementById('saturdayRecommendation'),departure=plan&&plan.querySelector('.departureCard'),settings=document.getElementById('planningSettings');
     if(!plan||!tabs||!timeline)return;
-    const hero=ensurePlanningHero(plan,title);hero.insertAdjacentElement('afterend',tabs);
+    const editing=activePlanningControl(),hero=ensurePlanningHero(plan,title);moveAfter(hero,tabs);
     let tools=document.getElementById('planningToolsV2');
     if(!tools){tools=document.createElement('div');tools.id='planningToolsV2';tools.className='planningToolsV2';tools.innerHTML='<button class="secondary" type="button" onclick="showPlanMap()">⌖ Ouvrir la tournée</button><button class="primary" type="button" onclick="generateWeek()">✦ Générer ma semaine</button>'}
     const generation=tools.querySelector('button[onclick*="generateWeek"]');if(generation){generation.className='primary';generation.textContent='✦ Générer ma semaine'}
-    tabs.insertAdjacentElement('afterend',tools);tools.insertAdjacentElement('afterend',timeline);
+    moveAfter(tabs,tools);moveAfter(tools,timeline);
     const monthly=document.querySelector('#planPanel #managerPlanningMonth, #planPanel .managerPlanningMonth, #planPanel .monthPlanning, #planPanel [data-planning-month]');let anchor=timeline;
-    if(monthly){anchor.insertAdjacentElement('afterend',monthly);anchor=monthly}if(metrics){anchor.insertAdjacentElement('afterend',metrics);anchor=metrics}if(saturday){anchor.insertAdjacentElement('afterend',saturday);anchor=saturday}if(departure){anchor.insertAdjacentElement('afterend',departure);anchor=departure}if(settings)plan.appendChild(settings);
+    if(monthly){moveAfter(anchor,monthly);anchor=monthly}if(metrics){moveAfter(anchor,metrics);anchor=metrics}if(saturday){moveAfter(anchor,saturday);anchor=saturday}if(departure){moveAfter(anchor,departure);anchor=departure}
+    if(settings&&!editing&&(settings.parentNode!==plan||settings.nextElementSibling))plan.appendChild(settings);
   }
 
   function choiceSummary(boxId,type){
@@ -124,13 +127,14 @@
     @media(max-width:650px){.planningHeroV2{padding-top:2px}.planningHeroTop{align-items:flex-start}.planningHeroWeek{max-width:58%;line-height:1.3}.planningHeroDay{font-size:50px}.planningHeroFull{font-size:13px}.planningToolsV2{margin-bottom:10px}.planningToolsV2 button{flex:1 1 0;min-width:0}.planningChoice{border-radius:15px}.planningChoice>summary{padding:11px 12px}.planningChoiceBody{padding:0 10px 11px}.planningChoiceBody .checkgrid{max-height:150px}#planningDaysDetails .planningChoiceBody #daysBox{max-height:none!important;overflow:visible!important}.planningAdvancedDetails .formgrid,.planningRangeDetails .formgrid{grid-template-columns:1fr!important}}
   `;document.head.appendChild(s)}
 
-  function run(){css();syncSmartBrief();reorderPlanning();compactSettings();restoreHotelStars()}
+  function run(){css();syncSmartBrief();reorderPlanning();if(!activePlanningControl())compactSettings();restoreHotelStars()}
   function schedule(){if(scheduled)return;scheduled=true;requestAnimationFrame(function(){scheduled=false;run()})}
   function observeDayTabs(){const tabs=document.getElementById('dayTabs');if(!tabs||tabs.__planningFixObserver)return;const observer=new MutationObserver(schedule);observer.observe(tabs,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});tabs.__planningFixObserver=observer}
   function observePlanPanel(){const plan=document.getElementById('planPanel');if(!plan||plan.__planningActiveObserver)return;const observer=new MutationObserver(schedule);observer.observe(plan,{attributes:true,attributeFilter:['class']});plan.__planningActiveObserver=observer}
   function boot(){run();observeDayTabs();observePlanPanel();[120,500,900].forEach(function(delay){setTimeout(function(){run();observeDayTabs();observePlanPanel()},delay)})}
   document.addEventListener('click',e=>{if(e.target&&e.target.closest&&(e.target.closest('#dayTabs .dayTab')||e.target.closest('.tab')))setTimeout(schedule,60)},true);
-  document.addEventListener('change',e=>{if(e.target&&e.target.matches&&e.target.matches('[data-day],[data-brand]'))setTimeout(schedule,20)},true);
+  document.addEventListener('change',e=>{if(e.target&&e.target.matches&&(e.target.matches('[data-day],[data-brand]')||e.target.matches('#rangeStart,#rangeEnd')))setTimeout(schedule,20)},true);
+  document.addEventListener('focusout',e=>{if(e.target&&e.target.matches&&e.target.matches('#planningSettings input, #planningSettings select, #planningSettings textarea'))setTimeout(schedule,80)},true);
   document.addEventListener('store-runner:planning-updated',schedule);document.addEventListener('store-runner:data-restored',schedule);document.addEventListener('store-runner:calendar-updated',schedule);
   document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(run,120)});window.addEventListener('focus',function(){setTimeout(run,120)});window.addEventListener('load',function(){setTimeout(run,180)});
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
