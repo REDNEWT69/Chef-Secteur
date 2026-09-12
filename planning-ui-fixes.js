@@ -104,9 +104,11 @@
   function syncDynamicStoreCount(){
     let total=0,active=0;
     try{const stores=Array.isArray(state.stores)?state.stores:[];total=stores.length;active=stores.filter(s=>s&&s.active!==false).length}catch(e){}
-    document.querySelectorAll('#profilePanel .notice').forEach(el=>{
-      if(/\b83\s+magasins\b|magasins\s+rh[oô]ne-alpes\s+sont\s+conserv[eé]s/i.test(el.textContent||''))el.textContent=active+' magasin'+(active>1?'s':'')+' actif'+(active>1?'s':'')+' dans ton secteur'+(total!==active?' · '+total+' au total':'')+'. Le compteur suit automatiquement tes données.';
-    });
+    // Cible l'encart par id plutôt que par correspondance de texte : plus fragile qu'un
+    // identifiant, une simple regex sur le libellé affiché se désynchronise dès que ce
+    // libellé change (c'est ce qui laissait passer un compteur figé « 83 magasins »).
+    const notice=document.getElementById('departureStoreNotice');
+    if(notice){const label=active+' magasin'+(active>1?'s':'')+' actif'+(active>1?'s':'')+' dans ton secteur'+(total!==active?' · '+total+' au total':'')+'. Le compteur suit automatiquement tes données.';if(notice.textContent!==label)notice.textContent=label}
     const settings=document.querySelector('#planningSettings .settingsInner');if(settings){let line=document.getElementById('planningDynamicStoreCount');if(!line){line=document.createElement('div');line.id='planningDynamicStoreCount';line.className='planningStoreCount tiny';const target=document.getElementById('target');if(target)target.insertAdjacentElement('afterend',line)}if(line)line.textContent=active+' magasin'+(active>1?'s':'')+' actif'+(active>1?'s':'')+' disponible'+(active>1?'s':'')+' pour le planning.'}
   }
 
