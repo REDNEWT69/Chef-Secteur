@@ -1,146 +1,175 @@
-# Audit de stabilité — Chef Secteur
+# Audit de stabilité — Store Runner
 
-Date : 2026-09-09
+Date : 2026-09-12
 
-Objectif : inventorier les risques techniques actuels sans modifier le comportement de l’application.
+Objectif : décrire l’état technique actuel de Store Runner, distinguer les consolidations déjà acquises des risques encore actifs et fixer l’ordre de stabilisation sans lancer de réécriture massive.
 
 ## Conclusion rapide
 
-L’application a déjà été fortement consolidée : les boucles permanentes identifiées dans le premier audit ont été supprimées, plusieurs initialisations ont été rendues événementielles et le fallback Overpass a été renforcé.
+Store Runner est désormais une PWA fonctionnelle et fortement consolidée : sauvegarde/restauration protégées, Google Agenda en lecture seule, génération du planning, domaine métier Visit + Action + 6P, cache PWA versionné et CI Reliability étendue.
 
-La priorité n’est plus de supprimer des timers globaux inexistants, mais de réduire progressivement la complexité de chargement et les surcharges de fonctions globales, sans régression visuelle ni fonctionnelle.
+Le produit reste toutefois en phase de stabilisation avancée. Les risques principaux ne viennent plus de boucles globales permanentes, mais de trois zones :
+
+1. l’expérience mobile réelle à 390 px ;
+2. le noyau historique `src/chef-secteur.html` et le bootloader qui injecte encore des correctifs autour de ce noyau ;
+3. quelques responsabilités encore dupliquées ou enveloppées par des wrappers transitoires.
+
+La règle reste : consolidation progressive, réversible et testée. Pas de migration de framework ni de grand refactor transversal tant que les parcours terrain ne sont pas verrouillés.
 
 ## Points solides à conserver
 
 ### 1. Sauvegardes et restauration
 
-`reliability-core.js` valide les données, bloque les clés dangereuses (`__proto__`, `constructor`, `prototype`), conserve plusieurs points de restauration et utilise un journal de transaction pour revenir à l’état précédent si une écriture échoue.
+`reliability-core.js` valide les données, refuse les clés dangereuses (`__proto__`, `constructor`, `prototype`), conserve plusieurs points de restauration et utilise un journal de transaction pour restaurer l’état précédent si une écriture échoue.
 
-### 2. Tests automatisés
+Les sauvegardes n’exportent pas les jetons OAuth Google.
 
-Le workflow `Reliability checks` contrôle notamment :
+### 2. Stockage PWA
 
-- la syntaxe des scripts ;
-- les sauvegardes et restaurations ;
-- Google Agenda ;
-- le moteur de planning ;
-- la recherche de magasins par région.
+Le bootloader utilise une stratégie de secours :
 
-### 3. Passerelle IA
+`localStorage → IndexedDB → mémoire`
 
-`ai-gateway-config.js` ne contient pas de clé API. La clé Groq reste attendue côté Cloudflare Worker.
+et demande la persistance du stockage lorsque le navigateur la supporte.
 
-### 4. Client OAuth Google
+### 3. BUILD_REV et cache PWA
 
-Le token Google principal reste dans `sessionStorage`.
+`index.html` et `sw.js` partagent désormais une seule valeur `BUILD_REV`. `tests/build-revision.test.cjs` empêche leur divergence et vérifie le rechargement borné après prise de contrôle d’un nouveau service worker.
 
-`auto-planning-fix.js` supprime désormais les anciennes clés persistantes :
+Le service worker supprime les anciens caches Store Runner lors de l’activation d’une nouvelle révision.
 
-- `chef_google_token_persist_v1`
-- `chef_google_token_persist_expiry_v1`
+L’ancien risque « plusieurs révisions dispersées dans le chargeur » est donc considéré comme corrigé.
 
-La persistance OAuth en `localStorage` signalée dans le premier audit n’est donc plus active.
+### 4. Tests automatisés
 
-### 5. Recherche magasins par région
+Le workflow `.github/workflows/reliability-checks.yml` contrôle notamment :
 
-`region-fetch-resilience.js` reconnaît les différents endpoints Overpass configurés, conserve les paramètres d’URL pendant un basculement, respecte mieux l’annulation et peut essayer les serveurs de secours successivement.
+- syntaxe JavaScript ;
+- sauvegardes et restauration ;
+- Visit/Action/6P ;
+- Google Agenda et OAuth production ;
+- moteur de planning ;
+- compatibilité mobile structurelle ;
+- BUILD_REV ;
+- magasins par région ;
+- propriétaires d’architecture ;
+- assistant ;
+- horaires, timeline et capacité quotidienne ;
+- parseurs du catalogue officiel via `tests/official_catalog_test.py`.
 
-## Consolidations déjà réalisées
+Le déploiement GitHub Pages dépend de Reliability.
 
-### Boucles permanentes supprimées
+### 5. OAuth Google
 
-Les boucles `setInterval` identifiées auparavant ont été retirées des modules concernés.
+Le jeton Google principal reste en `sessionStorage`. Les anciennes clés persistantes sont purgées. La génération du planning ne déclenche plus d’OAuth implicite et peut utiliser le dernier cache Agenda disponible.
 
-`stores-layout-order.js` utilise maintenant :
+La validation Google OAuth External a été soumise le 12 septembre 2026. Pendant son examen, ne modifier le scope, le branding ou la configuration OAuth qu’en réponse à une demande précise de Google.
 
-- un hook ciblé sur `renderStores` ;
-- quelques réessais courts au démarrage ;
-- des déclenchements sur navigation, focus ou retour dans l’application.
+### 6. Architecture déjà nettoyée
 
-`connection-ui.js` n’exécute plus `healStorage` toutes les 1,5 seconde. La réparation du stockage est maintenant déclenchée au démarrage, après certains rendus et lors du retour dans l’application.
+Les propriétaires principaux sont documentés dans `ARCHITECTURE_CLEANUP_STATUS.md` et protégés par des tests :
 
-`auto-planning-fix.js` ne contient plus de boucle permanente.
+- profil/GPS : `profile-controller.js` ;
+- navigation : `navigation-controller.js` ;
+- génération : `planning-generation-controller.js` ;
+- synchronisation Agenda : `calendar-oauth.js` ;
+- affichage planning : `planning-ui-fixes.js` ;
+- Visit + Action + 6P : modules Store Runner dédiés.
 
-### Observers globaux supprimés ou réduits
+Les anciennes boucles `setInterval` de surveillance et plusieurs observers globaux ont été supprimés ou bornés.
 
-`planning-ui-fixes.js` ne surveille plus tout le document avec un `MutationObserver` global. Il s’appuie principalement sur les hooks de rendu et quelques déclenchements ciblés.
+## CI/CD consolidé le 12/09
 
-`connection-ui.js` conserve seulement des observers ciblés sur les éléments Google Agenda et certains boutons de l’assistant.
+Le lot #87 / PR #88 a corrigé deux faiblesses du pipeline :
+
+- la mise à jour automatique des annuaires officiels n’a plus vocation à pousser directement ses changements sur `main` ; elle crée une branche/PR et relance Reliability explicitement ;
+- l’ancien workflow natif ciblant `v3-premium` est désormais manuel uniquement et clairement marqué legacy.
+
+Le test Python du catalogue officiel est également exécuté par Reliability sur les PR normales.
 
 ## Risques encore actifs
 
-### P0 — Surcharges répétées de fonctions globales
+### P0 — Validation mobile réelle
 
-Plusieurs modules remplacent encore ponctuellement des fonctions globales existantes, notamment autour de :
+Le principal risque produit est l’UX mobile du planning. L’issue #86 couvre notamment :
 
-- `renderAll` ;
-- `renderWeek` ;
-- `renderHeader` ;
-- `renderStores` ;
-- `syncGoogleCalendar` ;
-- `generateWeek` ;
-- `baseObj` / `havBase` ;
-- `saveProfile` ;
-- `ChefReliability.propose`.
+- swipe entre les jours depuis la liste ;
+- nav basse et safe-area ;
+- cartes trop hautes ;
+- bande des jours tronquée à 390 px.
 
-Les marqueurs `window.__...` limitent les doubles installations, mais l’ordre de chargement reste important.
+L’issue #82 reste la validation globale Android/iOS de la PWA.
 
-Action recommandée : créer progressivement des hooks ou événements officiels, module par module, sans réécriture massive.
+Le test `mobile-compatibility.test.cjs` est utile mais structurel : il inspecte le code/CSS et ne prouve pas le comportement dans un navigateur réel. L’issue #89 prévoit un test E2E mobile 390 px après stabilisation de #86.
 
-### P1 — Révisions de fichiers dispersées dans `index.html`
+### P0 — Noyau historique et bootloader
 
-Le service worker utilise déjà un nom de cache global, mais `index.html` charge encore de nombreux scripts avec des paramètres `?rev=` différents (`safe16`, dates, noms de correctifs, etc.).
+`src/chef-secteur.html` reste un gros noyau historique contenant encore beaucoup de logique globale.
 
-Ce double système de versionnement augmente le risque qu’une PWA installée conserve temporairement un mélange de versions lors d’une évolution du chargeur.
+`index.html` charge ce noyau, applique plusieurs transformations/injections puis ajoute les modules Store Runner. Cette stratégie fonctionne et est testée, mais elle reste sensible aux changements de structure du HTML historique.
 
-Action recommandée : utiliser une révision de build unique dans le chargeur, puis faire correspondre cette révision au cache du service worker.
+Action recommandée : retirer les patchs/injections progressivement, un domaine à la fois, uniquement lorsqu’un propriétaire stable existe déjà. Pas de réécriture massive.
 
-### P1 — Plusieurs couches de planning
+### P1 — Validation du point de départ dupliquée
 
-Le planning reste réparti entre plusieurs modules spécialisés. C’est fonctionnel, mais la multiplication des wrappers rend les dépendances difficiles à suivre.
+`profile-controller.js` et `planning-generation-controller.js` contiennent encore une logique équivalente de validation des coordonnées du départ.
 
-Action recommandée : définir à terme un point d’entrée central pour le calcul et des hooks explicites pour :
+L’issue #80 prévoit de faire de `profile-controller.js` l’unique propriétaire et d’exposer une API minimale consommée par le planning.
 
-1. les contraintes Agenda ;
-2. les horaires ;
-3. le stockage ;
-4. le rendu ;
-5. les décorations visuelles.
+### P1 — Conformité Nominatim
 
-### P2 — Plusieurs couches d’accueil
+Le géocodage du départ utilise Nominatim/OpenStreetMap pour la recherche texte et le reverse geocoding GPS.
 
-L’accueil reste partagé entre plusieurs modules. Ce n’est plus la priorité immédiate tant que le rendu reste stable.
+L’issue #83 doit encore :
 
-Action recommandée : fusion progressive après stabilisation du chargeur et du planning.
+- limiter explicitement la cadence partagée ;
+- afficher l’attribution adaptée ;
+- compléter la politique de confidentialité pour l’adresse/les coordonnées envoyées à Nominatim ;
+- ajouter les garde-fous/tests associés.
 
-## Ordre de consolidation recommandé à partir de maintenant
+Ce chantier doit rester séparé de Google Agenda.
 
-### Étape 1 — version de build unique
+### P1 — Wrappers résiduels
 
-Centraliser les paramètres `?rev=` de `index.html` autour d’une seule révision de build et vérifier le comportement PWA/cache.
+Des wrappers transitoires restent présents, notamment autour de l’assistant et de certaines fonctions historiques Agenda/planning. Les contrats d’extension publics ont déjà réduit ce risque.
 
-### Étape 2 — hooks de rendu
+Action recommandée : supprimer les derniers wrappers seulement après ajout d’un point d’extension dans le propriétaire historique correspondant et avec Reliability vert avant/après.
 
-Commencer par une seule famille de wrappers, idéalement le planning ou les magasins, et introduire un mécanisme de hooks explicite sans changement visuel.
+### P2 — Accueil et présentation
 
-### Étape 3 — accueil
+Plusieurs couches historiques participent encore au rendu d’accueil et à certaines décorations. Tant que le comportement terrain reste stable, ce nettoyage est moins prioritaire que mobile, conformité et E2E.
 
-Regrouper progressivement les responsabilités des modules d’accueil après validation des étapes précédentes.
+## Ordre de consolidation recommandé
 
-### Étape 4 — planning
+1. Terminer #86 puis valider réellement le planning sur iPhone/Android.
+2. Fermer #82 uniquement après vérification installation PWA, stockage, offline, Agenda, génération et mise à jour du service worker.
+3. Implémenter #89 : vrai smoke test navigateur mobile 390 px dans Reliability.
+4. Traiter #83 : conformité Nominatim.
+5. Traiter #80 : mutualisation de la validation du point de départ.
+6. Après décision Google OAuth, consolider progressivement le propriétaire OAuth sans changement de scope ni de comportement utilisateur.
+7. Réduire ensuite, par petits lots, les patchs du bootloader et les responsabilités encore présentes dans `src/chef-secteur.html`.
+8. Reprendre seulement ensuite les nouveaux domaines métier importants.
 
-Poursuivre la séparation entre moteur, Agenda, contraintes, stockage et rendu.
+## Conditions avant de considérer la V1 stable
 
-## Règle pour les prochaines modifications
+Avant d’archiver l’ancienne application de secours, vérifier au minimum :
 
-Pour chaque étape :
+- parcours mobile réel Android/iOS validé ;
+- Reliability et test navigateur E2E verts ;
+- sauvegarde/export/restauration testés sur données réelles ;
+- Nominatim mis en conformité ;
+- aucune perte de données ni bug bloquant observé pendant plusieurs semaines d’usage terrain ;
+- rollback connu et ancienne application encore disponible pendant cette période.
 
-1. une seule catégorie de changement ;
-2. aucun changement visuel non demandé ;
-3. tests existants avant et après ;
-4. un commit séparé ;
-5. retour arrière immédiat si une fonction existante régresse.
+## Règles pour les prochaines modifications
 
-## État actuel
+Pour chaque lot :
 
-Le dernier contrôle du 9 septembre 2026 confirme que les anciennes boucles permanentes signalées dans l’audit initial ne sont plus présentes dans les modules inspectés. Le prochain chantier technique prioritaire est la centralisation des révisions de build dans le chargeur PWA.
+1. repartir du dernier `main` ;
+2. une seule catégorie de changement ;
+3. issue → branche → PR Draft → tests → Ready → merge ;
+4. aucun push fonctionnel direct sur `main` ;
+5. respecter les propriétaires définis dans `AGENTS.md` ;
+6. tester à 390 px quand l’UI change ;
+7. vérifier PWA/hors ligne quand le runtime, le stockage ou le cache changent ;
+8. retour arrière immédiat si un parcours existant régresse.
