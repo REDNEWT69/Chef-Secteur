@@ -151,6 +151,9 @@
   // est affiché.
   document.addEventListener('pointerdown',e=>{if(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD))editingLocked=true},true);
   document.addEventListener('focusin',e=>{if(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD))editingLocked=true},true);
+  function releaseEditingLock(){if(!editingLocked)return;editingLocked=false;schedule()}
+  document.addEventListener('pointerdown',e=>{if(editingLocked&&!(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD)))releaseEditingLock()},true);
+  document.addEventListener('focusin',e=>{if(editingLocked&&!(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD)))releaseEditingLock()},true);
   document.addEventListener('change',e=>{
     if(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD)){editingLocked=false;schedule()}
     if(e.target&&e.target.matches&&(e.target.matches('[data-day],[data-brand]')||e.target.matches('#rangeStart,#rangeEnd')))setTimeout(schedule,20);
