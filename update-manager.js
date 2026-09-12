@@ -2,7 +2,8 @@
   'use strict';
 
   const VERSION_URL='./version.json';
-  const PANEL_ID='storeRunnerUpdatePanel';
+  const CENTER_ID='storeRunnerUpdateCenter';
+  const MENU_BUTTON_ID='storeRunnerUpdateMenuButton';
   const BANNER_ID='storeRunnerUpdateBanner';
   const LAST_BUILD_KEY='store-runner-last-seen-build';
   const currentBuild=String(window.__STORE_RUNNER_BUILD_REV||'inconnue');
@@ -22,41 +23,83 @@
     const style=document.createElement('style');
     style.id='store-runner-update-css';
     style.textContent=`
-      #${PANEL_ID}{margin-top:18px;padding-top:16px;border-top:1px solid rgba(60,60,67,.14)}
-      #${PANEL_ID} .sruHead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}
-      #${PANEL_ID} .sruTitle{font-size:15px;font-weight:850;color:#1d1d1f}
-      #${PANEL_ID} .sruBuild{font-size:11px;color:#8e8e93;margin-top:3px;word-break:break-all}
-      #${PANEL_ID} .sruBadge{font-size:11px;font-weight:800;padding:5px 8px;border-radius:999px;background:#eef2ff;color:#334155;white-space:nowrap}
-      #${PANEL_ID} .sruStatus{font-size:12px;line-height:1.45;color:#6b7280;margin:8px 0 12px}
-      #${PANEL_ID} .sruActions{display:flex;gap:8px;flex-wrap:wrap}
-      #${PANEL_ID} button{min-height:40px;border-radius:12px;padding:0 12px;font-weight:800}
-      #${PANEL_ID} .sruPrimary{background:#1428A0;color:#fff;border:0}
-      #${PANEL_ID} .sruSecondary{background:#fff;color:#1d1d1f;border:1px solid rgba(60,60,67,.18)}
+      #${MENU_BUTTON_ID}{position:relative}
+      #${MENU_BUTTON_ID}.sruAvailable::after{content:'';position:absolute;top:9px;right:11px;width:8px;height:8px;border-radius:999px;background:#0a84ff;box-shadow:0 0 0 3px rgba(10,132,255,.13)}
+      #${CENTER_ID}{display:none;position:fixed;inset:0;z-index:205;background:rgba(20,24,32,.20);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+      #${CENTER_ID}.open{display:block}
+      #${CENTER_ID} .sruCard{position:absolute;left:12px;right:12px;bottom:calc(82px + env(safe-area-inset-bottom));padding:10px;border-radius:28px;background:rgba(249,250,252,.97);border:1px solid rgba(255,255,255,.9);box-shadow:0 28px 80px rgba(20,25,35,.24)}
+      #${CENTER_ID} .sruHandle{width:42px;height:5px;border-radius:999px;background:#d3d6dc;margin:2px auto 14px}
+      #${CENTER_ID} .sruHead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:2px 8px 4px}
+      #${CENTER_ID} .sruTitle{font-size:20px;font-weight:850;color:#1d1d1f}
+      #${CENTER_ID} .sruBuild{font-size:11px;color:#8e8e93;margin-top:4px;word-break:break-all}
+      #${CENTER_ID} .sruBadge{font-size:11px;font-weight:800;padding:5px 8px;border-radius:999px;background:#eef2ff;color:#334155;white-space:nowrap}
+      #${CENTER_ID} .sruStatus{font-size:13px;line-height:1.45;color:#6b7280;margin:10px 8px 14px}
+      #${CENTER_ID} .sruActions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+      #${CENTER_ID} button{min-height:48px;border-radius:16px;padding:0 12px;font-weight:800}
+      #${CENTER_ID} .sruPrimary{background:#1428A0;color:#fff;border:0}
+      #${CENTER_ID} .sruSecondary{background:rgba(235,238,244,.78);color:#1d1d1f;border:0}
+      #${CENTER_ID} .sruClose{width:100%;margin-top:8px;border:0;background:#111217;color:#fff}
       #${BANNER_ID}{position:fixed;left:12px;right:12px;top:calc(12px + env(safe-area-inset-top));z-index:9999;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:16px;background:rgba(17,24,39,.96);color:#fff;box-shadow:0 14px 38px rgba(0,0,0,.22);backdrop-filter:blur(18px)}
       #${BANNER_ID}[hidden]{display:none!important}
       #${BANNER_ID} .sruBannerText{min-width:0;font-size:13px;line-height:1.35}
       #${BANNER_ID} .sruBannerText strong{display:block;font-size:14px;margin-bottom:2px}
       #${BANNER_ID} button{flex:0 0 auto;border:0;border-radius:11px;min-height:38px;padding:0 11px;font-weight:850;background:#fff;color:#111827}
-      @media(max-width:520px){#${BANNER_ID}{align-items:flex-start}#${BANNER_ID} button{font-size:12px}}
+      @media(max-width:520px){#${BANNER_ID}{align-items:flex-start}#${BANNER_ID} button{font-size:12px}#${CENTER_ID} .sruActions{grid-template-columns:1fr}}
     `;
     document.head.appendChild(style);
   }
 
-  function ensurePanel(){
-    const settings=document.querySelector('#planningSettings .settingsInner');
-    if(!settings)return null;
-    let panel=document.getElementById(PANEL_ID);
-    if(panel)return panel;
-    css();
-    panel=document.createElement('section');
-    panel.id=PANEL_ID;
-    panel.setAttribute('aria-label','Application et mises à jour');
-    panel.innerHTML='<div class="sruHead"><div><div class="sruTitle">Application</div><div class="sruBuild" data-sru-build></div></div><span class="sruBadge" data-sru-badge>Version</span></div><div class="sruStatus" data-sru-status></div><div class="sruActions"><button type="button" class="sruSecondary" data-sru-check>Vérifier les mises à jour</button><button type="button" class="sruPrimary" data-sru-install hidden>Mettre à jour maintenant</button></div>';
-    settings.appendChild(panel);
-    panel.querySelector('[data-sru-check]').addEventListener('click',function(){checkForUpdates(false)});
-    panel.querySelector('[data-sru-install]').addEventListener('click',installUpdate);
+  function ensureMenuEntry(){
+    const grid=document.querySelector('#moreSheetV2 .moreSheetGrid');
+    if(!grid)return null;
+    let button=document.getElementById(MENU_BUTTON_ID);
+    if(button)return button;
+    button=document.createElement('button');
+    button.id=MENU_BUTTON_ID;
+    button.type='button';
+    button.textContent='↻ Mise à jour';
+    button.setAttribute('aria-label','Mise à jour de Store Runner');
+    button.addEventListener('click',function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      const more=document.getElementById('moreSheetV2');
+      if(more)more.classList.remove('open');
+      openUpdateCenter();
+    });
+    grid.appendChild(button);
     render();
-    return panel;
+    return button;
+  }
+
+  function ensureCenter(){
+    css();
+    let center=document.getElementById(CENTER_ID);
+    if(center)return center;
+    center=document.createElement('div');
+    center.id=CENTER_ID;
+    center.setAttribute('role','dialog');
+    center.setAttribute('aria-modal','true');
+    center.setAttribute('aria-label','Mise à jour de Store Runner');
+    center.innerHTML='<div class="sruCard"><div class="sruHandle"></div><div class="sruHead"><div><div class="sruTitle">Mise à jour</div><div class="sruBuild" data-sru-build></div></div><span class="sruBadge" data-sru-badge>Version</span></div><div class="sruStatus" data-sru-status></div><div class="sruActions"><button type="button" class="sruSecondary" data-sru-check>Vérifier les mises à jour</button><button type="button" class="sruPrimary" data-sru-install hidden>Mettre à jour maintenant</button></div><button type="button" class="sruClose" data-sru-close>Fermer</button></div>';
+    document.body.appendChild(center);
+    center.querySelector('[data-sru-check]').addEventListener('click',function(){checkForUpdates(false)});
+    center.querySelector('[data-sru-install]').addEventListener('click',installUpdate);
+    center.querySelector('[data-sru-close]').addEventListener('click',closeUpdateCenter);
+    center.addEventListener('click',function(e){if(e.target===center)closeUpdateCenter()});
+    render();
+    return center;
+  }
+
+  function openUpdateCenter(){
+    const center=ensureCenter();
+    center.classList.add('open');
+    render();
+    checkForUpdates(false);
+  }
+
+  function closeUpdateCenter(){
+    const center=document.getElementById(CENTER_ID);
+    if(center)center.classList.remove('open');
   }
 
   function ensureBanner(){
@@ -87,14 +130,16 @@
   function hideBanner(){const banner=document.getElementById(BANNER_ID);if(banner){banner.hidden=true;delete banner.dataset.sticky}}
 
   function render(){
-    const panel=ensurePanel();
-    if(!panel)return;
     const available=state.latest&&state.latest!==state.current;
-    const build=panel.querySelector('[data-sru-build]');
-    const badge=panel.querySelector('[data-sru-badge]');
-    const status=panel.querySelector('[data-sru-status]');
-    const install=panel.querySelector('[data-sru-install]');
-    const check=panel.querySelector('[data-sru-check]');
+    const menu=document.getElementById(MENU_BUTTON_ID);
+    if(menu)menu.classList.toggle('sruAvailable',!!available);
+    const center=document.getElementById(CENTER_ID);
+    if(!center)return;
+    const build=center.querySelector('[data-sru-build]');
+    const badge=center.querySelector('[data-sru-badge]');
+    const status=center.querySelector('[data-sru-status]');
+    const install=center.querySelector('[data-sru-install]');
+    const check=center.querySelector('[data-sru-check]');
     if(build)build.textContent='Build '+state.current;
     if(badge)badge.textContent='Version '+displayVersion(state.current);
     if(install)install.hidden=!available;
@@ -190,7 +235,10 @@
   }
 
   function start(){
-    ensurePanel();
+    css();
+    ensureMenuEntry();
+    window.setTimeout(ensureMenuEntry,80);
+    document.addEventListener('store-runner:home-rendered',function(){window.setTimeout(ensureMenuEntry,0)});
     announceInstalledBuild();
     window.setTimeout(function(){checkForUpdates(true)},1200);
     let lastVisibilityCheck=0;
@@ -198,10 +246,8 @@
       if(document.visibilityState!=='visible')return;
       const now=Date.now();if(now-lastVisibilityCheck<60000)return;lastVisibilityCheck=now;checkForUpdates(true);
     });
-    const observer=new MutationObserver(function(){ensurePanel()});
-    observer.observe(document.documentElement,{childList:true,subtree:true});
   }
 
-  window.StoreRunnerUpdates={checkForUpdates:checkForUpdates,installUpdate:installUpdate,getState:function(){return Object.assign({},state)}};
+  window.StoreRunnerUpdates={checkForUpdates:checkForUpdates,installUpdate:installUpdate,openUpdateCenter:openUpdateCenter,getState:function(){return Object.assign({},state)}};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
