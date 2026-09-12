@@ -1,5 +1,8 @@
 (function(){
   'use strict';
+  const NOMINATIM_BASE='https://nominatim.openstreetmap.org';
+  const NOMINATIM_MIN_INTERVAL_MS=1000;
+  let nominatimQueue=Promise.resolve(),nominatimLastStartedAt=0;
 
   function ensureFeedback(){
     const btn=document.querySelector('#departureSettings button[onclick="useCurrentLocation()"]');
@@ -22,6 +25,14 @@
       box.setAttribute('role','status');
       box.setAttribute('aria-live','polite');
       btn.insertAdjacentElement('afterend',box);
+    }
+    let attribution=document.getElementById('departureGeocodeAttribution');
+    if(!attribution){
+      attribution=document.createElement('div');
+      attribution.id='departureGeocodeAttribution';
+      attribution.className='departureGeocodeAttribution';
+      attribution.innerHTML='Recherche d’adresse : <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a>';
+      box.insertAdjacentElement('afterend',attribution);
     }
     return box;
   }
@@ -47,14 +58,33 @@
     t.__hideTimer=setTimeout(function(){t.classList.remove('show')},2200);
   }
 
+  function wait(ms){return new Promise(function(resolve){setTimeout(resolve,ms)})}
+  function nominatimFetch(path,timeoutMs){
+    const run=async function(){
+      const delay=Math.max(0,NOMINATIM_MIN_INTERVAL_MS-(Date.now()-nominatimLastStartedAt));
+      if(delay)await wait(delay);
+      nominatimLastStartedAt=Date.now();
+      const ctrl=new AbortController();
+      const timer=setTimeout(function(){ctrl.abort()},timeoutMs);
+      try{
+        return await fetch(NOMINATIM_BASE+path,{
+          headers:{Accept:'application/json'},
+          signal:ctrl.signal,
+          cache:'default',
+          referrerPolicy:'strict-origin-when-cross-origin'
+        });
+      }finally{clearTimeout(timer)}
+    };
+    const request=nominatimQueue.then(run,run);
+    nominatimQueue=request.then(function(){},function(){});
+    return request;
+  }
+
   async function reverseGeocode(lat,lon){
     if(navigator.onLine===false)return '';
     try{
-      const ctrl=new AbortController();
-      const timer=setTimeout(function(){ctrl.abort()},6000);
-      const url='https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat='+encodeURIComponent(lat)+'&lon='+encodeURIComponent(lon)+'&zoom=18&addressdetails=1';
-      const r=await fetch(url,{headers:{Accept:'application/json'},signal:ctrl.signal,cache:'no-store'});
-      clearTimeout(timer);
+      const path='/reverse?format=jsonv2&lat='+encodeURIComponent(lat)+'&lon='+encodeURIComponent(lon)+'&zoom=18&addressdetails=1';
+      const r=await nominatimFetch(path,6000);
       if(!r.ok)return '';
       const data=await r.json();
       return String(data.display_name||'').trim();
@@ -65,12 +95,10 @@
     const text=String(query||'').trim();
     if(!text)throw new Error('Saisis une ville ou une adresse de départ.');
     if(navigator.onLine===false)throw new Error('Connexion requise pour rechercher une adresse.');
-    const ctrl=new AbortController();
-    const timer=setTimeout(function(){ctrl.abort()},7000);
     try{
       const q=/\bfrance\b/i.test(text)?text:text+', France';
-      const url='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=fr&addressdetails=1&q='+encodeURIComponent(q);
-      const r=await fetch(url,{headers:{Accept:'application/json'},signal:ctrl.signal,cache:'no-store'});
+      const path='/search?format=jsonv2&limit=1&countrycodes=fr&addressdetails=1&q='+encodeURIComponent(q);
+      const r=await nominatimFetch(path,7000);
       if(!r.ok)throw new Error('Service de recherche d’adresse indisponible ('+r.status+').');
       const rows=await r.json();
       const row=Array.isArray(rows)&&rows[0];
@@ -80,7 +108,7 @@
     }catch(e){
       if(e&&e.name==='AbortError')throw new Error('La recherche d’adresse a pris trop de temps.');
       throw e;
-    }finally{clearTimeout(timer)}
+    }
   }
 
   async function geocodeDepartureInputs(){
@@ -170,6 +198,7 @@
     s.textContent=`
       .departureFeedback{min-height:20px;margin:7px 2px 0;font-size:12px;color:#667085;line-height:1.35}
       .departureFeedback.ok{color:#137333;font-weight:700}.departureFeedback.bad{color:#b42318;font-weight:700}.departureFeedback.busy{color:#1769d2}
+      .departureGeocodeAttribution{margin:3px 2px 0;font-size:10.5px;line-height:1.35;color:#7a8290}.departureGeocodeAttribution a{color:#667085;text-decoration:underline;text-underline-offset:2px}
       #departureSettings button:disabled{opacity:.62;cursor:wait}
       .storeRunnerToast{position:fixed;left:50%;bottom:96px;z-index:260;transform:translate(-50%,14px);background:#111827;color:#fff;padding:11px 15px;border-radius:999px;font-size:13px;font-weight:750;box-shadow:0 12px 32px rgba(17,24,39,.25);opacity:0;pointer-events:none;transition:.18s ease;white-space:nowrap;max-width:calc(100vw - 28px);overflow:hidden;text-overflow:ellipsis}
       .storeRunnerToast.show{opacity:1;transform:translate(-50%,0)}
