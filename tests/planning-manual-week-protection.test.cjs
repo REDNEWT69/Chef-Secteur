@@ -52,7 +52,16 @@ function env(options={}){
   const saved=t.persisted();
   assert(saved&&saved.archive&&saved.archive['2026-09-07'],'la semaine doit être créée dans l’archive même si elle n’y était pas encore');
   assert.equal(saved.archive['2026-09-07'].manualEdited,true,'la modification manuelle doit poser le marqueur de protection de semaine');
+  assert.equal(saved.state.manualWeekEdits['2026-09-07']?true:false,true,'la modification manuelle doit aussi poser le garde-fou durable dans l’état');
   assert.equal(saved.archive['2026-09-07'].plan.Lundi[0].id,'b','l’archive protégée doit contenir la journée réellement modifiée');
+
+  // Même si l'archive a perdu son marqueur, le garde-fou durable de l'état suffit.
+  t=env();t.state.manualWeekEdits={'2026-09-07':'2026-09-07T12:00:00.000Z'};
+  const stateBefore=JSON.stringify(t.state.plan);
+  const stateGuard=await t.ctx.testManualWeek.strictSingleWeek();
+  assert.equal(JSON.stringify(t.state.plan),stateBefore,'le garde-fou d’état doit conserver la semaine');
+  assert.equal(t.proposals.length,0,'le garde-fou d’état doit bloquer toute proposition automatique');
+  assert.equal(stateGuard&&stateGuard.preservedManual,true,'le moteur doit signaler la conservation manuelle via le garde-fou d’état');
 
   const protectedPlan=emptyPlan();protectedPlan.Lundi=[store('protected')];
   t=env({archive:{'2026-09-07':{weekMonday:'2026-09-07',manualEdited:true,plan:JSON.parse(JSON.stringify(protectedPlan))}},rangeEnd:'2026-09-18'});

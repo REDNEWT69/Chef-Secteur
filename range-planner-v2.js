@@ -220,8 +220,8 @@ async function strictSingleWeek(){
   generationBusy=true;
   try{
     const days=readControls(),raw=parse((state.settings&&state.settings.weekDate)||iso(new Date())),mon=monday(raw||new Date());
-    const archived=loadArchive()[iso(mon)];
-    if(archived&&archived.manualEdited){
+    const weekKey=iso(mon),archived=loadArchive()[weekKey],manualState=!!(state.manualWeekEdits&&state.manualWeekEdits[weekKey]);
+    if((archived&&archived.manualEdited)||manualState){
       const visits=countPlan(state.plan,DAYS),credits=DAYS.reduce((n,d)=>n+routeCredits((state.plan&&state.plan[d])||[]),0);
       showStatus('Semaine modifiée manuellement : tes magasins sont conservés. La génération automatique n’a rien changé.');
       return{ok:true,preservedManual:true,visits,credits};
@@ -262,8 +262,8 @@ async function generateRange(){
     const calendarSynced=await syncCalendarRange(first,last);
     let mon=new Date(first),weekIndex=0,weeks=0,totalVisits=0,totalCredits=0,totalUnplaced=0;
     while(mon<=last){
-      const weekKey=iso(mon),archived=archive[weekKey];
-      if(archived&&archived.manualEdited){
+      const weekKey=iso(mon),archived=archive[weekKey],manualState=!!(state.manualWeekEdits&&state.manualWeekEdits[weekKey]);
+      if((archived&&archived.manualEdited)||manualState){
         const weekSeen=new Set();
         for(const d of DAYS)for(const s of ((archived.plan&&archived.plan[d])||[])){
           const k=storeKey(s);if(!k||weekSeen.has(k))continue;weekSeen.add(k);unique.add(k);usedKeys.add(k);useCount.set(k,(useCount.get(k)||0)+1);lastUsedWeek.set(k,weekIndex);totalVisits++;totalCredits+=visitCredit(s);
@@ -409,6 +409,7 @@ async function persistDayReplacement(preview){
   const bundle=R.capture(state,db),next=JSON.parse(JSON.stringify(state)),weekKey=iso(monday(parse((state.settings&&state.settings.weekDate)||'')||new Date()));
   next.plan=next.plan||{};next.plan[preview.day]=preview.route.map(s=>(state.stores||[]).find(x=>String(x.id)===String(s.id))||s);
   if(preview.sourceDay&&Array.isArray(preview.sourceRoute))next.plan[preview.sourceDay]=preview.sourceRoute.map(s=>(state.stores||[]).find(x=>String(x.id)===String(s.id))||s);
+  next.manualWeekEdits=next.manualWeekEdits||{};next.manualWeekEdits[weekKey]=new Date().toISOString();
   /* Le magasin choisi à la main est posé sur sa nouvelle journée. S'il venait d'un autre
      jour, son verrou suit le déplacement. Le magasin remplacé est libéré ; les visites
      ajoutées automatiquement pour combler l'ancien jour restent libres. */
@@ -477,7 +478,7 @@ async function togglePlannedStorePin(){
     if(typeof ChefReliability!=='undefined'&&ChefReliability&&typeof ChefReliability.checkpoint==='function')
       ChefReliability.checkpoint((wasPinned?'Avant libération de ':'Avant pose de ')+(store.enseigne||'magasin')+' sur '+day);
   }catch(e){}
-  if(wasPinned)unpinStore(id);else pinStore(id,day);
+  if(wasPinned)unpinStore(id);else{pinStore(id,day);const key=iso(monday(parse((state.settings&&state.settings.weekDate)||'')||new Date()));state.manualWeekEdits=state.manualWeekEdits||{};state.manualWeekEdits[key]=new Date().toISOString()}
   try{if(typeof save==='function')save()}catch(e){if(typeof showError==='function')showError('Enregistrement impossible : '+(e&&e.message?e.message:String(e)));return false}
   try{if(typeof renderAll==='function')renderAll()}catch(e){}
   syncPinButton();
