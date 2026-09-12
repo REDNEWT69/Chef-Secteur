@@ -3,7 +3,7 @@
   const APP_NAME='Store Runner';
   const SIGNATURE='S-RUNNER By Red①';
   const LOGO='./app-icon.svg';
-  let observer=null,observerHost=null,homeObserver=null,homeObserverHost=null,retry=0,applyScheduled=false;
+  let observer=null,observerHost=null,homeObserver=null,homeObserverHost=null,storesObserver=null,retry=0,applyScheduled=false;
 
   function text(v){return String(v==null?'':v).trim()}
   function cleanSector(v){
@@ -18,8 +18,7 @@
     const address=text(profile.baseAddress);
     const generic=/^(ma position(?: actuelle)?|maison|départ|base)$/i.test(name);
     const place=(name&&!generic)?name:(address||name||'À définir');
-    let label=sector+' · départ '+place;
-    if(address&&address.toLocaleLowerCase('fr-FR')!==place.toLocaleLowerCase('fr-FR'))label+=' · '+address;
+    const label=sector+' · '+storeCount()+' magasins';
     return{sector:sector,name:name,address:address,place:place,label:label};
   }
   function storeCount(){
@@ -39,16 +38,12 @@
       .srBrandLogo{display:block;width:112px;height:112px;max-width:28vw;max-height:28vw;aspect-ratio:1/1;border-radius:24px;object-fit:contain;object-position:center;box-shadow:0 10px 28px rgba(30,45,70,.08);flex:0 0 auto}
       .srBrandName{font-size:14px;font-weight:850;letter-spacing:-.02em;color:#0b1530}
       .srBrandSignature{font-size:10.5px;color:#7b8089;margin-top:1px}
-      #premiumHomeV2 .phBrand{display:grid!important;grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto auto auto;column-gap:14px;align-items:center}
-      #premiumHomeV2 .phBrand .srBrandLogo{grid-row:1/4;align-self:center;justify-self:start}
-      #premiumHomeV2 .phBrand .phSector{grid-column:2;font-size:11.5px!important;margin-top:2px}
       .top .srTopBrand{display:flex;align-items:center;gap:10px;min-width:0}
       .top .srTopBrand img{width:46px;height:46px;aspect-ratio:1/1;object-fit:contain;object-position:center;border-radius:12px;box-shadow:0 6px 18px rgba(30,45,70,.08);flex:0 0 46px}
       .top .srTopBrandText{min-width:0;max-width:min(680px,72vw)}
       .top #titleSub{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       @media(max-width:700px){
         .srBrandLogo{width:88px;height:88px;max-width:24vw;max-height:24vw;border-radius:20px}
-        #premiumHomeV2 .phBrand{column-gap:12px}
         .top .srTopBrand img{width:40px;height:40px;flex-basis:40px}
         .top .srTopBrandText{max-width:62vw}
       }
@@ -78,7 +73,8 @@
     const img=brand.querySelector('img');if(img)setAttr(img,'src',LOGO);
     let h=brand.querySelector('#appContextTitle')||brand.querySelector('h1');
     if(!h){h=document.createElement('h1');h.id='appContextTitle';const box=brand.querySelector('.srTopBrandText');if(box)box.prepend(h)}
-    setText(h,APP_NAME);
+    const stores=document.getElementById('storesPanel');
+    setText(h,stores&&stores.classList.contains('active')?'Magasins':APP_NAME);
     let p=brand.querySelector('#titleSub')||brand.querySelector('p');
     if(!p){p=document.createElement('p');p.id='titleSub';const box=brand.querySelector('.srTopBrandText');if(box)box.appendChild(p)}
     setText(p,context.label);setAttr(p,'title',context.label);
@@ -96,19 +92,25 @@
     let logo=brand.querySelector('.srBrandLogo');
     if(!logo){logo=document.createElement('img');logo.className='srBrandLogo';logo.alt='S-RUNNER';brand.insertBefore(logo,brand.firstChild)}
     setAttr(logo,'src',LOGO);
-    let sector=brand.querySelector('.phSector');
-    if(!sector){sector=document.createElement('span');sector.className='phSector';brand.appendChild(sector)}
+    const header=brand.closest('.phBrandRow');
+    let sector=header.querySelector('.phSector');
+    if(!sector){sector=document.createElement('span');sector.className='phSector';header.querySelector('.phHeaderContext').appendChild(sector)}
     let name=brand.querySelector('.srBrandName');
-    if(!name){name=document.createElement('span');name.className='srBrandName';brand.insertBefore(name,sector)}
+    if(!name){name=document.createElement('span');name.className='srBrandName';brand.appendChild(name)}
     setText(name,APP_NAME);
     let signature=brand.querySelector('.srBrandSignature');
-    if(!signature){signature=document.createElement('span');signature.className='srBrandSignature';brand.insertBefore(signature,sector)}
+    if(!signature){signature=document.createElement('span');signature.className='srBrandSignature';brand.appendChild(signature)}
     setText(signature,SIGNATURE);
     Array.from(brand.children).forEach(function(el){
       if(el===logo||el===name||el===signature||el===sector)return;
       if(el.tagName==='SPAN'||(el.tagName==='IMG'&&/samsung/i.test(el.getAttribute('alt')||'')))el.remove();
     });
     setText(sector,context.sector+' · '+storeCount()+' magasins');
+    const departure=header.querySelector('.phDepartureAddress');
+    if(departure){
+      const repeatsPosition=!context.address&&/^(ma position(?: actuelle)?|départ)$/i.test(context.name);
+      setText(departure,repeatsPosition?'':context.place);setAttr(departure,'title',context.address||context.place);
+    }
     return true;
   }
 
@@ -127,6 +129,8 @@
   }
 
   function observe(){
+    const stores=document.getElementById('storesPanel');
+    if(stores&&!storesObserver){storesObserver=new MutationObserver(scheduleApply);storesObserver.observe(stores,{attributes:true,attributeFilter:['class']})}
     const host=document.querySelector('.top');
     if(host&&observerHost===host){
       // La bonne cible est déjà observée.
