@@ -47,4 +47,5 @@ jobs:
       - run: node tests/branding.test.cjs
       - run: node tests/titlesub-ownership.test.cjs
       - run: node tests/branding-relics.test.cjs
+      - run: node tests/runtime-branding-source.test.cjs
       - run: python tests/official_catalog_test.py
