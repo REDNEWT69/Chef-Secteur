@@ -1,0 +1,30 @@
+name: Apply validated range rotation
+on:
+  push:
+    branches: [fix/range-rotation-coverage]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.event.head_commit.message != 'apply validated range rotation fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/range-rotation-coverage
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tools/preview-range-rotation-fix.cjs
+      - run: node tests/planning-range-rotation.test.cjs
+      - name: Commit validated production file
+        run: |
+          if git diff --quiet -- range-planner-v2.js; then
+            echo "range-planner-v2.js already contains the validated patch"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add range-planner-v2.js
+          git commit -m "apply validated range rotation fix"
+          git push origin HEAD:fix/range-rotation-coverage
