@@ -1,32 +1,49 @@
 const fs=require('fs');
 const path=require('path');
 
-// #titleSub (secteur · départ · adresse) appartient exclusivement à
-// store-runner-branding.js depuis la PR #101. Un second module qui y écrit (même pour un
-// libellé différent) écrase silencieusement ce propriétaire à chaque rendu de l'en-tête -
-// c'est exactement le bug remonté par Red sur connection-ui.js (et retrouvé aussi dans
-// calendar-enhancements.js). Ce garde-fou scanne tous les modules runtime chargés par
-// index.html et échoue si plus d'un seul mentionne #titleSub.
-
 const root=process.cwd();
 const index=fs.readFileSync(path.join(root,'index.html'),'utf8');
+const core=fs.readFileSync(path.join(root,'src/chef-secteur.html'),'utf8');
 const runtimeFiles=[...new Set([...index.matchAll(/['"](\.\/[A-Za-z0-9_./-]+\.js)['"]/g)].map(m=>m[1].slice(2)))];
 
-// Un commentaire expliquant "ne pas écrire ici, ça appartient à X" est une documentation
-// utile, pas une violation : on l'ignore pour ne chercher que du code qui référence l'id.
 function stripComments(src){return src.replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/[^\n]*/g,'')}
-
-const OWNER='store-runner-branding.js';
-const owners=[];
-for(const name of runtimeFiles){
-  const file=path.join(root,name);
-  if(!fs.existsSync(file))continue;
-  const src=stripComments(fs.readFileSync(file,'utf8'));
-  if(/titleSub/.test(src))owners.push(name);
+function runtimeReferences(id){
+  const found=[];
+  for(const name of runtimeFiles){
+    const file=path.join(root,name);
+    if(!fs.existsSync(file))continue;
+    if(new RegExp(id).test(stripComments(fs.readFileSync(file,'utf8'))))found.push(name);
+  }
+  return found;
 }
 
-if(!owners.includes(OWNER))throw new Error(`titleSub: le propriétaire attendu (${OWNER}) ne référence plus #titleSub`);
-const others=owners.filter(name=>name!==OWNER);
-if(others.length)throw new Error(`titleSub: propriété violée par ${others.join(', ')} (seul ${OWNER} doit écrire #titleSub)`);
+const BRAND_OWNER='store-runner-branding.js';
+for(const id of ['titleSub','appContextTitle']){
+  const owners=runtimeReferences(id);
+  if(!owners.includes(BRAND_OWNER))throw new Error(`${id}: propriétaire attendu absent (${BRAND_OWNER})`);
+  const others=owners.filter(name=>name!==BRAND_OWNER);
+  if(others.length)throw new Error(`${id}: propriété violée par ${others.join(', ')} (seul ${BRAND_OWNER} doit le modifier)`);
+}
 
-console.log('PASS: #titleSub reste la propriété exclusive de '+OWNER+'.');
+// Le noyau peut déclarer les éléments dans le HTML, mais son JavaScript ne doit plus
+// réécrire le branding derrière store-runner-branding.js. Ce garde-fou couvre donc
+// explicitement src/chef-secteur.html, angle mort du test livré dans #105.
+for(const id of ['titleSub','appContextTitle']){
+  const write=new RegExp(`getElementById\\(['"]${id}['"]\\)\\.textContent\\s*=`);
+  if(write.test(core))throw new Error(`${id}: le noyau contient encore une écriture runtime interdite`);
+}
+
+// #homeSub est une information métier de l'accueil : renderHome() dans le noyau est son
+// propriétaire. Aucun module runtime séparé ne doit le réécrire.
+const homeWriters=runtimeReferences('homeSub');
+if(homeWriters.length)throw new Error(`homeSub: propriété violée par ${homeWriters.join(', ')} (renderHome() dans le noyau est propriétaire)`);
+const renderHome=core.match(/function renderHome\(\)\{[\s\S]*?\nfunction terrainCurrent\(/);
+if(!renderHome||!/getElementById\(['"]homeSub['"]\)\.textContent\s*=/.test(renderHome[0]))throw new Error('homeSub: écriture attendue dans renderHome() absente');
+
+// Les libellés de branding visibles du noyau sont génériques. Les référentiels et données
+// métier externes ne sont volontairement pas scannés par ce garde-fou.
+if(/Chef Secteur SAMSUNG|>[^<]*Samsung[^<]*</i.test(core))throw new Error('Branding noyau: ancien libellé Samsung visible détecté');
+if(!/<title>Store Runner<\/title>/.test(core))throw new Error('Branding noyau: titre Store Runner absent');
+if(!/<h1 id="appContextTitle">Store Runner<\/h1><p id="titleSub"><\/p>/.test(core))throw new Error('Branding noyau: fallback header générique absent');
+
+console.log('PASS: ownership branding verrouillé dans les modules et le noyau HTML.');
