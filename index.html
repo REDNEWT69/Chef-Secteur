@@ -31,7 +31,7 @@
       return {
         getItem(key){key=String(key);return memory.has(key)?memory.get(key):null},
         setItem(key,value){memory.set(String(key),String(value))},
-        removeItem(key){key=String(key);memory.delete(key)},
+        removeItem(key){memory.delete(String(key))},
         clear(){memory.clear()},
         key(index){return Array.from(memory.keys())[Number(index)]??null},
         get length(){return memory.size}
