@@ -18,6 +18,10 @@ store.update(draft => {
 assert.equal(store.getState().profile.name, 'Secteur Test');
 assert.equal(notifications, 1);
 
+const detached = store.getState();
+detached.profile.name = 'Mutation externe';
+assert.equal(store.getState().profile.name, 'Secteur Test');
+
 const invalid = createEmptyState();
 invalid.appointments = {};
 assert.throws(() => store.replace(invalid), /appointments/);
