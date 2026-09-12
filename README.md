@@ -67,7 +67,7 @@ Le workflow `.github/workflows/reliability-checks.yml` vérifie notamment :
 - sauvegarde/restauration ;
 - Google Agenda ;
 - génération du planning ;
-- magasins par région ;
+- magasins par région et parseurs du catalogue officiel ;
 - séparation des responsabilités de navigation, profil, planning et assistant ;
 - architecture du futur métier V2 ;
 - propriétaires globaux des modules réellement chargés au runtime.
@@ -88,9 +88,11 @@ Les distances affichées sont des estimations à partir des coordonnées disponi
 
 ## Publication
 
-Le site est publié automatiquement sur GitHub Pages par `.github/workflows/deploy-pages.yml` :
+Le site est publié automatiquement sur GitHub Pages par `.github/workflows/deploy-pages.yml` et servi publiquement sur le domaine personnalisé :
 
-`https://rednewt69.github.io/Chef-Secteur/`
+`https://store-runner.fr/`
+
+Le dépôt GitHub conserve l’infrastructure Pages sous-jacente, mais `store-runner.fr` est l’adresse publique de référence.
 
 ## Dépôt
 
