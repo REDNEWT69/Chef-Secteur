@@ -31,24 +31,81 @@ function setup() {
   assert.deepEqual(nav.children.map(el => el.getAttribute('data-tab')), SCREEN_IDS);
 }
 
-// 1 bis. SCREEN_IDS (navigation.mjs) est la seule source de vérité des
-// écrans : createShell ne prend aucun paramètre `screens`. Un objet
-// d'options portant une clé `screens` arbitraire (identifiant inconnu,
-// doublons, liste vide...) est donc silencieusement sans effet — le shell
-// monte toujours exactement les quatre écrans de SCREEN_IDS.
+// 1 bis. API stricte de createShell : SCREEN_IDS (navigation.mjs) reste la
+// seule source de vérité des écrans, il n'existe aucun paramètre pour en
+// monter un sous-ensemble ou une liste différente. En conséquence, toute
+// clé d'options qui n'est pas document/root/initialScreen est un refus
+// explicite (ShellError) — jamais une valeur silencieusement ignorée. Il ne
+// doit rester ici aucune assertion affirmant qu'une option inconnue comme
+// `screens` est acceptée sans effet.
+assert.equal(SCREEN_IDS.length, 4);
+
+// options d'un type incorrect : refus explicite (ShellError), jamais un
+// TypeError natif de déstructuration.
+{
+  assert.throws(() => createShell(null), ShellError);
+  assert.throws(() => createShell('planning'), ShellError);
+  assert.throws(() => createShell([]), ShellError);
+}
+
+// clé inconnue : faute de frappe sur initialScreen — le nom fautif doit
+// apparaître dans le message.
 {
   const document = createFakeDocument();
   const root = document.createElement('div');
-  assert.equal(SCREEN_IDS.length, 4);
-  const shell = createShell({ document, root, screens: ['inconnu', 'planning', 'planning'] });
-  const [, main, nav] = root.children;
-  assert.deepEqual(main.children.map(el => el.getAttribute('data-screen')), SCREEN_IDS);
-  assert.deepEqual(nav.children.map(el => el.getAttribute('data-tab')), SCREEN_IDS);
-  // et l'écran actif par défaut ('home') existe bel et bien, contrairement
-  // à l'ancien comportement où un `screens` restreint pouvait laisser
-  // nav.getActive() pointer vers un écran jamais monté.
-  assert.equal(shell.getActiveScreen(), 'home');
-  assert.equal(main.children.filter(el => el.classList.contains('is-active')).length, 1);
+  assert.throws(() => createShell({ document, root, initialScreeen: 'planning' }), /initialScreeen/);
+}
+
+// clé inconnue explicitement valant `undefined` : toujours un refus, la
+// valeur undefined ne doit pas laisser passer la clé.
+{
+  const document = createFakeDocument();
+  const root = document.createElement('div');
+  assert.throws(() => createShell({ document, root, screens: undefined }), /screens/);
+}
+
+// createShell({ root }) : reproduit le cas réel de v2/public/index.html, où
+// seul `root` est passé et `document` doit être repris de globalThis.document.
+{
+  const fakeDocument = createFakeDocument();
+  const root = fakeDocument.createElement('div');
+  const previousDocument = globalThis.document;
+  globalThis.document = fakeDocument;
+  try {
+    const shell = createShell({ root });
+    assert.equal(root.children.length, 3);
+    assert.equal(shell.getActiveScreen(), 'home');
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+}
+
+// createShell() sans argument : fonctionne dès lors que globalThis.document
+// existe, montage sur document.body par défaut.
+{
+  const fakeDocument = createFakeDocument();
+  const previousDocument = globalThis.document;
+  globalThis.document = fakeDocument;
+  try {
+    const shell = createShell();
+    assert.equal(fakeDocument.body.children.length, 3);
+    assert.equal(shell.getActiveScreen(), 'home');
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+}
+
+// options valides : les formes documentées continuent de fonctionner.
+{
+  const document = createFakeDocument();
+  const root1 = document.createElement('div');
+  assert.doesNotThrow(() => createShell({ document, root: root1 }));
+
+  const root2 = document.createElement('div');
+  const shell2 = createShell({ document, root: root2, initialScreen: 'planning' });
+  assert.equal(shell2.getActiveScreen(), 'planning');
 }
 
 // 2. un seul écran actif dès l'initialisation

@@ -82,6 +82,8 @@ Si une feature a besoin de déplacer quelque chose qui appartient au shell, c'es
 
 Le shell reçoit son document en paramètre (`createShell({ document, ... })`) au lieu d'aller le chercher dans une variable globale, avec un repli sur `globalThis.document` par défaut pour l'usage navigateur — ce qui le rend testable sans navigateur.
 
+**API stricte.** `createShell` n'accepte que trois options : `document`, `root`, `initialScreen`. Toute autre clé — y compris une faute de frappe ou une clé explicitement valant `undefined` — lève un `ShellError` explicite nommant la clé refusée, jamais un `TypeError` natif de déstructuration ni une valeur silencieusement ignorée. Un argument qui n'est pas un objet simple (`null`, une chaîne, un tableau) est refusé de la même façon. `createShell()` sans argument reste valide dès lors que `globalThis.document` existe.
+
 ## Navigation
 
 4 écrans placeholders : **Accueil**, **Planning**, **Magasins**, **Plus**. Chaque écran affiche seulement son titre et une phrase indiquant qu'il s'agit d'un placeholder V2 — aucune logique métier.

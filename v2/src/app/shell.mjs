@@ -31,11 +31,36 @@ export class ShellError extends Error {
   }
 }
 
-export function createShell({
-  document: doc = (typeof globalThis !== 'undefined' ? globalThis.document : undefined),
-  root,
-  initialScreen = SCREEN_IDS[0],
-} = {}) {
+// Seules options acceptées par createShell. Toute autre clé — y compris une
+// faute de frappe ou une clé explicitement valant `undefined` — est un refus
+// explicite (ShellError), jamais une valeur silencieusement ignorée.
+const ALLOWED_OPTIONS = ['document', 'root', 'initialScreen'];
+
+function describeOptions(value) {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'un tableau';
+  return typeof value;
+}
+
+export function createShell(options = {}) {
+  if (options === null || typeof options !== 'object' || Array.isArray(options)) {
+    throw new ShellError(
+      `createShell attend un objet d'options simple ({ document, root, initialScreen }) ; reçu : ${describeOptions(options)}.`
+    );
+  }
+
+  const unknownKeys = Object.keys(options).filter(key => !ALLOWED_OPTIONS.includes(key));
+  if (unknownKeys.length) {
+    throw new ShellError(
+      `createShell : option(s) inconnue(s) : ${unknownKeys.join(', ')}. Options acceptées : ${ALLOWED_OPTIONS.join(', ')}.`
+    );
+  }
+
+  const {
+    document: doc = (typeof globalThis !== 'undefined' ? globalThis.document : undefined),
+    root,
+    initialScreen = SCREEN_IDS[0],
+  } = options;
   if (!doc) throw new ShellError('Un document est requis pour créer le shell.');
   const mount = root || doc.body;
   if (!mount) throw new ShellError('Aucune racine de montage disponible pour le shell.');
