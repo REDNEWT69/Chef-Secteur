@@ -50,7 +50,7 @@ assert.match(source,/bundle\.archive\[weekKey\]/,'une modification manuelle doit
   t=env();t.state.settings.target=2;t.state.included={x:true,y:true,z:true};await t.ctx.testPlanning.strictSingleWeek();assert.equal(t.proposals.length,1);assert.deepEqual(new Set(ids(t.proposals[0].plan)),new Set(['x','y','z']),'la cible hebdomadaire ne doit jamais éliminer un magasin explicitement imposé si la capacité réelle suffit');
 
   // Si l'union des magasins imposés/verrouillés dépasse la capacité physique, on bloque au lieu d'en ignorer un.
-  t=env();t.els.maxVisitsPerDay.value='1';t.state.settings.maxVisitsPerDay=1;t.state.settings.target=1;t.state.included={x:true,y:true,z:true};await t.ctx.testPlanning.strictSingleWeek();assert.equal(t.proposals.length,0);assert.equal(t.state.plan.Lundi[0].id,'old');assert.match(t.els.rangePlanStatus.textContent,/3 magasins imposés ou verrouillés|seulement 2 créneaux/);
+  t=env();t.els.maxVisitsPerDay.value='1';t.state.settings.maxVisitsPerDay=1;t.state.settings.target=1;t.state.included={x:true,y:true,z:true};await t.ctx.testPlanning.strictSingleWeek();assert.equal(t.proposals.length,0);assert.equal(t.state.plan.Lundi[0].id,'old');assert.match(t.els.rangePlanStatus.textContent,/demandent 3 crédits de visite pour seulement 2 disponibles/);
 
   // Un verrouillage de jour doit être respecté par le moteur V2.
   t=env();t.state.locks.y='Mardi';await t.ctx.testPlanning.strictSingleWeek();assert.equal(t.proposals.length,1);assert(t.proposals[0].plan.Mardi.some(s=>s.id==='y'),'le magasin verrouillé doit rester sur Mardi');assert(!t.proposals[0].plan.Lundi.some(s=>s.id==='y'),'le magasin verrouillé ne doit pas être déplacé');
@@ -62,7 +62,7 @@ assert.match(source,/bundle\.archive\[weekKey\]/,'une modification manuelle doit
   t=env();t.state.settings.target=2;t.state.locks={x:'Lundi',y:'Mardi',z:'Lundi'};await t.ctx.testPlanning.strictSingleWeek();assert.equal(t.proposals.length,1);assert.deepEqual(new Set(ids(t.proposals[0].plan)),new Set(['x','y','z']),'la cible hebdo ne doit jamais éliminer un magasin verrouillé');
 
   // Si les verrous dépassent la capacité physique de la semaine, on bloque au lieu d'en ignorer un.
-  t=env();t.els.maxVisitsPerDay.value='1';t.state.settings.maxVisitsPerDay=1;t.state.settings.target=1;t.state.locks={x:'Lundi',y:'Mardi',z:'Lundi'};await t.ctx.testPlanning.strictSingleWeek();assert.equal(t.proposals.length,0);assert.equal(t.state.plan.Lundi[0].id,'old');assert.match(t.els.rangePlanStatus.textContent,/3 magasins imposés ou verrouillés|seulement 2 créneaux/);
+  t=env();t.els.maxVisitsPerDay.value='1';t.state.settings.maxVisitsPerDay=1;t.state.settings.target=1;t.state.locks={x:'Lundi',y:'Mardi',z:'Lundi'};await t.ctx.testPlanning.strictSingleWeek();assert.equal(t.proposals.length,0);assert.equal(t.state.plan.Lundi[0].id,'old');assert.match(t.els.rangePlanStatus.textContent,/demandent 3 crédits de visite pour seulement 2 disponibles/);
 
   // Une période dont la première semaine est vide doit afficher la première semaine réellement remplie.
   t=env();t.ctx.calendarEventsForDate=date=>date<'2026-09-14'?[{allDay:true,title:'Formation Samsung'}]:[];await t.ctx.testPlanning.generateRange();assert.equal(t.proposals.length,1);assert.equal(t.proposals[0].weekDate,'2026-09-14','la semaine affichée doit être la première semaine non vide de la période');assert(ids(t.proposals[0].plan).length>0,'la proposition ne doit pas être vide quand une semaine suivante contient des visites');

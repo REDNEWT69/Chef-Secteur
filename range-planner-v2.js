@@ -48,11 +48,24 @@ function eligible(){
   return out;
 }
 function scoreOf(s){try{return typeof score==='function'?Number(score(s))||0:Number(s.priority)||0}catch(e){return Number(s.priority)||0}}
+/* Les crédits de visite appartiennent à visit-counting.js : on consomme son API
+   publique plutôt que de redéfinir les règles ou la normalisation de casse ici.
+   Une enseigne à 2 crédits occupe deux unités du plafond journalier, parce qu'une
+   visite Darty ou Boulanger demande 1h30 à 2h et non un créneau standard. Sans ce
+   module, chaque magasin vaut 1 crédit : on retrouve exactement l'ancien comptage. */
+function visitCredit(s){
+  try{if(typeof window.storeVisitCredit==='function')return Math.max(1,Number(window.storeVisitCredit(s))||1)}catch(e){}
+  return 1;
+}
+function routeCredits(route){return (route||[]).reduce((n,s)=>n+visitCredit(s),0)}
 function forcedRank(s){const id=s&&s.id;return (state.locks&&state.locks[id]?2:0)+(state.included&&state.included[id]?1:0)}
 function forcedCount(pool){return (pool||[]).reduce((n,s)=>n+(forcedRank(s)>0?1:0),0)}
+function forcedCredits(pool){return (pool||[]).reduce((n,s)=>n+(forcedRank(s)>0?visitCredit(s):0),0)}
 function selectionNeed(pool,usable,target,max){
-  const capacity=max*usable.length,forced=forcedCount(pool);
-  if(forced>capacity)throw new Error('Il y a '+forced+' magasins imposés ou verrouillés pour seulement '+capacity+' créneau'+(capacity>1?'x':'')+' disponible'+(capacity>1?'s':'')+'. Le planning précédent est conservé.');
+  /* La capacité d'une période se mesure en crédits : un magasin imposé à 2 crédits
+     consomme deux unités du plafond, sinon on annonce une capacité qui n'existe pas. */
+  const capacity=max*usable.length,forced=forcedCount(pool),forcedCost=forcedCredits(pool);
+  if(forcedCost>capacity)throw new Error('Les magasins imposés ou verrouillés demandent '+forcedCost+' crédit'+(forcedCost>1?'s':'')+' de visite pour seulement '+capacity+' disponible'+(capacity>1?'s':'')+'. Le planning précédent est conservé.');
   return Math.min(Math.max(Math.max(1,target),forced),capacity,pool.length);
 }
 function chooseStores(pool,usedKeys,lastUsedWeek,target){
@@ -94,16 +107,20 @@ function buildWeekUnique(chosen,days){
     plan[locked].push(store);
   }
   for(const day of days){
-    if(plan[day].length>max)throw new Error('Trop de magasins sont verrouillés sur '+day+' pour la capacité journalière. Le planning précédent est conservé.');
+    const lockedCost=routeCredits(plan[day]);
+    if(lockedCost>max)throw new Error('Les magasins verrouillés sur '+day+' demandent '+lockedCost+' crédit'+(lockedCost>1?'s':'')+' de visite pour un plafond de '+max+'. Le planning précédent est conservé.');
     plan[day]=optimizeRoute(plan[day]);
     if(plan[day].length&&finish(plan[day],day)>limitFor(day))throw new Error('Les magasins verrouillés sur '+day+' ne tiennent pas dans les horaires. Le planning précédent est conservé.');
   }
   const unplaced=[];
   for(const store of free){
     let placed=false;
-    const candidates=days.slice().sort((a,b)=>(plan[a]||[]).length-(plan[b]||[]).length);
+    /* Le plafond journalier est un budget de crédits, pas un nombre de magasins : sans
+       cela une journée à 4 pouvait recevoir 2 Darty et 2 Boulanger, soit 8 crédits. */
+    const cost=visitCredit(store);
+    const candidates=days.slice().sort((a,b)=>routeCredits(plan[a])-routeCredits(plan[b]));
     for(const day of candidates){
-      if((plan[day]||[]).length>=max)continue;
+      if(routeCredits(plan[day])+cost>max)continue;
       const route=optimizeRoute((plan[day]||[]).concat([store]));
       if(finish(route,day)<=limitFor(day)){plan[day]=route;placed=true;break}
     }
@@ -173,10 +190,11 @@ async function strictSingleWeek(){
     const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
     const need=selectionNeed(pool,usable,Number(state.settings.target)||20,max);
     const chosen=chooseStores(pool,new Set(),new Map(),need),built=buildWeekUnique(chosen,usable);ensureForcedPlaced(built);const visits=countPlan(built.plan,usable);
+    const credits=usable.reduce((n,d)=>n+routeCredits(built.plan[d]),0);
     if(!visits)throw new Error('0 visite possible avec les réglages actuels. Vérifie l’heure de fin, la durée par magasin et ton point de départ. Le planning précédent est conservé.');
     if(!await ChefReliability.propose({plan:built.plan,weekDate:iso(mon)})){showStatus('Planning précédent conservé.');return{ok:false,cancelled:true}}
-    showStatus('Semaine générée : '+visits+' visites'+(built.unplaced.length?' · '+built.unplaced.length+' non placée'+(built.unplaced.length>1?'s':'')+' faute de créneau':'')+'.');
-    return{ok:true,visits,unplaced:built.unplaced.length};
+    showStatus('Semaine générée : '+visits+' visites · '+credits+' crédit'+(credits>1?'s':'')+' de visite'+(built.unplaced.length?' · '+built.unplaced.length+' non placée'+(built.unplaced.length>1?'s':'')+' faute de créneau':'')+'.');
+    return{ok:true,visits,credits,unplaced:built.unplaced.length};
   }catch(e){
     const message=e&&e.message?e.message:String(e);showStatus('Génération impossible : '+message,true);
     return{ok:false,__storeRunnerRejectedEmpty:true,error:message};
@@ -196,7 +214,7 @@ async function generateRange(){
     const target=Math.max(1,Number(state.settings.target)||20),max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4)),archive=loadArchive(),first=monday(start),last=monday(end),usedKeys=new Set(),lastUsedWeek=new Map(),unique=new Set();
     showStatus('Synchronisation Google Agenda puis génération de la période…');
     const calendarSynced=await syncCalendarRange(first,last);
-    let mon=new Date(first),weekIndex=0,weeks=0,totalVisits=0,totalUnplaced=0;
+    let mon=new Date(first),weekIndex=0,weeks=0,totalVisits=0,totalCredits=0,totalUnplaced=0;
     while(mon<=last){
       const usable=activeDays(mon,days,start,end);
       if(!usable.length){archive[iso(mon)]=snapshot(mon,start,end,Object.fromEntries(DAYS.map(d=>[d,[]])),days);mon=addDays(mon,7);weekIndex++;weeks++;continue}
@@ -204,7 +222,7 @@ async function generateRange(){
       if(usedKeys.size&&remaining<need)usedKeys.clear();
       const chosen=chooseStores(pool,usedKeys,lastUsedWeek,need),built=buildWeekUnique(chosen,usable);ensureForcedPlaced(built);const plan=built.plan,weekSeen=new Set();
       totalUnplaced+=built.unplaced.length;
-      for(const d of usable)for(const s of (plan[d]||[])){const k=storeKey(s);if(!k||weekSeen.has(k))continue;weekSeen.add(k);unique.add(k);usedKeys.add(k);lastUsedWeek.set(k,weekIndex);totalVisits++}
+      for(const d of usable)for(const s of (plan[d]||[])){const k=storeKey(s);if(!k||weekSeen.has(k))continue;weekSeen.add(k);unique.add(k);usedKeys.add(k);lastUsedWeek.set(k,weekIndex);totalVisits++;totalCredits+=visitCredit(s)}
       archive[iso(mon)]=snapshot(mon,start,end,plan,days);mon=addDays(mon,7);weekIndex++;weeks++;await new Promise(r=>setTimeout(r,10));
     }
     if(!totalVisits)throw new Error('La période donnerait 0 visite. Rien n’a été remplacé : vérifie les jours, les horaires et les indisponibilités Agenda.');
@@ -214,7 +232,7 @@ async function generateRange(){
     if(!displaySnap)throw new Error('La période contient des visites mais aucune semaine affichable n’a été retrouvée. Le planning précédent est conservé.');
     const candidate={};for(const d of DAYS)candidate[d]=(displaySnap.plan[d]||[]).map(x=>(state.stores||[]).find(s=>String(s.id)===String(x.id))||x);
     if(!await ChefReliability.propose({plan:candidate,weekDate:iso(displayMon),archive,range})){showStatus('Planning précédent conservé.');return}
-    showStatus('Période appliquée : '+weeks+' semaines · '+totalVisits+' visites · '+unique.size+' magasins distincts'+(totalUnplaced?' · '+totalUnplaced+' visite'+(totalUnplaced>1?'s':'')+' non placée'+(totalUnplaced>1?'s':''):'')+' · '+(calendarSynced?'Agenda Google vérifié.':'Agenda Google non vérifié, données conservées utilisées.'));
+    showStatus('Période appliquée : '+weeks+' semaines · '+totalVisits+' visites · '+totalCredits+' crédit'+(totalCredits>1?'s':'')+' de visite · '+unique.size+' magasins distincts'+(totalUnplaced?' · '+totalUnplaced+' visite'+(totalUnplaced>1?'s':'')+' non placée'+(totalUnplaced>1?'s':''):'')+' · '+(calendarSynced?'Agenda Google vérifié.':'Agenda Google non vérifié, données conservées utilisées.'));
     window.dispatchEvent(new CustomEvent('chef-range-generated',{detail:{start:iso(start),end:iso(end),weeks,workDays:days,uniqueStores:unique.size}}));
   }catch(e){showStatus('Erreur pendant la génération : '+(e.message||String(e)),true)}finally{generationBusy=false;if(btn)btn.disabled=false}
 }
