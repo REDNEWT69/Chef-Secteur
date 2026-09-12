@@ -2,12 +2,12 @@
 (function(root){
 'use strict';
 const SIX_P={
- promotion:{label:'PROMOTION',items:['Visibilité PLV','Dates validées','Mécanisme promotionnel expliqué','Opération locale possible','Opérations concurrentes','Challenges concurrents','Perception vendeurs des promotions Samsung']},
+ promotion:{label:'PROMOTION',items:['Visibilité PLV','Dates validées','Mécanisme promotionnel expliqué','Opération locale possible','Opérations concurrentes','Challenges concurrents','Perception vendeurs des promotions']},
  prix:{label:'PRIX',items:['Relevé prix','Veille concurrentielle','Ajustement nécessaire','Présence étiquette prix']},
  produit:{label:'PRODUIT',items:['LDU / factice','Stocks','Disponibilité','Gamme','Assortiment','Nouveautés','Concurrence','Ventes']},
  place:{label:'PLACE',items:['Part de linéaire','Emplacement','Respect des accords','Opportunité de gain PDL','Relevé concurrence']},
  proprete:{label:'PROPRETÉ',items:['Nettoyage LDU','Expérience client','Vérification des démonstrations','Mise à jour LDU','Mise à jour PLV','Anomalies']},
- pedagogie:{label:'PÉDAGOGIE',items:['Interlocuteurs identifiés','Problématiques identifiées','Objectifs de formation','Connaissances vendeurs','Préférence de marque','Potentiel de recommandation Samsung']}
+ pedagogie:{label:'PÉDAGOGIE',items:['Interlocuteurs identifiés','Problématiques identifiées','Objectifs de formation','Connaissances vendeurs','Préférence de marque','Potentiel de recommandation']}
 };
 const CHECKS=['Procédure d’entrée respectée','Personnel salué','Autorisation avant relevé','Part de linéaire / PDL','PLV','LDU','Merchandising','Facing','Ruptures','ODR','Perfect Merch','Concurrence','Incentive / guelte','Parcours client réalisé','Échange informel vendeur'];
 const PREP={mainGoal:'Objectif principal',secondaryGoals:'Objectifs secondaires',expectedContact:'Interlocuteur prévu',news:'Actualité magasin',previousWork:'Travail réalisé précédemment',satisfaction:'Points de satisfaction',friction:'Points de friction',sellOut:'Sell-out',stocks:'Stocks',automaticReplenishment:'Réapprovisionnement automatique',assortment:'Assortiment',storeStatus:'Statut magasin',marketShare:'Part de marché',operations:'Opérations en cours',notes:'Notes de préparation'};
