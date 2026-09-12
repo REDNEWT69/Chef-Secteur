@@ -31,6 +31,7 @@ jobs:
       - run: node tests/mobile-compatibility.test.cjs
       - run: node tests/build-revision.test.cjs
       - run: node tests/visit-counting.test.cjs
+      - run: node tests/visit-credits-planning.test.cjs
       - run: node tests/region-stores.test.cjs
       - run: node tests/architecture.test.cjs
       - run: node tests/navigation-architecture.test.cjs
