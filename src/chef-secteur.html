@@ -130,6 +130,8 @@ input,select,textarea{border-radius:13px!important;border:1px solid var(--apple-
 .tlBadge.brand-fnac{background:#ebf4ff;color:#1769d2}.tlBadge.brand-carrefour,.tlBadge.brand-conforama{background:#eafaf0;color:#137333}
 .tlBadge.brand-cuisinella{background:#f1ebff;color:#6941c6}
 .tlAppointment{display:inline-flex;align-items:center;gap:4px;margin-top:7px;padding:5px 8px;border-radius:9px;background:#edf5ff;color:#1769d2;font-size:11px;font-weight:700}
+.tlPinned{display:inline-flex;align-items:center;gap:4px;margin-top:7px;padding:5px 8px;border-radius:9px;background:#fff4e2;color:#9a5b00;font-size:11px;font-weight:700;white-space:nowrap}
+.timelineRow.pinnedVisit{box-shadow:inset 3px 0 0 #f0a500}
 .planningSettings{margin-top:18px;border:1px solid var(--ios-line);background:rgba(255,255,255,.82);border-radius:19px;overflow:hidden}
 .planningSettings summary{list-style:none;cursor:pointer;padding:15px 17px;font-weight:750;color:#3f4a5d}
 .planningSettings summary::-webkit-details-marker{display:none}.settingsInner{padding:0 17px 18px}
@@ -597,13 +599,17 @@ setTimeout(function(){try{applyAppointmentsToPlan();save();renderAll();decorateW
       var x=rows[i];
       if(x.kind==='calendar'){var ev=x.event;if(ev.allDay){h+='<div class="calendarAllDay">▣ '+esc(ev.title)+' · Toute la journée</div>';continue}h+='<div class="timelineRow calendarEvent"><div class="tlTime">'+esc(x.arrival)+'</div><div class="tlTrack"><span class="tlDot"></span></div><div class="tlMain"><div><div class="tlName">'+esc(ev.title)+'</div><div class="tlMeta">'+esc(ev.location||'Événement Google Agenda')+'</div></div><div class="tlRight"><span class="tlBadge">Agenda</span><span class="tlDuration">'+x.duration+' min</span></div></div></div>';continue}
       var st=x.store,bc=brandClass(st.enseigne),appt=x.appt;
-      h+='<div class="timelineRow">'+
+      /* Une visite posée à la main est verrouillée sur ce jour : la génération automatique
+         ne la déplacera pas. On la distingue visuellement d'une visite automatique. */
+      var pinned=!!(state.locks&&state.locks[st.id]===selectedPlanningDay);
+      h+='<div class="timelineRow'+(pinned?' pinnedVisit':'')+'">'+
         '<div class="tlTime">'+esc(x.arrival)+'</div>'+
         '<div class="tlTrack"><span class="tlDot '+dotClass(st)+'"></span></div>'+
         '<div class="tlMain" onclick="openStoreQuick(\''+esc(st.id)+'\',\''+esc(selectedPlanningDay)+'\',\''+esc(x.arrival)+'\')">'+
           '<div><div class="tlName">'+esc(st.enseigne+' '+st.ville)+'</div>'+
           '<div class="tlMeta">'+esc(st.adresse||'')+(st.dept?' · '+esc(st.dept):'')+'</div>'+
           (appt?'<div class="tlAppointment">◷ '+esc(appt.type||'Rendez-vous')+' · '+esc(appt.time)+'</div>':'')+
+          (pinned?'<div class="tlPinned" title="Visite posée à la main : la génération automatique ne la déplacera pas.">📌 Posé à la main</div>':'')+
           '</div>'+
           '<div class="tlRight"><span class="tlBadge '+bc+'">'+esc(st.enseigne)+'</span><span class="tlDuration">'+x.duration+' min</span><span class="tlChevron">›</span></div>'+
         '</div></div>'
