@@ -44,13 +44,20 @@ assert(T,'le test doit pouvoir accéder au cœur du slider');
 let r=T.range();
 assert.equal(r.start.getFullYear(),2026);assert.equal(r.start.getMonth(),8);assert.equal(r.start.getDate(),14,'la période doit venir de __chefStorage et non du localStorage natif');
 const beforePlan=JSON.stringify(state.plan),beforeWeek=state.settings.weekDate;
-assert.equal(T.loadDate(new Date('2026-09-21T12:00:00')),false,'une semaine absente de l’archive doit être refusée');
-assert.equal(JSON.stringify(state.plan),beforePlan,'une archive manquante ne doit pas réétiqueter le plan courant');
-assert.equal(state.settings.weekDate,beforeWeek,'une archive manquante ne doit pas changer la semaine affichée');
-assert.equal(weekInput.value,'2026-09-07');
+/* Un jour affiché dans la bande doit toujours être sélectionnable : une semaine sans
+   planning s'ouvre vide et annoncée, jamais par un échec silencieux. Le plan courant
+   ne doit pour autant jamais être réétiqueté sur cette autre semaine. */
+assert.equal(T.loadDate(new Date('2026-09-21T12:00:00')),true,'un jour affiché doit rester sélectionnable même sans planning archivé');
+assert.equal(state.settings.weekDate,'2026-09-21','la semaine visée doit devenir la semaine affichée');
+assert.equal(weekInput.value,'2026-09-21');
+assert.equal(JSON.stringify(state.plan),JSON.stringify({Lundi:[],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}),'une semaine sans planning doit s’ouvrir vide, sans hériter du plan courant');
+const archived=JSON.parse(activeData[ARCHIVE]);
+assert.equal(JSON.stringify(archived[beforeWeek].plan),beforePlan,'la semaine quittée doit être archivée avant le changement, pour ne rien perdre');
+assert.match(source,/Semaine du/,'le slider doit annoncer une semaine non générée au lieu d’échouer en silence');
+state.plan=JSON.parse(beforePlan);state.settings.weekDate=beforeWeek;weekInput.value=beforeWeek;
 assert.equal(T.loadDate(new Date('2026-09-14T12:00:00')),true,'une semaine archivée doit rester navigable');
 assert.equal(state.settings.weekDate,'2026-09-14');
 assert.equal(weekInput.value,'2026-09-14');
 assert.equal(state.plan.Lundi[0].id,'new');
 assert.equal(typeof scheduled,'function','le rafraîchissement visuel doit être regroupé au prochain frame');
-console.log('PASS: le slider de période utilise le stockage actif, refuse les semaines d’archive manquantes et gère explicitement le swipe tactile Android.');
+console.log('PASS: le slider de période utilise le stockage actif, ouvre une semaine non générée sans échec silencieux et gère explicitement le swipe tactile Android.');

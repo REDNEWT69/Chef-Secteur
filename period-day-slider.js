@@ -24,11 +24,48 @@
     if(fullLabel)fullLabel.textContent=new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'long',year:'numeric'}).format(date);
     return true;
   }
+  function humanDate(d){try{return new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'long'}).format(d)}catch(e){return iso(d)}}
+  function emptyPlan(){const p={};for(const d of DAYS)p[d]=[];return p}
+  function planHasVisits(plan){try{return DAYS.some(d=>Array.isArray(plan&&plan[d])&&plan[d].length>0)}catch(e){return false}}
+  function archiveCurrentWeek(){
+    /* Avant de quitter la semaine affichée, on la conserve dans l'archive : revenir
+       dessus doit retrouver le planning existant, jamais le perdre. */
+    try{
+      const db=storage();if(!db)return false;
+      const key=String((state.settings&&state.settings.weekDate)||'').slice(0,10);
+      if(!key||!planHasVisits(state.plan))return false;
+      const a=load(ARCHIVE_KEY);
+      a[key]=Object.assign({},a[key],{weekMonday:key,plan:state.plan});
+      db.setItem(ARCHIVE_KEY,JSON.stringify(a));
+      return true;
+    }catch(e){return false}
+  }
+  function notice(message){
+    /* Message appartenant au slider : jamais d'échec silencieux quand une semaine
+       affichée dans la bande n'a pas encore de planning. */
+    const box=document.getElementById('dayTabs');if(!box||!box.parentNode)return false;
+    let el=document.getElementById('periodDayNotice');
+    if(!el){
+      if(!message)return false;
+      el=document.createElement('div');el.id='periodDayNotice';el.setAttribute('role','status');el.setAttribute('aria-live','polite');
+      el.style.cssText='margin:6px 2px 0;font-size:12px;line-height:1.4;color:#667085;font-weight:500';
+      box.insertAdjacentElement('afterend',el);
+    }
+    el.textContent=message||'';el.hidden=!message;
+    return true;
+  }
   function loadDate(date){
     const a=load(ARCHIVE_KEY),mon=monday(date),key=iso(mon),snap=a[key],name=dayName(date),r=range();
     if(name==='Dimanche'||!r.workDays.includes(name))return false;
     let currentWeek='';try{currentWeek=String((state.settings&&state.settings.weekDate)||'').slice(0,10)}catch(e){}
-    if((!snap||!snap.plan)&&key!==currentWeek)return false;
+    const missing=(!snap||!snap.plan)&&key!==currentWeek;
+    if(missing){
+      /* La semaine visée n'a pas encore de planning : on garde la semaine courante
+         dans l'archive, on affiche la nouvelle semaine vide et on le dit clairement.
+         Le plan courant n'est jamais réétiqueté sur une autre semaine. */
+      archiveCurrentWeek();
+      state.plan=emptyPlan();
+    }
     if(snap&&snap.plan){state.plan={};for(const d of DAYS)state.plan[d]=(snap.plan[d]||[]).map(resolveStore)}
     try{if(!state.settings)state.settings={};state.settings.weekDate=key;const week=document.getElementById('weekDate');if(week)week.value=key}catch(e){}
     activeDate=iso(date);
@@ -39,6 +76,7 @@
       else if(typeof window.renderWeek==='function')window.renderWeek();
       else if(typeof renderAll==='function')renderAll();
     }catch(e){}
+    try{notice(missing?'Semaine du '+humanDate(mon)+' non générée. Utilise « Générer ma semaine » pour la remplir.':'')}catch(e){}
     scheduleRender();
     return true;
   }
