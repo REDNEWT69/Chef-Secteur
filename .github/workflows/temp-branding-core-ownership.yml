@@ -1,0 +1,39 @@
+name: Temporary branding core ownership patch
+
+on:
+  push:
+    branches: [chatgpt/branding-core-ownership]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/branding-core-ownership
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Appliquer le correctif atomique
+        run: python tools/apply_branding_core_ownership.py
+      - name: Vérifications ciblées avant commit
+        run: |
+          node tests/syntax.test.cjs
+          node tests/branding.test.cjs
+          node tests/titlesub-ownership.test.cjs
+          node tests/build-revision.test.cjs
+      - name: Committer uniquement le résultat final
+        run: |
+          git config user.name "Store Runner Reliability Bot"
+          git config user.email "103671138+REDNEWT69@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Fix: retirer le branding hérité du noyau (#107)"
+          git push origin HEAD:chatgpt/branding-core-ownership
