@@ -1,4 +1,4 @@
-const BUILD_REV = "20260912-samsungcleanup1";
+const BUILD_REV = "20260912-v2shell1";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -56,6 +56,11 @@ const OPTIONAL_SHELL = [
   "./sector-admin.js"
 ];
 const SCOPE = self.registration.scope;
+// Store Runner V2 (v2/) est une application volontairement isolée de ce
+// service worker V1 : ne jamais coder /v2/ en dur, toujours le calculer
+// depuis SCOPE (fonctionne aussi bien sous store-runner.fr que sous une URL
+// GitHub Pages du type /Chef-Secteur/v2/).
+const V2_PREFIX = new URL('./v2/', SCOPE).href;
 function requestFor(path){return new Request(new URL(path,SCOPE), {cache:'reload'});}
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
@@ -74,6 +79,10 @@ self.addEventListener('activate', event => {
 });
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
+  // Exclusion V2 : avant toute logique de cache, avant respondWith. Le
+  // navigateur effectue sa requête réseau normale pour /v2/, sans lecture ni
+  // écriture dans le cache V1.
+  if (url.href.startsWith(V2_PREFIX)) return;
   if (event.request.method !== 'GET' || !url.href.startsWith(SCOPE)) return;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
