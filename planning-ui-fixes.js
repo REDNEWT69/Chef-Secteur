@@ -21,7 +21,14 @@
   }
 
   function selectedDayIndex(){const tabs=[...document.querySelectorAll('#dayTabs .dayTab')],idx=tabs.findIndex(b=>b.classList.contains('active'));return idx>=0?idx:0}
-  function selectedDayDate(){const d=weekMonday();d.setDate(d.getDate()+selectedDayIndex());return d}
+  /* La bande de jours peut couvrir plusieurs semaines : l'index de l'onglet actif ne
+     suffit plus, il faut lire sa date réelle quand elle est disponible. Sans cela un
+     onglet de la 2e semaine affichait un en-tête décalé de plusieurs jours. */
+  function selectedDayDate(){
+    const active=document.querySelector('#dayTabs .dayTab.active[data-date]');
+    if(active){const dated=new Date(String(active.dataset.date)+'T12:00:00');if(!isNaN(dated))return dated}
+    const d=weekMonday();d.setDate(d.getDate()+selectedDayIndex());return d;
+  }
   function dayHeroLabel(){const d=selectedDayDate(),day=new Intl.DateTimeFormat('fr-FR',{weekday:'long'}).format(d);return day.charAt(0).toUpperCase()+day.slice(1)+' '+d.getDate()}
   function fullDayLabel(){return new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'long',year:'numeric'}).format(selectedDayDate())}
   function weekLabel(){const m=weekMonday(),end=new Date(m);end.setDate(end.getDate()+5);const a=new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'long'}).format(m),b=new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'long',year:'numeric'}).format(end);return 'Semaine du '+a+' au '+b}
