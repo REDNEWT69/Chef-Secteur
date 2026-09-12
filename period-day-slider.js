@@ -162,6 +162,17 @@
     return entries;
   }
   function tabsSignature(entries){return entries.map(iso).join(',')}
+  function boxMatchesEntries(box,entries){
+    /* La signature seule ne suffit pas : le noyau historique peut reconstruire
+       #dayTabs avec ses propres onglets .dayTab (sans .periodDayTab) sans que la
+       période/les jours travaillés n'aient changé. Il faut donc aussi vérifier que
+       la bande contient déjà, réellement, exactement les onglets slider attendus -
+       même nombre, mêmes data-date, dans le même ordre - sinon on reconstruit. */
+    const tabs=[...box.querySelectorAll('.periodDayTab[data-date]')];
+    if(tabs.length!==entries.length)return false;
+    for(let i=0;i<entries.length;i++)if(tabs[i].dataset.date!==iso(entries[i]))return false;
+    return true;
+  }
   function updateActiveTab(box){
     /* Ne recrée jamais les onglets : bascule la classe active sur les nœuds
        existants, pour ne jamais perturber le scroll horizontal de #dayTabs. */
@@ -184,10 +195,12 @@
     const box=document.getElementById('dayTabs');if(!box)return false;
     const r=range(),entries=buildEntries(r),signature=tabsSignature(entries);
     box.classList.add('periodDayTabs');
-    if(signature!==lastTabsSignature||!box.firstElementChild){
+    if(signature!==lastTabsSignature||!box.firstElementChild||!boxMatchesEntries(box,entries)){
       /* La liste des jours affichés a réellement changé (nouvelle période, jours
-         travaillés modifiés) ou c'est le tout premier rendu : seule cette situation
-         justifie une reconstruction complète de la bande. */
+         travaillés modifiés), c'est le tout premier rendu, ou #dayTabs a été
+         remplacé entretemps par autre chose que les onglets slider attendus (le
+         noyau historique reconstruit parfois la bande avec ses propres .dayTab) :
+         seules ces situations justifient une reconstruction complète. */
       const frag=document.createDocumentFragment();
       for(const d of entries){
         const b=document.createElement('button');b.type='button';b.className='dayTab periodDayTab';b.dataset.date=iso(d);

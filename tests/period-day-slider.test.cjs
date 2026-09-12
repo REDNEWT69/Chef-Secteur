@@ -27,7 +27,12 @@ assert.doesNotMatch(source,/setTimeout\(\(\)=>active\.scrollIntoView/,'le recent
 assert.doesNotMatch(source,/behavior:\s*['"]smooth['"]/,'le recentrage automatique sur une mise à jour métier ne doit plus être systématiquement animé');
 assert.match(source,/function tabsSignature\(entries\)/,'une signature de structure doit permettre de détecter un vrai changement de période/jours travaillés');
 assert.match(source,/function updateActiveTab\(box\)/,'le jour actif doit être mis à jour sur les onglets existants, sans reconstruction');
-assert.match(source,/signature!==lastTabsSignature\|\|!box\.firstElementChild/,'la bande ne doit être reconstruite que si la structure affichée a réellement changé');
+// La signature seule ne suffit pas : si #dayTabs a été remplacé entretemps par autre
+// chose que les onglets slider attendus (le noyau historique reconstruit parfois la
+// bande avec ses propres .dayTab, sans .periodDayTab), il faut reconstruire même si
+// la signature de période/jours travaillés n'a pas changé.
+assert.match(source,/function boxMatchesEntries\(box,entries\)/,'la bande doit vérifier qu’elle contient déjà réellement les onglets slider attendus, pas seulement comparer une signature');
+assert.match(source,/signature!==lastTabsSignature\|\|!box\.firstElementChild\|\|!boxMatchesEntries\(box,entries\)/,'la bande ne doit être reconstruite que si la structure affichée a réellement changé OU si #dayTabs ne contient plus les onglets slider attendus');
 
 source=source.replace(/\}\)\(\);\s*$/,'window.__periodTest={loadDate,range,load,renderTabs,getActiveDate:()=>activeDate};})();');
 
@@ -237,10 +242,45 @@ assert.equal(T.renderTabs(),true);
 assert.equal(box.children.length,3,'un changement réel de période/jours travaillés doit reconstruire la bande');
 assert.notEqual(box.children[0],tab14,'les anciens nœuds doivent être remplacés quand la structure affichée change réellement');
 
+// --- Régression : le noyau historique remplace #dayTabs par ses propres onglets ------
+// (bug signalé sur la PR #128) : la signature de période/jours travaillés seule ne
+// suffit pas à décider qu'il n'y a rien à faire - il faut aussi que la bande contienne
+// déjà réellement les .periodDayTab attendus.
+// 1. onglets slider rendus normalement (état hérité de l'étape précédente : 3 jours,
+//    Lundi 14 à Mercredi 16 septembre 2026).
+assert.equal(box.children.length,3);
+assert(box.children.every(el=>el.classList.contains('periodDayTab')));
+
+// 2. le noyau historique remplace le contenu de #dayTabs par ses propres onglets
+//    (classe .dayTab historique, jamais .periodDayTab).
+box.innerHTML='';
+const foreignMon=dom.document.createElement('button');foreignMon.className='dayTab';foreignMon.textContent='Lun';
+const foreignTue=dom.document.createElement('button');foreignTue.className='dayTab';foreignTue.textContent='Mar';
+box.appendChild(foreignMon);box.appendChild(foreignTue);
+assert.equal(box.querySelectorAll('.periodDayTab').length,0,'la bande doit être passée sous le contrôle d’onglets étrangers');
+
+// 3. un nouveau rendu est déclenché (le même événement métier qu’en toute circonstance).
+assert.equal(T.renderTabs(),true);
+
+// 4/5. les .periodDayTab doivent être recréés, en nombre et data-date conformes à la
+// période attendue - même si la signature de période/jours travaillés n'a pas changé.
+const rebuiltTabs=box.querySelectorAll('.periodDayTab[data-date]');
+assert.equal(rebuiltTabs.length,3,'les onglets slider doivent être recréés après un remplacement par des nœuds étrangers');
+assert.deepEqual(rebuiltTabs.map(el=>el.dataset.date),['2026-09-14','2026-09-15','2026-09-16'],'les onglets recréés doivent correspondre exactement à la période affichée');
+assert.equal(box.children.includes(foreignMon),false,'les nœuds étrangers ne doivent plus faire partie de la bande après reconstruction');
+
+// 6. un rendu normal ultérieur, sans changement structurel, ne doit toujours pas
+// reconstruire la bande et doit conserver scrollLeft.
+box.scrollLeft=77;
+const afterForeignRebuild=box.children.slice();
+assert.equal(T.renderTabs(),true);
+box.children.forEach((c,i)=>assert.equal(c,afterForeignRebuild[i],'un rendu normal après reconstruction ne doit plus recréer les onglets'));
+assert.equal(box.scrollLeft,77,'la position de défilement doit rester intacte une fois la bande légitime restaurée');
+
 // 10. aucun doublon de listener après plusieurs updates/renders : la bande #dayTabs
 // elle-même n'est jamais recréée, bindTouchSwipe reste donc lié une seule fois.
 assert.equal(box._listeners.touchstart.length,1,'bindTouchSwipe ne doit jamais être réappliqué en double sur la bande');
 assert.equal(box._listeners.touchmove.length,1);
 assert.equal(box._listeners.touchend.length,1);
 
-console.log('PASS: le slider de période utilise le stockage actif, ouvre une semaine non générée sans échec silencieux, gère explicitement le swipe tactile Android, et ne reconstruit/recentre plus la bande des jours que lorsque c’est réellement nécessaire.');
+console.log('PASS: le slider de période utilise le stockage actif, ouvre une semaine non générée sans échec silencieux, gère explicitement le swipe tactile Android, ne reconstruit/recentre plus la bande des jours que lorsque c’est réellement nécessaire, et reconstruit bien ses onglets si le noyau historique a remplacé #dayTabs par d’autres nœuds.');
