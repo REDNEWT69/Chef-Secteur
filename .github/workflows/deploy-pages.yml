@@ -4,9 +4,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Mise à jour annuaires officiels"]
-    types: [completed]
 
 permissions:
   contents: read
@@ -19,7 +16,6 @@ concurrency:
 
 jobs:
   checks:
-    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     uses: ./.github/workflows/reliability-checks.yml
   deploy:
     needs: checks

@@ -12,9 +12,7 @@ on:
       - .github/workflows/update-official-stores.yml
 
 permissions:
-  contents: write
-  pull-requests: write
-  actions: write
+  contents: read
 
 concurrency:
   group: official-stores-refresh
@@ -25,8 +23,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -36,30 +32,24 @@ jobs:
         run: python tests/official_catalog_test.py
       - name: Collecter les annuaires officiels
         run: python tools/update_official_stores.py
-      - name: Ouvrir une PR si le snapshot a changé
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Détecter un nouveau snapshot
+        id: snapshot
+        shell: bash
         run: |
-          set -euo pipefail
           if git diff --quiet -- data/official-stores.json; then
-            echo "Aucun changement"
-            exit 0
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Aucun changement dans le catalogue officiel." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "## Mise à jour du catalogue disponible" >> "$GITHUB_STEP_SUMMARY"
+            echo "Un nouveau \`data/official-stores.json\` a été généré." >> "$GITHUB_STEP_SUMMARY"
+            echo "Il est publié comme artefact de ce run et doit être repris via une branche/PR normale avant toute fusion dans \`main\`." >> "$GITHUB_STEP_SUMMARY"
           fi
-
-          branch="automation/official-stores-${GITHUB_RUN_ID}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -c "$branch"
-          git add data/official-stores.json
-          git commit -m "Met à jour les annuaires officiels"
-          git push --set-upstream origin "$branch"
-
-          gh pr create \
-            --base main \
-            --head "$branch" \
-            --title "Mise à jour automatique des annuaires officiels" \
-            --body "Snapshot généré automatiquement depuis les annuaires officiels. Aucun push direct sur main. Reliability est relancé explicitement sur cette branche avant fusion."
-
-          # Les événements créés avec GITHUB_TOKEN ne relancent pas automatiquement
-          # d'autres workflows. workflow_dispatch est donc utilisé explicitement.
-          gh workflow run reliability-checks.yml --ref "$branch"
+      - name: Publier le snapshot candidat
+        if: steps.snapshot.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-stores-candidate-${{ github.run_id }}
+          path: data/official-stores.json
+          if-no-files-found: error
+          retention-days: 14
