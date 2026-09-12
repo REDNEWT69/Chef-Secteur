@@ -83,7 +83,6 @@ function creditOf(ctx,snap){return DAYS.reduce((n,d)=>n+ctx.testRangeRotation.ro
   const counts=new Map();for(const id of snaps.flatMap(weekIds))counts.set(id,(counts.get(id)||0)+1);
   assert.equal(counts.size,10,'aucun magasin éligible ne doit disparaître de la rotation longue');
   const values=[...counts.values()];
-  console.log('DEBUG rotation longue',JSON.stringify(snaps.map(s=>[s.weekMonday,weekIds(s)])),JSON.stringify(Object.fromEntries(counts)));
   assert(Math.max(...values)-Math.min(...values)<=1,'la rotation longue doit rester équilibrée entre magasins planifiables: '+JSON.stringify(Object.fromEntries(counts)));
 
   stores=[
@@ -119,5 +118,5 @@ function creditOf(ctx,snap){return DAYS.reduce((n,d)=>n+ctx.testRangeRotation.ro
   const afterBlocked=new Set(snaps.flatMap(weekIds));
   assert.equal(afterBlocked.size,5,'le dernier magasin frais doit encore être planifié après une semaine bloquée');
 
-  console.log('PASS: la génération de période couvre le vivier avant répétition, garde une mémoire LRU sur toute la période, respecte les crédits, les contraintes fortes et les semaines bloquées.');
+  console.log('PASS: la génération de période couvre le vivier avant répétition, garde une mémoire équilibrée/LRU sur toute la période, respecte les crédits, les contraintes fortes et les semaines bloquées.');
 })().catch(e=>{console.error(e);process.exitCode=1});
