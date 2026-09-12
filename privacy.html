@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>Politique de confidentialité — Store Runner</title>
-  <meta name="description" content="Politique de confidentialité de Store Runner, notamment pour l’accès en lecture seule à Google Agenda.">
+  <meta name="description" content="Politique de confidentialité de Store Runner pour Google Agenda, la localisation et le géocodage OpenStreetMap/Nominatim.">
   <style>
     :root{--ink:#111318;--muted:#667085;--line:#e5e7eb;--blue:#176fd0;--bg:#f7f8fb}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}main{max-width:820px;margin:auto;padding:42px 20px 72px}.top{display:flex;align-items:center;gap:12px;margin-bottom:34px}.top img{width:48px;height:48px;border-radius:14px}.top strong{font-size:22px}h1{font-size:clamp(36px,7vw,58px);line-height:1;letter-spacing:-.05em;margin:0 0 14px}h2{font-size:23px;margin:34px 0 8px;letter-spacing:-.025em}p,li{color:#3f4652}.note{background:#fff;border:1px solid var(--line);border-radius:20px;padding:18px 20px;margin:22px 0}a{color:var(--blue)}footer{margin-top:44px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
   </style>
@@ -13,8 +13,8 @@
 <main>
   <div class="top"><img src="./app-icon.svg" alt="Icône Store Runner"><strong>Store Runner</strong></div>
   <h1>Politique de confidentialité</h1>
-  <p><strong>Dernière mise à jour : 11 septembre 2026.</strong></p>
-  <p>Cette politique explique comment Store Runner traite les données utilisées par l’application, avec une attention particulière aux données obtenues via les API Google.</p>
+  <p><strong>Dernière mise à jour : 12 septembre 2026.</strong></p>
+  <p>Cette politique explique comment Store Runner traite les données utilisées par l’application, notamment les données obtenues via les API Google ainsi que les informations de localisation utilisées pour préparer les tournées.</p>
 
   <div class="note"><strong>Principe essentiel :</strong> la connexion Google Agenda est facultative et en lecture seule. Store Runner n’écrit aucun événement dans Google Agenda.</div>
 
@@ -42,16 +42,23 @@
   <h2>5. Assistant IA</h2>
   <p>Store Runner peut proposer un assistant IA en ligne pour des fonctions d’aide générale au planning. Par conception, le contexte envoyé à cet assistant exclut les détails issus de Google Agenda. Les réponses qui nécessitent le contenu de l’agenda sont traitées localement dans l’application lorsque cette fonctionnalité est disponible.</p>
 
-  <h2>6. Google API Services User Data Policy</h2>
+  <h2>6. Localisation et géocodage OpenStreetMap / Nominatim</h2>
+  <p>Lorsque l’utilisateur choisit « Utiliser ma position actuelle », Store Runner peut utiliser les coordonnées GPS fournies par le navigateur. Lorsque l’utilisateur recherche manuellement une ville ou une adresse de départ, le texte saisi peut être utilisé pour obtenir des coordonnées géographiques.</p>
+  <p>Pour convertir une adresse en coordonnées, ou des coordonnées en adresse lisible, Store Runner envoie directement depuis le navigateur la requête nécessaire au service public <a href="https://nominatim.openstreetmap.org/">Nominatim</a> exploité pour OpenStreetMap. Selon l’action demandée, cette requête contient soit la ville ou l’adresse saisie par l’utilisateur, soit les coordonnées latitude/longitude obtenues depuis son appareil.</p>
+  <p>Ces données sont envoyées uniquement pour déterminer le point de départ utilisé par le planning. Les événements Google Agenda et leur contenu ne sont jamais envoyés à Nominatim. Store Runner limite et sérialise ses appels au service afin de respecter sa politique d’utilisation.</p>
+  <p>Les données OpenStreetMap sont attribuées à <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>. L’utilisation du service Nominatim est également soumise aux politiques de l’OpenStreetMap Foundation, notamment sa <a href="https://osmfoundation.org/wiki/Privacy_Policy">politique de confidentialité</a>.</p>
+
+  <h2>7. Google API Services User Data Policy</h2>
   <p>L’utilisation par Store Runner des informations reçues depuis les API Google respecte la <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, y compris les exigences de <em>Limited Use</em>.</p>
 
-  <h2>7. Sécurité</h2>
+  <h2>8. Sécurité</h2>
   <p>Store Runner limite l’autorisation Google à un accès en lecture seule. Aucun secret client OAuth n’est intégré dans l’application web. Le jeton d’accès est temporaire et reste dans la session du navigateur.</p>
+  <p>Les appels de géocodage sont déclenchés par une action de l’utilisateur et sont envoyés directement au fournisseur concerné depuis le navigateur ; Store Runner n’exploite pas ces requêtes pour de la publicité ou du profilage.</p>
 
-  <h2>8. Évolutions de cette politique</h2>
-  <p>Cette politique peut être mise à jour si le fonctionnement de Store Runner ou les exigences de Google évoluent. La date de mise à jour affichée en haut de la page permet d’identifier la version applicable.</p>
+  <h2>9. Évolutions de cette politique</h2>
+  <p>Cette politique peut être mise à jour si le fonctionnement de Store Runner ou les exigences des fournisseurs utilisés évoluent. La date de mise à jour affichée en haut de la page permet d’identifier la version applicable.</p>
 
-  <h2>9. Contact</h2>
+  <h2>10. Contact</h2>
   <p>Pour une question relative à Store Runner ou à cette politique, le canal public de contact du projet est le dépôt GitHub <a href="https://github.com/REDNEWT69/Chef-Secteur">REDNEWT69/Chef-Secteur</a>.</p>
 
   <footer>
