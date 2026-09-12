@@ -3,7 +3,7 @@
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   const ARCHIVE_KEY='chef_sector_plan_archive_v1';
   const RANGE_KEY='chef_sector_range_v1';
-  let activeDate='',tabObserver=null,renderScheduled=false;
+  let activeDate='',tabObserver=null,renderScheduled=false,lastTabsSignature=null;
   function parse(v){const d=new Date(String(v||'')+'T12:00:00');return isNaN(d)?null:d}
   function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
   function monday(d){const x=new Date(d),w=x.getDay()||7;x.setDate(x.getDate()-w+1);return x}
@@ -152,11 +152,54 @@
     },true);
     return true;
   }
-  function renderTabs(){const box=document.getElementById('dayTabs');if(!box)return false;const r=range(),frag=document.createDocumentFragment();box.innerHTML='';box.classList.add('periodDayTabs');
-    let d=new Date(r.start),count=0;while(d<=r.end&&count<100){const name=dayName(d);if(name!=='Dimanche'&&r.workDays.includes(name)){const b=document.createElement('button');b.type='button';b.className='dayTab periodDayTab'+(iso(d)===activeDate?' active':'');b.dataset.date=iso(d);b.innerHTML='<span>'+shortDay(d)+'</span><b>'+d.getDate()+'</b><small>'+d.toLocaleDateString('fr-FR',{month:'short'}).replace('.','')+'</small>';const copy=new Date(d);b.onclick=function(){loadDate(copy)};frag.appendChild(b)}d=addDays(d,1);count++}
-    box.appendChild(frag);bindTouchSwipe(box);
-    if(!activeDate||!box.querySelector('[data-date="'+activeDate+'"]')){const first=box.firstElementChild;if(first){first.classList.add('active');activeDate=first.dataset.date||''}}
-    const active=box.querySelector('.periodDayTab.active');if(active){syncPlanningHero();setTimeout(()=>active.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'}),30)}return true
+  function buildEntries(r){
+    /* Liste des jours réellement affichables pour la période courante - la seule
+       donnée dont dépend la structure de la bande. Un changement de jour actif ne
+       fait jamais partie de cette liste : il ne doit donc jamais déclencher de
+       reconstruction (voir renderTabs). */
+    const entries=[];let d=new Date(r.start),count=0;
+    while(d<=r.end&&count<100){const name=dayName(d);if(name!=='Dimanche'&&r.workDays.includes(name))entries.push(new Date(d));d=addDays(d,1);count++}
+    return entries;
+  }
+  function tabsSignature(entries){return entries.map(iso).join(',')}
+  function updateActiveTab(box){
+    /* Ne recrée jamais les onglets : bascule la classe active sur les nœuds
+       existants, pour ne jamais perturber le scroll horizontal de #dayTabs. */
+    const tabs=[...box.querySelectorAll('.periodDayTab[data-date]')];let found=false;
+    for(const tab of tabs){const isActive=tab.dataset.date===activeDate;tab.classList.toggle('active',isActive);if(isActive)found=true}
+    if(!found){const first=box.firstElementChild;if(first){first.classList.add('active');activeDate=first.dataset.date||''}}
+    return box.querySelector('.periodDayTab.active');
+  }
+  function centerIfOffscreen(box,active){
+    /* Ne jamais annuler un défilement que l'utilisateur vient de faire : on ne
+       recentre l'onglet actif que s'il est réellement hors de vue, et jamais en
+       animé - un simple changement de jour actif ne doit produire aucune saccade. */
+    if(!box||!active)return;
+    if(typeof box.getBoundingClientRect!=='function'||typeof active.getBoundingClientRect!=='function')return;
+    const boxRect=box.getBoundingClientRect(),tabRect=active.getBoundingClientRect();
+    const visible=tabRect.left>=boxRect.left-0.5&&tabRect.right<=boxRect.right+0.5;
+    if(!visible&&typeof active.scrollIntoView==='function')active.scrollIntoView({block:'nearest',inline:'center'});
+  }
+  function renderTabs(){
+    const box=document.getElementById('dayTabs');if(!box)return false;
+    const r=range(),entries=buildEntries(r),signature=tabsSignature(entries);
+    box.classList.add('periodDayTabs');
+    if(signature!==lastTabsSignature||!box.firstElementChild){
+      /* La liste des jours affichés a réellement changé (nouvelle période, jours
+         travaillés modifiés) ou c'est le tout premier rendu : seule cette situation
+         justifie une reconstruction complète de la bande. */
+      const frag=document.createDocumentFragment();
+      for(const d of entries){
+        const b=document.createElement('button');b.type='button';b.className='dayTab periodDayTab';b.dataset.date=iso(d);
+        b.innerHTML='<span>'+shortDay(d)+'</span><b>'+d.getDate()+'</b><small>'+d.toLocaleDateString('fr-FR',{month:'short'}).replace('.','')+'</small>';
+        const copy=new Date(d);b.onclick=function(){loadDate(copy)};frag.appendChild(b);
+      }
+      box.innerHTML='';box.appendChild(frag);lastTabsSignature=signature;
+    }
+    bindTouchSwipe(box);
+    const active=updateActiveTab(box);
+    if(active){syncPlanningHero();centerIfOffscreen(box,active)}
+    return true;
   }
   function css(){if(document.getElementById('periodDaySliderCss'))return;const s=document.createElement('style');s.id='periodDaySliderCss';s.textContent='.periodDayTabs{display:flex!important;gap:8px!important;overflow-x:auto!important;overflow-y:hidden!important;grid-template-columns:none!important;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;touch-action:pan-y!important;overscroll-behavior-x:contain;padding:4px 1px 8px!important;scrollbar-width:none}.periodDayTabs::-webkit-scrollbar{display:none}.periodDayTab{flex:1 1 0!important;min-width:56px!important;max-width:96px!important;scroll-snap-align:center;touch-action:pan-y!important;border:1px solid #e1e5ed;background:#fff;border-radius:16px;padding:8px 6px!important;text-align:center;color:#667085;min-height:66px}.periodDayTab span,.periodDayTab small{display:block;font-size:10px;line-height:1.1}.periodDayTab b{display:block;font-size:18px;line-height:1.2;color:#1d2939;margin:2px 0}.periodDayTab.active{background:#111318!important;color:#fff!important;border-color:#111318!important}.periodDayTab.active b{color:#fff!important}';document.head.appendChild(s)}
   function observeTabs(){if(tabObserver||typeof MutationObserver==='undefined')return;const box=document.getElementById('dayTabs');if(!box)return;tabObserver=new MutationObserver(()=>{if(!box.querySelector('.periodDayTab'))scheduleRender()});tabObserver.observe(box,{childList:true})}
