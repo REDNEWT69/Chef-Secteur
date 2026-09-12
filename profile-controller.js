@@ -136,7 +136,9 @@
   }
 
   function validBase(){
-    const lat=Number(state.profile.baseLat),lon=Number(state.profile.baseLon);return window.state&&state.profile&&isFinite(lat)&&isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180&&!(lat===0&&lon===0);
+    if(!window.state||!state.profile)return false;
+    const lat=Number(state.profile.baseLat),lon=Number(state.profile.baseLon);
+    return isFinite(lat)&&isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180&&!(lat===0&&lon===0);
   }
 
   function installPersistedBase(){
@@ -177,6 +179,7 @@
   }
 
   window.storeRunnerToast=toast;
+  window.storeRunnerHasValidBase=validBase;
   window.lookupDepartureAddress=async function(){
     const btn=document.getElementById('departureLookupBtn');
     if(btn){btn.disabled=true;btn.dataset.oldText=btn.textContent;btn.textContent='⌕ Recherche…'}

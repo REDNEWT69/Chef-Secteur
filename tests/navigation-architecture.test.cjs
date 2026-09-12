@@ -28,6 +28,10 @@ must('profile-controller.js','seuil de précision GPS',/accuracy>250/);
 must('profile-controller.js','géocodage manuel du départ',/async function forwardGeocode\(query\)/);
 must('profile-controller.js','bouton de recherche manuelle',/departureLookupBtn/);
 must('profile-controller.js','sauvegarde capable de géocoder sans GPS',/await geocodeDepartureInputs\(\)/);
+must('profile-controller.js','API publique de validation du départ',/window\.storeRunnerHasValidBase\s*=\s*validBase/);
+must('planning-generation-controller.js','consommation de la validation du profil',/window\.storeRunnerHasValidBase\(\)/);
+forbid('planning-generation-controller.js','duplication locale de validBase',/function\s+validBase\s*\(/);
+forbid('planning-generation-controller.js','duplication des bornes latitude',/lat\s*>=\s*-90|lat\s*<=\s*90/);
 
 must('sw.js','contrôleur de navigation disponible hors ligne',/["']\.\/navigation-controller\.js["']/);
 must('sw.js','contrôleur profil disponible hors ligne',/["']\.\/profile-controller\.js["']/);
