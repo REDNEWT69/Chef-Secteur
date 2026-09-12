@@ -264,7 +264,13 @@ function plannedDayForStore(id){
   for(const day of DAYS)if(((state.plan&&state.plan[day])||[]).some(s=>String(s.id)===wanted))return day;
   return null;
 }
+function plannedOtherDayForStore(id,day){
+  const wanted=String(id);
+  for(const d of DAYS)if(d!==day&&((state.plan&&state.plan[d])||[]).some(s=>String(s.id)===wanted))return d;
+  return null;
+}
 function appointmentOnDay(storeId,day){const date=dayDate(day);return (state.appointments||[]).some(a=>String(a.storeId)===String(storeId)&&a.date===date)}
+function appointmentDayForStore(storeId){for(const day of DAYS)if(appointmentOnDay(storeId,day))return day;return null}
 function distanceBetween(a,b){try{return Number(hav(a,b))||0}catch(e){const la=Number(a&&a.lat),loa=Number(a&&a.lon),lb=Number(b&&b.lat),lob=Number(b&&b.lon);if([la,loa,lb,lob].every(Number.isFinite))return Math.hypot(la-lb,loa-lob)*100;return 9999}}
 function routeKm(route){if(!route||!route.length)return 0;try{let km=havBase(route[0]);for(let i=1;i<route.length;i++)km+=hav(route[i-1],route[i]);km+=hav(route[route.length-1],baseObj());return km*1.22}catch(e){return 0}}
 function clockLabel(minutes){minutes=Math.max(0,Math.round(minutes));return String(Math.floor(minutes/60)%24).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0')}
@@ -284,14 +290,54 @@ function manualCandidatePool(anchor,day,oldId,blocked){
   out.sort((a,b)=>distanceBetween(anchor,a)-distanceBetween(anchor,b)||scoreOf(b)-scoreOf(a)||String(a.ville||'').localeCompare(String(b.ville||'')));
   return out;
 }
+function sourceFitDistance(route,s){
+  if(route&&route.length)return route.reduce((best,x)=>Math.min(best,distanceBetween(x,s)),Infinity);
+  try{return Number(havBase(s))||9999}catch(e){return 9999}
+}
+function buildSourceAdjustment(sourceDay,anchor,targetDay,oldId,targetRoute){
+  if(!sourceDay)return null;
+  if(appointmentOnDay(anchor.id,sourceDay))throw new Error((anchor.enseigne||'Ce magasin')+' '+(anchor.ville||'')+' a un rendez-vous '+sourceDay+' : déplace d’abord ce rendez-vous avant de changer le jour.');
+  const sourceCurrent=((state.plan&&state.plan[sourceDay])||[]).slice(),previousCount=sourceCurrent.length;
+  let route=optimizeRoute(sourceCurrent.filter(s=>String(s.id)!==String(anchor.id)));
+  const occupied=new Set();
+  for(const d of DAYS){
+    const rows=d===targetDay?(targetRoute||[]):d===sourceDay?route:((state.plan&&state.plan[d])||[]);
+    for(const s of rows){const k=storeKey(s);if(k)occupied.add(k)}
+  }
+  const oldStore=(state.stores||[]).find(s=>String(s.id)===String(oldId));
+  const allowed=s=>{
+    if(!s||s.active===false||(state.excluded&&state.excluded[s.id])||String(s.id)===String(anchor.id))return false;
+    const k=storeKey(s);if(!k||occupied.has(k))return false;
+    const lock=state.locks&&state.locks[s.id];
+    if(lock&&!(String(s.id)===String(oldId)&&lock===targetDay)&&lock!==sourceDay)return false;
+    const appt=appointmentDayForStore(s.id);if(appt&&appt!==sourceDay)return false;
+    return true;
+  };
+  const candidates=[],seen=new Set(),push=s=>{if(!allowed(s))return;const k=storeKey(s);if(seen.has(k))return;seen.add(k);candidates.push(s)};
+  push(oldStore);
+  for(const s of (state.stores||[]))push(s);
+  candidates.sort((a,b)=>{
+    if(oldStore){if(String(a.id)===String(oldStore.id)&&String(b.id)!==String(oldStore.id))return-1;if(String(b.id)===String(oldStore.id)&&String(a.id)!==String(oldStore.id))return 1}
+    return sourceFitDistance(route,a)-sourceFitDistance(route,b)||scoreOf(b)-scoreOf(a)||String(a.ville||'').localeCompare(String(b.ville||''));
+  });
+  const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
+  for(const candidate of candidates){
+    if(route.length>=previousCount)break;
+    const trial=optimizeRoute(route.concat([candidate]));
+    if(routeCredits(trial)>max||finish(trial,sourceDay)>limitFor(sourceDay))continue;
+    route=trial;occupied.add(storeKey(candidate));
+  }
+  route=optimizeRoute(route);
+  return{sourceDay,sourceRoute:route,sourcePreviousCount:previousCount,sourceReduced:route.length<previousCount,sourceKm:routeKm(route),sourceEnd:route.length?clockLabel(finish(route,sourceDay)):'—'};
+}
 function buildDayReplacement(oldId,anchor,day,recenter=true){
   if(!anchor||anchor.active===false)throw new Error('Ce magasin n’est pas actif dans ton secteur.');
   if(state.excluded&&state.excluded[anchor.id])throw new Error('Ce magasin est actuellement exclu du planning.');
-  if(state.locks&&state.locks[anchor.id]&&state.locks[anchor.id]!==day)throw new Error('Ce magasin est verrouillé sur '+state.locks[anchor.id]+'.');
+  const sourceDay=plannedOtherDayForStore(anchor.id,day),anchorLock=state.locks&&state.locks[anchor.id];
+  if(anchorLock&&anchorLock!==day&&anchorLock!==sourceDay)throw new Error('Ce magasin est verrouillé sur '+anchorLock+'.');
   const current=((state.plan&&state.plan[day])||[]).slice(),oldIndex=current.findIndex(s=>String(s.id)===String(oldId));
   if(oldIndex<0)throw new Error('Ce magasin n’est plus présent dans '+day+'. Recharge le planning.');
   if(appointmentOnDay(oldId,day))throw new Error('Ce magasin a un rendez-vous enregistré '+day+'. Modifie d’abord ce rendez-vous avant de le remplacer.');
-  if(usedElsewhere(anchor.id,day))throw new Error('Ce magasin est déjà planifié un autre jour de cette semaine.');
   if(current.some(s=>String(s.id)===String(anchor.id)&&String(s.id)!==String(oldId)))throw new Error('Ce magasin est déjà présent dans cette journée.');
   const protectedIds=protectedDayIds(day,oldId),protectedStores=current.filter(s=>protectedIds.has(String(s.id)));
   let route;
@@ -312,8 +358,11 @@ function buildDayReplacement(oldId,anchor,day,recenter=true){
     }
   }
   const keys=route.map(storeKey);if(new Set(keys).size!==keys.length)throw new Error('Le recalcul créerait un doublon dans la journée.');
+  const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
+  if(routeCredits(route)>max)throw new Error('La nouvelle journée dépasserait le plafond de '+max+' crédits de visite.');
   if(finish(route,day)>limitFor(day))throw new Error('La nouvelle tournée dépasserait l’heure de fin. Choisis une zone plus proche ou moins de contraintes.');
-  return{route,day,anchor,oldId:String(oldId),recenter,protectedIds:[...protectedIds],km:routeKm(route),end:clockLabel(finish(route,day)),reduced:route.length<current.length,previousCount:current.length};
+  const source=buildSourceAdjustment(sourceDay,anchor,day,oldId,route);
+  return Object.assign({route,day,anchor,oldId:String(oldId),recenter,protectedIds:[...protectedIds],km:routeKm(route),end:clockLabel(finish(route,day)),reduced:route.length<current.length,previousCount:current.length},source||{});
 }
 function refreshRangeStats(bundle){
   if(!bundle.range||!bundle.archive)return;
@@ -323,37 +372,56 @@ function refreshRangeStats(bundle){
 }
 async function persistDayReplacement(preview){
   const R=window.ChefReliability,db=storage();if(!R||typeof R.capture!=='function'||typeof R.persist!=='function')throw new Error('Protection des données indisponible.');
-  R.checkpoint('Avant changement manuel de '+preview.day,db);
+  R.checkpoint(preview.sourceDay?'Avant déplacement manuel de '+preview.sourceDay+' vers '+preview.day:'Avant changement manuel de '+preview.day,db);
   const bundle=R.capture(state,db),next=JSON.parse(JSON.stringify(state)),weekKey=iso(monday(parse((state.settings&&state.settings.weekDate)||'')||new Date()));
   next.plan=next.plan||{};next.plan[preview.day]=preview.route.map(s=>(state.stores||[]).find(x=>String(x.id)===String(s.id))||s);
-  /* Le magasin choisi à la main est posé sur ce jour : la prochaine génération ne doit
-     plus le déplacer. Celui qu'il remplace est libéré, sinon il serait reposé de force
-     sur cette même journée au rendu suivant. Les autres magasins de la tournée, eux,
-     ont été choisis automatiquement par le recentrage : ils restent libres. */
+  if(preview.sourceDay&&Array.isArray(preview.sourceRoute))next.plan[preview.sourceDay]=preview.sourceRoute.map(s=>(state.stores||[]).find(x=>String(x.id)===String(s.id))||s);
+  /* Le magasin choisi à la main est posé sur sa nouvelle journée. S'il venait d'un autre
+     jour, son verrou suit le déplacement. Le magasin remplacé est libéré ; les visites
+     ajoutées automatiquement pour combler l'ancien jour restent libres. */
   next.locks=next.locks||{};
   if(preview.anchor&&preview.anchor.id)next.locks[String(preview.anchor.id)]=preview.day;
   if(preview.oldId&&next.locks[String(preview.oldId)]===preview.day)delete next.locks[String(preview.oldId)];
   bundle.state=next;
-  if(bundle.archive&&bundle.archive[weekKey]){bundle.archive[weekKey].plan=bundle.archive[weekKey].plan||{};bundle.archive[weekKey].plan[preview.day]=preview.route.map(cloneStore);refreshRangeStats(bundle)}
+  if(bundle.archive&&bundle.archive[weekKey]){
+    bundle.archive[weekKey].plan=bundle.archive[weekKey].plan||{};
+    bundle.archive[weekKey].plan[preview.day]=preview.route.map(cloneStore);
+    if(preview.sourceDay&&Array.isArray(preview.sourceRoute))bundle.archive[weekKey].plan[preview.sourceDay]=preview.sourceRoute.map(cloneStore);
+    refreshRangeStats(bundle);
+  }
   R.persist(bundle,db);if(db&&typeof db.flush==='function')await db.flush();window.state=bundle.state;
   if(typeof initControls==='function')initControls();if(typeof renderAll==='function')renderAll();
-  document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{reason:'day-store-recenter',day:preview.day,weekDate:weekKey}}));
+  document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{reason:preview.sourceDay?'store-moved-between-days':'day-store-recenter',day:preview.day,sourceDay:preview.sourceDay||null,weekDate:weekKey}}));
   return true;
 }
-function ensureReplaceCss(){if(document.getElementById('dayStoreReplaceCss'))return;const style=document.createElement('style');style.id='dayStoreReplaceCss';style.textContent='#dayStoreReplaceDialog{width:min(640px,calc(100% - 20px));max-height:88dvh;padding:0;overflow:hidden;border-radius:26px}#dayStoreReplaceDialog .dsrHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:18px 18px 10px;position:sticky;top:0;background:#fff;z-index:3}#dayStoreReplaceDialog .dsrHead h2{margin:0;font-size:22px}#dayStoreReplaceDialog .dsrHead p{margin:4px 0 0;color:#667085;font-size:12px}#dayStoreReplaceDialog .dsrClose{border:0;background:#f2f3f5;border-radius:999px;width:36px;height:36px;font-size:22px}#dayStoreReplaceDialog .dsrBody{padding:6px 18px 18px;overflow:auto;max-height:calc(88dvh - 74px)}#dayStoreReplaceDialog .dsrFilters{display:grid;grid-template-columns:1fr 180px;gap:8px;position:sticky;top:0;background:#fff;padding:4px 0 10px;z-index:2}#dayStoreReplaceDialog .dsrResults{display:grid;gap:8px;max-height:45dvh;overflow:auto}#dayStoreReplaceDialog .dsrStore{display:flex;justify-content:space-between;gap:12px;text-align:left;border:1px solid #e1e5ed;background:#fff;border-radius:16px;padding:12px}#dayStoreReplaceDialog .dsrStore b{display:block;font-size:14px}#dayStoreReplaceDialog .dsrStore small{display:block;color:#667085;margin-top:3px;line-height:1.35}#dayStoreReplaceDialog .dsrMode{display:flex;gap:9px;align-items:flex-start;border:1px solid #dbe8ff;background:#f6f9ff;border-radius:16px;padding:11px;margin:10px 0}#dayStoreReplaceDialog .dsrMode input{width:20px;height:20px;margin-top:1px}#dayStoreReplaceDialog .dsrPreview{border:1px solid #e1e5ed;border-radius:18px;padding:13px;margin-top:10px;background:#fafbfc}#dayStoreReplaceDialog .dsrRoute{display:grid;gap:6px;margin:10px 0}#dayStoreReplaceDialog .dsrRoute div{background:#fff;border:1px solid #eaecf0;border-radius:12px;padding:9px 10px;font-size:12px}#dayStoreReplaceDialog .dsrButtons{display:grid;grid-template-columns:1fr 1.3fr;gap:8px;margin-top:12px}@media(max-width:560px){#dayStoreReplaceDialog .dsrFilters{grid-template-columns:1fr}#dayStoreReplaceDialog .dsrResults{max-height:40dvh}}';document.head.appendChild(style)}
+function ensureReplaceCss(){if(document.getElementById('dayStoreReplaceCss'))return;const style=document.createElement('style');style.id='dayStoreReplaceCss';style.textContent='#dayStoreReplaceDialog{width:min(640px,calc(100% - 20px));max-height:88dvh;padding:0;overflow:hidden;border-radius:26px}#dayStoreReplaceDialog .dsrHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:18px 18px 10px;position:sticky;top:0;background:#fff;z-index:3}#dayStoreReplaceDialog .dsrHead h2{margin:0;font-size:22px}#dayStoreReplaceDialog .dsrHead p{margin:4px 0 0;color:#667085;font-size:12px}#dayStoreReplaceDialog .dsrClose{border:0;background:#f2f3f5;border-radius:999px;width:36px;height:36px;font-size:22px}#dayStoreReplaceDialog .dsrBody{padding:6px 18px 18px;overflow:auto;max-height:calc(88dvh - 74px)}#dayStoreReplaceDialog .dsrFilters{display:grid;grid-template-columns:1fr 180px;gap:8px;position:sticky;top:0;background:#fff;padding:4px 0 10px;z-index:2}#dayStoreReplaceDialog .dsrResults{display:grid;gap:8px;max-height:45dvh;overflow:auto}#dayStoreReplaceDialog .dsrStore{display:flex;justify-content:space-between;gap:12px;text-align:left;border:1px solid #e1e5ed;background:#fff;border-radius:16px;padding:12px}#dayStoreReplaceDialog .dsrStore b{display:block;font-size:14px}#dayStoreReplaceDialog .dsrStore small{display:block;color:#667085;margin-top:3px;line-height:1.35}#dayStoreReplaceDialog .dsrMove{font-weight:800;color:#0b62d6!important}#dayStoreReplaceDialog .dsrMode{display:flex;gap:9px;align-items:flex-start;border:1px solid #dbe8ff;background:#f6f9ff;border-radius:16px;padding:11px;margin:10px 0}#dayStoreReplaceDialog .dsrMode input{width:20px;height:20px;margin-top:1px}#dayStoreReplaceDialog .dsrPreview{border:1px solid #e1e5ed;border-radius:18px;padding:13px;margin-top:10px;background:#fafbfc}#dayStoreReplaceDialog .dsrRoute{display:grid;gap:6px;margin:10px 0}#dayStoreReplaceDialog .dsrRoute div{background:#fff;border:1px solid #eaecf0;border-radius:12px;padding:9px 10px;font-size:12px}#dayStoreReplaceDialog .dsrButtons{display:grid;grid-template-columns:1fr 1.3fr;gap:8px;margin-top:12px}@media(max-width:560px){#dayStoreReplaceDialog .dsrFilters{grid-template-columns:1fr}#dayStoreReplaceDialog .dsrResults{max-height:40dvh}}';document.head.appendChild(style)}
 function ensureReplaceDialog(){
   let dlg=document.getElementById('dayStoreReplaceDialog');if(dlg)return dlg;ensureReplaceCss();dlg=document.createElement('dialog');dlg.id='dayStoreReplaceDialog';dlg.innerHTML='<div class="dsrHead"><div><h2>Changer ce magasin</h2><p id="dsrContext"></p></div><button type="button" class="dsrClose" aria-label="Fermer">×</button></div><div class="dsrBody"><div id="dsrChooser"><div class="dsrFilters"><input id="dsrSearch" type="search" placeholder="Enseigne, ville, adresse, département"><select id="dsrBrand"><option value="">Toutes les enseignes</option></select></div><label class="dsrMode"><input id="dsrRecenter" type="checkbox" checked><span><b>Recentrer la journée</b><br><small>Remplace aussi les visites non contraintes par des magasins cohérents autour du magasin choisi. Décoche pour remplacer uniquement ce magasin.</small></span></label><div id="dsrResults" class="dsrResults"></div></div><div id="dsrPreview" class="dsrPreview" hidden></div></div>';
   document.body.appendChild(dlg);dlg.querySelector('.dsrClose').onclick=()=>dlg.close();dlg.addEventListener('cancel',()=>{replacePreview=null});dlg.querySelector('#dsrSearch').addEventListener('input',renderReplaceResults);dlg.querySelector('#dsrBrand').addEventListener('change',renderReplaceResults);dlg.querySelector('#dsrRecenter').addEventListener('change',()=>{if(replacePreview&&replacePreview.anchor)selectReplacement(replacePreview.anchor.id)});return dlg;
 }
 function renderReplaceResults(){
-  const dlg=ensureReplaceDialog(),host=dlg.querySelector('#dsrResults'),q=norm(dlg.querySelector('#dsrSearch').value),brand=dlg.querySelector('#dsrBrand').value,oldId=replaceContext&&replaceContext.oldId;host.replaceChildren();
+  const dlg=ensureReplaceDialog(),host=dlg.querySelector('#dsrResults'),q=norm(dlg.querySelector('#dsrSearch').value),brand=dlg.querySelector('#dsrBrand').value,oldId=replaceContext&&replaceContext.oldId,targetDay=replaceContext&&replaceContext.day;host.replaceChildren();
   const rows=(state.stores||[]).filter(s=>s&&s.active!==false&&!(state.excluded&&state.excluded[s.id])&&String(s.id)!==String(oldId)&&(!brand||String(s.enseigne)===brand)&&(!q||norm((s.enseigne||'')+' '+(s.ville||'')+' '+(s.adresse||'')+' '+(s.dept||'')).includes(q))).sort((a,b)=>String(a.enseigne||'').localeCompare(String(b.enseigne||''))||String(a.ville||'').localeCompare(String(b.ville||''))).slice(0,80);
   if(!rows.length){const p=document.createElement('p');p.textContent='Aucun magasin trouvé avec ces critères.';p.className='tiny';host.appendChild(p);return}
-  for(const s of rows){const b=document.createElement('button');b.type='button';b.className='dsrStore';const left=document.createElement('span'),right=document.createElement('small');const name=document.createElement('b'),meta=document.createElement('small');name.textContent=(s.enseigne||'Magasin')+' '+(s.ville||'');meta.textContent=(s.adresse||'Adresse non renseignée')+(s.dept?' · '+s.dept:'');left.append(name,meta);try{right.textContent='~'+Math.round(havBase(s))+' km'}catch(e){right.textContent='Choisir'}b.append(left,right);b.onclick=()=>selectReplacement(s.id);host.appendChild(b)}
+  for(const s of rows){const b=document.createElement('button');b.type='button';b.className='dsrStore';const left=document.createElement('span'),right=document.createElement('small');const name=document.createElement('b'),meta=document.createElement('small'),otherDay=targetDay?plannedOtherDayForStore(s.id,targetDay):null;name.textContent=(s.enseigne||'Magasin')+' '+(s.ville||'');meta.textContent=(s.adresse||'Adresse non renseignée')+(s.dept?' · '+s.dept:'');left.append(name,meta);if(otherDay){right.textContent='Déplacer de '+otherDay;right.className='dsrMove'}else try{right.textContent='~'+Math.round(havBase(s))+' km'}catch(e){right.textContent='Choisir'}b.append(left,right);b.onclick=()=>selectReplacement(s.id);host.appendChild(b)}
+}
+function showReplacementError(dlg,message){
+  const host=dlg.querySelector('#dsrPreview');host.hidden=false;host.replaceChildren();const h=document.createElement('h3');h.textContent='Impossible pour l’instant';const p=document.createElement('p');p.className='tiny';p.textContent=message;const back=document.createElement('button');back.type='button';back.className='secondary full';back.textContent='Choisir un autre magasin';back.onclick=()=>{host.hidden=true;replacePreview=null};host.append(h,p,back);host.scrollIntoView({behavior:'smooth',block:'start'});
 }
 function selectReplacement(id){
   const anchor=(state.stores||[]).find(s=>String(s.id)===String(id));if(!anchor||!replaceContext)return;const dlg=ensureReplaceDialog(),recenter=dlg.querySelector('#dsrRecenter').checked,previewHost=dlg.querySelector('#dsrPreview');
-  try{replacePreview=buildDayReplacement(replaceContext.oldId,anchor,replaceContext.day,recenter);previewHost.hidden=false;previewHost.replaceChildren();const h=document.createElement('h3');h.textContent=(recenter?'Nouvelle journée autour de ':'Remplacement par ')+(anchor.enseigne||'')+' '+(anchor.ville||'');const meta=document.createElement('p');meta.className='tiny';meta.textContent=replacePreview.route.length+' visite'+(replacePreview.route.length>1?'s':'')+' · ~'+Math.round(replacePreview.km)+' km · fin estimée '+replacePreview.end+(replacePreview.reduced?' · '+(replacePreview.previousCount-replacePreview.route.length)+' visite retirée pour respecter les horaires':'');const route=document.createElement('div');route.className='dsrRoute';replacePreview.route.forEach((s,i)=>{const row=document.createElement('div');row.textContent=(i+1)+'. '+(s.enseigne||'Magasin')+' '+(s.ville||'')+(replacePreview.protectedIds.includes(String(s.id))?' · conservé (contrainte)':'');route.appendChild(row)});const note=document.createElement('p');note.className='tiny';note.textContent='Seule cette journée sera modifiée. Les autres jours et les autres semaines restent inchangés.';const buttons=document.createElement('div');buttons.className='dsrButtons';const back=document.createElement('button');back.type='button';back.className='secondary';back.textContent='Choisir un autre';back.onclick=()=>{previewHost.hidden=true;replacePreview=null};const apply=document.createElement('button');apply.type='button';apply.className='primary';apply.textContent='Appliquer cette journée';apply.onclick=async()=>{apply.disabled=true;try{await persistDayReplacement(replacePreview);const saved=replacePreview;dlg.close();replaceContext=null;replacePreview=null;showStatus(saved.day+' recalculé autour de '+saved.anchor.enseigne+' '+saved.anchor.ville+'.');setTimeout(()=>{if(typeof window.openStoreQuick==='function')window.openStoreQuick(saved.anchor.id,saved.day)},80)}catch(e){apply.disabled=false;if(typeof showError==='function')showError(e.message||String(e));else alert(e.message||String(e))}};buttons.append(back,apply);previewHost.append(h,meta,route,note,buttons);previewHost.scrollIntoView({behavior:'smooth',block:'start'})}catch(e){replacePreview=null;previewHost.hidden=true;if(typeof showError==='function')showError(e.message||String(e));else alert(e.message||String(e))}
+  try{
+    replacePreview=buildDayReplacement(replaceContext.oldId,anchor,replaceContext.day,recenter);previewHost.hidden=false;previewHost.replaceChildren();
+    const h=document.createElement('h3');h.textContent=(recenter?'Nouvelle journée autour de ':'Remplacement par ')+(anchor.enseigne||'')+' '+(anchor.ville||'');
+    const meta=document.createElement('p');meta.className='tiny';meta.textContent=replacePreview.route.length+' visite'+(replacePreview.route.length>1?'s':'')+' · ~'+Math.round(replacePreview.km)+' km · fin estimée '+replacePreview.end+(replacePreview.reduced?' · '+(replacePreview.previousCount-replacePreview.route.length)+' visite retirée pour respecter les horaires':'');
+    const route=document.createElement('div');route.className='dsrRoute';replacePreview.route.forEach((s,i)=>{const row=document.createElement('div');row.textContent=(i+1)+'. '+(s.enseigne||'Magasin')+' '+(s.ville||'')+(replacePreview.protectedIds.includes(String(s.id))?' · conservé (contrainte)':'');route.appendChild(row)});
+    const note=document.createElement('p');note.className='tiny';
+    if(replacePreview.sourceDay){
+      note.textContent=(anchor.enseigne||'Ce magasin')+' '+(anchor.ville||'')+' est actuellement prévu '+replacePreview.sourceDay+'. Il sera déplacé vers '+replacePreview.day+' et '+replacePreview.sourceDay+' sera adapté automatiquement.';
+      const sourceTitle=document.createElement('b');sourceTitle.textContent=replacePreview.sourceDay+' après adaptation';const sourceMeta=document.createElement('p');sourceMeta.className='tiny';sourceMeta.textContent=replacePreview.sourceRoute.length+' visite'+(replacePreview.sourceRoute.length>1?'s':'')+(replacePreview.sourceRoute.length?' · ~'+Math.round(replacePreview.sourceKm)+' km · fin estimée '+replacePreview.sourceEnd:'')+(replacePreview.sourceReduced?' · 1 visite en moins faute de créneau compatible':'');const sourceRoute=document.createElement('div');sourceRoute.className='dsrRoute';replacePreview.sourceRoute.forEach((s,i)=>{const row=document.createElement('div');row.textContent=(i+1)+'. '+(s.enseigne||'Magasin')+' '+(s.ville||'');sourceRoute.appendChild(row)});previewHost.append(h,meta,route,note,sourceTitle,sourceMeta,sourceRoute);
+    }else{note.textContent='Seule cette journée sera modifiée. Les autres jours et les autres semaines restent inchangés.';previewHost.append(h,meta,route,note)}
+    const buttons=document.createElement('div');buttons.className='dsrButtons';const back=document.createElement('button');back.type='button';back.className='secondary';back.textContent='Choisir un autre';back.onclick=()=>{previewHost.hidden=true;replacePreview=null};const apply=document.createElement('button');apply.type='button';apply.className='primary';apply.textContent=replacePreview.sourceDay?'Déplacer et adapter la semaine':'Appliquer cette journée';apply.onclick=async()=>{apply.disabled=true;try{await persistDayReplacement(replacePreview);const saved=replacePreview;dlg.close();replaceContext=null;replacePreview=null;showStatus(saved.sourceDay?(saved.anchor.enseigne+' '+saved.anchor.ville+' déplacé de '+saved.sourceDay+' vers '+saved.day+' · '+saved.sourceDay+' adapté.'):(saved.day+' recalculé autour de '+saved.anchor.enseigne+' '+saved.anchor.ville+'.'));setTimeout(()=>{if(typeof window.openStoreQuick==='function')window.openStoreQuick(saved.anchor.id,saved.day)},80)}catch(e){apply.disabled=false;showReplacementError(dlg,e.message||String(e))}};buttons.append(back,apply);previewHost.append(buttons);previewHost.scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(e){replacePreview=null;showReplacementError(dlg,e.message||String(e))}
 }
 function openDayStoreReplacement(){
   const start=document.getElementById('srQuickStart'),oldId=start&&start.dataset&&start.dataset.srStart,day=plannedDayForStore(oldId);if(!oldId||!day){if(typeof showError==='function')showError('Ce magasin n’est pas dans la journée affichée. Ouvre un magasin directement depuis le planning.');return}

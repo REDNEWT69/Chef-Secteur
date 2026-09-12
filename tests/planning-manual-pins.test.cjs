@@ -1,11 +1,12 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 
-// #138 : un magasin placé ou remplacé à la main est « posé ». La génération automatique ne
-// doit jamais le déplacer, le remplacer ni le retirer. Elle ne recalcule que les visites
-// qu'elle a elle-même produites, dans la place et le budget de crédits qui restent.
+// #138 / #143 : un magasin placé ou remplacé à la main est « posé ». La génération
+// automatique ne doit jamais le déplacer, le remplacer ni le retirer. Un magasin déjà
+// présent un autre jour peut maintenant être déplacé explicitement : l'ancien jour est
+// adapté sans doublon et sans écraser les rendez-vous.
 
 const plannerSource=fs.readFileSync(__dirname+'/../range-planner-v2.js','utf8')
-  .replace('window.openDayStoreReplacement=openDayStoreReplacement;','window.testPins={strictSingleWeek,persistDayReplacement,pinStore,unpinStore,isPinnedOn,pinnedDay,togglePlannedStorePin,syncPinButton,installDayReplaceUi,routeCredits};window.openDayStoreReplacement=openDayStoreReplacement;');
+  .replace('window.openDayStoreReplacement=openDayStoreReplacement;','window.testPins={strictSingleWeek,persistDayReplacement,buildDayReplacement,plannedOtherDayForStore,pinStore,unpinStore,isPinnedOn,pinnedDay,togglePlannedStorePin,syncPinButton,installDayReplaceUi,routeCredits};window.openDayStoreReplacement=openDayStoreReplacement;');
 const countingSource=fs.readFileSync(__dirname+'/../visit-counting.js','utf8');
 const coreSource=fs.readFileSync(__dirname+'/../src/chef-secteur.html','utf8');
 
@@ -19,6 +20,8 @@ assert.match(plannerSource,/id="pinQuickStoreBtn"|pin\.id='pinQuickStoreBtn'/,'l
 assert.match(plannerSource,/↩ Libérer ce magasin/,'le libellé doit basculer vers la libération quand le magasin est posé');
 assert.match(plannerSource,/📌 Poser ce magasin/,'le libellé doit proposer la pose quand le magasin est libre');
 assert.match(plannerSource,/window\.storeRunnerPinPlannedStore/,'la pose doit être publique, pour qu’un futur déplacement l’appelle au lieu de redéfinir la règle');
+assert.match(plannerSource,/Déplacer de /,'un magasin déjà prévu ailleurs doit être présenté comme déplaçable, pas comme un faux bouton sans effet');
+assert.match(plannerSource,/store-moved-between-days/,'le déplacement inter-jours doit avoir un événement explicite');
 // Indication visuelle, chez le propriétaire du rendu de la timeline.
 assert.match(coreSource,/state\.locks&&state\.locks\[st\.id\]===selectedPlanningDay/,'la timeline doit distinguer une visite posée d’une visite automatique');
 assert.match(coreSource,/\(pinned\?'<div class="tlPinned"/,'la ligne de timeline doit émettre le repère quand la visite est posée');
@@ -46,7 +49,7 @@ function env(options){
     profile:{},stores:(opts.stores||[]).map(s=>Object.assign({},s)),
     plan:opts.plan||{Lundi:[],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]},
     included:{},excluded:{},locks:Object.assign({},opts.locks||{}),
-    appointments:[],calendarEvents:[],visits:{},notes:{}
+    appointments:(opts.appointments||[]).map(a=>Object.assign({},a)),calendarEvents:[],visits:{},notes:{}
   };
   const proposals=[],checkpoints=[],saves=[];
   const ctx={
@@ -71,7 +74,7 @@ function env(options){
     ChefReliability:{
       checkpoint(reason){checkpoints.push(reason)},
       propose:async c=>{proposals.push(c);return opts.accept===true},
-      capture:s=>({format:'ChefSecteurBackup',version:1,state:JSON.parse(JSON.stringify(s||state)),archive:{},range:null}),
+      capture:s=>({format:'ChefSecteurBackup',version:1,state:JSON.parse(JSON.stringify(s||state)),archive:JSON.parse(JSON.stringify(opts.archive||{})),range:opts.range||null}),
       persist(bundle){ctx.__persisted=bundle}
     },
     syncGoogleCalendar:async()=>({ok:true}),calendarEventsForDate:()=>[]
@@ -106,8 +109,6 @@ function ids(route){return Array.from(route||[]).map(s=>String(s.id))}
   for(const day of DAYS)if(day!=='Mardi')assert(!ids(plan[day]).includes('p2'),'un magasin posé ne doit jamais migrer vers '+day);
 
   // --- 2. Les visites automatiques, elles, sont bien recalculées ---------------------
-  // Deux générations successives sur des viviers différents : les posés ne bougent pas,
-  // les automatiques suivent le vivier.
   const auto1=ids(plan.Lundi).filter(id=>id!=='p1').concat(ids(plan.Mardi).filter(id=>id!=='p2'));
   assert(auto1.length,'la génération doit avoir complété les journées avec des visites automatiques');
 
@@ -123,7 +124,6 @@ function ids(route){return Array.from(route||[]).map(s=>String(s.id))}
   assert.notDeepEqual(auto1,auto2,'les visites automatiques doivent réellement changer d’une génération à l’autre');
 
   // --- 3. Le budget de crédits tient compte des posés -------------------------------
-  // Un Darty posé vaut 2 crédits : sur un plafond de 4, il ne reste que 2 crédits.
   const t3=env({max:4,target:20,workDays:['Lundi'],accept:true,locks:{d1:'Lundi'},
     stores:[store('d1','Darty',4.0),store('f1','Fnac',4.1),store('f2','Fnac',4.2),store('f3','Fnac',4.3),store('f4','Fnac',4.4)]});
   await t3.ctx.testPins.strictSingleWeek();
@@ -132,7 +132,6 @@ function ids(route){return Array.from(route||[]).map(s=>String(s.id))}
   assert.equal(t3.ctx.testPins.routeCredits(lundi),4,'la journée doit être remplie jusqu’au plafond, crédits compris');
   assert.equal(lundi.length,3,'2 crédits posés + 2 crédits automatiques : un Darty et deux Fnac');
 
-  // Deux Darty posés sur la même journée saturent à eux seuls un plafond de 4.
   const t4=env({max:4,target:20,workDays:['Lundi'],accept:true,locks:{d1:'Lundi',d2:'Lundi'},
     stores:[store('d1','Darty',4.0),store('d2','Darty',4.1),store('f1','Fnac',4.2),store('f2','Fnac',4.3)]});
   await t4.ctx.testPins.strictSingleWeek();
@@ -142,8 +141,6 @@ function ids(route){return Array.from(route||[]).map(s=>String(s.id))}
   assert.equal(satured.length,2,'aucune visite automatique ne doit s’ajouter au-delà du plafond');
 
   // --- 4. Des posés au-dessus du plafond sont annoncés, jamais retirés ---------------
-  // Deux jours ouvrés, plafond 2 : la capacité globale suffit, mais les deux Darty posés
-  // saturent la seule journée Lundi. C'est bien le contrôle journalier qui doit parler.
   const t5=env({max:2,target:20,workDays:['Lundi','Mardi'],accept:true,locks:{d1:'Lundi',d2:'Lundi'},
     stores:[store('d1','Darty',4.0),store('d2','Darty',4.1),store('f1','Fnac',4.2)]});
   const planAvant=JSON.stringify(t5.state.plan);
@@ -155,7 +152,6 @@ function ids(route){return Array.from(route||[]).map(s=>String(s.id))}
   assert.match(t5.els.rangePlanStatus.textContent,/plafond de 2/,'le message doit rappeler le plafond');
   assert.match(t5.els.rangePlanStatus.textContent,/Libère-en un/,'le message doit dire quoi faire');
 
-  // Même règle au niveau de la période : la capacité totale est vérifiée en crédits.
   const t5b=env({max:2,target:20,workDays:['Lundi'],accept:true,locks:{d1:'Lundi',d2:'Lundi'},
     stores:[store('d1','Darty',4.0),store('d2','Darty',4.1),store('f1','Fnac',4.2)]});
   await t5b.ctx.testPins.strictSingleWeek();
@@ -176,8 +172,6 @@ function ids(route){return Array.from(route||[]).map(s=>String(s.id))}
   assert.equal(apres.locks.a1,undefined,'le magasin remplacé doit être libéré, sinon il reviendrait de force');
   assert.equal(ids(apres.plan.Lundi)[0],'a3','le remplacement doit être appliqué à la journée');
   assert(t6.checkpoints.some(r=>/Avant changement manuel/.test(r)),'un point de restauration doit précéder la modification manuelle');
-
-  // Les autres magasins de la tournée ont été choisis automatiquement : ils restent libres.
   assert.equal(apres.locks.a2,undefined,'le recentrage automatique ne doit poser personne d’autre');
 
   // --- 6. Poser puis libérer depuis la fiche rapide ---------------------------------
@@ -204,7 +198,6 @@ function ids(route){return Array.from(route||[]).map(s=>String(s.id))}
   assert.equal(btn.textContent,'📌 Poser ce magasin','le libellé doit revenir à la pose');
   assert(t7.checkpoints.some(r=>/Avant libération de/.test(r)),'un point de restauration doit précéder la libération');
 
-  // Un magasin absent du planning affiché n’est pas posable : le bouton disparaît.
   t7.els.srQuickStart.dataset.srStart='a6';
   t7.ctx.testPins.syncPinButton();
   assert.equal(btn.hidden,true,'un magasin hors de la journée affichée ne doit pas proposer la pose');
@@ -221,5 +214,37 @@ function ids(route){return Array.from(route||[]).map(s=>String(s.id))}
   assert(jourLibre,'sans pose, le magasin reste planifiable');
   assert.equal(t9.ctx.testPins.pinnedDay('p1'),'','un magasin libre ne doit porter aucune pose');
 
-  console.log('PASS: les magasins posés à la main survivent à la génération au même jour et en tête de journée, leurs crédits sont décomptés du plafond, un dépassement est annoncé sans rien retirer, le remplacement manuel pose le nouveau magasin et libère l’ancien, et la fiche rapide permet de poser puis de libérer.');
+  // --- 8. Déplacer un magasin déjà planifié un autre jour adapte la semaine ----------
+  const moveStores=[store('old','Fnac',4.00),store('anchor','Fnac',4.10),store('m2','Fnac',4.11),store('l2','Fnac',4.01),store('free','Fnac',4.12)];
+  const weekArchive={'2026-09-14':{weekMonday:'2026-09-14',plan:{Lundi:[moveStores[0],moveStores[3]],Mardi:[moveStores[1],moveStores[2]],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}}};
+  const t10=env({max:4,target:20,workDays:['Lundi','Mardi'],stores:moveStores,locks:{old:'Lundi',anchor:'Mardi'},archive:weekArchive,
+    plan:{Lundi:[moveStores[0],moveStores[3]],Mardi:[moveStores[1],moveStores[2]],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}});
+  assert.equal(t10.ctx.testPins.plannedOtherDayForStore('anchor','Lundi'),'Mardi','le moteur doit retrouver le jour d’origine');
+  const preview=t10.ctx.testPins.buildDayReplacement('old',moveStores[1],'Lundi',false);
+  assert.equal(preview.sourceDay,'Mardi','le remplacement doit devenir un déplacement inter-jours');
+  assert(ids(preview.route).includes('anchor'),'le magasin choisi doit arriver sur Lundi');
+  assert(!ids(preview.sourceRoute).includes('anchor'),'le magasin déplacé doit disparaître de Mardi');
+  assert.equal(preview.sourceRoute.length,2,'Mardi doit être recomblé quand un candidat compatible existe');
+  assert(t10.ctx.testPins.routeCredits(preview.route)<=4,'le jour cible doit respecter le budget de crédits');
+  assert(t10.ctx.testPins.routeCredits(preview.sourceRoute)<=4,'le jour source doit respecter le budget de crédits');
+
+  await t10.ctx.testPins.persistDayReplacement(preview);
+  const moved=t10.ctx.__persisted;
+  assert(ids(moved.state.plan.Lundi).includes('anchor'),'le déplacement persistant doit placer anchor sur Lundi');
+  assert(!ids(moved.state.plan.Mardi).includes('anchor'),'anchor ne doit plus exister sur Mardi');
+  const occurrences=DAYS.reduce((n,d)=>n+ids(moved.state.plan[d]||[]).filter(id=>id==='anchor').length,0);
+  assert.equal(occurrences,1,'un déplacement ne doit jamais créer de doublon dans la semaine');
+  assert.equal(moved.state.locks.anchor,'Lundi','la pose manuelle doit suivre le magasin sur son nouveau jour');
+  assert.equal(moved.state.locks.old,undefined,'le magasin remplacé doit être libéré');
+  assert(t10.checkpoints.some(r=>/Avant déplacement manuel de Mardi vers Lundi/.test(r)),'le déplacement doit avoir son point de restauration explicite');
+  assert(ids(moved.archive['2026-09-14'].plan.Lundi).includes('anchor'),'l’archive de période doit recevoir le nouveau Lundi');
+  assert(!ids(moved.archive['2026-09-14'].plan.Mardi).includes('anchor'),'l’archive de période doit aussi mettre à jour Mardi');
+
+  // --- 9. Un rendez-vous empêche le déplacement silencieux ---------------------------
+  const t11=env({max:4,target:20,workDays:['Lundi','Mardi'],stores:moveStores,locks:{anchor:'Mardi'},appointments:[{storeId:'anchor',date:'2026-09-15'}],
+    plan:{Lundi:[moveStores[0]],Mardi:[moveStores[1],moveStores[2]],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}});
+  assert.throws(()=>t11.ctx.testPins.buildDayReplacement('old',moveStores[1],'Lundi',false),/rendez-vous Mardi/,'un magasin lié à un rendez-vous ne doit pas changer de jour sans déplacer le rendez-vous');
+  assert(ids(t11.state.plan.Mardi).includes('anchor'),'le refus ne doit rien modifier avant validation');
+
+  console.log('PASS: pose/libération, budgets de crédits et remplacement manuel restent protégés ; un magasin déjà prévu un autre jour peut être déplacé explicitement, le jour source est adapté sans doublon, les deux jours sont persistés dans l’archive, et un rendez-vous bloque le déplacement avant toute mutation.');
 })().catch(e=>{console.error(e);process.exit(1)});
