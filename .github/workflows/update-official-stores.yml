@@ -13,12 +13,20 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: official-stores-refresh
+  cancel-in-progress: false
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -28,15 +36,30 @@ jobs:
         run: python tests/official_catalog_test.py
       - name: Collecter les annuaires officiels
         run: python tools/update_official_stores.py
-      - name: Enregistrer le snapshot s'il a changé
+      - name: Ouvrir une PR si le snapshot a changé
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           if git diff --quiet -- data/official-stores.json; then
             echo "Aucun changement"
             exit 0
           fi
+
+          branch="automation/official-stores-${GITHUB_RUN_ID}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
           git add data/official-stores.json
           git commit -m "Met à jour les annuaires officiels"
-          git push
+          git push --set-upstream origin "$branch"
 
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "Mise à jour automatique des annuaires officiels" \
+            --body "Snapshot généré automatiquement depuis les annuaires officiels. Aucun push direct sur main. Reliability est relancé explicitement sur cette branche avant fusion."
+
+          # Les événements créés avec GITHUB_TOKEN ne relancent pas automatiquement
+          # d'autres workflows. workflow_dispatch est donc utilisé explicitement.
+          gh workflow run reliability-checks.yml --ref "$branch"

@@ -3,6 +3,7 @@ on:
   push:
     branches: [main, fix/reliability-backup-calendar]
   pull_request:
+  workflow_dispatch:
   workflow_call:
 permissions:
   contents: read
@@ -14,6 +15,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - run: node tests/syntax.test.cjs
       - run: node tests/backups.test.cjs
       - run: node tests/visit-workflow.test.cjs
@@ -38,3 +42,4 @@ jobs:
       - run: node tests/timeline-architecture.test.cjs
       - run: node tests/working-hours-architecture.test.cjs
       - run: node tests/daily-capacity-architecture.test.cjs
+      - run: python tests/official_catalog_test.py
