@@ -58,6 +58,26 @@ function visitCredit(s){
   return 1;
 }
 function routeCredits(route){return (route||[]).reduce((n,s)=>n+visitCredit(s),0)}
+/* Magasins « posés » : une visite placée ou remplacée à la main par l'utilisateur ne
+   doit jamais être déplacée, remplacée ni retirée par la génération automatique. On
+   réutilise state.locks, qui porte déjà exactement cette sémantique et que le moteur
+   honore depuis toujours, plutôt que d'ouvrir un second registre concurrent. Un magasin
+   posé est donc un magasin verrouillé sur un jour : buildWeekUnique le place en premier,
+   décompte ses crédits du plafond, et ne complète qu'avec le budget restant. */
+function pinnedDay(id){try{return (state.locks&&state.locks[String(id)])||''}catch(e){return ''}}
+function isPinnedOn(id,day){return pinnedDay(id)===day}
+function pinStore(id,day){
+  if(!id||!DAYS.includes(day))return false;
+  if(!state.locks)state.locks={};
+  state.locks[String(id)]=day;
+  return true;
+}
+function unpinStore(id){
+  if(!id||!state.locks)return false;
+  if(!Object.prototype.hasOwnProperty.call(state.locks,String(id)))return false;
+  delete state.locks[String(id)];
+  return true;
+}
 function forcedRank(s){const id=s&&s.id;return (state.locks&&state.locks[id]?2:0)+(state.included&&state.included[id]?1:0)}
 function forcedCount(pool){return (pool||[]).reduce((n,s)=>n+(forcedRank(s)>0?1:0),0)}
 function forcedCredits(pool){return (pool||[]).reduce((n,s)=>n+(forcedRank(s)>0?visitCredit(s):0),0)}
@@ -65,7 +85,7 @@ function selectionNeed(pool,usable,target,max){
   /* La capacité d'une période se mesure en crédits : un magasin imposé à 2 crédits
      consomme deux unités du plafond, sinon on annonce une capacité qui n'existe pas. */
   const capacity=max*usable.length,forced=forcedCount(pool),forcedCost=forcedCredits(pool);
-  if(forcedCost>capacity)throw new Error('Les magasins imposés ou verrouillés demandent '+forcedCost+' crédit'+(forcedCost>1?'s':'')+' de visite pour seulement '+capacity+' disponible'+(capacity>1?'s':'')+'. Le planning précédent est conservé.');
+  if(forcedCost>capacity)throw new Error('Les magasins posés, imposés ou verrouillés demandent '+forcedCost+' crédit'+(forcedCost>1?'s':'')+' de visite pour seulement '+capacity+' disponible'+(capacity>1?'s':'')+'. Le planning précédent est conservé.');
   return Math.min(Math.max(Math.max(1,target),forced),capacity,pool.length);
 }
 function chooseStores(pool,usedKeys,lastUsedWeek,target){
@@ -108,7 +128,7 @@ function buildWeekUnique(chosen,days){
   }
   for(const day of days){
     const lockedCost=routeCredits(plan[day]);
-    if(lockedCost>max)throw new Error('Les magasins verrouillés sur '+day+' demandent '+lockedCost+' crédit'+(lockedCost>1?'s':'')+' de visite pour un plafond de '+max+'. Le planning précédent est conservé.');
+    if(lockedCost>max)throw new Error('Les magasins posés ou verrouillés sur '+day+' demandent '+lockedCost+' crédit'+(lockedCost>1?'s':'')+' de visite pour un plafond de '+max+'. Libère-en un ou augmente le maximum de visites par jour. Le planning précédent est conservé.');
     plan[day]=optimizeRoute(plan[day]);
     if(plan[day].length&&finish(plan[day],day)>limitFor(day))throw new Error('Les magasins verrouillés sur '+day+' ne tiennent pas dans les horaires. Le planning précédent est conservé.');
   }
@@ -306,6 +326,13 @@ async function persistDayReplacement(preview){
   R.checkpoint('Avant changement manuel de '+preview.day,db);
   const bundle=R.capture(state,db),next=JSON.parse(JSON.stringify(state)),weekKey=iso(monday(parse((state.settings&&state.settings.weekDate)||'')||new Date()));
   next.plan=next.plan||{};next.plan[preview.day]=preview.route.map(s=>(state.stores||[]).find(x=>String(x.id)===String(s.id))||s);
+  /* Le magasin choisi à la main est posé sur ce jour : la prochaine génération ne doit
+     plus le déplacer. Celui qu'il remplace est libéré, sinon il serait reposé de force
+     sur cette même journée au rendu suivant. Les autres magasins de la tournée, eux,
+     ont été choisis automatiquement par le recentrage : ils restent libres. */
+  next.locks=next.locks||{};
+  if(preview.anchor&&preview.anchor.id)next.locks[String(preview.anchor.id)]=preview.day;
+  if(preview.oldId&&next.locks[String(preview.oldId)]===preview.day)delete next.locks[String(preview.oldId)];
   bundle.state=next;
   if(bundle.archive&&bundle.archive[weekKey]){bundle.archive[weekKey].plan=bundle.archive[weekKey].plan||{};bundle.archive[weekKey].plan[preview.day]=preview.route.map(cloneStore);refreshRangeStats(bundle)}
   R.persist(bundle,db);if(db&&typeof db.flush==='function')await db.flush();window.state=bundle.state;
@@ -332,8 +359,60 @@ function openDayStoreReplacement(){
   const start=document.getElementById('srQuickStart'),oldId=start&&start.dataset&&start.dataset.srStart,day=plannedDayForStore(oldId);if(!oldId||!day){if(typeof showError==='function')showError('Ce magasin n’est pas dans la journée affichée. Ouvre un magasin directement depuis le planning.');return}
   const old=(state.stores||[]).find(s=>String(s.id)===String(oldId));if(!old)return;replaceContext={oldId:String(oldId),day};replacePreview=null;if(typeof window.closeStoreQuick==='function')window.closeStoreQuick();const dlg=ensureReplaceDialog();dlg.querySelector('#dsrContext').textContent=day+' · remplacer '+old.enseigne+' '+old.ville;dlg.querySelector('#dsrSearch').value='';dlg.querySelector('#dsrRecenter').checked=true;dlg.querySelector('#dsrPreview').hidden=true;const brand=dlg.querySelector('#dsrBrand'),brands=[...new Set((state.stores||[]).filter(s=>s&&s.active!==false).map(s=>String(s.enseigne||'')).filter(Boolean))].sort((a,b)=>a.localeCompare(b));brand.innerHTML='<option value="">Toutes les enseignes</option>';for(const value of brands){const o=document.createElement('option');o.value=value;o.textContent=value;brand.appendChild(o)}renderReplaceResults();dlg.showModal();setTimeout(()=>dlg.querySelector('#dsrSearch').focus(),60)
 }
+async function togglePlannedStorePin(){
+  /* Poser à la main, ou rendre à la génération automatique. C'est la contrepartie
+     explicite du remplacement : sans elle, un magasin posé le resterait pour toujours. */
+  const start=document.getElementById('srQuickStart'),id=start&&start.dataset&&start.dataset.srStart;
+  const day=plannedDayForStore(id);
+  if(!id||!day){if(typeof showError==='function')showError('Ce magasin n’est pas dans la journée affichée. Ouvre un magasin directement depuis le planning.');return false}
+  const store=(state.stores||[]).find(x=>String(x.id)===String(id))||{};
+  const wasPinned=isPinnedOn(id,day);
+  try{
+    if(typeof ChefReliability!=='undefined'&&ChefReliability&&typeof ChefReliability.checkpoint==='function')
+      ChefReliability.checkpoint((wasPinned?'Avant libération de ':'Avant pose de ')+(store.enseigne||'magasin')+' sur '+day);
+  }catch(e){}
+  if(wasPinned)unpinStore(id);else pinStore(id,day);
+  try{if(typeof save==='function')save()}catch(e){if(typeof showError==='function')showError('Enregistrement impossible : '+(e&&e.message?e.message:String(e)));return false}
+  try{if(typeof renderAll==='function')renderAll()}catch(e){}
+  syncPinButton();
+  document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{reason:wasPinned?'store-unpinned':'store-pinned',day,storeId:String(id)}}));
+  return true;
+}
+function syncPinButton(){
+  const btn=document.getElementById('pinQuickStoreBtn');if(!btn)return false;
+  const start=document.getElementById('srQuickStart'),id=start&&start.dataset&&start.dataset.srStart;
+  const day=plannedDayForStore(id);
+  if(!id||!day){btn.hidden=true;return false}
+  btn.hidden=false;
+  const pinned=isPinnedOn(id,day);
+  btn.textContent=pinned?'↩ Libérer ce magasin':'📌 Poser ce magasin';
+  btn.title=pinned
+    ?'Rendre ce magasin à la génération automatique : elle pourra le déplacer ou le remplacer.'
+    :'Poser ce magasin sur '+day+' : la génération automatique ne le déplacera plus.';
+  btn.setAttribute('aria-pressed',pinned?'true':'false');
+  return true;
+}
+function hookQuickSheet(){
+  /* La fiche rapide est rouverte magasin par magasin par son propriétaire, sans repasser
+     par install(). On enveloppe openStoreQuick au lieu de le remplacer, pour resynchroniser
+     le libellé « poser / libérer » sur le magasin réellement affiché. */
+  const original=window.openStoreQuick;
+  if(typeof original!=='function'||original.__pinSynced)return false;
+  const wrapped=function(){const out=original.apply(this,arguments);try{syncPinButton()}catch(e){}return out};
+  wrapped.__pinSynced=true;wrapped.__original=original;
+  window.openStoreQuick=wrapped;
+  return true;
+}
 function installDayReplaceUi(){
-  const actions=document.querySelector('#storeQuickSheet .sheetActions');if(!actions)return false;let btn=document.getElementById('changeQuickStoreBtn');if(btn)return true;btn=document.createElement('button');btn.type='button';btn.id='changeQuickStoreBtn';btn.className='secondary';btn.textContent='⇄ Changer ce magasin';btn.onclick=openDayStoreReplacement;const full=[...actions.querySelectorAll('button')].find(b=>/Voir la fiche/i.test(b.textContent||''));actions.insertBefore(btn,full||null);ensureReplaceDialog();return true;
+  hookQuickSheet();
+  const actions=document.querySelector('#storeQuickSheet .sheetActions');if(!actions)return false;
+  let btn=document.getElementById('changeQuickStoreBtn');
+  const full=[...actions.querySelectorAll('button')].find(b=>/Voir la fiche/i.test(b.textContent||''));
+  if(!btn){btn=document.createElement('button');btn.type='button';btn.id='changeQuickStoreBtn';btn.className='secondary';btn.textContent='⇄ Changer ce magasin';btn.onclick=openDayStoreReplacement;actions.insertBefore(btn,full||null)}
+  let pin=document.getElementById('pinQuickStoreBtn');
+  if(!pin){pin=document.createElement('button');pin.type='button';pin.id='pinQuickStoreBtn';pin.className='secondary';pin.onclick=togglePlannedStorePin;actions.insertBefore(pin,full||null)}
+  syncPinButton();
+  ensureReplaceDialog();return true;
 }
 
 function install(){
@@ -363,6 +442,11 @@ function recoverInstall(){
 }
 window.generatePlanningRange=generateRange;
 window.openDayStoreReplacement=openDayStoreReplacement;
+/* API publique de la pose manuelle : un futur déplacement d'un jour à l'autre n'aura
+   qu'à l'appeler, sans redéfinir la règle ni ouvrir un second registre. */
+window.storeRunnerPinPlannedStore=function(id,day){const ok=pinStore(id,day);if(ok){try{if(typeof save==='function')save()}catch(e){}syncPinButton()}return ok};
+window.storeRunnerUnpinPlannedStore=function(id){const ok=unpinStore(id);if(ok){try{if(typeof save==='function')save()}catch(e){}syncPinButton()}return ok};
+window.storeRunnerPlannedStoreIsPinned=function(id,day){return isPinnedOn(id,day)};
 function boot(){install()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 document.addEventListener('store-runner:planning-updated',recoverInstall);
