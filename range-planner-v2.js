@@ -328,6 +328,11 @@ function install(){
   box=document.createElement('details');box.id='rangePlannerCard';box.className='planningChoice planningRangeDetails';
   box.innerHTML='<summary><span>Planifier plusieurs semaines</span><small>Optionnel</small></summary><div class="planningChoiceBody"><div class="formgrid"><div><label>Date de début</label><input id="rangeStart" type="date" value="'+iso(base)+'"></div><div><label>Date de fin</label><input id="rangeEnd" type="date" value="'+iso(end)+'"></div></div><button id="generateRangeBtn" class="secondary full" type="button">Générer la période</button><div id="rangePlanStatus" class="tiny" style="margin-top:9px">Pour préparer plusieurs semaines à la fois. La génération normale reste « Générer ma semaine ».</div></div>';
   const commercial=settings.querySelector('.commercialCalendar');if(commercial)settings.insertBefore(box,commercial);else settings.appendChild(box);
+  // #rangePlannerCard est un <details> imbriqué dans le <details id="planningSettings">.
+  // Un <details> fermé rend tout son contenu non focusable, y compris un <details> ouvert
+  // à l'intérieur : sans ça, #rangeStart/#rangeEnd restent inertes quand le panneau des
+  // réglages est replié, même si cette carte-ci est ouverte.
+  box.addEventListener('toggle',function(){const parent=document.getElementById('planningSettings');if(box.open&&parent&&!parent.open)parent.open=true});
   document.getElementById('generateRangeBtn').onclick=generateRange;
   window.storeRunnerGenerateSingleWeek=strictSingleWeek;
   installed=true;return true;
