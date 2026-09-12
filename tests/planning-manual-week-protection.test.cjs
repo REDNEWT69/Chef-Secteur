@@ -20,7 +20,7 @@ function env(options={}){
   const localStorage={getItem:key=>key===ARCHIVE_KEY?JSON.stringify(archive):null,setItem(){},removeItem(){}};
   const ctx={state,console,Date,Map,Set,JSON,Object,Array,String,Number,Math,RegExp,localStorage,
     CustomEvent:class{constructor(type,init){this.type=type;Object.assign(this,init)}},
-    document:{readyState:'loading',addEventListener(){},getElementById:id=>els[id]||null,querySelectorAll:selector=>selector==='[data-brand]'?[]:[{value:'Lundi',checked:true}]},
+    document:{readyState:'loading',addEventListener(){},dispatchEvent(){},getElementById:id=>els[id]||null,querySelectorAll:selector=>selector==='[data-brand]'?[]:[{value:'Lundi',checked:true}]},
     setTimeout,confirm:()=>true,readPlanningControls(){},save(){},renderAll(){},initControls(){},includedByFilters:()=>true,
     havBase:()=>0,hav:()=>0,baseObj:()=>({lat:45,lon:4}),nearestRoute:r=>r.slice(),twoOpt:r=>r.slice(),dispatchEvent(){},
     syncGoogleCalendar:async()=>({ok:true}),calendarEventsForDate:()=>[],storeVisitCredit:()=>1,
@@ -37,7 +37,6 @@ function env(options={}){
 }
 
 (async()=>{
-  // Une semaine explicitement marquée comme retouchée à la main est intouchable par « Générer ma semaine ».
   const manualPlan=emptyPlan();manualPlan.Lundi=[store('manual')];
   let t=env({plan:manualPlan,archive:{'2026-09-07':{weekMonday:'2026-09-07',manualEdited:true,manualEditedAt:'2026-09-07T12:00:00.000Z',plan:JSON.parse(JSON.stringify(manualPlan))}}});
   const before=JSON.stringify(t.state.plan);
@@ -47,7 +46,6 @@ function env(options={}){
   assert.equal(single&&single.preservedManual,true,'le moteur doit signaler explicitement la conservation manuelle');
   assert.match(t.els.rangePlanStatus.textContent,/modifiée manuellement|conservée/i);
 
-  // Un remplacement manuel marque immédiatement toute la semaine comme protégée.
   t=env();
   const replacement=[t.state.stores[1]];
   await t.ctx.testManualWeek.persistDayReplacement({day:'Lundi',sourceDay:null,route:replacement,anchor:t.state.stores[1],oldId:'a'});
@@ -56,7 +54,6 @@ function env(options={}){
   assert.equal(saved.archive['2026-09-07'].manualEdited,true,'la modification manuelle doit poser le marqueur de protection de semaine');
   assert.equal(saved.archive['2026-09-07'].plan.Lundi[0].id,'b','l’archive protégée doit contenir la journée réellement modifiée');
 
-  // Une génération de période saute également une semaine manuelle au lieu de la recalculer.
   const protectedPlan=emptyPlan();protectedPlan.Lundi=[store('protected')];
   t=env({archive:{'2026-09-07':{weekMonday:'2026-09-07',manualEdited:true,plan:JSON.parse(JSON.stringify(protectedPlan))}},rangeEnd:'2026-09-18'});
   await t.ctx.testManualWeek.generateRange();
