@@ -18,6 +18,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - run: node tools/preview-range-rotation-fix.cjs
       - run: node tests/syntax.test.cjs
       - run: node tests/backups.test.cjs
       - run: node tests/visit-workflow.test.cjs
