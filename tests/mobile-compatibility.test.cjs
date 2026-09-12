@@ -4,7 +4,8 @@ const profile=fs.readFileSync(__dirname+'/../profile-controller.js','utf8');
 
 assert.match(planning,/#planningDaysDetails \.planningChoiceBody #daysBox\{max-height:none!important;overflow:visible!important/,'les six jours travaillés doivent rester visibles sans scroll interne fragile');
 assert.match(planning,/#planPanel #dayTabs\{[^}]*display:flex!important;[^}]*overflow-x:auto!important;[^}]*touch-action:pan-x/,'le bandeau des jours doit autoriser explicitement le swipe horizontal Android');
-assert.match(planning,/#planPanel #dayTabs \.dayTab\{[^}]*flex:0 0 72px!important;[^}]*touch-action:pan-x/,'les boutons de jour ne doivent pas absorber le geste horizontal');
+assert.match(planning,/#planPanel #dayTabs \.dayTab\{[^}]*flex:1 1 0!important;[^}]*touch-action:pan-x/,'les boutons de jour ne doivent pas absorber le geste horizontal');
+assert.match(planning,/#planPanel #dayTabs \.dayTab\{[^}]*min-width:56px!important;[^}]*max-width:96px!important/,'les jours doivent se répartir sur la largeur disponible pour éviter qu’un jour soit tronqué à 390px');
 
 assert.match(profile,/function acquireBestPosition\(/,'la localisation doit passer par une phase d’affinage');
 assert.match(profile,/watchPosition\(/,'la localisation doit pouvoir recevoir plusieurs fixes GPS');

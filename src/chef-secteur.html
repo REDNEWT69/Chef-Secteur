@@ -85,7 +85,7 @@ input,select,textarea{border-radius:13px!important;border:1px solid var(--apple-
   --ios-card:rgba(255,255,255,.94);
   --ios-line:rgba(60,60,67,.14);
 }
-.applePlan{max-width:900px;margin:0 auto;padding-bottom:110px}
+.applePlan{max-width:900px;margin:0 auto;padding-bottom:calc(100px + env(safe-area-inset-bottom))}
 .planMetricGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0 0 24px}
 .planMetric{
   background:var(--ios-card);border:1px solid var(--ios-line);border-radius:22px;padding:18px;
@@ -145,13 +145,21 @@ input,select,textarea{border-radius:13px!important;border:1px solid var(--apple-
 .bottomNavBtn .bnIcon{display:block;font-size:21px;margin-bottom:3px}.bottomNavBtn.active{background:#111318;color:#fff}
 .bottomNavBtn.ia{background:#111318;color:#fff;border-radius:999px;margin:-18px 6px 0;min-height:60px;box-shadow:0 12px 24px rgba(0,0,0,.16)}
 @media(max-width:700px){
-  body{padding-bottom:82px}
+  body{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
   .planMetricGrid{gap:9px}.planMetric{padding:14px;min-height:96px;border-radius:19px}
   .planMetric .pmValue{font-size:21px}.applePlanTitle h2{font-size:30px}
   .applePlanTitle{align-items:flex-end}.applePlanTools button{font-size:11px;padding:9px 10px}
   .dayTabs{grid-template-columns:repeat(6,105px)}.timelineShell{border-radius:20px}
-  .appleTimeline{padding:5px 10px}.timelineRow{grid-template-columns:55px 18px 1fr;min-height:90px}
-  .tlRight{gap:5px}.tlBadge{display:none}.tlName{font-size:15px}
+  .appleTimeline{padding:5px 10px}.timelineRow{grid-template-columns:52px 16px 1fr;min-height:64px}
+  .tlMain{padding:9px 2px 9px 8px}
+  .tlTime{padding-top:11px;font-size:12px}
+  .tlDot{top:13px}
+  .timelineRow:first-child .tlTrack:before{top:19px}
+  .timelineRow:last-child .tlTrack:before{bottom:calc(100% - 20px)}
+  .tlMain>div:first-child{min-width:0}
+  .tlName{width:100%;box-sizing:border-box;font-size:14.5px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+  .tlMeta{width:100%;box-sizing:border-box;font-size:11.5px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tlRight{gap:5px}.tlBadge{display:none}.tlDuration{font-size:11px}.tlChevron{font-size:20px}
 }
 
 <style id="compact-context-header">
