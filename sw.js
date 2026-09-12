@@ -85,8 +85,9 @@ self.addEventListener('message', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   // Le manifeste de version doit toujours venir du réseau : sinon l'interface de mise à
-  // jour peut comparer l'application à une ancienne copie mise en cache.
-  if (url.href === VERSION_URL && event.request.method === 'GET') {
+  // jour peut comparer l'application à une ancienne copie mise en cache. On ignore ici
+  // le query-string anti-cache ajouté par update-manager.js.
+  if (url.href.split('?')[0] === VERSION_URL && event.request.method === 'GET') {
     event.respondWith(fetch(event.request, {cache:'no-store'}));
     return;
   }
