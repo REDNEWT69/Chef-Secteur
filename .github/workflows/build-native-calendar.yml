@@ -1,10 +1,8 @@
-name: Build native Chef Secteur
+name: Legacy native Chef Secteur (manual only)
 
+# Workflow historique conservé uniquement pour récupération/manipulation manuelle.
+# Il cible l'ancienne branche v3-premium et ne doit pas être déclenché par main.
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/build-native-calendar.yml'
   workflow_dispatch:
 
 permissions:
@@ -14,6 +12,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Avertissement workflow legacy
+        run: echo "::warning::Ce workflow historique cible v3-premium et ne fait pas partie du runtime Store Runner actuel."
       - uses: actions/checkout@v4
         with:
           ref: v3-premium
