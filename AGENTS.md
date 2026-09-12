@@ -26,11 +26,20 @@ Ne pas remplacer une fonction globale métier appartenant à un autre module. Pr
 
 ## PWA et sécurité
 
-- Préserver GitHub Pages, les URLs relatives et le fonctionnement hors ligne.
+- Préserver GitHub Pages, le domaine public `https://store-runner.fr`, les URLs relatives et le fonctionnement hors ligne.
 - Toute nouvelle ressource runtime chargée par `index.html` doit être ajoutée au cache de `sw.js`.
 - Si le cache/runtime change, maintenir `BUILD_REV` identique dans `index.html` et `sw.js`.
 - Google Calendar reste en lecture seule côté application.
 - Aucun `client_secret`, token persistant ou clé API ne doit être exposé dans le frontend.
+
+## CI/CD et automatisations
+
+- Le workflow normal reste : issue → branche → PR Draft → Reliability → Ready → merge → vérification de `main` et du déploiement.
+- Aucun changement fonctionnel ou snapshot généré ne doit être poussé directement sur `main` par un agent ou un workflow planifié.
+- Les automatisations qui produisent un diff doivent créer/pousser une branche dédiée puis ouvrir une PR et relancer les contrôles nécessaires.
+- `.github/workflows/update-official-stores.yml` suit ce modèle et ne doit pas revenir à un `git push` direct sur `main`.
+- `.github/workflows/build-native-calendar.yml` est un workflow **legacy/manual-only** qui cible encore `v3-premium`. Ne pas le réactiver sur les pushes `main` et ne pas utiliser `v3-premium` comme source de vérité du produit actuel.
+- `tests/ci-policy.test.cjs` protège ces règles et doit rester dans Reliability.
 
 ## Métier V2
 
