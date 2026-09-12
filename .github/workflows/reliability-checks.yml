@@ -40,6 +40,7 @@ jobs:
       - run: node tests/business-v2-architecture.test.cjs
       - run: node tests/runtime-ownership.test.cjs
       - run: node tests/planning-visual-ownership.test.cjs
+      - run: node tests/planning-settings-access.test.cjs
       - run: node tests/timeline-architecture.test.cjs
       - run: node tests/working-hours-architecture.test.cjs
       - run: node tests/daily-capacity-architecture.test.cjs
