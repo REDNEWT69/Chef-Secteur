@@ -1,0 +1,31 @@
+name: Apply manual week hotfix
+on:
+  push:
+    branches: [hotfix/manual-week-runtime-guard]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.event.head_commit.message != 'apply manual week runtime hotfix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: hotfix/manual-week-runtime-guard
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tools/apply-manual-week-hotfix.cjs
+      - run: node tests/build-revision.test.cjs
+      - run: node tests/planning-manual-week-protection.test.cjs
+      - name: Commit hotfix
+        run: |
+          if git diff --quiet; then
+            echo "hotfix already applied"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html sw.js range-planner-v2.js tests/planning-manual-week-protection.test.cjs
+          git commit -m "apply manual week runtime hotfix"
+          git push origin HEAD:hotfix/manual-week-runtime-guard
