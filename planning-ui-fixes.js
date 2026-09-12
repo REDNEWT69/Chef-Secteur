@@ -57,6 +57,33 @@
   function isEditingLocked(){return editingLocked||activePlanningControl()}
   function moveAfter(anchor,node){if(!anchor||!node||anchor.nextElementSibling===node)return;anchor.insertAdjacentElement('afterend',node)}
 
+  const SETTINGS_SHORTCUT_ID='planningSettingsShortcut';
+  function isSettingsShortcut(el){return !!(el&&el.closest&&el.closest('#'+SETTINGS_SHORTCUT_ID))}
+  function openPlanningSettings(){
+    /* Accès direct aux réglages depuis le haut du planning : Red les ouvre en permanence
+       pour planifier trois semaines à l'avance, et ils sont placés en dernier dans
+       .applePlan, après toute la journée de visites.
+       Ce raccourci n'est pas propriétaire de la position de #planningSettings :
+       reorderPlanning() la fixe déjà et plusieurs modules en dépendent. On se contente
+       donc d'ouvrir le panneau et d'y défiler, sans jamais déplacer le nœud ni déclencher
+       de réorganisation - en particulier pendant qu'un champ des réglages est en cours de
+       saisie, où toute réorganisation referme le sélecteur natif iOS. */
+    const settings=document.getElementById('planningSettings');if(!settings)return false;
+    if(!settings.open)settings.open=true;
+    if(typeof settings.scrollIntoView==='function')settings.scrollIntoView({block:'start'});
+    return true;
+  }
+  function ensureSettingsShortcut(tools){
+    if(!tools||typeof tools.querySelector!=='function')return false;
+    if(tools.querySelector('#'+SETTINGS_SHORTCUT_ID))return false;
+    const btn=document.createElement('button');
+    btn.id=SETTINGS_SHORTCUT_ID;btn.type='button';btn.className='secondary';btn.textContent='⚙ Réglages';
+    btn.setAttribute('aria-controls','planningSettings');
+    btn.addEventListener('click',function(e){if(e&&typeof e.preventDefault==='function')e.preventDefault();openPlanningSettings()});
+    tools.appendChild(btn);
+    return true;
+  }
+
   function reorderPlanning(){
     const plan=document.querySelector('#planPanel .applePlan'),title=plan&&plan.querySelector('.applePlanTitle'),tabs=document.getElementById('dayTabs'),timeline=plan&&plan.querySelector('.timelineShell'),metrics=document.getElementById('planMetrics'),saturday=document.getElementById('saturdayRecommendation'),departure=plan&&plan.querySelector('.departureCard'),settings=document.getElementById('planningSettings');
     if(!plan||!tabs||!timeline)return;
@@ -64,6 +91,7 @@
     let tools=document.getElementById('planningToolsV2');
     if(!tools){tools=document.createElement('div');tools.id='planningToolsV2';tools.className='planningToolsV2';tools.innerHTML='<button class="secondary" type="button" onclick="showPlanMap()">⌖ Ouvrir la tournée</button><button class="primary" type="button" onclick="generateWeek()">✦ Générer ma semaine</button>'}
     const generation=tools.querySelector('button[onclick*="generateWeek"]');if(generation){generation.className='primary';generation.textContent='✦ Générer ma semaine'}
+    ensureSettingsShortcut(tools);
     moveAfter(tabs,tools);moveAfter(tools,timeline);
     const monthly=document.querySelector('#planPanel #managerPlanningMonth, #planPanel .managerPlanningMonth, #planPanel .monthPlanning, #planPanel [data-planning-month]');let anchor=timeline;
     if(monthly){moveAfter(anchor,monthly);anchor=monthly}if(metrics){moveAfter(anchor,metrics);anchor=metrics}if(saturday){moveAfter(anchor,saturday);anchor=saturday}if(departure){moveAfter(anchor,departure);anchor=departure}
@@ -134,9 +162,9 @@
     #planPanel .applePlan{padding-top:2px!important}body:has(#planPanel.active) #smartBrief{display:none!important}#planPanel #iosDayHero{display:none!important}
     .planningHeroV2{margin:0 0 8px;padding:8px 2px 2px;background:transparent;border:0;box-shadow:none}.planningHeroTop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}.planningHeroPill{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.78);border:1px solid rgba(60,60,67,.12);font-size:11px;font-weight:800;color:#667085;box-shadow:0 4px 14px rgba(31,41,55,.04)}.planningHeroWeek{font-size:11px;color:#8a93a2;font-weight:650;text-align:right}.planningHeroDay{font-family:Georgia,"Times New Roman",serif;font-size:44px;line-height:.98;letter-spacing:-.045em;font-weight:500;color:#111318;margin:0}.planningHeroFull{font-size:14px;color:#717987;margin-top:8px;font-weight:600}
     #planPanel #dayTabs{margin:10px 0 8px;padding-bottom:2px;display:flex!important;flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none}#planPanel #dayTabs::-webkit-scrollbar{display:none}#planPanel #dayTabs .dayTab{flex:1 1 0!important;min-width:56px!important;max-width:96px!important;scroll-snap-align:center;touch-action:pan-x}
-    .planningToolsV2{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}.planningToolsV2 button{min-height:42px;padding:9px 13px;flex:1 1 180px}#planPanel .timelineShell{margin-bottom:20px}#planPanel #planMetrics{margin:18px 0 14px!important}#planPanel .departureCard{margin:8px 0 14px!important}#planPanel #saturdayRecommendation:empty{display:none}
-    #planningSettings[open]>.settingsInner{display:block!important}.planningChoice{margin:10px 0;border:1px solid rgba(120,125,140,.15);border-radius:16px;background:rgba(255,255,255,.58);overflow:hidden}.planningChoice>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:12px 14px;cursor:pointer;font-weight:800;color:#1f2937}.planningChoice>summary::-webkit-details-marker{display:none}.planningChoice>summary:after{content:'＋';font-size:18px;color:#1674d9;margin-left:6px}.planningChoice[open]>summary:after{content:'−'}.planningChoice>summary small{margin-left:auto;color:#7a8290;font-size:11px;font-weight:650;white-space:nowrap;max-width:58%;overflow:hidden;text-overflow:ellipsis}.planningChoiceBody{padding:0 12px 13px}.planningChoiceBody>label:first-child{display:none}.planningChoiceBody .checkgrid{display:grid!important;grid-template-columns:1fr!important;gap:6px!important;max-height:170px;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2px}.planningChoiceBody .checkitem{min-height:42px;margin:0}#planningDaysDetails .planningChoiceBody #daysBox{max-height:none!important;overflow:visible!important;-webkit-overflow-scrolling:auto;touch-action:auto}.planningAdvancedDetails .premium-time{margin-top:6px}.planningCalendarDetails .calendarConnect{margin:0!important;border:0!important;box-shadow:none!important;background:transparent!important;padding:4px 0!important}.planningRangeDetails .formgrid{margin-top:4px}.planningDuplicateGenerate{display:none!important}.planningStoreCount{margin:6px 0 2px;color:#697386}.planningRangeDetails{order:20}
-    @media(max-width:650px){.planningHeroV2{padding-top:2px}.planningHeroTop{align-items:flex-start}.planningHeroWeek{max-width:58%;line-height:1.3}.planningHeroDay{font-size:50px}.planningHeroFull{font-size:13px}.planningToolsV2{margin-bottom:10px}.planningToolsV2 button{flex:1 1 0;min-width:0}.planningChoice{border-radius:15px}.planningChoice>summary{padding:11px 12px}.planningChoiceBody{padding:0 10px 11px}.planningChoiceBody .checkgrid{max-height:150px}#planningDaysDetails .planningChoiceBody #daysBox{max-height:none!important;overflow:visible!important}.planningAdvancedDetails .formgrid,.planningRangeDetails .formgrid{grid-template-columns:1fr!important}}
+    .planningToolsV2{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}.planningToolsV2 button{min-height:44px;padding:10px 13px;flex:1 1 180px}#planPanel .timelineShell{margin-bottom:20px}#planPanel #planMetrics{margin:18px 0 14px!important}#planPanel .departureCard{margin:8px 0 14px!important}#planPanel #saturdayRecommendation:empty{display:none}
+    #planningSettings{scroll-margin-top:72px}#planningSettings[open]>.settingsInner{display:block!important}.planningChoice{margin:10px 0;border:1px solid rgba(120,125,140,.15);border-radius:16px;background:rgba(255,255,255,.58);overflow:hidden}.planningChoice>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:12px 14px;cursor:pointer;font-weight:800;color:#1f2937}.planningChoice>summary::-webkit-details-marker{display:none}.planningChoice>summary:after{content:'＋';font-size:18px;color:#1674d9;margin-left:6px}.planningChoice[open]>summary:after{content:'−'}.planningChoice>summary small{margin-left:auto;color:#7a8290;font-size:11px;font-weight:650;white-space:nowrap;max-width:58%;overflow:hidden;text-overflow:ellipsis}.planningChoiceBody{padding:0 12px 13px}.planningChoiceBody>label:first-child{display:none}.planningChoiceBody .checkgrid{display:grid!important;grid-template-columns:1fr!important;gap:6px!important;max-height:170px;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2px}.planningChoiceBody .checkitem{min-height:42px;margin:0}#planningDaysDetails .planningChoiceBody #daysBox{max-height:none!important;overflow:visible!important;-webkit-overflow-scrolling:auto;touch-action:auto}.planningAdvancedDetails .premium-time{margin-top:6px}.planningCalendarDetails .calendarConnect{margin:0!important;border:0!important;box-shadow:none!important;background:transparent!important;padding:4px 0!important}.planningRangeDetails .formgrid{margin-top:4px}.planningDuplicateGenerate{display:none!important}.planningStoreCount{margin:6px 0 2px;color:#697386}.planningRangeDetails{order:20}
+    @media(max-width:650px){.planningHeroV2{padding-top:2px}.planningHeroTop{align-items:flex-start}.planningHeroWeek{max-width:58%;line-height:1.3}.planningHeroDay{font-size:50px}.planningHeroFull{font-size:13px}.planningToolsV2{margin-bottom:10px}.planningToolsV2 button{flex:1 1 calc(50% - 4px);min-width:0;min-height:44px}.planningChoice{border-radius:15px}.planningChoice>summary{padding:11px 12px}.planningChoiceBody{padding:0 10px 11px}.planningChoiceBody .checkgrid{max-height:150px}#planningDaysDetails .planningChoiceBody #daysBox{max-height:none!important;overflow:visible!important}.planningAdvancedDetails .formgrid,.planningRangeDetails .formgrid{grid-template-columns:1fr!important}}
   `;document.head.appendChild(s)}
 
   function run(){css();syncSmartBrief();if(isEditingLocked())return;reorderPlanning();compactSettings();restoreHotelStars()}
@@ -152,8 +180,8 @@
   document.addEventListener('pointerdown',e=>{if(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD))editingLocked=true},true);
   document.addEventListener('focusin',e=>{if(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD))editingLocked=true},true);
   function releaseEditingLock(){if(!editingLocked)return;editingLocked=false;schedule()}
-  document.addEventListener('pointerdown',e=>{if(editingLocked&&!(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD)))releaseEditingLock()},true);
-  document.addEventListener('focusin',e=>{if(editingLocked&&!(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD)))releaseEditingLock()},true);
+  document.addEventListener('pointerdown',e=>{if(editingLocked&&!isSettingsShortcut(e.target)&&!(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD)))releaseEditingLock()},true);
+  document.addEventListener('focusin',e=>{if(editingLocked&&!isSettingsShortcut(e.target)&&!(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD)))releaseEditingLock()},true);
   document.addEventListener('change',e=>{
     if(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD)){editingLocked=false;schedule()}
     if(e.target&&e.target.matches&&(e.target.matches('[data-day],[data-brand]')||e.target.matches('#rangeStart,#rangeEnd')))setTimeout(schedule,20);
