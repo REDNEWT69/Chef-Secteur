@@ -219,8 +219,14 @@ async function strictSingleWeek(){
   if(generationBusy)return{ok:false,busy:true};
   generationBusy=true;
   try{
-    ChefReliability.checkpoint('Avant génération de la semaine');
     const days=readControls(),raw=parse((state.settings&&state.settings.weekDate)||iso(new Date())),mon=monday(raw||new Date());
+    const archived=loadArchive()[iso(mon)];
+    if(archived&&archived.manualEdited){
+      const visits=countPlan(state.plan,DAYS),credits=DAYS.reduce((n,d)=>n+routeCredits((state.plan&&state.plan[d])||[]),0);
+      showStatus('Semaine modifiée manuellement : tes magasins sont conservés. La génération automatique n’a rien changé.');
+      return{ok:true,preservedManual:true,visits,credits};
+    }
+    ChefReliability.checkpoint('Avant génération de la semaine');
     showStatus('Synchronisation Google Agenda puis génération de la semaine…');
     const synced=await window.syncGoogleCalendar(true);
     if((!synced||!synced.ok)&&!confirm('Google Agenda n’a pas pu être vérifié. Continuer avec les derniers événements conservés ?'))throw Error('Génération annulée.');
@@ -256,6 +262,14 @@ async function generateRange(){
     const calendarSynced=await syncCalendarRange(first,last);
     let mon=new Date(first),weekIndex=0,weeks=0,totalVisits=0,totalCredits=0,totalUnplaced=0;
     while(mon<=last){
+      const weekKey=iso(mon),archived=archive[weekKey];
+      if(archived&&archived.manualEdited){
+        const weekSeen=new Set();
+        for(const d of DAYS)for(const s of ((archived.plan&&archived.plan[d])||[])){
+          const k=storeKey(s);if(!k||weekSeen.has(k))continue;weekSeen.add(k);unique.add(k);usedKeys.add(k);useCount.set(k,(useCount.get(k)||0)+1);lastUsedWeek.set(k,weekIndex);totalVisits++;totalCredits+=visitCredit(s);
+        }
+        mon=addDays(mon,7);weekIndex++;weeks++;await new Promise(r=>setTimeout(r,10));continue;
+      }
       const usable=activeDays(mon,days,start,end);
       if(!usable.length){archive[iso(mon)]=snapshot(mon,start,end,Object.fromEntries(DAYS.map(d=>[d,[]])),days);mon=addDays(mon,7);weekIndex++;weeks++;continue}
       const limits=selectionNeed(pool,usable,target,max);
@@ -402,12 +416,17 @@ async function persistDayReplacement(preview){
   if(preview.anchor&&preview.anchor.id)next.locks[String(preview.anchor.id)]=preview.day;
   if(preview.oldId&&next.locks[String(preview.oldId)]===preview.day)delete next.locks[String(preview.oldId)];
   bundle.state=next;
-  if(bundle.archive&&bundle.archive[weekKey]){
-    bundle.archive[weekKey].plan=bundle.archive[weekKey].plan||{};
-    bundle.archive[weekKey].plan[preview.day]=preview.route.map(cloneStore);
-    if(preview.sourceDay&&Array.isArray(preview.sourceRoute))bundle.archive[weekKey].plan[preview.sourceDay]=preview.sourceRoute.map(cloneStore);
-    refreshRangeStats(bundle);
+  bundle.archive=bundle.archive||loadArchive()||{};
+  if(!bundle.archive[weekKey]){
+    const plan={};for(const d of DAYS)plan[d]=((next.plan&&next.plan[d])||[]).map(cloneStore);
+    bundle.archive[weekKey]={weekMonday:weekKey,plan};
   }
+  bundle.archive[weekKey].plan=bundle.archive[weekKey].plan||{};
+  bundle.archive[weekKey].plan[preview.day]=preview.route.map(cloneStore);
+  if(preview.sourceDay&&Array.isArray(preview.sourceRoute))bundle.archive[weekKey].plan[preview.sourceDay]=preview.sourceRoute.map(cloneStore);
+  bundle.archive[weekKey].manualEdited=true;
+  bundle.archive[weekKey].manualEditedAt=new Date().toISOString();
+  refreshRangeStats(bundle);
   R.persist(bundle,db);if(db&&typeof db.flush==='function')await db.flush();window.state=bundle.state;
   if(typeof initControls==='function')initControls();if(typeof renderAll==='function')renderAll();
   document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{reason:preview.sourceDay?'store-moved-between-days':'day-store-recenter',day:preview.day,sourceDay:preview.sourceDay||null,weekDate:weekKey}}));
