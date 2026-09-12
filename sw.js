@@ -1,4 +1,4 @@
-const BUILD_REV = "20260912-datepicker1";
+const BUILD_REV = "20260912-samsungcleanup1";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -21,7 +21,6 @@ const OPTIONAL_SHELL = [
   "./store-runner-branding.js",
   "./navigation-controller.js",
   "./profile-controller.js",
-  "./samsung-wordmark.svg",
   "./calendar-oauth.js",
   "./planning-generation-controller.js",
   "./calendar-enhancements.js",
