@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "profile": {"sectorName": "Test"},
+  "stores": [{"id": "store-1", "name": "Magasin Test"}],
+  "visits": [],
+  "actions": [],
+  "appointments": [],
+  "planning": {"weeks": {}},
+  "settings": {"days": ["Lundi", "Mardi"]}
+}
