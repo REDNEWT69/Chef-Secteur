@@ -14,6 +14,11 @@ assert.match(source,/Math\.abs\(dx\)>=42/,'un swipe franc doit déclencher la na
 assert.match(source,/navigateAdjacent\(box,dx<0\?1:-1\)/,'le sens du swipe doit choisir le jour adjacent');
 assert.match(source,/touch-action:pan-y!important/,'le bandeau doit réserver le geste horizontal tout en laissant le scroll vertical à la page');
 assert.match(source,/suppressClickUntil=Date\.now\(\)\+350/,'le clic fantôme après drag doit être neutralisé');
+assert.match(source,/function bindListSwipe\(container\)/,'un swipe doit aussi fonctionner sur toute la liste du planning, pas seulement sur la bande des jours');
+assert.match(source,/bindListSwipe\(document\.getElementById\('planPanel'\)\)/,'le swipe de liste doit être activé sur le panneau planning');
+assert.match(source,/isInteractiveTarget\(e\.target\)/,'le swipe de liste ne doit pas se déclencher en interagissant avec un bouton ou un lien');
+assert.match(source,/Math\.abs\(dx\)>=60/,'le swipe de liste doit exiger un geste franc avant de changer de jour');
+assert.match(source,/if\(dragging&&e\.cancelable\)e\.preventDefault\(\)/,'le scroll vertical doit rester libre tant que le geste n’est pas verrouillé horizontal');
 source=source.replace(/\}\)\(\);\s*$/,'window.__periodTest={loadDate,range,load};})();');
 
 const RANGE='chef_sector_range_v1',ARCHIVE='chef_sector_plan_archive_v1';
