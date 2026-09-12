@@ -8,12 +8,23 @@ assert.doesNotMatch(source,/visibilitychange/,'le slider ne doit plus se réveil
 assert.match(source,/new MutationObserver/,'un rattrapage ciblé doit rester disponible si le rendu historique remplace les onglets');
 assert.match(source,/tabObserver\.observe\(box,\{childList:true\}\)/,'l’observer doit rester limité à #dayTabs');
 assert.match(source,/store-runner:data-restored/,'une restauration de données doit rafraîchir la période');
-assert.match(source,/addEventListener\('touchmove',[\s\S]*?\{passive:false\}\)/,'Android doit avoir un drag horizontal tactile non-passif explicite');
-assert.match(source,/box\.scrollLeft=startScroll-dx/,'le drag tactile doit déplacer réellement le bandeau des jours');
-assert.match(source,/Math\.abs\(dx\)>=42/,'un swipe franc doit déclencher la navigation jour précédent/suivant');
-assert.match(source,/navigateAdjacent\(box,dx<0\?1:-1\)/,'le sens du swipe doit choisir le jour adjacent');
-assert.match(source,/touch-action:pan-y!important/,'le bandeau doit réserver le geste horizontal tout en laissant le scroll vertical à la page');
-assert.match(source,/suppressClickUntil=Date\.now\(\)\+350/,'le clic fantôme après drag doit être neutralisé');
+// Le défilement horizontal de la bande appartient au navigateur. Le drag manuel qui
+// remplaçait le défilement natif avançait par événement, supprimait l'inertie de Safari
+// et rendait la fin d'une période de plusieurs semaines inatteignable : il est supprimé,
+// et ces garde-fous verrouillent l'inverse de ce qu'ils verrouillaient avant.
+assert.doesNotMatch(source,/scrollLeft\s*=/,'la bande ne doit plus déplacer son défilement en JavaScript : c’est au navigateur de le faire');
+assert.doesNotMatch(source,/startScroll/,'le drag manuel de la bande doit avoir disparu, pas seulement être désactivé');
+assert.doesNotMatch(source,/function bindTouchSwipe/,'le balayage dédié de la bande doit être supprimé, pas cohabiter avec le défilement natif');
+assert.doesNotMatch(source,/touch-action:pan-y/,'la bande ne doit plus interdire le geste horizontal natif');
+assert.doesNotMatch(source,/scroll-snap-(?:type|align)\s*:/,'aucun scroll-snap ne doit gêner l’accès au dernier onglet d’une période longue');
+assert.doesNotMatch(source,/Math\.abs\(dx\)>=42/,'le seuil de balayage propre à la bande n’a plus lieu d’être');
+assert.match(source,/\.periodDayTabs\{[^']*touch-action:auto!important/,'la bande doit rendre le geste au navigateur, en neutralisant le touch-action plus spécifique posé ailleurs');
+assert.match(source,/\.periodDayTab\{[^']*touch-action:auto!important/,'les onglets ne doivent pas non plus confisquer le geste');
+assert.match(source,/overflow-x:auto!important/,'la bande doit rester une zone réellement défilable horizontalement');
+// Le changement de jour ne passe plus que par le tap sur un onglet et par le balayage
+// franc de la liste des visites.
+assert.match(source,/b\.onclick=function\(\)\{loadDate\(copy\)\}/,'un tap sur un onglet doit rester le moyen direct de changer de jour');
+assert.match(source,/navigateAdjacent\(box,dx<0\?1:-1\)/,'le balayage de la liste doit choisir le jour adjacent');
 assert.match(source,/function bindListSwipe\(container\)/,'un swipe doit aussi fonctionner sur toute la liste du planning, pas seulement sur la bande des jours');
 assert.match(source,/bindListSwipe\(document\.getElementById\('planPanel'\)\)/,'le swipe de liste doit être activé sur le panneau planning');
 assert.match(source,/isInteractiveTarget\(e\.target\)/,'le swipe de liste ne doit pas se déclencher en interagissant avec un bouton ou un lien');
@@ -282,11 +293,20 @@ assert.equal(T.renderTabs(),true);
 box.children.forEach((c,i)=>assert.equal(c,afterForeignRebuild[i],'un rendu normal après reconstruction ne doit plus recréer les onglets'));
 assert.equal(box.scrollLeft,77,'la position de défilement doit rester intacte une fois la bande légitime restaurée');
 
-// 10. aucun doublon de listener après plusieurs updates/renders : la bande #dayTabs
-// elle-même n'est jamais recréée, bindTouchSwipe reste donc lié une seule fois.
-assert.equal(box._listeners.touchstart.length,1,'bindTouchSwipe ne doit jamais être réappliqué en double sur la bande');
-assert.equal(box._listeners.touchmove.length,1);
-assert.equal(box._listeners.touchend.length,1);
+// 10. aucun doublon de listener après plusieurs updates/renders. La bande ne porte
+// désormais plus aucun écouteur tactile : son défilement est entièrement natif, donc
+// rien ne peut s'y accumuler ni intercepter le geste.
+for(const type of ['touchstart','touchmove','touchend','touchcancel'])
+  assert.equal(box._listeners[type],undefined,'la bande ne doit porter aucun écouteur tactile : le défilement horizontal appartient au navigateur');
+assert.equal(box.dataset.periodSwipeBound,undefined,'plus aucun marqueur de balayage de bande ne doit subsister');
+
+// Un défilement horizontal posé par l'utilisateur ou par le navigateur n'est jamais
+// repris par le module : plusieurs rendus successifs le laissent strictement intact.
+box.scrollLeft=588; // fin d'une période longue, atteinte d'un seul geste avec inertie
+assert.equal(T.renderTabs(),true);
+dom.dispatchDocumentEvent('store-runner:planning-updated');
+scheduled();
+assert.equal(box.scrollLeft,588,'aucun rendu ne doit ramener la bande en arrière une fois l’utilisateur arrivé à la fin');
 
 // --- Cause du second rendu structurel (#127) : le noyau historique ---------------
 // Un clic sur un onglet passe par loadDate() -> window.selectPlanningDay() ->
@@ -361,4 +381,4 @@ assert.equal(T.renderTabs(),true);
 assert.equal(box.querySelectorAll('.periodDayTab').length,3,'le slider doit reconstruire ses onglets après une reprise du noyau');
 assert.equal(box.dataset.periodSliderOwner,'1','le marqueur doit être reposé une fois les onglets réellement réécrits');
 
-console.log('PASS: le slider de période utilise le stockage actif, ouvre une semaine non générée sans échec silencieux, gère explicitement le swipe tactile Android, ne reconstruit/recentre plus la bande des jours que lorsque c’est réellement nécessaire, et reconstruit bien ses onglets si le noyau historique a remplacé #dayTabs par d’autres nœuds.');
+console.log('PASS: le slider de période utilise le stockage actif, ouvre une semaine non générée sans échec silencieux, laisse le défilement horizontal de la bande au navigateur, ne reconstruit/recentre plus la bande des jours que lorsque c’est réellement nécessaire, et reconstruit bien ses onglets si le noyau historique a remplacé #dayTabs par d’autres nœuds.');
