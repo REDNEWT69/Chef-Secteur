@@ -23,7 +23,9 @@ forbid('planning-generation-controller.js','OAuth Google déclenché pendant gen
 must('planning-generation-controller.js','génération locale documentée',/génération du planning doit rester purement locale/i);
 must('planning-generation-controller.js','marqueur de génération locale',/__storeRunnerPlanningGenerationActive/);
 must('planning-generation-controller.js','événement planning après génération',/store-runner:planning-updated/);
-must('planning-generation-controller.js','préflight point de départ',/function validBase\(\)/);
+must('planning-generation-controller.js','préflight partagé du point de départ',/function hasValidBase\(\)[\s\S]*window\.storeRunnerHasValidBase\(\)/);
+must('planning-generation-controller.js','blocage avant génération si départ invalide',/if\(!hasValidBase\(\)\)/);
+forbid('planning-generation-controller.js','duplication locale de validBase',/function validBase\(\)/);
 must('planning-generation-controller.js','retour visible près du bouton principal',/planningGenerateStatus/);
 must('planning-generation-controller.js','message départ manuel',/Francheville/);
 
