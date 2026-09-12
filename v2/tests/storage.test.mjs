@@ -21,6 +21,11 @@ assert.equal(loadState(storage).profile.name, 'Test');
 storage.setItem(STORAGE_KEY, '{broken');
 assert.throws(() => loadState(storage), /JSON invalide/);
 
+const invalidStored = createEmptyState();
+invalidStored.planning = [];
+storage.setItem(STORAGE_KEY, JSON.stringify(invalidStored));
+assert.throws(() => loadState(storage), /planning/);
+
 storage.setItem(STORAGE_KEY, JSON.stringify(state));
 const reset = resetState(storage);
 assert.equal(storage.getItem(STORAGE_KEY), null);
