@@ -547,12 +547,19 @@ setTimeout(function(){try{applyAppointmentsToPlan();save();renderAll();decorateW
     var days=(state.settings&&state.settings.days)||DAYS;
     if(!days.length)return;
     if(!selectedPlanningDay||days.indexOf(selectedPlanningDay)<0)selectedPlanningDay=days[0];
+    var el=document.getElementById('dayTabs'); if(!el)return;
+    /* La bande de période (period-day-slider.js) devient propriétaire de #dayTabs dès
+       qu'elle est installée : elle y marque la classe periodDayTabs. Continuer à
+       réécrire innerHTML ici remettait le défilement horizontal de l'utilisateur à
+       zéro et imposait un second rendu structurel de la bande à chaque changement de
+       jour. Quand le slider n'est pas installé, le rendu historique reste seul maître. */
+    if(el.classList&&el.classList.contains('periodDayTabs'))return;
     var h='';
     for(var i=0;i<days.length;i++){
       var d=days[i],count=(state.plan[d]||[]).length;
       h+='<button class="dayTab '+(d===selectedPlanningDay?'active':'')+'" onclick="selectPlanningDay(\''+d+'\')"><b>'+esc(d)+' '+shortDate(d)+'</b><span>'+count+' visite'+(count>1?'s':'')+'</span></button>'
     }
-    var el=document.getElementById('dayTabs'); if(el)el.innerHTML=h
+    el.innerHTML=h
   }
   window.selectPlanningDay=function(day){selectedPlanningDay=day;renderWeek()}
   window.showPlanMap=function(){

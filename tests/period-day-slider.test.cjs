@@ -283,4 +283,49 @@ assert.equal(box._listeners.touchstart.length,1,'bindTouchSwipe ne doit jamais �
 assert.equal(box._listeners.touchmove.length,1);
 assert.equal(box._listeners.touchend.length,1);
 
+// --- Cause du second rendu structurel (#127) : le noyau historique ---------------
+// Un clic sur un onglet passe par loadDate() -> window.selectPlanningDay() ->
+// renderWeek() -> renderDayTabs(), qui réécrivait innerHTML de #dayTabs à chaque
+// changement de jour. C'était la première des deux reconstructions mesurées (scrollLeft
+// 304 -> 0), la seconde venant du slider qui reconstruisait ensuite une bande devenue
+// étrangère. On exécute ici le vrai renderDayTabs() du noyau, extrait de la source.
+const coreHtml=fs.readFileSync(__dirname+'/../src/chef-secteur.html','utf8');
+const renderDayTabsSrc=(coreHtml.match(/\n  function renderDayTabs\(\)\{[\s\S]*?\n  \}\n/)||[])[0];
+assert(renderDayTabsSrc,'renderDayTabs() doit rester identifiable dans le noyau historique');
+assert.match(renderDayTabsSrc,/classList&&el\.classList\.contains\('periodDayTabs'\)\)return/,'le rendu historique doit rendre la main sur #dayTabs dès que la bande de période le possède');
+
+const coreCtx={
+  state,console,Date,JSON,Object,Array,String,Number,Math,
+  DAYS:['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'],
+  selectedPlanningDay:'Lundi',
+  esc:v=>String(v),
+  shortDate:()=>'14/09',
+  document:dom.document
+};
+vm.runInNewContext(renderDayTabsSrc+'\nthis.__renderDayTabs=renderDayTabs;',coreCtx);
+
+// État de départ : bande possédée par le slider, position donnée par l'utilisateur.
+assert.equal(box.classList.contains('periodDayTabs'),true,'le slider doit marquer #dayTabs comme sa propriété');
+box.scrollLeft=304;
+const ownedNodes=box.children.slice(),ownedHtml=box.innerHTML;
+
+// 1. changement de jour côté noyau historique : plus aucune réécriture de la bande.
+coreCtx.__renderDayTabs();
+assert.equal(box.innerHTML,ownedHtml,'le noyau historique ne doit plus réécrire #dayTabs quand la bande de période le possède');
+box.children.forEach((c,i)=>assert.equal(c,ownedNodes[i],'aucun onglet ne doit être détruit par le rendu historique'));
+assert.equal(box.scrollLeft,304,'le rendu historique ne doit plus remettre le défilement horizontal à zéro');
+
+// 2. le rendu du slider qui suit ne reconstruit donc plus rien : un seul changement de
+//    jour ne produit plus aucune reconstruction structurelle.
+assert.equal(T.renderTabs(),true);
+box.children.forEach((c,i)=>assert.equal(c,ownedNodes[i],'un changement de jour ne doit plus déclencher la moindre reconstruction'));
+assert.equal(box.scrollLeft,304,'la position horizontale doit survivre à la chaîne complète changement de jour + rendu');
+
+// 3. contrôle négatif : sans le slider installé, le rendu historique reste seul maître
+//    de #dayTabs et doit continuer à produire ses propres onglets.
+box.classList.remove('periodDayTabs');
+coreCtx.__renderDayTabs();
+assert.match(box.innerHTML,/class="dayTab/,'sans la bande de période, le rendu historique doit continuer à remplir #dayTabs');
+box.classList.add('periodDayTabs');
+
 console.log('PASS: le slider de période utilise le stockage actif, ouvre une semaine non générée sans échec silencieux, gère explicitement le swipe tactile Android, ne reconstruit/recentre plus la bande des jours que lorsque c’est réellement nécessaire, et reconstruit bien ses onglets si le noyau historique a remplacé #dayTabs par d’autres nœuds.');
