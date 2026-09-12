@@ -2,32 +2,17 @@
   'use strict';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   let decorating=false;
-  let headerContextObserver=null,homeContextObserver=null;
   let weekObserver=null,observedWeek=null,weekRefreshTimer=null,suppressWeekObserver=false;
   let storeDialogObserver=null,observedStoreDialog=null;
 
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
   function tmin(v){if(!v)return null;const p=String(v).split(':');if(p.length<2)return null;const h=Number(p[0]),m=Number(p[1]);return Number.isFinite(h)&&Number.isFinite(m)?h*60+m:null}
   function fmt(m){m=Math.max(0,Math.round(m));return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')}
-  function activeCount(){try{return typeof window.activeStores==='function'?window.activeStores().length:(window.state&&state.stores?state.stores.filter(s=>s.active!==false).length:83)}catch(e){return 83}}
 
-  function cleanContextText(){
-    const label='Samsung Rhône-Alpes · '+activeCount()+' magasins';
-    const sub=document.getElementById('titleSub');if(sub&&sub.textContent!==label)sub.textContent=label;
-    const home=document.getElementById('homeSub');if(home&&home.textContent!==label)home.textContent=label;
-  }
-  function observeContextText(){
-    const top=document.querySelector('.top');
-    if(top&&!headerContextObserver){
-      headerContextObserver=new MutationObserver(function(){requestAnimationFrame(cleanContextText)});
-      headerContextObserver.observe(top,{childList:true,subtree:true,characterData:true});
-    }
-    const home=document.getElementById('homePanel');
-    if(home&&!homeContextObserver){
-      homeContextObserver=new MutationObserver(function(){requestAnimationFrame(cleanContextText)});
-      homeContextObserver.observe(home,{childList:true,subtree:true,characterData:true});
-    }
-  }
+  // #titleSub (store-runner-branding.js) et #homeSub (renderHome() dans chef-secteur.html)
+  // ont chacun leur propriétaire, avec un libellé dynamique correct. Ce module écrivait ici
+  // un texte figé reprenant l'ancienne marque du produit, qui écrasait ces deux propriétaires
+  // à chaque mutation observée et la réintroduisait après sa suppression ailleurs.
 
   function ensureOpeningFields(){
     const dlg=document.getElementById('storeDlg');if(!dlg||document.getElementById('fOpenTime'))return;
@@ -153,7 +138,7 @@
     clearTimeout(weekRefreshTimer);
     weekRefreshTimer=setTimeout(function(){
       suppressWeekObserver=true;
-      try{cleanContextText();decorateOpeningHours();decorateOvernights()}
+      try{decorateOpeningHours();decorateOvernights()}
       finally{setTimeout(function(){suppressWeekObserver=false},0)}
     },25);
   }
@@ -168,7 +153,7 @@
     return true;
   }
 
-  function refresh(){observeContextText();observeStoreDialog();observeWeek();cleanContextText();scheduleWeekDecorations()}
+  function refresh(){observeStoreDialog();observeWeek();scheduleWeekDecorations()}
   function installEvents(){
     if(window.__calendarEnhancementEvents)return;
     document.addEventListener('click',function(e){
