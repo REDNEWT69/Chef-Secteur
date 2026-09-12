@@ -26,7 +26,8 @@ for(const id of ['titleSub','appContextTitle']){
 }
 
 // Le noyau peut déclarer les éléments dans le HTML, mais son JavaScript ne doit plus
-// réécrire le branding derrière store-runner-branding.js.
+// réécrire le branding derrière store-runner-branding.js. Ce garde-fou couvre donc
+// explicitement src/chef-secteur.html, angle mort du test livré dans #105.
 for(const id of ['titleSub','appContextTitle']){
   const write=new RegExp(`getElementById\\(['"]${id}['"]\\)\\.textContent\\s*=`);
   if(write.test(core))throw new Error(`${id}: le noyau contient encore une écriture runtime interdite`);
