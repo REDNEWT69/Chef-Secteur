@@ -4,6 +4,11 @@ const path=require('path');
 const file=path.join(__dirname,'..','range-planner-v2.js');
 let source=fs.readFileSync(file,'utf8');
 
+if(source.includes("rotation:'balanced-lru-credit-v8'")){
+  console.log('PREVIEW PATCH ALREADY APPLIED: production file already contains balanced-lru-credit-v8.');
+  process.exit(0);
+}
+
 function replaceOnce(label,before,after){
   const first=source.indexOf(before);
   if(first<0)throw new Error(label+': bloc source introuvable');
