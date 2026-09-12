@@ -30,20 +30,9 @@
     setTimeout(healStorage,50);
     setTimeout(healStorage,250);
 
-    function updateSectorSubtitle(){
-      const sub=document.getElementById('titleSub');
-      if(!sub||typeof state==='undefined')return;
-      const sector=String((state.profile&&state.profile.sectorName)||'Rhône-Alpes').replace(/^samsung\s*[·:–—-]?\s*/i,'').trim()||'Rhône-Alpes';
-      const stores=typeof window.activeStores==='function'?window.activeStores():(state.stores||[]).filter(s=>s.active!==false);
-      const label=sector+' · '+stores.length+' magasins';
-      if(sub.textContent!==label)sub.textContent=label;
-    }
-    if(typeof window.renderHeader==='function'&&!window.__sectorSubtitleInstalled){
-      const original=window.renderHeader;
-      window.renderHeader=function(){const result=original.apply(this,arguments);updateSectorSubtitle();healStorage();return result};
-      window.__sectorSubtitleInstalled=true;
-    }
-    updateSectorSubtitle();
+    // #titleSub appartient exclusivement à store-runner-branding.js (secteur + départ +
+    // adresse). Ne pas y écrire ici ni ré-envelopper window.renderHeader pour ça : cela
+    // écrasait silencieusement le libellé dynamique à chaque rendu de l'en-tête.
     window.addEventListener('focus',healStorage,{passive:true});
     document.addEventListener('visibilitychange',function(){if(!document.hidden)healStorage()});
 

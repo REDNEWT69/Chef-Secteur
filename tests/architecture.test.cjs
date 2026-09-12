@@ -16,8 +16,6 @@ forbidMany('calendar-enhancements.js',[
   ['wrapper daySchedule',/window\.daySchedule\s*=\s*function/]
 ]);
 for(const [label,re] of [
-  ['observer contexte header',/headerContextObserver/],
-  ['observer contexte accueil',/homeContextObserver/],
   ['observer semaine',/weekObserver/],
   ['cible semaine observée',/observedWeek/],
   ['observer formulaire magasin',/storeDialogObserver/],
@@ -25,6 +23,10 @@ for(const [label,re] of [
   ['persistance horaires par événement',/rememberOpeningSave/],
   ['projection horaires sans override',/openingAwareRows/]
 ])requireMatch('calendar-enhancements.js',label,re);
+// headerContextObserver/homeContextObserver ont été retirés : ils ne servaient qu'à
+// réécrire #titleSub/#homeSub avec un texte "Samsung Rhône-Alpes" figé, écrasant leurs
+// propriétaires légitimes (store-runner-branding.js et renderHome()). Voir #titlesub-ownership.
+forbid('calendar-enhancements.js','ancien texte de contexte figé',/Samsung Rhône-Alpes ·/);
 
 forbidMany('home-refresh-v2.js',[
   ['wrapper renderHome',/window\.renderHome\s*=\s*function/],
