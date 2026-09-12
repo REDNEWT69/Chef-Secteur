@@ -52,6 +52,7 @@ Les composants déjà événementiels ne doivent pas réintroduire des boucles d
 - `assistant-upgrade.js` remplace encore transitoirement `sectorContext` et `assistantHandle`. La suppression de ces deux derniers wrappers demandera d’ajouter les points d’extension directement dans le propriétaire historique de l’assistant, avec validation complète avant publication.
 - `src/chef-secteur.html` reste le noyau historique et contient encore beaucoup de logique globale, notamment des couches historiques autour du planning et des rendez-vous. Les extractions doivent rester progressives, ciblées et sans migration de framework.
 - La dette documentaire liée à l’ancien statut « Visit + Action à faire » est désormais supprimée. Les agents doivent considérer ce lot comme acquis.
+- Le garde-fou `branding-relics.test.cjs` dépend actuellement de la liste des modules découverte depuis `index.html`. Si le bootloader V1 change, ce test devra être adapté afin de ne pas devenir silencieusement aveugle.
 
 ## État métier et ordre de reprise recommandé
 
