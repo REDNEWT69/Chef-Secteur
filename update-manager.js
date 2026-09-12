@@ -74,6 +74,7 @@
 
   function setBanner(title,detail,actionLabel,handler,autoHideMs){
     const banner=ensureBanner();
+    delete banner.dataset.sticky;
     banner.querySelector('[data-sru-banner-title]').textContent=title||'';
     banner.querySelector('[data-sru-banner-detail]').textContent=detail||'';
     const action=banner.querySelector('[data-sru-banner-action]');
@@ -132,7 +133,8 @@
         banner.dataset.sticky='1';
         return{available:true,current:state.current,latest:state.latest};
       }
-      hideBanner();
+      const existing=document.getElementById(BANNER_ID);
+      if(existing&&existing.dataset.sticky)hideBanner();
       if(!silent)setBanner('Store Runner est à jour','Version '+displayVersion(state.current)+' installée.',null,null,2600);
       return{available:false,current:state.current,latest:state.latest};
     }catch(error){
