@@ -76,7 +76,9 @@ Si une feature a besoin de déplacer quelque chose qui appartient au shell, c'es
 
 ### Contrat d'initialisation
 
-`createShell({ document, root, screens, initialScreen })` construit la structure une seule fois et pose un marqueur sur l'élément racine de montage. **Une seconde initialisation sur la même racine est explicitement refusée** (`ShellError`), plutôt que d'être idempotente en silence : appeler `createShell` deux fois sur la même racine ne crée jamais un second header/main/nav et n'installe jamais de listener en double.
+`createShell({ document, root, initialScreen })` construit la structure une seule fois et pose un marqueur sur l'élément racine de montage. **Une seconde initialisation sur la même racine est explicitement refusée** (`ShellError`), plutôt que d'être idempotente en silence : appeler `createShell` deux fois sur la même racine ne crée jamais un second header/main/nav et n'installe jamais de listener en double.
+
+`SCREEN_IDS` (exporté par `navigation.mjs`) est la source unique de vérité des écrans : le shell monte toujours exactement ces quatre écrans, il n'existe aucun paramètre pour en monter un sous-ensemble ou une liste différente.
 
 Le shell reçoit son document en paramètre (`createShell({ document, ... })`) au lieu d'aller le chercher dans une variable globale, avec un repli sur `globalThis.document` par défaut pour l'usage navigateur — ce qui le rend testable sans navigateur.
 

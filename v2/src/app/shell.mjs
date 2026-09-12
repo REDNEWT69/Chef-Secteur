@@ -34,7 +34,6 @@ export class ShellError extends Error {
 export function createShell({
   document: doc = (typeof globalThis !== 'undefined' ? globalThis.document : undefined),
   root,
-  screens = SCREEN_IDS,
   initialScreen = SCREEN_IDS[0],
 } = {}) {
   if (!doc) throw new ShellError('Un document est requis pour créer le shell.');
@@ -60,13 +59,13 @@ export function createShell({
   header.appendChild(title);
   header.appendChild(headerActions);
 
-  // --- Zone principale : un écran placeholder par entrée de `screens` --
+  // --- Zone principale : un écran placeholder par entrée de SCREEN_IDS ---
   const main = doc.createElement('main');
   main.classList.add('srv2-main');
 
   const screenElements = new Map();
-  for (const screenId of screens) {
-    const el = createScreenElement(doc, screenId, SCREEN_LABELS[screenId] || screenId);
+  for (const screenId of SCREEN_IDS) {
+    const el = createScreenElement(doc, screenId, SCREEN_LABELS[screenId]);
     screenElements.set(screenId, el);
     main.appendChild(el);
   }
@@ -77,8 +76,8 @@ export function createShell({
   navEl.setAttribute('role', 'navigation');
 
   const tabButtons = new Map();
-  for (const screenId of screens) {
-    const btn = createTabButton(doc, screenId, SCREEN_LABELS[screenId] || screenId, goTo);
+  for (const screenId of SCREEN_IDS) {
+    const btn = createTabButton(doc, screenId, SCREEN_LABELS[screenId], goTo);
     tabButtons.set(screenId, btn);
     navEl.appendChild(btn);
   }

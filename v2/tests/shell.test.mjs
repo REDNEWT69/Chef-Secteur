@@ -31,6 +31,26 @@ function setup() {
   assert.deepEqual(nav.children.map(el => el.getAttribute('data-tab')), SCREEN_IDS);
 }
 
+// 1 bis. SCREEN_IDS (navigation.mjs) est la seule source de vérité des
+// écrans : createShell ne prend aucun paramètre `screens`. Un objet
+// d'options portant une clé `screens` arbitraire (identifiant inconnu,
+// doublons, liste vide...) est donc silencieusement sans effet — le shell
+// monte toujours exactement les quatre écrans de SCREEN_IDS.
+{
+  const document = createFakeDocument();
+  const root = document.createElement('div');
+  assert.equal(SCREEN_IDS.length, 4);
+  const shell = createShell({ document, root, screens: ['inconnu', 'planning', 'planning'] });
+  const [, main, nav] = root.children;
+  assert.deepEqual(main.children.map(el => el.getAttribute('data-screen')), SCREEN_IDS);
+  assert.deepEqual(nav.children.map(el => el.getAttribute('data-tab')), SCREEN_IDS);
+  // et l'écran actif par défaut ('home') existe bel et bien, contrairement
+  // à l'ancien comportement où un `screens` restreint pouvait laisser
+  // nav.getActive() pointer vers un écran jamais monté.
+  assert.equal(shell.getActiveScreen(), 'home');
+  assert.equal(main.children.filter(el => el.classList.contains('is-active')).length, 1);
+}
+
 // 2. un seul écran actif dès l'initialisation
 {
   const { root, shell } = setup();
