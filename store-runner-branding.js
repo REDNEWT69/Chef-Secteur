@@ -128,14 +128,18 @@
 
   function observe(){
     const host=document.querySelector('.top');
-    if(host&&observerHost!==host){
+    if(host&&observerHost===host){
+      // La bonne cible est déjà observée.
+    }else if(host){
       if(observer)observer.disconnect();
       observerHost=host;
       observer=new MutationObserver(scheduleApply);
       observer.observe(host,{childList:true,subtree:true,characterData:true});
     }
     const home=document.getElementById('homePanel');
-    if(home&&homeObserverHost!==home){
+    if(home&&homeObserverHost===home){
+      // La bonne cible est déjà observée.
+    }else if(home){
       if(homeObserver)homeObserver.disconnect();
       homeObserverHost=home;
       homeObserver=new MutationObserver(scheduleApply);
