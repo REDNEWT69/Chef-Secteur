@@ -76,13 +76,13 @@ assert.match(source,/bundle\.archive\[weekKey\]/,'une modification manuelle doit
   // Un rendez-vous sur le magasin remplacé empêche une substitution silencieuse.
   t=env();{const by=id=>t.state.stores.find(s=>s.id===id);t.state.plan={Lundi:[by('x'),by('y')],Mardi:[by('z')]};t.state.appointments=[{storeId:'x',date:'2026-09-07',time:'10:00'}];assert.throws(()=>t.ctx.testPlanning.buildDayReplacement('x',by('w'),'Lundi',true),/rendez-vous enregistré/);}
 
-  // Un magasin déjà utilisé un autre jour de la semaine ne peut pas être dupliqué par le remplacement manuel.
-  t=env();{const by=id=>t.state.stores.find(s=>s.id===id);t.state.plan={Lundi:[by('x'),by('y')],Mardi:[by('z')]};assert.throws(()=>t.ctx.testPlanning.buildDayReplacement('x',by('z'),'Lundi',true),/déjà planifié/);}
+  // Un magasin déjà utilisé un autre jour est déplacé explicitement, jamais dupliqué.
+  t=env();{const by=id=>t.state.stores.find(s=>s.id===id);t.state.plan={Lundi:[by('x'),by('y')],Mardi:[by('z')]};const result=t.ctx.testPlanning.buildDayReplacement('x',by('z'),'Lundi',true);assert.equal(result.sourceDay,'Mardi','le jour d’origine doit être identifié');assert(result.route.some(s=>s.id==='z'),'le magasin choisi doit rejoindre Lundi');assert(!result.sourceRoute.some(s=>s.id==='z'),'le magasin choisi doit disparaître de Mardi');assert.equal(result.sourceRoute[0].id,'x','le magasin remplacé doit servir d’échange naturel sur le jour libéré quand il tient');const combined=result.route.concat(result.sourceRoute).map(s=>s.id);assert.equal(combined.filter(id=>id==='z').length,1,'le déplacement ne doit créer aucun doublon');}
 
   // Le mode secondaire remplace uniquement le magasin demandé, sans recentrer le reste de la journée.
   t=env();{const by=id=>t.state.stores.find(s=>s.id===id);t.state.plan={Lundi:[by('x'),by('y')],Mardi:[by('z')]};const result=t.ctx.testPlanning.buildDayReplacement('x',by('w'),'Lundi',false);assert.equal(result.route.map(s=>s.id).join(','),'w,y');}
 
   assert.equal(t.ctx.testPlanning.eventBlocksPlanning({allDay:true,title:'Anniversaire'}),false);
   assert.equal(t.ctx.testPlanning.eventBlocksPlanning({allDay:true,title:'Congé'}),true);
-  console.log('PASS: planning preserves previous data, repairs stale brand filters, respects all forced stores beyond the weekly target and strong day locks, supports safe manual store replacement with geographic day recentering and archive persistence, shows the first non-empty range week, ignores informational all-day events, blocks real unavailability, rejects zero-visit plans and concurrent generations, and keeps range planner initialization targeted.');
+  console.log('PASS: planning preserves previous data, repairs stale brand filters, respects all forced stores beyond the weekly target and strong day locks, supports safe manual replacement and explicit inter-day moves without duplicates, keeps archive persistence, shows the first non-empty range week, ignores informational all-day events, blocks real unavailability, rejects zero-visit plans and concurrent generations, and keeps range planner initialization targeted.');
 })().catch(e=>{console.error(e);process.exitCode=1});
