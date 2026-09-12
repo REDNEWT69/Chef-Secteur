@@ -26,6 +26,7 @@ jobs:
       - run: node tests/calendar.test.cjs
       - run: node tests/google-oauth-production.test.cjs
       - run: node tests/planning.test.cjs
+      - run: node tests/planning-range-rotation.test.cjs
       - run: node tests/period-day-slider.test.cjs
       - run: node tests/planning-period-date.test.cjs
       - run: node tests/mobile-compatibility.test.cjs
