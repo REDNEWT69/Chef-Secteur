@@ -33,6 +33,11 @@ assert.match(source,/function updateActiveTab\(box\)/,'le jour actif doit être 
 // la signature de période/jours travaillés n'a pas changé.
 assert.match(source,/function boxMatchesEntries\(box,entries\)/,'la bande doit vérifier qu’elle contient déjà réellement les onglets slider attendus, pas seulement comparer une signature');
 assert.match(source,/signature!==lastTabsSignature\|\|!box\.firstElementChild\|\|!boxMatchesEntries\(box,entries\)/,'la bande ne doit être reconstruite que si la structure affichée a réellement changé OU si #dayTabs ne contient plus les onglets slider attendus');
+// Le marqueur de prise en charge ne doit être posé qu'une fois les onglets réellement
+// écrits dans #dayTabs : jamais au démarrage, jamais avant une reconstruction réussie.
+assert.doesNotMatch(source,/function boot\(\)\{[^}]*periodSliderOwner/,'le marqueur de prise en charge ne doit pas être posé au démarrage');
+assert.match(source,/box\.innerHTML='';box\.appendChild\(frag\);[\s\S]{0,400}?if\(box\.querySelector\('\.periodDayTab'\)\)box\.dataset\.periodSliderOwner='1'/,'le marqueur ne doit être posé qu’après écriture effective des onglets dans #dayTabs');
+assert.match(source,/else delete box\.dataset\.periodSliderOwner/,'un rendu qui ne produit aucun onglet doit retirer le marqueur, pas laisser le noyau silencieux');
 
 source=source.replace(/\}\)\(\);\s*$/,'window.__periodTest={loadDate,range,load,renderTabs,getActiveDate:()=>activeDate};})();');
 
@@ -292,7 +297,8 @@ assert.equal(box._listeners.touchend.length,1);
 const coreHtml=fs.readFileSync(__dirname+'/../src/chef-secteur.html','utf8');
 const renderDayTabsSrc=(coreHtml.match(/\n  function renderDayTabs\(\)\{[\s\S]*?\n  \}\n/)||[])[0];
 assert(renderDayTabsSrc,'renderDayTabs() doit rester identifiable dans le noyau historique');
-assert.match(renderDayTabsSrc,/classList&&el\.classList\.contains\('periodDayTabs'\)\)return/,'le rendu historique doit rendre la main sur #dayTabs dès que la bande de période le possède');
+assert.match(renderDayTabsSrc,/if\(el\.dataset\.periodSliderOwner==='1'&&el\.querySelector\('\.periodDayTab'\)\)return/,'le rendu historique ne doit rendre la main que si le marqueur est posé ET qu’un onglet .periodDayTab existe réellement');
+assert.doesNotMatch(renderDayTabsSrc,/classList\.contains\('periodDayTabs'\)/,'la prise en charge ne doit plus se déduire d’une simple classe CSS de style');
 
 const coreCtx={
   state,console,Date,JSON,Object,Array,String,Number,Math,
@@ -305,7 +311,9 @@ const coreCtx={
 vm.runInNewContext(renderDayTabsSrc+'\nthis.__renderDayTabs=renderDayTabs;',coreCtx);
 
 // État de départ : bande possédée par le slider, position donnée par l'utilisateur.
-assert.equal(box.classList.contains('periodDayTabs'),true,'le slider doit marquer #dayTabs comme sa propriété');
+assert.equal(box.classList.contains('periodDayTabs'),true,'le slider doit poser sa classe de style sur #dayTabs');
+assert.equal(box.dataset.periodSliderOwner,'1','le slider doit avoir posé son marqueur de prise en charge après avoir écrit ses onglets');
+assert(box.querySelector('.periodDayTab'),'la bande prise en charge doit réellement contenir des onglets');
 box.scrollLeft=304;
 const ownedNodes=box.children.slice(),ownedHtml=box.innerHTML;
 
@@ -321,11 +329,36 @@ assert.equal(T.renderTabs(),true);
 box.children.forEach((c,i)=>assert.equal(c,ownedNodes[i],'un changement de jour ne doit plus déclencher la moindre reconstruction'));
 assert.equal(box.scrollLeft,304,'la position horizontale doit survivre à la chaîne complète changement de jour + rendu');
 
-// 3. contrôle négatif : sans le slider installé, le rendu historique reste seul maître
-//    de #dayTabs et doit continuer à produire ses propres onglets.
-box.classList.remove('periodDayTabs');
+// 3. contrôle négatif : sans marqueur de prise en charge, le rendu historique reste
+//    seul maître de #dayTabs et doit continuer à produire ses propres onglets.
+delete box.dataset.periodSliderOwner;
 coreCtx.__renderDayTabs();
-assert.match(box.innerHTML,/class="dayTab/,'sans la bande de période, le rendu historique doit continuer à remplir #dayTabs');
-box.classList.add('periodDayTabs');
+assert.match(box.innerHTML,/class="dayTab/,'sans prise en charge du slider, le rendu historique doit continuer à remplir #dayTabs');
+
+// 4. marqueur présent mais bande vide : le noyau ne doit pas rester silencieux devant
+//    #dayTabs sans onglet. Si le slider a posé son marqueur puis échoué à rendre ses
+//    onglets, le rendu historique doit reprendre la main.
+box.innerHTML='';
+box.dataset.periodSliderOwner='1';
+assert.equal(box.querySelectorAll('.periodDayTab').length,0,'la bande doit être réellement vide pour ce scénario');
+coreCtx.__renderDayTabs();
+assert.match(box.innerHTML,/class="dayTab/,'un marqueur posé sur une bande vide ne doit pas empêcher le rendu historique');
+
+// 5. et un rendu du slider qui ne produit aucun onglet ne doit pas laisser le marqueur
+//    derrière lui : période sans aucun jour travaillé affichable.
+box.innerHTML='';delete box.dataset.periodSliderOwner;
+activeData[RANGE]=JSON.stringify({start:'2026-09-14',end:'2026-09-18',workDays:['Samedi']});
+assert.equal(T.renderTabs(),true);
+assert.equal(box.querySelectorAll('.periodDayTab').length,0,'aucun jour travaillé affichable : la bande reste vide');
+assert.equal(box.dataset.periodSliderOwner,undefined,'un rendu sans onglet ne doit jamais laisser le marqueur de prise en charge');
+coreCtx.__renderDayTabs();
+assert.match(box.innerHTML,/class="dayTab/,'le noyau doit reprendre la bande qu’un rendu vide du slider a laissée sans onglet');
+
+// 6. retour à une période normale : le slider reprend la bande et repose son marqueur.
+activeData[RANGE]=JSON.stringify({start:'2026-09-14',end:'2026-09-16',workDays:['Lundi','Mardi','Mercredi']});
+box.innerHTML='';
+assert.equal(T.renderTabs(),true);
+assert.equal(box.querySelectorAll('.periodDayTab').length,3,'le slider doit reconstruire ses onglets après une reprise du noyau');
+assert.equal(box.dataset.periodSliderOwner,'1','le marqueur doit être reposé une fois les onglets réellement réécrits');
 
 console.log('PASS: le slider de période utilise le stockage actif, ouvre une semaine non générée sans échec silencieux, gère explicitement le swipe tactile Android, ne reconstruit/recentre plus la bande des jours que lorsque c’est réellement nécessaire, et reconstruit bien ses onglets si le noyau historique a remplacé #dayTabs par d’autres nœuds.');

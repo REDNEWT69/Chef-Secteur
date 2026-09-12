@@ -548,12 +548,14 @@ setTimeout(function(){try{applyAppointmentsToPlan();save();renderAll();decorateW
     if(!days.length)return;
     if(!selectedPlanningDay||days.indexOf(selectedPlanningDay)<0)selectedPlanningDay=days[0];
     var el=document.getElementById('dayTabs'); if(!el)return;
-    /* La bande de période (period-day-slider.js) devient propriétaire de #dayTabs dès
-       qu'elle est installée : elle y marque la classe periodDayTabs. Continuer à
+    /* La bande de période (period-day-slider.js) prend en charge #dayTabs : elle pose
+       le marqueur periodSliderOwner une fois ses onglets réellement écrits. Continuer à
        réécrire innerHTML ici remettait le défilement horizontal de l'utilisateur à
        zéro et imposait un second rendu structurel de la bande à chaque changement de
-       jour. Quand le slider n'est pas installé, le rendu historique reste seul maître. */
-    if(el.classList&&el.classList.contains('periodDayTabs'))return;
+       jour. Le marqueur seul ne suffit pas : si le slider l'a posé mais que la bande
+       ne contient aucun onglet, le rendu historique doit reprendre la main plutôt que
+       de laisser une bande vide. Sans slider installé, il reste seul maître. */
+    if(el.dataset.periodSliderOwner==='1'&&el.querySelector('.periodDayTab'))return;
     var h='';
     for(var i=0;i<days.length;i++){
       var d=days[i],count=(state.plan[d]||[]).length;

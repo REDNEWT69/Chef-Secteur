@@ -208,6 +208,12 @@
         const copy=new Date(d);b.onclick=function(){loadDate(copy)};frag.appendChild(b);
       }
       box.innerHTML='';box.appendChild(frag);lastTabsSignature=signature;
+      /* Marqueur de prise en charge posé seulement une fois les onglets réellement
+         écrits, jamais au démarrage ni avant une reconstruction réussie : si le rendu
+         n'a produit aucun onglet, le noyau historique doit reprendre la main sur la
+         bande plutôt que de rester silencieux devant #dayTabs vide. */
+      if(box.querySelector('.periodDayTab'))box.dataset.periodSliderOwner='1';
+      else delete box.dataset.periodSliderOwner;
     }
     bindTouchSwipe(box);
     const active=updateActiveTab(box);
