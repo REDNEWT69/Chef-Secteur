@@ -82,20 +82,38 @@ function forcedRank(s){const id=s&&s.id;return (state.locks&&state.locks[id]?2:0
 function forcedCount(pool){return (pool||[]).reduce((n,s)=>n+(forcedRank(s)>0?1:0),0)}
 function forcedCredits(pool){return (pool||[]).reduce((n,s)=>n+(forcedRank(s)>0?visitCredit(s):0),0)}
 function selectionNeed(pool,usable,target,max){
-  /* La capacité d'une période se mesure en crédits : un magasin imposé à 2 crédits
-     consomme deux unités du plafond, sinon on annonce une capacité qui n'existe pas. */
-  const capacity=max*usable.length,forced=forcedCount(pool),forcedCost=forcedCredits(pool);
-  if(forcedCost>capacity)throw new Error('Les magasins posés, imposés ou verrouillés demandent '+forcedCost+' crédit'+(forcedCost>1?'s':'')+' de visite pour seulement '+capacity+' disponible'+(capacity>1?'s':'')+'. Le planning précédent est conservé.');
-  return Math.min(Math.max(Math.max(1,target),forced),capacity,pool.length);
+  /* Deux unités différentes coexistent volontairement : target reste un objectif de
+     magasins, tandis que maxVisitsPerDay est un budget de crédits. On ne convertit
+     donc plus la capacité en crédits en faux « nombre de magasins ». */
+  const capacityCredits=max*usable.length,forced=forcedCount(pool),forcedCost=forcedCredits(pool);
+  if(forcedCost>capacityCredits)throw new Error('Les magasins posés, imposés ou verrouillés demandent '+forcedCost+' crédit'+(forcedCost>1?'s':'')+' de visite pour seulement '+capacityCredits+' disponible'+(capacityCredits>1?'s':'')+'. Le planning précédent est conservé.');
+  return{targetCount:Math.min(Math.max(Math.max(1,target),forced),pool.length),capacityCredits};
 }
-function chooseStores(pool,usedKeys,lastUsedWeek,target){
-  const chosen=[],keys=new Set(),add=s=>{const k=storeKey(s);if(!k||keys.has(k)||chosen.length>=target)return false;chosen.push(s);keys.add(k);return true};
+function chooseStores(pool,usedKeys,useCount,lastUsedWeek,targetCount,creditBudget){
+  const chosen=[],keys=new Set();let credits=0;
+  const add=(s,isForced=false)=>{
+    const k=storeKey(s),cost=visitCredit(s);
+    if(!k||keys.has(k)||chosen.length>=targetCount)return false;
+    if(!isForced&&credits+cost>creditBudget)return false;
+    chosen.push(s);keys.add(k);credits+=cost;return true;
+  };
   const forced=pool.filter(s=>forcedRank(s)>0).sort((a,b)=>forcedRank(b)-forcedRank(a)||scoreOf(b)-scoreOf(a));
-  for(const s of forced)add(s);
+  for(const s of forced)add(s,true);
+  /* Un magasin jamais réellement placé reste frais jusqu'à son premier passage.
+     Le score ne départage que des magasins du même niveau de fraîcheur. */
   const fresh=pool.filter(s=>!keys.has(storeKey(s))&&!usedKeys.has(storeKey(s))).sort((a,b)=>scoreOf(b)-scoreOf(a));
   for(const s of fresh)add(s);
-  if(chosen.length<target){
-    const old=pool.filter(s=>!keys.has(storeKey(s))).sort((a,b)=>{const ka=storeKey(a),kb=storeKey(b),la=lastUsedWeek.get(ka),lb=lastUsedWeek.get(kb);if(la!==lb)return (la==null?-999:la)-(lb==null?-999:lb);return scoreOf(b)-scoreOf(a)});
+  /* Une fois le vivier frais épuisé pour le budget restant, équilibrer d'abord le
+     nombre réel de passages, puis reprendre le moins récemment utilisé. Le score
+     n'intervient qu'en dernier départage. */
+  if(chosen.length<targetCount&&credits<creditBudget){
+    const old=pool.filter(s=>!keys.has(storeKey(s))).sort((a,b)=>{
+      const ka=storeKey(a),kb=storeKey(b),ca=useCount.get(ka)||0,cb=useCount.get(kb)||0;
+      if(ca!==cb)return ca-cb;
+      const la=lastUsedWeek.get(ka),lb=lastUsedWeek.get(kb);
+      if(la!==lb)return (la==null?-999:la)-(lb==null?-999:lb);
+      return scoreOf(b)-scoreOf(a);
+    });
     for(const s of old)add(s);
   }
   return chosen;
@@ -117,7 +135,9 @@ function buildWeekUnique(chosen,days){
   if(!days.length||!chosen.length)return{plan,unplaced:chosen.slice()};
   const unique=[],seen=new Set();
   for(const s of chosen){const k=storeKey(s);if(k&&!seen.has(k)){seen.add(k);unique.push(s)}}
-  unique.sort((a,b)=>{const la=Number(a.lat)||0,lb=Number(b.lat)||0;if(la!==lb)return la-lb;return (Number(a.lon)||0)-(Number(b.lon)||0)});
+  /* Conserver ici l'ordre de sélection (forcé → frais → équilibrage/LRU).
+     L'optimisation géographique se fait ensuite dans chaque journée ; la faire avant
+     le placement pouvait remettre un magasin déjà vu devant un magasin encore frais. */
   const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
   const free=[];
   for(const store of unique){
@@ -199,8 +219,14 @@ async function strictSingleWeek(){
   if(generationBusy)return{ok:false,busy:true};
   generationBusy=true;
   try{
-    ChefReliability.checkpoint('Avant génération de la semaine');
     const days=readControls(),raw=parse((state.settings&&state.settings.weekDate)||iso(new Date())),mon=monday(raw||new Date());
+    const archived=loadArchive()[iso(mon)];
+    if(archived&&archived.manualEdited){
+      const visits=countPlan(state.plan,DAYS),credits=DAYS.reduce((n,d)=>n+routeCredits((state.plan&&state.plan[d])||[]),0);
+      showStatus('Semaine modifiée manuellement : tes magasins sont conservés. La génération automatique n’a rien changé.');
+      return{ok:true,preservedManual:true,visits,credits};
+    }
+    ChefReliability.checkpoint('Avant génération de la semaine');
     showStatus('Synchronisation Google Agenda puis génération de la semaine…');
     const synced=await window.syncGoogleCalendar(true);
     if((!synced||!synced.ok)&&!confirm('Google Agenda n’a pas pu être vérifié. Continuer avec les derniers événements conservés ?'))throw Error('Génération annulée.');
@@ -208,8 +234,8 @@ async function strictSingleWeek(){
     if(!usable.length)throw new Error('Aucun jour disponible cette semaine. Vérifie les jours travaillés et les indisponibilités Agenda. Le planning précédent est conservé.');
     const pool=eligible();if(!pool.length)throw new Error('Aucun magasin actif ne correspond aux filtres. Ouvre « Enseignes » et vérifie la sélection.');
     const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
-    const need=selectionNeed(pool,usable,Number(state.settings.target)||20,max);
-    const chosen=chooseStores(pool,new Set(),new Map(),need),built=buildWeekUnique(chosen,usable);ensureForcedPlaced(built);const visits=countPlan(built.plan,usable);
+    const limits=selectionNeed(pool,usable,Number(state.settings.target)||20,max);
+    const chosen=chooseStores(pool,new Set(),new Map(),new Map(),limits.targetCount,limits.capacityCredits),built=buildWeekUnique(chosen,usable);ensureForcedPlaced(built);const visits=countPlan(built.plan,usable);
     const credits=usable.reduce((n,d)=>n+routeCredits(built.plan[d]),0);
     if(!visits)throw new Error('0 visite possible avec les réglages actuels. Vérifie l’heure de fin, la durée par magasin et ton point de départ. Le planning précédent est conservé.');
     if(!await ChefReliability.propose({plan:built.plan,weekDate:iso(mon)})){showStatus('Planning précédent conservé.');return{ok:false,cancelled:true}}
@@ -231,22 +257,29 @@ async function generateRange(){
   try{
     ChefReliability.checkpoint('Avant génération de la période');
     const days=readControls(),pool=eligible();if(!pool.length)throw new Error('Aucun magasin actif ne correspond aux filtres.');
-    const target=Math.max(1,Number(state.settings.target)||20),max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4)),archive=loadArchive(),first=monday(start),last=monday(end),usedKeys=new Set(),lastUsedWeek=new Map(),unique=new Set();
+    const target=Math.max(1,Number(state.settings.target)||20),max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4)),archive=loadArchive(),first=monday(start),last=monday(end),usedKeys=new Set(),useCount=new Map(),lastUsedWeek=new Map(),unique=new Set();
     showStatus('Synchronisation Google Agenda puis génération de la période…');
     const calendarSynced=await syncCalendarRange(first,last);
     let mon=new Date(first),weekIndex=0,weeks=0,totalVisits=0,totalCredits=0,totalUnplaced=0;
     while(mon<=last){
+      const weekKey=iso(mon),archived=archive[weekKey];
+      if(archived&&archived.manualEdited){
+        const weekSeen=new Set();
+        for(const d of DAYS)for(const s of ((archived.plan&&archived.plan[d])||[])){
+          const k=storeKey(s);if(!k||weekSeen.has(k))continue;weekSeen.add(k);unique.add(k);usedKeys.add(k);useCount.set(k,(useCount.get(k)||0)+1);lastUsedWeek.set(k,weekIndex);totalVisits++;totalCredits+=visitCredit(s);
+        }
+        mon=addDays(mon,7);weekIndex++;weeks++;await new Promise(r=>setTimeout(r,10));continue;
+      }
       const usable=activeDays(mon,days,start,end);
       if(!usable.length){archive[iso(mon)]=snapshot(mon,start,end,Object.fromEntries(DAYS.map(d=>[d,[]])),days);mon=addDays(mon,7);weekIndex++;weeks++;continue}
-      const need=selectionNeed(pool,usable,target,max),remaining=pool.filter(s=>!usedKeys.has(storeKey(s))).length;
-      if(usedKeys.size&&remaining<need)usedKeys.clear();
-      const chosen=chooseStores(pool,usedKeys,lastUsedWeek,need),built=buildWeekUnique(chosen,usable);ensureForcedPlaced(built);const plan=built.plan,weekSeen=new Set();
+      const limits=selectionNeed(pool,usable,target,max);
+      const chosen=chooseStores(pool,usedKeys,useCount,lastUsedWeek,limits.targetCount,limits.capacityCredits),built=buildWeekUnique(chosen,usable);ensureForcedPlaced(built);const plan=built.plan,weekSeen=new Set();
       totalUnplaced+=built.unplaced.length;
-      for(const d of usable)for(const s of (plan[d]||[])){const k=storeKey(s);if(!k||weekSeen.has(k))continue;weekSeen.add(k);unique.add(k);usedKeys.add(k);lastUsedWeek.set(k,weekIndex);totalVisits++;totalCredits+=visitCredit(s)}
+      for(const d of usable)for(const s of (plan[d]||[])){const k=storeKey(s);if(!k||weekSeen.has(k))continue;weekSeen.add(k);unique.add(k);usedKeys.add(k);useCount.set(k,(useCount.get(k)||0)+1);lastUsedWeek.set(k,weekIndex);totalVisits++;totalCredits+=visitCredit(s)}
       archive[iso(mon)]=snapshot(mon,start,end,plan,days);mon=addDays(mon,7);weekIndex++;weeks++;await new Promise(r=>setTimeout(r,10));
     }
     if(!totalVisits)throw new Error('La période donnerait 0 visite. Rien n’a été remplacé : vérifie les jours, les horaires et les indisponibilités Agenda.');
-    const range={start:iso(start),end:iso(end),weeks,workDays:days,uniqueStores:unique.size,totalVisits,rotation:'hard-unique-v7',calendarSynced,updatedAt:new Date().toISOString()};
+    const range={start:iso(start),end:iso(end),weeks,workDays:days,uniqueStores:unique.size,totalVisits,rotation:'balanced-lru-credit-v8',calendarSynced,updatedAt:new Date().toISOString()};
     let displayMon=new Date(first),displaySnap=null;
     while(displayMon<=last){const snap=archive[iso(displayMon)];if(snap&&countPlan(snap.plan,DAYS)>0){displaySnap=snap;break}displayMon=addDays(displayMon,7)}
     if(!displaySnap)throw new Error('La période contient des visites mais aucune semaine affichable n’a été retrouvée. Le planning précédent est conservé.');
@@ -383,12 +416,17 @@ async function persistDayReplacement(preview){
   if(preview.anchor&&preview.anchor.id)next.locks[String(preview.anchor.id)]=preview.day;
   if(preview.oldId&&next.locks[String(preview.oldId)]===preview.day)delete next.locks[String(preview.oldId)];
   bundle.state=next;
-  if(bundle.archive&&bundle.archive[weekKey]){
-    bundle.archive[weekKey].plan=bundle.archive[weekKey].plan||{};
-    bundle.archive[weekKey].plan[preview.day]=preview.route.map(cloneStore);
-    if(preview.sourceDay&&Array.isArray(preview.sourceRoute))bundle.archive[weekKey].plan[preview.sourceDay]=preview.sourceRoute.map(cloneStore);
-    refreshRangeStats(bundle);
+  bundle.archive=bundle.archive||loadArchive()||{};
+  if(!bundle.archive[weekKey]){
+    const plan={};for(const d of DAYS)plan[d]=((next.plan&&next.plan[d])||[]).map(cloneStore);
+    bundle.archive[weekKey]={weekMonday:weekKey,plan};
   }
+  bundle.archive[weekKey].plan=bundle.archive[weekKey].plan||{};
+  bundle.archive[weekKey].plan[preview.day]=preview.route.map(cloneStore);
+  if(preview.sourceDay&&Array.isArray(preview.sourceRoute))bundle.archive[weekKey].plan[preview.sourceDay]=preview.sourceRoute.map(cloneStore);
+  bundle.archive[weekKey].manualEdited=true;
+  bundle.archive[weekKey].manualEditedAt=new Date().toISOString();
+  refreshRangeStats(bundle);
   R.persist(bundle,db);if(db&&typeof db.flush==='function')await db.flush();window.state=bundle.state;
   if(typeof initControls==='function')initControls();if(typeof renderAll==='function')renderAll();
   document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{reason:preview.sourceDay?'store-moved-between-days':'day-store-recenter',day:preview.day,sourceDay:preview.sourceDay||null,weekDate:weekKey}}));
