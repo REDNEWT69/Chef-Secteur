@@ -1,4 +1,4 @@
-const BUILD_REV = "20260913-manualweek146";
+const BUILD_REV = "20260913-updatecenter147";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -47,6 +47,7 @@ const OPTIONAL_SHELL = [
   "./home-refresh-v2.js",
   "./auto-planning-fix.js",
   "./connection-ui.js",
+  "./update-manager.js",
   "./reliability-core.js",
   "./glass-theme.css",
   "./reliability-ui.js",
@@ -61,6 +62,7 @@ const SCOPE = self.registration.scope;
 // depuis SCOPE (fonctionne aussi bien sous store-runner.fr que sous une URL
 // GitHub Pages du type /Chef-Secteur/v2/).
 const V2_PREFIX = new URL('./v2/', SCOPE).href;
+const VERSION_URL = new URL('./version.json', SCOPE).href;
 function requestFor(path){return new Request(new URL(path,SCOPE), {cache:'reload'});}
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
@@ -77,8 +79,17 @@ self.addEventListener('activate', event => {
     await self.clients.claim();
   })());
 });
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
+  // Le manifeste de version doit toujours venir du réseau : sinon l'interface de mise à
+  // jour peut comparer l'application à une ancienne copie mise en cache.
+  if (url.href === VERSION_URL && event.request.method === 'GET') {
+    event.respondWith(fetch(event.request, {cache:'no-store'}));
+    return;
+  }
   // Exclusion V2 : avant toute logique de cache, avant respondWith. Le
   // navigateur effectue sa requête réseau normale pour /v2/, sans lecture ni
   // écriture dans le cache V1.
