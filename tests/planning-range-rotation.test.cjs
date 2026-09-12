@@ -54,11 +54,9 @@ function snapshots(proposal){
   return Object.values((proposal&&proposal.archive)||{}).filter(s=>s&&s.plan).sort((a,b)=>String(a.weekMonday).localeCompare(String(b.weekMonday)));
 }
 function weekIds(snap){return DAYS.flatMap(d=>(snap.plan[d]||[]).map(s=>s.id));}
-function allIds(proposal){return snapshots(proposal).flatMap(weekIds);}
 function creditOf(ctx,snap){return DAYS.reduce((n,d)=>n+ctx.testRangeRotation.routeCredits(snap.plan[d]||[]),0);}
 
 (async()=>{
-  // 1. Cas propre : 12 magasins, 4 par semaine, 3 semaines => couverture complète sans répétition.
   let stores=Array.from({length:12},(_,i)=>makeStore('s'+(i+1),12-i));
   let t=env({stores,target:4,max:4,end:'2026-09-25'});
   await t.ctx.testRangeRotation.generateRange();
@@ -69,8 +67,6 @@ function creditOf(ctx,snap){return DAYS.reduce((n,d)=>n+ctx.testRangeRotation.ro
   assert.equal(firstCycle.length,12,'les trois semaines doivent contenir 12 visites');
   assert.equal(new Set(firstCycle).size,12,'les 12 magasins doivent être couverts avant toute répétition');
 
-  // 2. Reste de cycle : 10 magasins, capacité 4. La 3e semaine doit consommer les 2 derniers frais
-  // avant de reprendre les plus anciens. C'est précisément le cas cassé par usedKeys.clear().
   stores=Array.from({length:10},(_,i)=>makeStore('r'+(i+1),10-i));
   t=env({stores,target:4,max:4,end:'2026-09-25'});
   await t.ctx.testRangeRotation.generateRange();
@@ -79,38 +75,34 @@ function creditOf(ctx,snap){return DAYS.reduce((n,d)=>n+ctx.testRangeRotation.ro
   assert.equal(coveredAfter3.size,10,'les deux derniers magasins frais doivent être planifiés avant une répétition de confort');
   assert(weekIds(snaps[2]).includes('r9')&&weekIds(snaps[2]).includes('r10'),'la semaine 3 doit contenir le reliquat frais r9/r10 malgré leur score plus faible');
 
-  // 3. Rotation longue : après épuisement du vivier, reprendre les magasins les moins récemment utilisés.
   stores=Array.from({length:10},(_,i)=>makeStore('l'+(i+1),10-i));
-  t=env({stores,target:4,max:4,end:'2026-10-09'}); // 5 semaines
+  t=env({stores,target:4,max:4,end:'2026-10-09'});
   await t.ctx.testRangeRotation.generateRange();
   snaps=snapshots(t.proposals[0]);
   assert.equal(snaps.length,5);
   const counts=new Map();for(const id of snaps.flatMap(weekIds))counts.set(id,(counts.get(id)||0)+1);
   assert.equal(counts.size,10,'aucun magasin éligible ne doit disparaître de la rotation longue');
   const values=[...counts.values()];
-  assert(Math.max(...values)-Math.min(...values)<=1,'la rotation longue doit rester équilibrée entre magasins planifiables');
+  console.log('DEBUG rotation longue',JSON.stringify(snaps.map(s=>[s.weekMonday,weekIds(s)])),JSON.stringify(Object.fromEntries(counts)));
+  assert(Math.max(...values)-Math.min(...values)<=1,'la rotation longue doit rester équilibrée entre magasins planifiables: '+JSON.stringify(Object.fromEntries(counts)));
 
-  // 4. Mélange 1/2 crédits : les enseignes coûteuses ne doivent pas monopoliser le cycle et aucune semaine
-  // ne doit dépasser le budget de crédits.
   stores=[
     makeStore('e1',10,'Darty'),makeStore('e2',9,'Boulanger'),makeStore('e3',8,'Carrefour'),makeStore('e4',7,'Darty'),
     makeStore('c1',3,'Fnac'),makeStore('c2',2,'Fnac'),makeStore('c3',1,'Fnac')
   ];
-  t=env({stores,target:4,max:4,end:'2026-09-28'}); // 4 lundis
+  t=env({stores,target:4,max:4,end:'2026-09-28'});
   await t.ctx.testRangeRotation.generateRange();
   snaps=snapshots(t.proposals[0]);
   for(const snap of snaps)assert(creditOf(t.ctx,snap)<=4,snap.weekMonday+' dépasse le plafond de 4 crédits');
   const mixedIds=new Set(snaps.flatMap(weekIds));
   for(const id of ['c1','c2','c3'])assert(mixedIds.has(id),id+' à 1 crédit doit finir par entrer dans la rotation malgré sa priorité faible');
 
-  // 5. Un magasin de priorité faible reste frais et doit donc passer avant une nouvelle rotation complète.
   stores=[makeStore('p1',100),makeStore('p2',90),makeStore('p3',80),makeStore('p4',70),makeStore('p5',1)];
   t=env({stores,target:2,max:2,end:'2026-09-25'});
   await t.ctx.testRangeRotation.generateRange();
   snaps=snapshots(t.proposals[0]);
   assert(snaps.slice(0,3).flatMap(weekIds).includes('p5'),'le magasin faible priorité doit apparaître avant que les meilleurs soient recyclés');
 
-  // 6. Contraintes fortes : le verrou revient chaque semaine, mais ne doit pas effacer la mémoire des autres.
   stores=Array.from({length:7},(_,i)=>makeStore('k'+(i+1),7-i));
   t=env({stores,target:3,max:3,end:'2026-09-25',locks:{k1:'Lundi'}});
   await t.ctx.testRangeRotation.generateRange();
@@ -119,7 +111,6 @@ function creditOf(ctx,snap){return DAYS.reduce((n,d)=>n+ctx.testRangeRotation.ro
   const nonForced=new Set(snaps.flatMap(weekIds).filter(id=>id!=='k1'));
   assert.equal(nonForced.size,6,'la répétition du verrou ne doit pas empêcher la couverture des six autres magasins');
 
-  // 7. Une semaine entièrement bloquée ne remet pas la rotation à zéro.
   stores=Array.from({length:5},(_,i)=>makeStore('b'+(i+1),5-i));
   t=env({stores,target:2,max:2,end:'2026-09-28',blockedDates:new Set(['2026-09-14'])});
   await t.ctx.testRangeRotation.generateRange();
