@@ -3,6 +3,15 @@
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   const SHORT={Lundi:'Lun',Mardi:'Mar',Mercredi:'Mer',Jeudi:'Jeu',Vendredi:'Ven',Samedi:'Sam'};
   let scheduled=false;
+  // Verrou explicite posé dès qu'on interagit avec un champ des réglages, levé au `change`
+  // ou à la fermeture du panneau - pas seulement en observant document.activeElement.
+  // Sur iOS, ouvrir un <input type="date"> fait perdre le focus à la page (le champ n'est
+  // plus document.activeElement pendant que le sélecteur natif est affiché) tout en
+  // déclenchant plusieurs événements de perte de focus au niveau de la fenêtre : sans ce
+  // verrou, le panneau était réorganisé pendant la saisie et le sélecteur natif se
+  // refermait aussitôt.
+  let editingLocked=false;
+  const SETTINGS_FIELD='#planningSettings input, #planningSettings select, #planningSettings textarea';
 
   function dateOnly(v){const m=String(v||'').match(/^(\d{4}-\d{2}-\d{2})/);return m?m[1]:''}
   function weekMonday(){try{const raw=(state.settings&&state.settings.weekDate)||new Date().toISOString().slice(0,10),d=new Date(raw+'T12:00:00'),w=d.getDay()||7;d.setDate(d.getDate()-w+1);return d}catch(e){return new Date()}}
@@ -42,13 +51,16 @@
   }
 
   function syncSmartBrief(){const brief=document.getElementById('smartBrief'),plan=document.getElementById('planPanel');if(!brief||!plan)return;brief.style.display=plan.classList.contains('active')?'none':''}
-  function activePlanningControl(){const el=document.activeElement;return !!(el&&el.matches&&el.matches('#planningSettings input, #planningSettings select, #planningSettings textarea'))}
+  function activePlanningControl(){const el=document.activeElement;return !!(el&&el.matches&&el.matches(SETTINGS_FIELD))}
+  // Le verrou explicite est la source de vérité ; document.activeElement reste un filet de
+  // sécurité pour les navigateurs où il suit correctement le focus pendant une saisie.
+  function isEditingLocked(){return editingLocked||activePlanningControl()}
   function moveAfter(anchor,node){if(!anchor||!node||anchor.nextElementSibling===node)return;anchor.insertAdjacentElement('afterend',node)}
 
   function reorderPlanning(){
     const plan=document.querySelector('#planPanel .applePlan'),title=plan&&plan.querySelector('.applePlanTitle'),tabs=document.getElementById('dayTabs'),timeline=plan&&plan.querySelector('.timelineShell'),metrics=document.getElementById('planMetrics'),saturday=document.getElementById('saturdayRecommendation'),departure=plan&&plan.querySelector('.departureCard'),settings=document.getElementById('planningSettings');
     if(!plan||!tabs||!timeline)return;
-    const editing=activePlanningControl(),hero=ensurePlanningHero(plan,title);moveAfter(hero,tabs);
+    const editing=isEditingLocked(),hero=ensurePlanningHero(plan,title);moveAfter(hero,tabs);
     let tools=document.getElementById('planningToolsV2');
     if(!tools){tools=document.createElement('div');tools.id='planningToolsV2';tools.className='planningToolsV2';tools.innerHTML='<button class="secondary" type="button" onclick="showPlanMap()">⌖ Ouvrir la tournée</button><button class="primary" type="button" onclick="generateWeek()">✦ Générer ma semaine</button>'}
     const generation=tools.querySelector('button[onclick*="generateWeek"]');if(generation){generation.className='primary';generation.textContent='✦ Générer ma semaine'}
@@ -127,15 +139,31 @@
     @media(max-width:650px){.planningHeroV2{padding-top:2px}.planningHeroTop{align-items:flex-start}.planningHeroWeek{max-width:58%;line-height:1.3}.planningHeroDay{font-size:50px}.planningHeroFull{font-size:13px}.planningToolsV2{margin-bottom:10px}.planningToolsV2 button{flex:1 1 0;min-width:0}.planningChoice{border-radius:15px}.planningChoice>summary{padding:11px 12px}.planningChoiceBody{padding:0 10px 11px}.planningChoiceBody .checkgrid{max-height:150px}#planningDaysDetails .planningChoiceBody #daysBox{max-height:none!important;overflow:visible!important}.planningAdvancedDetails .formgrid,.planningRangeDetails .formgrid{grid-template-columns:1fr!important}}
   `;document.head.appendChild(s)}
 
-  function run(){css();syncSmartBrief();reorderPlanning();if(!activePlanningControl())compactSettings();restoreHotelStars()}
+  function run(){css();syncSmartBrief();if(isEditingLocked())return;reorderPlanning();compactSettings();restoreHotelStars()}
   function schedule(){if(scheduled)return;scheduled=true;requestAnimationFrame(function(){scheduled=false;run()})}
   function observeDayTabs(){const tabs=document.getElementById('dayTabs');if(!tabs||tabs.__planningFixObserver)return;const observer=new MutationObserver(schedule);observer.observe(tabs,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});tabs.__planningFixObserver=observer}
   function observePlanPanel(){const plan=document.getElementById('planPanel');if(!plan||plan.__planningActiveObserver)return;const observer=new MutationObserver(schedule);observer.observe(plan,{attributes:true,attributeFilter:['class']});plan.__planningActiveObserver=observer}
   function boot(){run();observeDayTabs();observePlanPanel();[120,500,900].forEach(function(delay){setTimeout(function(){run();observeDayTabs();observePlanPanel()},delay)})}
   document.addEventListener('click',e=>{if(e.target&&e.target.closest&&(e.target.closest('#dayTabs .dayTab')||e.target.closest('.tab')))setTimeout(schedule,60)},true);
-  document.addEventListener('change',e=>{if(e.target&&e.target.matches&&(e.target.matches('[data-day],[data-brand]')||e.target.matches('#rangeStart,#rangeEnd')))setTimeout(schedule,20)},true);
-  document.addEventListener('focusout',e=>{if(e.target&&e.target.matches&&e.target.matches('#planningSettings input, #planningSettings select, #planningSettings textarea'))setTimeout(schedule,80)},true);
+  // Pose du verrou dès l'intention d'interagir (pointerdown/focusin), pas seulement au focus
+  // in fine : sur iOS, l'ouverture du sélecteur natif d'un <input type="date"> peut survenir
+  // entre les deux, et document.activeElement ne suit plus le champ pendant que le sélecteur
+  // est affiché.
+  document.addEventListener('pointerdown',e=>{if(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD))editingLocked=true},true);
+  document.addEventListener('focusin',e=>{if(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD))editingLocked=true},true);
+  document.addEventListener('change',e=>{
+    if(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD)){editingLocked=false;schedule()}
+    if(e.target&&e.target.matches&&(e.target.matches('[data-day],[data-brand]')||e.target.matches('#rangeStart,#rangeEnd')))setTimeout(schedule,20);
+  },true);
+  // Le focusout que provoque l'ouverture du sélecteur natif iOS ne doit pas relancer un
+  // rendu tant que le verrou tient : il ne se lève qu'au `change` (date choisie) ou à la
+  // fermeture du panneau, jamais sur un simple changement de focus.
+  document.addEventListener('focusout',e=>{if(editingLocked)return;if(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD))setTimeout(schedule,80)},true);
+  document.addEventListener('toggle',e=>{if(e.target&&e.target.id==='planningSettings'&&!e.target.open){editingLocked=false;schedule()}},true);
   document.addEventListener('store-runner:planning-updated',schedule);document.addEventListener('store-runner:data-restored',schedule);document.addEventListener('store-runner:calendar-updated',schedule);
-  document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(run,120)});window.addEventListener('focus',function(){setTimeout(run,120)});window.addEventListener('load',function(){setTimeout(run,180)});
+  // Les réinstallations globales sur le focus de la fenêtre ou la visibilité de l'onglet
+  // sont interdites par AGENTS.md quand un événement métier existe déjà - ce sont elles qui
+  // déclenchaient la réorganisation du panneau pendant la saisie sur iOS.
+  window.addEventListener('load',function(){setTimeout(run,180)});
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
 })();
