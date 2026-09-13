@@ -5,6 +5,16 @@ const PNG=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42
 
 test.use({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1,serviceWorkers:'allow',screenshot:'only-on-failure',trace:'retain-on-failure'});
 
+async function reopenQuickAndTapPhotos(page){
+  await page.evaluate(()=>window.openStoreQuick('photo-store','Lundi','09:30'));
+  const sheet=page.locator('#storeQuickSheet'),photo=page.locator('#storePhotosQuickBtn');
+  await expect(sheet).toHaveClass(/open/);
+  await page.waitForTimeout(350);
+  await expect(photo).toBeVisible();
+  await expect(photo).toBeInViewport();
+  await photo.tap();
+}
+
 test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rapport',async({page,context})=>{
   test.setTimeout(90000);
   const pageErrors=[];page.on('pageerror',e=>pageErrors.push(String(e&&e.message||e)));
@@ -49,9 +59,12 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
   expect(brandHours.sourceB).toBe('brand-default');expect(brandHours.sourceD).toBe('brand-default');
 
   await page.evaluate(()=>window.openStoreQuick('photo-store','Lundi','09:30'));
-  const hoursButton=page.locator('#openingHoursQuickBtn'),photoButton=page.locator('#storePhotosQuickBtn');
-  await expect(hoursButton).toBeVisible();await expect(photoButton).toBeVisible();
-  const photoBox=await photoButton.boundingBox();expect(photoBox.height).toBeGreaterThanOrEqual(44);
+  const sheet=page.locator('#storeQuickSheet'),hoursButton=page.locator('#openingHoursQuickBtn'),photoButton=page.locator('#storePhotosQuickBtn'),fullButton=page.locator('#storeQuickSheet .sheetActions>button[onclick*="fullStoreFromQuick"]');
+  await expect(sheet).toHaveClass(/open/);await page.waitForTimeout(350);
+  await expect(hoursButton).toBeVisible();await expect(photoButton).toBeVisible();await expect(photoButton).toBeInViewport();
+  const photoBox=await photoButton.boundingBox(),fullBox=await fullButton.boundingBox();expect(photoBox.height).toBeGreaterThanOrEqual(44);expect(fullBox).toBeTruthy();
+  expect(Math.abs(photoBox.y-fullBox.y)).toBeLessThanOrEqual(2);
+  expect(fullBox.x+fullBox.width).toBeLessThanOrEqual(photoBox.x+2);
 
   await hoursButton.tap();
   const hoursDialog=page.locator('#storeHoursDialog');await expect(hoursDialog).toBeVisible();
@@ -95,8 +108,7 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
 
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.StorePhotosV1&&window.BoulangerDefaultHoursV1&&window.state&&typeof window.openStoreQuick==='function');
-  await page.evaluate(()=>window.openStoreQuick('photo-store','Lundi','09:30'));
-  await page.locator('#storePhotosQuickBtn').tap();
+  await reopenQuickAndTapPhotos(page);
   await expect(page.locator('#storePhotosDialog .sr-photoCard')).toHaveCount(2);
   await expect(page.locator('#storePhotosDialog')).toContainText('Après implantation');
   await page.locator('#srPhotoClose').tap();
@@ -104,8 +116,7 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
   await context.setOffline(true);
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.StorePhotosV1&&window.BoulangerDefaultHoursV1&&window.state&&typeof window.openStoreQuick==='function');
-  await page.evaluate(()=>window.openStoreQuick('photo-store','Lundi','09:30'));
-  await page.locator('#storePhotosQuickBtn').tap();
+  await reopenQuickAndTapPhotos(page);
   await expect(page.locator('#storePhotosDialog .sr-photoCard')).toHaveCount(2);
   expect(await page.evaluate(()=>window.StoreOpeningHoursV1.openingLabel(window.state.stores.find(s=>s.id==='photo-store'),'Lundi'))).toBe('09:30–19:30');
   expect(pageErrors).toEqual([]);
