@@ -43,6 +43,26 @@ function optionalString(value) {
   return value === undefined || value === null ? '' : String(value);
 }
 
+function legacyIdSet(value) {
+  const ids = new Set();
+  if (Array.isArray(value)) {
+    for (const raw of value) {
+      if (raw === undefined || raw === null) continue;
+      const id = String(raw).trim();
+      if (id) ids.add(id);
+    }
+    return ids;
+  }
+  if (isPlainObject(value)) {
+    for (const [rawId, enabled] of Object.entries(value)) {
+      if (!enabled) continue;
+      const id = String(rawId).trim();
+      if (id) ids.add(id);
+    }
+  }
+  return ids;
+}
+
 const PROFILE_FIELDS = Object.freeze([
   'sectorName',
   'repName',
@@ -88,12 +108,12 @@ const SETTINGS_FIELDS = Object.freeze([
 
 // Domaines volontairement non migrés dans ce pont. Ils sont signalés dans le
 // rapport lorsqu'ils contiennent des données afin que l'utilisateur sache
-// exactement ce qui reste uniquement dans V1.
+// exactement ce qui reste uniquement dans V1. L'exclusion planning est, elle,
+// migrée vers planning.excludedStoreIds car elle modifie directement le vivier.
 const UNSUPPORTED_STATE_FIELDS = Object.freeze([
   'visits',
   'notes',
   'included',
-  'excluded',
   'locks',
   'appointments',
   'actions',
@@ -147,6 +167,13 @@ function migrateSettings(settings) {
   return copyAllowed(source, SETTINGS_FIELDS);
 }
 
+function migrateExcludedStoreIds(state, stores) {
+  const requested = legacyIdSet(state?.excluded);
+  if (!requested.size) return [];
+  const known = new Set(stores.map(store => String(store.id)));
+  return Array.from(requested).filter(id => known.has(id));
+}
+
 function unsupportedWarnings(state, backup) {
   const warnings = [];
   for (const key of UNSUPPORTED_STATE_FIELDS) {
@@ -173,7 +200,8 @@ export function migrateV1Backup(backup) {
   next.profile = migrateProfile(backup.state.profile);
   next.stores = migrateStores(backup.state.stores);
   next.settings = migrateSettings(backup.state.settings);
-  next.planning = { weeks: {} };
+  const excludedStoreIds = migrateExcludedStoreIds(backup.state, next.stores);
+  next.planning = { weeks: {}, excludedStoreIds };
 
   const state = validateState(next);
   const activeStores = state.stores.filter(store => store.active !== false).length;
@@ -187,6 +215,7 @@ export function migrateV1Backup(backup) {
     report: Object.freeze({
       totalStores: state.stores.length,
       activeStores,
+      excludedStores: excludedStoreIds.length,
       gpsStores,
       missingGpsStores: state.stores.length - gpsStores,
       warnings: Object.freeze(warnings.slice()),

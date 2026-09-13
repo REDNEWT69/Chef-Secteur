@@ -38,15 +38,36 @@ function memoryStorage() {
   assert.deepEqual(state.stores[0].products, ['A']);
   assert.equal(state.settings.target, 6);
   assert.equal(state.settings.maxVisitsPerDay, 2);
-  assert.deepEqual(state.planning, { weeks: {} });
+  assert.deepEqual(state.planning, { weeks: {}, excludedStoreIds: [] });
   assert.deepEqual(state.visits, []);
   assert.deepEqual(state.actions, []);
   assert.deepEqual(state.appointments, []);
   assert.equal(report.totalStores, 8);
   assert.equal(report.activeStores, 7);
+  assert.equal(report.excludedStores, 0);
   assert.equal(report.gpsStores, 8);
   assert.equal(report.missingGpsStores, 0);
   assert(report.warnings.some(warning => warning.includes('state.notes')));
+}
+
+// Une exclusion V1 est une donnée de vivier, pas un historique : elle doit
+// survivre au pont local et ne plus être annoncée comme "reste uniquement V1".
+{
+  const source = JSON.parse(fixtureText);
+  source.state.excluded = { 'v1-02': true, 'v1-04': false, 'fantome': true };
+  const { state, report } = migrateV1Backup(source);
+  assert.deepEqual(state.planning.excludedStoreIds, ['v1-02']);
+  assert.equal(report.excludedStores, 1);
+  assert.equal(report.warnings.some(warning => warning.includes('state.excluded')), false);
+}
+
+// Les deux représentations historiques tolérées (objet ou tableau d'IDs)
+// aboutissent au même contrat V2.
+{
+  const source = JSON.parse(fixtureText);
+  source.state.excluded = ['v1-03'];
+  const { state } = migrateV1Backup(source);
+  assert.deepEqual(state.planning.excludedStoreIds, ['v1-03']);
 }
 
 // L'entrée ne doit jamais être mutée.
@@ -120,6 +141,7 @@ assert.throws(() => parseAndMigrateV1Backup('{pas json'), /JSON invalide/);
   assert.equal(reloaded.stores.length, 8);
   assert.equal(reloaded.profile.sectorName, 'Secteur Import Démo');
   assert.equal(reloaded.settings.target, 6);
+  assert.deepEqual(reloaded.planning.excludedStoreIds, []);
 }
 
 console.log('v2 migration V1 locale: ok');

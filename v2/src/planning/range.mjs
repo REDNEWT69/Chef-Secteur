@@ -49,6 +49,97 @@ function storeCoordinates(store) {
   return lat === null || lon === null ? null : { lat, lon };
 }
 
+function idSet(value) {
+  const out = new Set();
+  if (Array.isArray(value)) {
+    for (const raw of value) {
+      if (raw === undefined || raw === null) continue;
+      const id = String(raw).trim();
+      if (id) out.add(id);
+    }
+    return out;
+  }
+  if (value && typeof value === 'object') {
+    for (const [rawId, enabled] of Object.entries(value)) {
+      if (!enabled) continue;
+      const id = String(rawId).trim();
+      if (id) out.add(id);
+    }
+  }
+  return out;
+}
+
+function planningExcludedIds(state) {
+  const migrated = state?.planning?.excludedStoreIds;
+  if (Array.isArray(migrated)) return idSet(migrated);
+  // Compatibilité défensive pour un état V2 construit à la main depuis un
+  // ancien export : aucune dépendance runtime à la V1, juste la même donnée.
+  return idSet(state?.excluded);
+}
+
+function matchesPlanningFilters(state, store) {
+  const settings = state?.settings && typeof state.settings === 'object' ? state.settings : {};
+  const brands = Array.isArray(settings.brands) ? settings.brands : [];
+  if (brands.length && !brands.includes(store?.enseigne)) return false;
+
+  const products = Array.isArray(settings.products) ? settings.products : [];
+  if (products.length) {
+    const storeProducts = Array.isArray(store?.products) ? store.products : [];
+    if (!products.some(product => storeProducts.includes(product))) return false;
+  }
+  return true;
+}
+
+export function isPlanningEligibleStore(state, store) {
+  if (!store || store.active === false || store.id === undefined || store.id === null) return false;
+  const id = String(store.id).trim();
+  if (!id) return false;
+  if (planningExcludedIds(state).has(id)) return false;
+  return matchesPlanningFilters(state, store);
+}
+
+export function planningReach(state) {
+  const excluded = planningExcludedIds(state);
+  const seen = new Set();
+  let totalStores = 0;
+  let activeStores = 0;
+  let inactiveStores = 0;
+  let excludedStores = 0;
+  let filteredStores = 0;
+  let eligibleStores = 0;
+
+  for (const store of Array.isArray(state?.stores) ? state.stores : []) {
+    if (!store || store.id === undefined || store.id === null) continue;
+    const id = String(store.id).trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    totalStores += 1;
+    if (store.active === false) {
+      inactiveStores += 1;
+      continue;
+    }
+    activeStores += 1;
+    if (excluded.has(id)) {
+      excludedStores += 1;
+      continue;
+    }
+    if (!matchesPlanningFilters(state, store)) {
+      filteredStores += 1;
+      continue;
+    }
+    eligibleStores += 1;
+  }
+
+  return Object.freeze({
+    totalStores,
+    activeStores,
+    inactiveStores,
+    excludedStores,
+    filteredStores,
+    eligibleStores,
+  });
+}
+
 export function resolvePlanningOrigin(state) {
   const settings = state?.settings && typeof state.settings === 'object' ? state.settings : {};
   const profile = state?.profile && typeof state.profile === 'object' ? state.profile : {};
@@ -104,21 +195,11 @@ export function sortStoresByDistance(stores, origin) {
   return rows.map(row => row.store);
 }
 
-function activeUniqueStoreCount(state) {
-  const ids = new Set();
-  for (const store of Array.isArray(state?.stores) ? state.stores : []) {
-    if (!store || store.active === false || store.id === undefined || store.id === null) continue;
-    const id = String(store.id);
-    if (id) ids.add(id);
-  }
-  return ids.size;
-}
-
 function missingCoordinateCount(state) {
   const seen = new Set();
   let missing = 0;
   for (const store of Array.isArray(state?.stores) ? state.stores : []) {
-    if (!store || store.active === false || store.id === undefined || store.id === null) continue;
+    if (!isPlanningEligibleStore(state, store)) continue;
     const id = String(store.id);
     if (!id || seen.has(id)) continue;
     seen.add(id);
@@ -172,8 +253,16 @@ export function generatePlanningRange(state, options = {}) {
     throw new PlanningRangeError('Point de départ GPS manquant : renseigne le domicile / point de départ avant le mode escargot.');
   }
 
+  const reach = planningReach(state);
+  if (!reach.eligibleStores) {
+    throw new PlanningRangeError('Aucun magasin planifiable : vérifie les exclusions et les filtres Enseignes / Produits.');
+  }
+
   const working = clone(state);
-  working.stores = sortStoresByDistance(working.stores, origin);
+  working.stores = sortStoresByDistance(
+    working.stores.filter(store => isPlanningEligibleStore(working, store)),
+    origin
+  );
   if (!working.planning || typeof working.planning !== 'object' || Array.isArray(working.planning)) {
     working.planning = {};
   }
@@ -199,7 +288,6 @@ export function generatePlanningRange(state, options = {}) {
     }
   }
 
-  const activeStores = activeUniqueStoreCount(state);
   return Object.freeze({
     startWeek,
     endWeek: shiftWeekDate(startWeek, count - 1),
@@ -208,8 +296,13 @@ export function generatePlanningRange(state, options = {}) {
     weeks,
     totalVisits,
     distinctStores: distinct.size,
-    activeStores,
-    remainingStores: Math.max(0, activeStores - distinct.size),
+    totalStores: reach.totalStores,
+    activeStores: reach.activeStores,
+    eligibleStores: reach.eligibleStores,
+    inactiveStores: reach.inactiveStores,
+    excludedStores: reach.excludedStores,
+    filteredStores: reach.filteredStores,
+    remainingStores: Math.max(0, reach.eligibleStores - distinct.size),
     missingCoordinates: missingCoordinateCount(state),
   });
 }
