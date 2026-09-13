@@ -107,6 +107,24 @@ function flat(week){
   assert.deepStrictEqual(report,{total:5,active:4,excluded:1,filtered:1,planifiable:2,withGps:1,withoutGps:1,imposed:1});
 })();
 
+(function inheritedFutureWeekDoesNotSkipTheUpcomingMonday(){
+  const state={settings:{weekDate:'2026-09-21'}};
+  const fields={rangeStart:{value:'2026-09-21',dataset:{}},weekDate:{value:'2026-09-21'}};
+  const doc={getElementById:id=>fields[id]||null};
+  const start=terrain.resolveSnailStart(state,doc,new Date(2026,8,13,12));
+  assert.strictEqual(start.getFullYear(),2026);
+  assert.strictEqual(start.getMonth(),8);
+  assert.strictEqual(start.getDate(),14,'un dimanche 13, une date future héritée ne doit pas faire sauter le lundi 14');
+})();
+
+(function explicitFutureStartStillWins(){
+  const state={settings:{weekDate:'2026-09-14'}};
+  const fields={rangeStart:{value:'2026-09-21',dataset:{snailUserEdited:'1'}},weekDate:{value:'2026-09-14'}};
+  const doc={getElementById:id=>fields[id]||null};
+  const start=terrain.resolveSnailStart(state,doc,new Date(2026,8,13,12));
+  assert.strictEqual(start.getDate(),21,'une date de début choisie explicitement par l’utilisateur doit rester prioritaire');
+})();
+
 (function missingGpsCountsTheWholeEligiblePoolNotOnlyPlacedStores(){
   const stores=Array.from({length:65},(_,i)=>Object.assign(store(i+1),{lat:45+i*0.001,lon:4}));
   stores[64].lat=null;stores[64].lon=null;

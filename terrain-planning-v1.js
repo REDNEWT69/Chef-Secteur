@@ -177,11 +177,31 @@ async function syncCalendar(first,state=root.state){
   return ok;
 }
 function currentDays(state=root.state){return ((state.settings&&state.settings.days)||DAYS.slice(0,5)).filter(d=>DAYS.includes(d))}
+function upcomingWorkMonday(now=new Date()){
+  const d=new Date(now),base=monday(d),day=d.getDay();
+  return day===0||day===6?addDays(base,7):base;
+}
+function resolveSnailStart(state=root.state,doc=root.document,now=new Date()){
+  const get=id=>doc&&typeof doc.getElementById==='function'?doc.getElementById(id):null;
+  const rangeStart=get('rangeStart');
+  const explicitlyChosen=!!(rangeStart&&rangeStart.dataset&&rangeStart.dataset.snailUserEdited==='1');
+  if(explicitlyChosen){const chosen=parseISO(String(rangeStart.value||'').trim());if(chosen)return monday(chosen)}
+  return upcomingWorkMonday(now);
+}
+function syncPlanningControlsForSnail(state=root.state){
+  const first=resolveSnailStart(state,root.document),start=iso(first),end=iso(addDays(first,20));
+  if(!state.settings)state.settings={};state.settings.weekDate=start;
+  const week=root.document&&root.document.getElementById('weekDate'),rangeStart=root.document&&root.document.getElementById('rangeStart'),rangeEnd=root.document&&root.document.getElementById('rangeEnd');
+  if(week)week.value=start;if(rangeStart)rangeStart.value=start;if(rangeEnd)rangeEnd.value=end;
+  try{if(typeof root.save==='function')root.save()}catch(e){}
+  return first;
+}
 async function generateThreeWeekSnail(){
   const state=root.state,R=root.ChefReliability,storage=db();
   if(!state||!R||typeof R.capture!=='function'||typeof R.persist!=='function')throw new Error('Protection des données indisponible.');
+  const first=syncPlanningControlsForSnail(state);
   if(!validBase(state))throw new Error('Définis d’abord le GPS de ton point de départ dans Mon secteur.');
-  const first=monday(parseISO(state.settings&&state.settings.weekDate)||new Date()),days=currentDays(state),report=summarizeTerrainPool(state.stores||[],state),pool=(state.stores||[]).filter(s=>included(s,state));
+  const days=currentDays(state),report=summarizeTerrainPool(state.stores||[],state),pool=(state.stores||[]).filter(s=>included(s,state));
   if(!pool.length)throw new Error('Aucun magasin actif ne correspond aux filtres.');
   const status=root.document&&root.document.getElementById('terrainSnailStatus'),button=root.document&&root.document.getElementById('terrainSnailBtn');if(button)button.disabled=true;if(status)status.textContent='Vivier : '+report.planifiable+' planifiables · '+report.withoutGps+' GPS à vérifier · '+report.imposed+' imposés. Agenda puis génération…';
   try{
@@ -224,8 +244,14 @@ async function startDayWithStore(storeId){
 function showError(message){try{if(typeof root.showError==='function')root.showError(message);else root.alert(message)}catch(e){}}
 function installSnailButton(){
   const host=root.document&&root.document.querySelector('#rangePlannerCard .planningChoiceBody');if(!host)return false;
+  const rangeStart=root.document.getElementById('rangeStart');
+  if(rangeStart&&rangeStart.dataset&&!rangeStart.dataset.snailTracked){
+    rangeStart.dataset.snailTracked='1';
+    const mark=()=>{rangeStart.dataset.snailUserEdited='1'};
+    rangeStart.addEventListener('input',mark);rangeStart.addEventListener('change',mark);
+  }
   if(root.document.getElementById('terrainSnailBtn'))return true;
-  const normal=root.document.getElementById('generateRangeBtn'),btn=root.document.createElement('button');btn.id='terrainSnailBtn';btn.type='button';btn.className='primary full';btn.textContent='◎ Générer 3 semaines · escargot';btn.onclick=async()=>{try{const first=monday(parseISO(root.state.settings&&root.state.settings.weekDate)||new Date()),se=root.document.getElementById('rangeStart'),ee=root.document.getElementById('rangeEnd');if(se)se.value=iso(first);if(ee)ee.value=iso(addDays(first,20));await generateThreeWeekSnail()}catch(e){showError(e.message||String(e))}};
+  const normal=root.document.getElementById('generateRangeBtn'),btn=root.document.createElement('button');btn.id='terrainSnailBtn';btn.type='button';btn.className='primary full';btn.textContent='◎ Générer 3 semaines · escargot';btn.onclick=async()=>{try{await generateThreeWeekSnail()}catch(e){showError(e.message||String(e))}};
   const status=root.document.createElement('div');status.id='terrainSnailStatus';status.className='tiny';status.style.marginTop='7px';status.textContent='Mode terrain : 3 semaines, du plus proche du départ vers le plus loin.';
   if(normal&&normal.nextSibling)host.insertBefore(btn,normal.nextSibling);else host.appendChild(btn);btn.insertAdjacentElement('afterend',status);return true;
 }
@@ -237,6 +263,6 @@ function installStartButton(){
 }
 function install(){installSnailButton();installStartButton()}
 function boot(){install();root.document&&root.document.addEventListener('store-runner:planning-updated',install);root.document&&root.document.addEventListener('store-runner:data-restored',install)}
-const api={rankStoresByDistance,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={rankStoresByDistance,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,resolveSnailStart,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()}
 })(typeof window!=='undefined'?window:globalThis);
