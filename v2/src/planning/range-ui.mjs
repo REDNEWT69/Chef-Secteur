@@ -64,7 +64,7 @@ export function createPlanningRangeFeature(options) {
 
   const button = doc.createElement('button');
   button.setAttribute('type', 'button');
-  button.classList.add('srv2-planning-generate', 'srv2-planning-range-generate');
+  button.classList.add('srv2-planning-range-generate');
   button.textContent = 'Générer 3 semaines · escargot';
 
   const status = doc.createElement('p');
