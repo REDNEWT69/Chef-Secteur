@@ -36,6 +36,9 @@ async function installFixture(page) {
       startTime: '08:30', endTime: '18:00', visitMinutes: 60, brands: []
     });
     st.stores = stores;
+    st.locks = {};
+    st.included = {};
+    st.excluded = {};
     st.plan = {
       Lundi: [stores[0], stores[1]],
       Mardi: [stores[2], stores[3]],
@@ -215,4 +218,66 @@ test('Store Runner V1 reste utilisable sur un vrai viewport mobile 390 px', asyn
   expect(statusText.length).toBeGreaterThan(0);
 
   expect(pageErrors, 'Aucune erreur JavaScript bloquante ne doit remonter').toEqual([]);
+});
+
+test('Pose datée et verrou récurrent restent explicites dans Magasins à 390 px', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(String(error && error.message || error)));
+
+  await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.getElementById('storesPanel') && typeof goTab === 'function');
+  await installFixture(page);
+
+  await page.evaluate(() => {
+    const st = window.state || state;
+    st.locks['e2e-1'] = { day: 'Mardi', week: '2026-09-14' };
+    try { if (typeof save === 'function') save(); } catch (_) {}
+    try { if (typeof renderAll === 'function') renderAll(); } catch (_) {}
+    goTab('storesPanel');
+  });
+  await page.waitForTimeout(220);
+
+  const storesPanel = page.locator('#storesPanel');
+  await expect(storesPanel).toBeVisible();
+  const line = storesPanel.locator('.storeline').filter({ hasText: 'Boulanger · Lyon' }).first();
+  await expect(line).toBeVisible();
+  let select = line.locator('select');
+  await expect(select).toBeVisible();
+
+  // La pose datée doit être décrite comme telle, et le contrôle doit rester dans le viewport.
+  let selectedText = await select.locator('option:checked').textContent();
+  expect(selectedText).toContain('Posé ce mardi');
+  expect(selectedText).toContain('semaine du 14/09');
+  let selectBox = await select.boundingBox();
+  if (!selectBox) throw new Error('Sélecteur de verrou introuvable');
+  expect(selectBox.height).toBeGreaterThanOrEqual(44);
+  expect(selectBox.x).toBeGreaterThanOrEqual(-1);
+  expect(selectBox.x + selectBox.width).toBeLessThanOrEqual(391);
+  let overflow = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth
+  }));
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
+
+  // Le passage vers « Tous les mardis » est volontaire et écrit la forme chaîne historique.
+  await select.selectOption('Mardi');
+  await page.waitForTimeout(120);
+  expect(await page.evaluate(() => (window.state || state).locks['e2e-1'])).toBe('Mardi');
+  select = storesPanel.locator('.storeline').filter({ hasText: 'Boulanger · Lyon' }).first().locator('select');
+  selectedText = await select.locator('option:checked').textContent();
+  expect(selectedText).toBe('Tous les mardis');
+
+  // « Jour libre » libère réellement le magasin.
+  await select.selectOption('');
+  await page.waitForTimeout(120);
+  expect(await page.evaluate(() => Object.prototype.hasOwnProperty.call((window.state || state).locks, 'e2e-1'))).toBe(false);
+  select = storesPanel.locator('.storeline').filter({ hasText: 'Boulanger · Lyon' }).first().locator('select');
+  expect(await select.locator('option:checked').textContent()).toBe('Jour libre');
+
+  overflow = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth
+  }));
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
+  expect(pageErrors, 'Le scénario pose → récurrent → libre ne doit produire aucune erreur JS').toEqual([]);
 });
