@@ -1,4 +1,4 @@
-const BUILD_REV = "20260913-terrain153";
+const BUILD_REV = "20260913-opening154";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -36,6 +36,7 @@ const OPTIONAL_SHELL = [
   "./timeline-end-times.js",
   "./visit-counting.js",
   "./range-planner-v2.js",
+  "./store-opening-hours.js",
   "./terrain-planning-v1.js",
   "./working-hours-end.js",
   "./daily-capacity.js",
