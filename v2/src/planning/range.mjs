@@ -24,6 +24,8 @@ function clone(value) {
 }
 
 function finiteCoordinate(value, min, max) {
+  if (value === null || value === undefined || typeof value === 'boolean') return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
   const number = Number(value);
   return Number.isFinite(number) && number >= min && number <= max ? number : null;
 }
@@ -31,6 +33,14 @@ function finiteCoordinate(value, min, max) {
 function positiveInteger(value, fallback) {
   const number = Number(value);
   return Number.isInteger(number) && number > 0 ? number : fallback;
+}
+
+function normalizedOrigin(candidate) {
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+  const lat = finiteCoordinate(candidate.lat, -90, 90);
+  const lon = finiteCoordinate(candidate.lon, -180, 180);
+  if (lat === null || lon === null) return null;
+  return Object.freeze({ lat, lon, label: String(candidate.label || 'Point de départ') });
 }
 
 function storeCoordinates(store) {
@@ -57,26 +67,22 @@ export function resolvePlanningOrigin(state) {
   ];
 
   for (const candidate of candidates) {
-    const lat = finiteCoordinate(candidate.lat, -90, 90);
-    const lon = finiteCoordinate(candidate.lon, -180, 180);
-    if (lat === null || lon === null) continue;
-    return Object.freeze({ lat, lon, label: String(candidate.label || 'Point de départ') });
+    const origin = normalizedOrigin(candidate);
+    if (origin) return origin;
   }
   return null;
 }
 
 export function distanceKm(origin, store) {
-  if (!origin || typeof origin !== 'object') return null;
-  const originLat = finiteCoordinate(origin.lat, -90, 90);
-  const originLon = finiteCoordinate(origin.lon, -180, 180);
+  const normalized = normalizedOrigin(origin);
   const coords = storeCoordinates(store);
-  if (originLat === null || originLon === null || !coords) return null;
+  if (!normalized || !coords) return null;
 
   const toRad = degrees => degrees * Math.PI / 180;
   const radiusKm = 6371.0088;
-  const dLat = toRad(coords.lat - originLat);
-  const dLon = toRad(coords.lon - originLon);
-  const lat1 = toRad(originLat);
+  const dLat = toRad(coords.lat - normalized.lat);
+  const dLon = toRad(coords.lon - normalized.lon);
+  const lat1 = toRad(normalized.lat);
   const lat2 = toRad(coords.lat);
   const a = Math.sin(dLat / 2) ** 2
     + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
@@ -159,7 +165,9 @@ export function generatePlanningRange(state, options = {}) {
   const count = positiveInteger(options.weeks, DEFAULT_RANGE_WEEKS);
   if (count > 12) throw new PlanningRangeError('Une période ne peut pas dépasser 12 semaines.');
 
-  const origin = options.origin || resolvePlanningOrigin(state);
+  const origin = options.origin === undefined
+    ? resolvePlanningOrigin(state)
+    : normalizedOrigin(options.origin);
   if (!origin) {
     throw new PlanningRangeError('Point de départ GPS manquant : renseigne le domicile / point de départ avant le mode escargot.');
   }
@@ -196,7 +204,7 @@ export function generatePlanningRange(state, options = {}) {
     startWeek,
     endWeek: shiftWeekDate(startWeek, count - 1),
     algorithm: SNAIL_RANGE_ALGORITHM,
-    origin: Object.freeze({ lat: Number(origin.lat), lon: Number(origin.lon), label: String(origin.label || 'Point de départ') }),
+    origin,
     weeks,
     totalVisits,
     distinctStores: distinct.size,
