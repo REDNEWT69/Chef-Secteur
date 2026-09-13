@@ -137,6 +137,45 @@ function flat(week){
   assert.strictEqual(built.unknownGps,1,'un GPS manquant hors des 60 visites doit quand même être signalé');
 })();
 
+(function openingHoursEngineOwnsDayFitWhenAvailable(){
+  const previous=global.StoreOpeningHoursV1;
+  let called=0;
+  global.StoreOpeningHoursV1={routeFits(route,day,state,options){called++;assert.strictEqual(day,'Lundi');assert.ok(options.weekMonday instanceof Date);return false}};
+  const state={settings:{startTime:'08:30',endTime:'18:00'},profile:{baseLat:45,baseLon:4}};
+  assert.strictEqual(terrain.dayFits([{id:'a',lat:45,lon:4.1}],'Lundi',state,monday()),false,'un horaire magasin impossible doit refuser ce jour');
+  assert.strictEqual(called,1);
+  if(previous===undefined)delete global.StoreOpeningHoursV1;else global.StoreOpeningHoursV1=previous;
+})();
+
+(function overnightReportExplainsTheThreeWeeks(){
+  const a={id:'a'},b={id:'b'};
+  const state={profile:{baseLat:45,baseLon:4,overnightMode:'auto',overnightMinSaving:80},settings:{days:['Lundi','Mardi']}};
+  const distance=(x,y)=>({
+    'a-base':100,'base-a':100,'base-b':100,'b-base':100,'a-b':20,'b-a':20
+  })[(x.id||'base')+'-'+(y.id||'base')] ?? 0;
+  const weeks=[0,1,2].map(i=>({weekKey:['2026-09-14','2026-09-21','2026-09-28'][i],plan:{Lundi:[a],Mardi:[b]}}));
+  const report=terrain.analyzeOvernightWeeks(weeks,state,distance);
+  assert.strictEqual(report.length,3);
+  assert.strictEqual(report[0].best.saving,180);
+  assert.strictEqual(report[0].selected,true);
+  assert.strictEqual(report[0].best.fromDay,'Lundi');
+  assert.strictEqual(report[0].best.toDay,'Mardi');
+  state.profile.overnightMinSaving=200;
+  assert.strictEqual(terrain.analyzeOvernightWeeks(weeks,state,distance)[0].selected,false,'sous le seuil, le rapport doit expliquer le retour domicile');
+  state.profile.overnightMode='never';
+  const never=terrain.analyzeOvernightWeeks(weeks,state,distance)[0];
+  assert.strictEqual(never.selected,false);
+  assert.strictEqual(never.reason,'disabled');
+})();
+
+(function openingHoursReportShowsOnlyRealUnknowns(){
+  const a={id:'a'},b={id:'b'},c={id:'c'};
+  const state={stores:[a,b,c]};
+  const api={intervalsFor(store){if(store.id==='a')return[{open:'09:00',close:'19:00'}];if(store.id==='b')return undefined;return[]}};
+  const report=terrain.summarizeOpeningHours([{weekKey:'2026-09-14',plan:{Lundi:[a,b],Mardi:[b,c]}}],state,api);
+  assert.deepStrictEqual(report,{available:true,known:1,unknown:2,closed:1,uniqueUnknown:1});
+})();
+
 (function startFromChosenStorePreservesTheWholeDay(){
   const route=[store(1),store(2),store(3),store(4)];
   const pos={s1:0,s2:10,s3:3,s4:7};
