@@ -47,15 +47,16 @@ test('V2-06 : trois semaines escargot sont générées et navigables à 390 px',
   await expect(screen.locator('.srv2-planning-card')).toContainText('Enseigne Gamma');
 
   // Les semaines 2 et 3 existent déjà : naviguer ne doit pas demander de les
-  // régénérer une par une.
+  // régénérer une par une. Une semaine remplie ne crée simplement aucun
+  // élément `.srv2-planning-empty`.
   const next = screen.locator('.srv2-planning-week-shift[data-week-shift="1"]');
   await next.tap();
   await expect(screen.locator('.srv2-planning-week-current')).toHaveText('Semaine du 21/09/2026');
-  await expect(screen.locator('.srv2-planning-empty')).not.toContainText('Aucune semaine générée');
+  await expect(screen.locator('.srv2-planning-empty')).toHaveCount(0);
 
   await next.tap();
   await expect(screen.locator('.srv2-planning-week-current')).toHaveText('Semaine du 28/09/2026');
-  await expect(screen.locator('.srv2-planning-empty')).not.toContainText('Aucune semaine générée');
+  await expect(screen.locator('.srv2-planning-empty')).toHaveCount(0);
 
   const overflow = await page.evaluate(() => ({
     documentScrollWidth: document.documentElement.scrollWidth,
