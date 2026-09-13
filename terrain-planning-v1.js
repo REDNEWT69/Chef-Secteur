@@ -68,10 +68,30 @@ function lockDay(storeId,weekKey){
   try{if(typeof root.storeRunnerLockDayForWeek==='function')return root.storeRunnerLockDayForWeek(storeId,weekKey)||''}catch(e){}
   return '';
 }
+function passesFilters(store,state=root.state,filterFn){
+  if(typeof filterFn==='function')return !!filterFn(store,state);
+  try{if(typeof root.includedByFilters==='function')return !!root.includedByFilters(store)}catch(e){}
+  return true;
+}
 function included(store,state=root.state){
   if(!store||store.active===false||(state.excluded&&state.excluded[store.id]))return false;
-  try{if(typeof root.includedByFilters==='function'&&!root.includedByFilters(store))return false}catch(e){}
-  return true;
+  return passesFilters(store,state);
+}
+function summarizeTerrainPool(stores,state=root.state,filterFn){
+  const out={total:0,active:0,excluded:0,filtered:0,planifiable:0,withGps:0,withoutGps:0,imposed:0};
+  const ex=state&&state.excluded||{},imposed=state&&state.included||{};
+  for(const store of (stores||[])){
+    if(!store)continue;
+    out.total++;
+    if(store.active===false)continue;
+    out.active++;
+    if(ex[store.id]){out.excluded++;continue}
+    if(!passesFilters(store,state,filterFn)){out.filtered++;continue}
+    out.planifiable++;
+    if(validStoreGps(store))out.withGps++;else out.withoutGps++;
+    if(imposed[store.id])out.imposed++;
+  }
+  return out;
 }
 function rankStoresByDistance(stores,distanceFn){
   const fn=distanceFn||distanceOf;
@@ -103,9 +123,9 @@ function protectedPlanFor(weekKey,state,archive){
   return null;
 }
 function buildThreeWeekSnail(options){
-  const state=options.state,first=monday(options.firstMonday),days=(options.days||[]).filter(d=>DAYS.includes(d)),target=Math.max(1,Number(options.target)||20),max=Math.max(1,Number(options.maxCreditsPerDay)||4),archive=options.archive||{},distance=options.distanceOf||(()=>Infinity),credit=options.creditOf||(()=>1),lockFor=options.lockDayForWeek||(()=>''),apptFor=options.appointmentDay||(()=>''),fits=options.dayFits||(()=>true),blocked=options.dayBlocked||(()=>false);
+  const state=options.state,first=monday(options.firstMonday),days=(options.days||[]).filter(d=>DAYS.includes(d)),target=Math.max(1,Number(options.target)||20),max=Math.max(1,Number(options.maxCreditsPerDay)||4),archive=options.archive||{},distance=options.distanceOf||(()=>Infinity),credit=options.creditOf||(()=>1),lockFor=options.lockDayForWeek||(()=>''),apptFor=options.appointmentDay||(()=>''),fits=options.dayFits||(()=>true),blocked=options.dayBlocked||(()=>false),imposed=state&&state.included||{};
   if(!days.length)throw new Error('Choisis au moins un jour travaillé.');
-  const ranked=rankStoresByDistance((options.stores||[]).filter(Boolean),distance),used=new Set(),weeks=[],unknownGps=new Set();
+  const ranked=rankStoresByDistance((options.stores||[]).filter(Boolean),distance),used=new Set(),weeks=[],unknownGps=new Set(ranked.filter(s=>!validStoreGps(s)).map(storeKey));
   for(let wi=0;wi<3;wi++){
     const mon=addDays(first,wi*7),weekKey=iso(mon),protectedPlan=protectedPlanFor(weekKey,state,archive);
     if(protectedPlan){for(const s of flattenPlan(protectedPlan))used.add(storeKey(s));weeks.push({weekKey,plan:protectedPlan,manual:true,unplaced:[]});continue}
@@ -115,17 +135,22 @@ function buildThreeWeekSnail(options){
     for(const s of ranked){
       const ld=lockFor(s.id,weekKey),ad=apptFor(s.id,mon),day=ad||ld;
       if(day&&activeDays.includes(day))forced.push({store:s,day});
+      else if(!day&&imposed[s.id])forced.push({store:s,day:''});
     }
     for(const item of forced){
       const s=item.store,k=storeKey(s);if(weekPlaced.has(k))continue;
-      const trial=plan[item.day].concat([s]),cost=trial.reduce((n,x)=>n+Math.max(1,Number(credit(x))||1),0);
-      if(cost>max||!fits(trial,item.day,mon))throw new Error((s.enseigne||'Magasin')+' '+(s.ville||'')+' ne tient pas sur '+item.day+' malgré sa contrainte. Le planning précédent est conservé.');
-      plan[item.day]=trial;weekPlaced.add(k);used.add(k);
+      const candidateDays=item.day?[item.day]:activeDays;
+      let placed=false;
+      for(const day of candidateDays){
+        const trial=plan[day].concat([s]),cost=trial.reduce((n,x)=>n+Math.max(1,Number(credit(x))||1),0);
+        if(cost>max||!fits(trial,day,mon))continue;
+        plan[day]=trial;weekPlaced.add(k);used.add(k);placed=true;break;
+      }
+      if(!placed)throw new Error((s.enseigne||'Magasin')+' '+(s.ville||'')+' ne tient pas dans la semaine malgré sa contrainte. Le planning précédent est conservé.');
     }
     for(const s of ranked){
       if(flattenPlan(plan,activeDays).length>=target)break;
       const k=storeKey(s);if(used.has(k)||weekPlaced.has(k))continue;
-      if(!Number.isFinite(Number(distance(s))))unknownGps.add(k);
       let placed=false;
       for(const day of activeDays){
         const trial=plan[day].concat([s]),cost=trial.reduce((n,x)=>n+Math.max(1,Number(credit(x))||1),0);
@@ -156,9 +181,9 @@ async function generateThreeWeekSnail(){
   const state=root.state,R=root.ChefReliability,storage=db();
   if(!state||!R||typeof R.capture!=='function'||typeof R.persist!=='function')throw new Error('Protection des données indisponible.');
   if(!validBase(state))throw new Error('Définis d’abord le GPS de ton point de départ dans Mon secteur.');
-  const first=monday(parseISO(state.settings&&state.settings.weekDate)||new Date()),days=currentDays(state),pool=(state.stores||[]).filter(s=>included(s,state));
+  const first=monday(parseISO(state.settings&&state.settings.weekDate)||new Date()),days=currentDays(state),report=summarizeTerrainPool(state.stores||[],state),pool=(state.stores||[]).filter(s=>included(s,state));
   if(!pool.length)throw new Error('Aucun magasin actif ne correspond aux filtres.');
-  const status=root.document&&root.document.getElementById('terrainSnailStatus'),button=root.document&&root.document.getElementById('terrainSnailBtn');if(button)button.disabled=true;if(status)status.textContent='Agenda puis génération des 3 semaines…';
+  const status=root.document&&root.document.getElementById('terrainSnailStatus'),button=root.document&&root.document.getElementById('terrainSnailBtn');if(button)button.disabled=true;if(status)status.textContent='Vivier : '+report.planifiable+' planifiables · '+report.withoutGps+' GPS à vérifier · '+report.imposed+' imposés. Agenda puis génération…';
   try{
     const calendarSynced=await syncCalendar(first,state);
     const archive=JSON.parse(storage.getItem(ARCHIVE_KEY)||'{}')||{};
@@ -171,12 +196,13 @@ async function generateThreeWeekSnail(){
       bundle.archive[week.weekKey]={weekMonday:week.weekKey,plan:Object.fromEntries(DAYS.map(d=>[d,(week.plan[d]||[]).map(cloneStore)])),manualEdited:false,generatedMode:'snail-distance-v1',updatedAt:new Date().toISOString()};
     }
     const firstWeek=built.weeks[0];bundle.state.settings.weekDate=firstWeek.weekKey;bundle.state.plan=Object.fromEntries(DAYS.map(d=>[d,(firstWeek.plan[d]||[]).map(s=>canonicalStore(s.id,bundle.state)||s)]));
-    bundle.range={start:firstWeek.weekKey,end:iso(addDays(first,20)),weeks:3,workDays:days,uniqueStores:built.uniqueStores,totalVisits:built.totalVisits,rotation:'snail-distance-v1',calendarSynced,updatedAt:new Date().toISOString()};
+    bundle.range={start:firstWeek.weekKey,end:iso(addDays(first,20)),weeks:3,workDays:days,uniqueStores:built.uniqueStores,totalVisits:built.totalVisits,rotation:'snail-distance-v1',calendarSynced,poolReport:report,updatedAt:new Date().toISOString()};
     R.persist(bundle,storage);if(storage&&typeof storage.flush==='function')await storage.flush();root.state=bundle.state;
     try{if(typeof root.initControls==='function')root.initControls();if(typeof root.renderAll==='function')root.renderAll()}catch(e){}
     root.dispatchEvent(new CustomEvent('chef-range-generated',{detail:{start:firstWeek.weekKey,end:bundle.range.end,weeks:3,workDays:days,uniqueStores:built.uniqueStores,mode:'snail-distance-v1'}}));
     root.document&&root.document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{reason:'three-week-snail',weekDate:firstWeek.weekKey}}));
-    if(status)status.textContent='3 semaines escargot : '+built.totalVisits+' visites · '+built.uniqueStores+' magasins distincts'+(built.unknownGps?' · '+built.unknownGps+' GPS à vérifier':'')+'.';
+    if(status)status.textContent='3 semaines escargot : '+built.totalVisits+' visites · '+built.uniqueStores+' magasins distincts · vivier '+report.planifiable+' planifiables'+(report.imposed?' · '+report.imposed+' imposé'+(report.imposed>1?'s':''):'')+(report.withoutGps?' · '+report.withoutGps+' GPS à vérifier':'')+'.';
+    built.poolReport=report;
     return built;
   }finally{if(button)button.disabled=false}
 }
@@ -211,6 +237,6 @@ function installStartButton(){
 }
 function install(){installSnailButton();installStartButton()}
 function boot(){install();root.document&&root.document.addEventListener('store-runner:planning-updated',install);root.document&&root.document.addEventListener('store-runner:data-restored',install)}
-const api={rankStoresByDistance,reorderDayFromStore,buildThreeWeekSnail,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={rankStoresByDistance,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()}
 })(typeof window!=='undefined'?window:globalThis);
