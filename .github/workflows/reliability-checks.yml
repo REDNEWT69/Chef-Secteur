@@ -28,6 +28,7 @@ jobs:
       - run: node tests/planning.test.cjs
       - run: node tests/planning-range-rotation.test.cjs
       - run: node tests/terrain-planning-v1.test.cjs
+      - run: node tests/terrain-planning-runtime.test.cjs
       - run: node tests/planning-manual-week-protection.test.cjs
       - run: node tests/period-day-slider.test.cjs
       - run: node tests/planning-period-date.test.cjs
