@@ -49,14 +49,19 @@ test('V2-07 : backup V1 local -> 3 semaines -> reload sans perte à 390 px', asy
   await expect(stores).not.toContainText('Enseigne Alpha');
 
   // Le point de départ importé rend le mode escargot immédiatement utilisable.
+  // Le filtre Enseignes du backup ne sélectionne qu'Alpha + Bêta : les cinq
+  // autres magasins actifs restent visibles dans Magasins mais hors vivier.
   await page.locator('.srv2-tab[data-tab="planning"]').tap();
   const planning = page.locator('.srv2-screen[data-screen="planning"]');
   const range = planning.locator('.srv2-planning-range');
   await expect(range.locator('.srv2-planning-origin')).toHaveText('Départ : Départ Import Démo · GPS prêt');
+  await expect(range.locator('.srv2-planning-range-reach')).toHaveText(
+    '2 planifiables sur 7 actifs · 5 filtrés · 1 désactivé'
+  );
 
   await range.locator('.srv2-planning-range-generate').tap();
-  await expect(range.locator('.srv2-planning-range-status')).toContainText('3 semaines générées : 18 visites, 7 magasins distincts.');
-  await expect(range.locator('.srv2-planning-range-status')).toContainText('Tous les magasins actifs sont couverts');
+  await expect(range.locator('.srv2-planning-range-status')).toContainText('3 semaines générées : 6 visites, 2 magasins distincts.');
+  await expect(range.locator('.srv2-planning-range-status')).toContainText('Tous les magasins planifiables sont couverts');
   await expect(planning.locator('.srv2-planning-card')).toHaveCount(2);
   await expect(planning.locator('.srv2-planning-card').nth(0)).toContainText('Import Alpha');
   await expect(planning.locator('.srv2-planning-card').nth(1)).toContainText('Import Bêta');
@@ -72,6 +77,9 @@ test('V2-07 : backup V1 local -> 3 semaines -> reload sans perte à 390 px', asy
   await page.locator('.srv2-tab[data-tab="planning"]').tap();
   const planningAfterReload = page.locator('.srv2-screen[data-screen="planning"]');
   await expect(planningAfterReload.locator('.srv2-planning-origin')).toHaveText('Départ : Départ Import Démo · GPS prêt');
+  await expect(planningAfterReload.locator('.srv2-planning-range-reach')).toHaveText(
+    '2 planifiables sur 7 actifs · 5 filtrés · 1 désactivé'
+  );
   await expect(planningAfterReload.locator('.srv2-planning-week-current')).toHaveText('Semaine du 14/09/2026');
   await expect(planningAfterReload.locator('.srv2-planning-card')).toHaveCount(2);
   await expect(planningAfterReload.locator('.srv2-planning-card').first()).toContainText('Import Alpha');
