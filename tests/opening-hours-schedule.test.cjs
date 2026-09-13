@@ -39,7 +39,7 @@ const boulanger = require('../boulanger-default-hours.js');
   const legacy={id:'l',enseigne:'Boulanger',openTime:'08:45',closeTime:'19:00'};
   assert.equal(boulanger.applyStore(legacy),false,'les horaires historiques explicites restent prioritaires');
   assert.deepEqual(hours.intervalsFor(legacy,'Lundi'),[{open:'08:45',close:'19:00'}]);
-  const other={id:'d',enseigne:'Darty'};
+  const other={id:'f',enseigne:'Fnac'};
   assert.equal(boulanger.applyStore(other),false,'les autres enseignes restent inchangées');
   assert.equal(hours.intervalsFor(other,'Lundi'),undefined);
 })();
