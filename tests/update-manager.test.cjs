@@ -27,6 +27,11 @@ assert(manager.includes('catch(error)'),'une erreur réseau ne doit pas casser l
 assert(!manager.includes('new MutationObserver'),'le déplacement ne doit pas ajouter un observer global pour réparer le DOM');
 assert(sw.includes("url.href.split('?')[0] === VERSION_URL"),'version.json avec query-string doit contourner le cache du service worker');
 assert(sw.includes("event.data.type === 'SKIP_WAITING'"),'le service worker doit accepter l’activation demandée par l’interface');
+const installStart=sw.indexOf("self.addEventListener('install'");
+const activateStart=sw.indexOf("self.addEventListener('activate'");
+assert(installStart>=0&&activateStart>installStart,'les blocs install/activate du service worker doivent exister');
+const installBlock=sw.slice(installStart,activateStart);
+assert(!installBlock.includes('skipWaiting()'),'une nouvelle version ne doit plus s’activer toute seule avant le clic utilisateur');
 assert.strictEqual(version.channel,'stable','le manifeste de version doit rester sur le canal stable');
 assert(/^\d+$/.test(String(version.displayVersion)),'displayVersion doit être un numéro lisible');
 
