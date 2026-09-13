@@ -40,6 +40,7 @@ jobs:
       - run: node tests/visit-credits-planning.test.cjs
       - run: node tests/planning-manual-pins.test.cjs
       - run: node tests/planning-pin-week-scope.test.cjs
+      - run: node tests/stores-reach-count.test.cjs
       - run: node tests/region-stores.test.cjs
       - run: node tests/architecture.test.cjs
       - run: node tests/navigation-architecture.test.cjs

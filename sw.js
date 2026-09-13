@@ -1,4 +1,4 @@
-const BUILD_REV = "20260913-opening154";
+const BUILD_REV = "20260913-storesreach155";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
