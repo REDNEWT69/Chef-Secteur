@@ -48,6 +48,11 @@ async function touchDrag(page, locator, deltaX, deltaY) {
       type: 'touchEnd',
       touchPoints: [],
     });
+    // CDP envoie la séquence brute plus vite qu'un doigt humain. Laisser un
+    // court tour d'événements évite de superposer le geste suivant à la fin
+    // native du touch précédent. 80 ms reste très inférieur à une éventuelle
+    // suppression de clic de plusieurs centaines de ms que ce test doit voir.
+    await page.waitForTimeout(80);
   } finally {
     await session.detach();
   }
@@ -142,7 +147,7 @@ test('V2-05 Planning : swipe horizontal et scroll vertical cohabitent à 390 px'
   await expect(day('Mardi')).toHaveAttribute('aria-selected', 'true');
   await expect(screen.locator('.srv2-planning-card')).toContainText('Enseigne Bêta');
 
-  // Aucun verrou global post-swipe : un tap immédiat sur mercredi doit marcher.
+  // Aucun verrou global post-swipe : un tap quasi immédiat sur mercredi doit marcher.
   await day('Mercredi').tap();
   await expect(day('Mercredi')).toHaveAttribute('aria-selected', 'true');
 
