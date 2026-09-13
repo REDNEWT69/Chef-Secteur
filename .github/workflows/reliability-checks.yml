@@ -37,6 +37,7 @@ jobs:
       - run: node tests/visit-credits-planning.test.cjs
       - run: node tests/planning-manual-pins.test.cjs
       - run: node tests/region-stores.test.cjs
+      - run: node tests/sector-admin-import.test.cjs
       - run: node tests/architecture.test.cjs
       - run: node tests/navigation-architecture.test.cjs
       - run: node tests/calendar-ownership.test.cjs
