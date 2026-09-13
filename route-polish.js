@@ -17,8 +17,9 @@
   }
   function routeForDay(day){try{return ((state.plan&&state.plan[day])||[]).map(canonicalStore)}catch(e){return[]}}
   function profile(){try{return state.profile||{}}catch(e){return{}}}
-  function baseCoordinate(){const p=profile();return isFinite(Number(p.baseLat))&&isFinite(Number(p.baseLon))?{lat:Number(p.baseLat),lon:Number(p.baseLon)}:null}
-  function storeCoordinate(s){s=canonicalStore(s);return s&&isFinite(Number(s.lat))&&isFinite(Number(s.lon))?{lat:Number(s.lat),lon:Number(s.lon)}:null}
+  function coordValue(v,min,max){if(v==null||String(v).trim()==='')return null;const n=Number(v);return Number.isFinite(n)&&n>=min&&n<=max?n:null}
+  function baseCoordinate(){const p=profile(),lat=coordValue(p.baseLat,-90,90),lon=coordValue(p.baseLon,-180,180);return lat!=null&&lon!=null?{lat,lon}:null}
+  function storeCoordinate(s){s=canonicalStore(s);if(!s)return null;const lat=coordValue(s.lat,-90,90),lon=coordValue(s.lon,-180,180);return lat!=null&&lon!=null?{lat,lon}:null}
   function basePoint(){const p=profile(),c=baseCoordinate();if(c)return c.lat+','+c.lon;if(p.baseAddress)return p.baseAddress;return''}
   function storePoint(s){s=canonicalStore(s);if(!s)return'';const c=storeCoordinate(s);if(c)return c.lat+','+c.lon;if(s.adresse||s.ville)return [s.enseigne,s.adresse,s.ville].filter(Boolean).join(', ');return s.ville||s.enseigne||''}
 
