@@ -62,6 +62,33 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
   expect(new Set(all).size).toBe(60);
   expect(all.slice(0,5)).toEqual(['snail-01','snail-02','snail-03','snail-04','snail-05']);
 
+  // Le résultat doit être réellement exploitable dans l'interface, pas seulement
+  // présent dans une archive invisible. On ouvre une journée de chaque semaine,
+  // vérifie le plan chargé, puis on revient à la première sans perte.
+  const week2Tab=page.locator('#dayTabs .periodDayTab[data-date="2026-09-21"]');
+  const week3Tab=page.locator('#dayTabs .periodDayTab[data-date="2026-09-28"]');
+  const week1Tab=page.locator('#dayTabs .periodDayTab[data-date="2026-09-14"]');
+  await expect(week2Tab).toHaveCount(1);
+  await expect(week3Tab).toHaveCount(1);
+
+  await week2Tab.click();
+  await page.waitForFunction(() => String(window.state?.settings?.weekDate||'')==='2026-09-21');
+  let visibleWeek=await page.evaluate(() => ['Lundi','Mardi','Mercredi','Jeudi','Vendredi'].flatMap(d=>(window.state.plan[d]||[]).map(s=>s.id)));
+  expect(visibleWeek).toEqual(generated.weeks[1]);
+  await expect(page.locator('#planPanel')).toContainText('Ville 21');
+
+  await week3Tab.click();
+  await page.waitForFunction(() => String(window.state?.settings?.weekDate||'')==='2026-09-28');
+  visibleWeek=await page.evaluate(() => ['Lundi','Mardi','Mercredi','Jeudi','Vendredi'].flatMap(d=>(window.state.plan[d]||[]).map(s=>s.id)));
+  expect(visibleWeek).toEqual(generated.weeks[2]);
+  await expect(page.locator('#planPanel')).toContainText('Ville 41');
+
+  await week1Tab.click();
+  await page.waitForFunction(() => String(window.state?.settings?.weekDate||'')==='2026-09-14');
+  visibleWeek=await page.evaluate(() => ['Lundi','Mardi','Mercredi','Jeudi','Vendredi'].flatMap(d=>(window.state.plan[d]||[]).map(s=>s.id)));
+  expect(visibleWeek).toEqual(generated.weeks[0]);
+  await expect(page.locator('#planPanel')).toContainText('Ville 1');
+
   const chosen=await page.evaluate(() => {
     const route=window.state.plan.Lundi||[];
     const id=route[1]&&route[1].id;
