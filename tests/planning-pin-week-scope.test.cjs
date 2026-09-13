@@ -17,6 +17,7 @@ assert.match(plannerSource,/state\.locks\[String\(id\)\]=\{day,week:currentWeekK
 assert.match(plannerSource,/function buildWeekUnique\(chosen,days,weekKey\)/,'la construction d’une semaine doit savoir de quelle semaine il s’agit');
 assert.match(plannerSource,/const locked=lockDayForWeek\(store\.id,weekKey\)/,'le verrou appliqué doit être celui de la semaine construite');
 assert.match(plannerSource,/function forcedRank\(s,weekKey\)/,'une pose datée ne doit pas réserver un créneau sur les autres semaines');
+assert.match(plannerSource,/iso\(monday\(weekDate\)\)!==week/,'un objet de pose doit porter un lundi ISO valide, sinon il est refusé');
 assert.doesNotMatch(plannerSource,/state\.pins|state\.pinnedWeeks|manualPins/,'aucun registre concurrent : state.locks reste la seule source');
 // Le noyau lit la même règle au lieu de la redéfinir.
 assert.match(coreSource,/window\.storeRunnerLockDayForWeek/,'le noyau doit consommer la règle publiée par le planificateur');
@@ -233,9 +234,18 @@ async function runRange(locks){
   assert.deepEqual({day:i8.day,week:i8.week,recurring:i8.recurring},{day:'Mardi',week:'',recurring:true},'la forme chaîne est décrite comme récurrente');
 
   // --- Une valeur inattendue ne fait pas planter et n’impose rien -----------------
-  for(const bidon of [{day:'Pizza',week:'2026-09-14'},{week:'2026-09-14'},'Pizza',{},42]){
+  for(const bidon of [
+    {day:'Mardi'},
+    {day:'Mardi',week:'2026-09-15'},
+    {day:'Mardi',week:'2026-99-99'},
+    {day:'Pizza',week:'2026-09-14'},
+    {week:'2026-09-14'},
+    'Pizza',{},42
+  ]){
     const t=env({max:4,target:20,stores:SECTOR,locks:{s00:bidon},weekDate:'2026-09-14'});
+    assert.equal(t.ctx.testScope.lockEntry('s00'),null,'forme illisible : lockEntry doit la refuser ('+JSON.stringify(bidon)+')');
     assert.equal(t.ctx.testScope.pinnedDay('s00'),'','forme illisible : aucun verrou, aucune exception ('+JSON.stringify(bidon)+')');
+    assert.equal(t.ctx.storeRunnerLockInfo('s00'),null,'forme illisible : l’UI ne doit jamais la présenter comme récurrente ('+JSON.stringify(bidon)+')');
   }
 
   // --- Un jour non disponible fait toujours échouer, sans écraser le planning -----
@@ -276,5 +286,5 @@ async function runRange(locks){
   assert.equal(apres.locks.s02,undefined,'les magasins gardés automatiquement restent libres');
   assert(t8.checkpoints.some(r=>/Avant changement manuel/.test(r)),'le point de restauration doit rester');
 
-  console.log('PASS: une pose est rattachée à sa semaine, la forme chaîne historique reste un verrou récurrent lisible sans migration, la couverture d’une période retrouve son niveau sans pose, et le plafond en crédits comme le refus sur jour indisponible sont intacts.');
+  console.log('PASS: une pose est rattachée à sa semaine, la forme chaîne historique reste un verrou récurrent lisible sans migration, les objets datés incomplets sont refusés, la couverture d’une période retrouve son niveau sans pose, et le plafond en crédits comme le refus sur jour indisponible sont intacts.');
 })().catch(e=>{console.error(e);process.exit(1)});
