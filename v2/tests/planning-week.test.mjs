@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { createEmptyState } from '../src/core/state.mjs';
 import { createStore } from '../src/core/store.mjs';
 import {
+  PLANNING_ALGORITHM,
   PlanningWeekError,
   generatePlanningWeek,
   getPlannedStore,
+  rankActiveStoreIdsForWeek,
   resolvePlanningDays,
   shiftWeekDate,
   weekMondayFromDate,
@@ -28,6 +30,27 @@ function makeState() {
     maxVisitsPerDay: 2,
   };
   return state;
+}
+
+function makeRotationState() {
+  const state = createEmptyState();
+  state.stores = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta'].map(id => ({
+    id,
+    enseigne: id,
+    active: true,
+  }));
+  state.planning = { weeks: {} };
+  state.settings = {
+    weekDate: '2026-09-14',
+    days: ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'],
+    target: 3,
+    maxVisitsPerDay: 2,
+  };
+  return state;
+}
+
+function plannedIds(week) {
+  return Object.values(week.days).flat();
 }
 
 // La date sélectionnée n'a pas besoin d'être un lundi : le contrat est la
@@ -60,6 +83,7 @@ assert.deepEqual(resolvePlanningDays({ days: [] }), ['Lundi', 'Mardi', 'Mercredi
   const state = makeState();
   const week = generatePlanningWeek(state);
   assert.equal(week.weekMonday, '2026-09-14');
+  assert.equal(week.algorithm, PLANNING_ALGORITHM);
   assert.deepEqual(week.days.Lundi, ['alpha']);
   assert.deepEqual(week.days.Mardi, ['beta']);
   assert.deepEqual(week.days.Mercredi, ['gamma']);
@@ -67,6 +91,54 @@ assert.deepEqual(resolvePlanningDays({ days: [] }), ['Lundi', 'Mardi', 'Mercredi
   assert.deepEqual(week.days.Vendredi, []);
   assert.equal(JSON.stringify(week).includes('Delta'), false);
   assert.equal(JSON.stringify(week).includes('enseigne'), false);
+}
+
+// Rotation balanced-LRU : un vivier deux fois plus grand que la cible doit
+// couvrir les six magasins avant de recommencer. À égalité, l'ordre catalogue
+// reste le dernier départage déterministe.
+{
+  const state = makeRotationState();
+  const week1 = generatePlanningWeek(state, { weekDate: '2026-09-14' });
+  assert.deepEqual(plannedIds(week1), ['alpha', 'beta', 'gamma']);
+  state.planning.weeks[week1.weekMonday] = week1;
+
+  assert.deepEqual(
+    rankActiveStoreIdsForWeek(state, '2026-09-21'),
+    ['delta', 'epsilon', 'zeta', 'alpha', 'beta', 'gamma']
+  );
+  const week2 = generatePlanningWeek(state, { weekDate: '2026-09-21' });
+  assert.deepEqual(plannedIds(week2), ['delta', 'epsilon', 'zeta']);
+  state.planning.weeks[week2.weekMonday] = week2;
+
+  const week3 = generatePlanningWeek(state, { weekDate: '2026-09-28' });
+  assert.deepEqual(plannedIds(week3), ['alpha', 'beta', 'gamma']);
+
+  // Régénérer la semaine 2 ignore sa propre ancienne version : résultat stable.
+  assert.deepEqual(
+    plannedIds(generatePlanningWeek(state, { weekDate: '2026-09-21' })),
+    ['delta', 'epsilon', 'zeta']
+  );
+}
+
+// Le passé seul influence la rotation. Une semaine future et une clé non
+// canonique/malformée doivent être ignorées.
+{
+  const state = makeRotationState();
+  state.planning.weeks['2026-09-28'] = {
+    weekMonday: '2026-09-28',
+    days: { Lundi: ['delta', 'epsilon', 'zeta'] },
+  };
+  state.planning.weeks['2026-09-15'] = {
+    weekMonday: '2026-09-15',
+    days: { Lundi: ['alpha', 'beta', 'gamma'] },
+  };
+  state.planning.weeks['pas-une-date'] = {
+    days: { Lundi: ['alpha'] },
+  };
+  assert.deepEqual(
+    rankActiveStoreIdsForWeek(state, '2026-09-21'),
+    ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta']
+  );
 }
 
 // La capacité est une vraie limite, pas une suggestion décorative.
@@ -109,7 +181,6 @@ assert.deepEqual(resolvePlanningDays({ days: [] }), ['Lundi', 'Mardi', 'Mercredi
   const store = createStore(makeState());
   const feature = createPlanningFeature({ document, store });
 
-  // L'écran canonise la date initiale sur le lundi sans encore muter le store.
   assert.equal(feature.getWeekMonday(), '2026-09-14');
   assert.equal(feature.getSelectedDay(), 'Lundi');
 
@@ -133,6 +204,8 @@ assert.deepEqual(resolvePlanningDays({ days: [] }), ['Lundi', 'Mardi', 'Mercredi
   assert(generatedSecond);
   snapshot = store.getState();
   assert.deepEqual(Object.keys(snapshot.planning.weeks).sort(), ['2026-09-14', '2026-09-21']);
+  // Le petit fixture public n'a que trois magasins actifs : tous restent dus
+  // chaque semaine, ce qui vérifie aussi que la rotation ne fabrique aucun trou.
   assert.deepEqual(snapshot.planning.weeks['2026-09-21'].days.Lundi, ['alpha']);
 
   assert.equal(feature.shiftWeek(-1), '2026-09-14');
