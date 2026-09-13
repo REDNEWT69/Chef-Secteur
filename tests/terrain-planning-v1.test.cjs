@@ -80,6 +80,45 @@ function flat(week){
   assert.ok((built.weeks[0].plan.Jeudi||[]).some(s=>s.id==='s20'));
 })();
 
+(function imposedStoreIsARealWeeklyConstraint(){
+  const stores = Array.from({length:10}, (_,i)=>store(i+1));
+  const built = terrain.buildThreeWeekSnail({
+    state:{manualWeekEdits:{},included:{s10:true}}, firstMonday:monday(), days:['Lundi'],
+    target:3, maxCreditsPerDay:4, stores, archive:{}, distanceOf:s=>s.distance, creditOf:()=>1,
+    lockDayForWeek:()=>'', appointmentDay:()=>'', dayBlocked:()=>false, dayFits:()=>true
+  });
+  for(const week of built.weeks){
+    assert.ok(flat(week).some(s=>s.id==='s10'),'le magasin imposé doit être présent chaque semaine');
+  }
+  const normal=built.weeks.flatMap(flat).filter(s=>s.id!=='s10').map(s=>s.id);
+  assert.deepStrictEqual(normal,['s1','s2','s3','s4','s5','s6'],'les autres places continuent la progression proche → loin sans répétition');
+})();
+
+(function poolDiagnosticMatchesTheRealV1Reach(){
+  const stores=[
+    {id:'a',active:true,lat:45,lon:4,enseigne:'Fnac'},
+    {id:'b',active:true,lat:null,lon:null,enseigne:'Fnac'},
+    {id:'c',active:true,lat:45,lon:4,enseigne:'Darty'},
+    {id:'d',active:true,lat:45,lon:4,enseigne:'Fnac'},
+    {id:'e',active:false,lat:45,lon:4,enseigne:'Fnac'}
+  ];
+  const state={excluded:{c:true},included:{b:true}};
+  const report=terrain.summarizeTerrainPool(stores,state,s=>s.id!=='d');
+  assert.deepStrictEqual(report,{total:5,active:4,excluded:1,filtered:1,planifiable:2,withGps:1,withoutGps:1,imposed:1});
+})();
+
+(function missingGpsCountsTheWholeEligiblePoolNotOnlyPlacedStores(){
+  const stores=Array.from({length:65},(_,i)=>Object.assign(store(i+1),{lat:45+i*0.001,lon:4}));
+  stores[64].lat=null;stores[64].lon=null;
+  const built=terrain.buildThreeWeekSnail({
+    state:{manualWeekEdits:{}},firstMonday:monday(),days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],
+    target:20,maxCreditsPerDay:4,stores,archive:{},distanceOf:s=>s.distance,creditOf:()=>1,
+    lockDayForWeek:()=>'',appointmentDay:()=>'',dayBlocked:()=>false,dayFits:()=>true
+  });
+  assert.strictEqual(built.totalVisits,60);
+  assert.strictEqual(built.unknownGps,1,'un GPS manquant hors des 60 visites doit quand même être signalé');
+})();
+
 (function startFromChosenStorePreservesTheWholeDay(){
   const route=[store(1),store(2),store(3),store(4)];
   const pos={s1:0,s2:10,s3:3,s4:7};
