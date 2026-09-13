@@ -36,9 +36,9 @@
   touch-action: pan-y;
 }
 
-/* V2-06 — bloc indépendant du générateur semaine existant. Le bouton a sa
-   propre classe afin que les tests et propriétaires UI ne confondent jamais
-   « une semaine » avec « trois semaines ». */
+/* V2-06 — bloc indépendant du générateur semaine existant. Le bouton et le
+   statut ont leurs propres classes afin que les propriétaires UI ne confondent
+   jamais « une semaine » avec « trois semaines ». */
 .srv2-planning-range {
   display: grid;
   gap: 10px;
@@ -55,8 +55,13 @@
 }
 
 .srv2-planning-range-description,
-.srv2-planning-origin {
+.srv2-planning-origin,
+.srv2-planning-range-status {
   font-size: 13px;
+}
+
+.srv2-planning-range-status {
+  min-height: 18px;
 }
 
 .srv2-planning-range-generate {
