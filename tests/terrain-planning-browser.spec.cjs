@@ -23,7 +23,7 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
     const st=window.state;
     const stores=Array.from({length:65},(_,i)=>({
       id:'snail-'+String(i+1).padStart(2,'0'), enseigne:'Magasin Test', ville:'Ville '+(i+1),
-      adresse:(i+1)+' rue Escargot', dept:'69', lat:45.758+(i+1)*0.002, lon:4.832,
+      adresse:(i+1)+' rue Escargot', dept:'69', lat:i===64?null:45.758+(i+1)*0.002, lon:i===64?null:4.832,
       active:true, priority:3, intervalDays:30, products:[]
     }));
     st.profile=Object.assign({},st.profile||{},{baseName:'Domicile test',baseAddress:'Lyon',baseLat:45.758,baseLon:4.832});
@@ -47,16 +47,21 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
   if(!box)throw new Error('Bouton escargot introuvable');
   expect(box.height).toBeGreaterThanOrEqual(44);
   await snail.tap();
-  await expect(page.locator('#terrainSnailStatus')).toContainText('3 semaines escargot');
+  const terrainStatus=page.locator('#terrainSnailStatus');
+  await expect(terrainStatus).toContainText('3 semaines escargot');
+  await expect(terrainStatus).toContainText('65 planifiables');
+  await expect(terrainStatus).toContainText('1 GPS à vérifier');
 
   const generated=await page.evaluate(() => {
     const db=window.__chefStorage||localStorage;
     const a=JSON.parse(db.getItem('chef_sector_plan_archive_v1')||'{}');
     const keys=['2026-09-14','2026-09-21','2026-09-28'];
     const flatten=k=>['Lundi','Mardi','Mercredi','Jeudi','Vendredi'].flatMap(d=>(a[k]?.plan?.[d]||[]).map(s=>s.id));
-    return {keys:keys.filter(k=>a[k]),weeks:keys.map(flatten),firstPlan:(window.state.plan.Lundi||[]).map(s=>s.id)};
+    const range=JSON.parse(db.getItem('chef_sector_range_v1')||'{}');
+    return {keys:keys.filter(k=>a[k]),weeks:keys.map(flatten),firstPlan:(window.state.plan.Lundi||[]).map(s=>s.id),poolReport:range.poolReport||null};
   });
   expect(generated.keys).toEqual(['2026-09-14','2026-09-21','2026-09-28']);
+  expect(generated.poolReport).toMatchObject({planifiable:65,withGps:64,withoutGps:1,imposed:0});
   const all=generated.weeks.flat();
   expect(all).toHaveLength(60);
   expect(new Set(all).size).toBe(60);
