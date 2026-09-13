@@ -14,9 +14,28 @@ test.use({
   trace: 'retain-on-failure',
 });
 
-test('V2-06 : trois semaines escargot sont générées et navigables à 390 px', async ({ page }) => {
+test('V2-06 : trois semaines escargot sont générées, copiables et navigables à 390 px', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(String(error && error.message || error)));
+
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition(success) {
+          success({ coords: { latitude: 45.123, longitude: 4.456 } });
+        },
+      },
+    });
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        async writeText(text) {
+          window.__copiedForTH = text;
+        },
+      },
+    });
+  });
 
   await page.goto(V2_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.srv2-nav');
@@ -28,6 +47,14 @@ test('V2-06 : trois semaines escargot sont générées et navigables à 390 px',
   await expect(range.locator('.srv2-planning-origin')).toHaveText('Départ : Base Démo · GPS prêt');
   await expect(range.locator('.srv2-planning-range-reach')).toHaveText('3 planifiables sur 3 actifs · 1 désactivé');
 
+  const usePosition = range.locator('.srv2-planning-origin-current');
+  const positionBox = await usePosition.boundingBox();
+  if (!positionBox) throw new Error('Bouton de point de départ introuvable');
+  expect(positionBox.height).toBeGreaterThanOrEqual(44);
+  await usePosition.tap();
+  await expect(range.locator('.srv2-planning-origin')).toHaveText('Départ : Ma position · GPS prêt');
+  await expect(range.locator('.srv2-planning-origin-status')).toContainText('Point de départ enregistré');
+
   const generateRange = range.locator('.srv2-planning-range-generate');
   await expect(generateRange).toBeEnabled();
   const buttonBox = await generateRange.boundingBox();
@@ -37,6 +64,22 @@ test('V2-06 : trois semaines escargot sont générées et navigables à 390 px',
   await generateRange.tap();
   await expect(range.locator('.srv2-planning-range-status')).toContainText('3 semaines générées : 9 visites, 3 magasins distincts.');
   await expect(range.locator('.srv2-planning-range-status')).toContainText('Tous les magasins planifiables sont couverts');
+
+  const exportArea = range.locator('.srv2-planning-range-export');
+  await expect(exportArea).toBeVisible();
+  await expect(exportArea).toHaveValue(/PLAN 3 SEMAINES · STORE RUNNER/);
+  await expect(exportArea).toHaveValue(/Semaine du 14\/09\/2026/);
+  await expect(exportArea).toHaveValue(/Enseigne Alpha/);
+
+  const copy = range.locator('.srv2-planning-range-copy');
+  const copyBox = await copy.boundingBox();
+  if (!copyBox) throw new Error('Bouton de copie TeamHaven introuvable');
+  expect(copyBox.height).toBeGreaterThanOrEqual(44);
+  await copy.tap();
+  await expect(range.locator('.srv2-planning-range-copy-status')).toContainText('Planning copié');
+  const copiedText = await page.evaluate(() => window.__copiedForTH || '');
+  expect(copiedText).toContain('Semaine du 14/09/2026');
+  expect(copiedText).toContain('Enseigne Alpha');
 
   // Semaine 1 : le mode escargot remplit les journées dans l'ordre radial,
   // donc les deux magasins les plus proches sont ensemble le lundi.
@@ -65,9 +108,11 @@ test('V2-06 : trois semaines escargot sont générées et navigables à 390 px',
     documentScrollWidth: document.documentElement.scrollWidth,
     documentClientWidth: document.documentElement.clientWidth,
     planningScrollWidth: document.querySelector('.srv2-screen[data-screen="planning"]')?.scrollWidth || 0,
+    exportScrollWidth: document.querySelector('.srv2-planning-range-export')?.scrollWidth || 0,
   }));
   expect(overflow.documentScrollWidth).toBeLessThanOrEqual(overflow.documentClientWidth + 1);
   expect(overflow.planningScrollWidth).toBeLessThanOrEqual(391);
+  expect(overflow.exportScrollWidth).toBeLessThanOrEqual(391);
 
   // Aucun overlay, aucune couche bloquante : la nav basse reste immédiatement utilisable.
   await page.locator('.srv2-tab[data-tab="stores"]').tap();
