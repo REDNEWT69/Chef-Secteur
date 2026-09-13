@@ -3,6 +3,7 @@
 // restent propriétaires de leurs zones respectives.
 
 import { generatePlanningRange, PlanningRangeError, planningReach } from './range.mjs';
+import { formatPlanningRangeForTeamHaven, storedLastPlanningRange } from './terrain-tools.mjs';
 
 export class PlanningRangeFeatureError extends Error {
   constructor(message) {
@@ -15,14 +16,19 @@ function requireOptions(options) {
   if (!options || typeof options !== 'object' || Array.isArray(options)) {
     throw new PlanningRangeFeatureError('createPlanningRangeFeature attend { document, store }.');
   }
-  const { document, store } = options;
+  const { document, store, geolocation, clipboard } = options;
   if (!document || typeof document.createElement !== 'function') {
     throw new PlanningRangeFeatureError('Un document valide est requis.');
   }
   if (!store || typeof store.getState !== 'function' || typeof store.update !== 'function' || typeof store.subscribe !== 'function') {
     throw new PlanningRangeFeatureError('Un store V2 valide est requis.');
   }
-  return { document, store };
+  return {
+    document,
+    store,
+    geolocation: geolocation && typeof geolocation.getCurrentPosition === 'function' ? geolocation : null,
+    clipboard: clipboard && typeof clipboard.writeText === 'function' ? clipboard : null,
+  };
 }
 
 function firstWeekDate(state) {
@@ -56,8 +62,14 @@ function reachText(state) {
 }
 
 export function createPlanningRangeFeature(options) {
-  const { document: doc, store } = requireOptions(options);
+  const {
+    document: doc,
+    store,
+    geolocation,
+    clipboard,
+  } = requireOptions(options);
   let latestState = store.getState();
+  let locating = false;
 
   const root = doc.createElement('section');
   root.classList.add('srv2-planning-range');
@@ -73,6 +85,15 @@ export function createPlanningRangeFeature(options) {
   const origin = doc.createElement('p');
   origin.classList.add('srv2-planning-origin');
 
+  const originButton = doc.createElement('button');
+  originButton.setAttribute('type', 'button');
+  originButton.classList.add('srv2-planning-origin-current');
+  originButton.textContent = 'Utiliser ma position actuelle';
+
+  const originStatus = doc.createElement('p');
+  originStatus.classList.add('srv2-planning-origin-status');
+  originStatus.setAttribute('aria-live', 'polite');
+
   const reach = doc.createElement('p');
   reach.classList.add('srv2-planning-range-reach');
 
@@ -85,12 +106,40 @@ export function createPlanningRangeFeature(options) {
   status.classList.add('srv2-planning-range-status');
   status.setAttribute('aria-live', 'polite');
 
+  const exportTitle = doc.createElement('h3');
+  exportTitle.classList.add('srv2-planning-range-export-title');
+  exportTitle.textContent = 'Préparation TeamHaven';
+  exportTitle.hidden = true;
+
+  const exportArea = doc.createElement('textarea');
+  exportArea.classList.add('srv2-planning-range-export');
+  exportArea.setAttribute('readonly', 'readonly');
+  exportArea.setAttribute('aria-label', 'Planning 3 semaines à recopier dans TeamHaven');
+  exportArea.hidden = true;
+
+  const copyButton = doc.createElement('button');
+  copyButton.setAttribute('type', 'button');
+  copyButton.classList.add('srv2-planning-range-copy');
+  copyButton.textContent = 'Copier les 3 semaines pour TH';
+  copyButton.disabled = true;
+  copyButton.hidden = true;
+
+  const copyStatus = doc.createElement('p');
+  copyStatus.classList.add('srv2-planning-range-copy-status');
+  copyStatus.setAttribute('aria-live', 'polite');
+
   root.appendChild(title);
   root.appendChild(description);
   root.appendChild(origin);
+  root.appendChild(originButton);
+  root.appendChild(originStatus);
   root.appendChild(reach);
   root.appendChild(button);
   root.appendChild(status);
+  root.appendChild(exportTitle);
+  root.appendChild(exportArea);
+  root.appendChild(copyButton);
+  root.appendChild(copyStatus);
 
   function renderOrigin(state = latestState) {
     const label = state?.settings?.originName || state?.profile?.baseName || 'Point de départ';
@@ -106,6 +155,64 @@ export function createPlanningRangeFeature(options) {
     reach.textContent = reachText(state);
     button.disabled = !hasOrigin || currentReach.eligibleStores === 0;
     button.setAttribute('aria-disabled', String(button.disabled));
+    originButton.disabled = locating || !geolocation;
+    originButton.setAttribute('aria-disabled', String(originButton.disabled));
+  }
+
+  function renderExport(state = latestState) {
+    const stored = storedLastPlanningRange(state);
+    const text = stored ? formatPlanningRangeForTeamHaven(state, stored) : '';
+    exportArea.value = text;
+    const ready = Boolean(text);
+    exportTitle.hidden = !ready;
+    exportArea.hidden = !ready;
+    copyButton.hidden = !ready;
+    copyButton.disabled = !ready;
+    copyButton.setAttribute('aria-disabled', String(copyButton.disabled));
+    if (!ready) copyStatus.textContent = '';
+  }
+
+  function useCurrentPosition() {
+    if (!geolocation) {
+      originStatus.textContent = 'Géolocalisation indisponible sur cet appareil.';
+      return Promise.resolve(false);
+    }
+    locating = true;
+    originStatus.textContent = 'Localisation du point de départ…';
+    renderOrigin();
+
+    return new Promise(resolve => {
+      geolocation.getCurrentPosition(position => {
+        const lat = coordinate(position?.coords?.latitude, -90, 90);
+        const lon = coordinate(position?.coords?.longitude, -180, 180);
+        if (lat === null || lon === null) {
+          locating = false;
+          originStatus.textContent = 'Position reçue mais coordonnées invalides.';
+          renderOrigin();
+          resolve(false);
+          return;
+        }
+        store.update(draft => {
+          ensureContainers(draft);
+          draft.settings.originLat = lat;
+          draft.settings.originLon = lon;
+          draft.settings.originName = 'Ma position';
+        });
+        locating = false;
+        originStatus.textContent = 'Point de départ enregistré sur cet appareil.';
+        renderOrigin(store.getState());
+        resolve(true);
+      }, () => {
+        locating = false;
+        originStatus.textContent = 'Impossible de récupérer la position. Autorise la localisation puis réessaie.';
+        renderOrigin();
+        resolve(false);
+      }, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      });
+    });
   }
 
   function generate() {
@@ -138,6 +245,7 @@ export function createPlanningRangeFeature(options) {
         ? ` ${range.missingCoordinates} magasin${range.missingCoordinates > 1 ? 's' : ''} planifiable${range.missingCoordinates > 1 ? 's' : ''} sans GPS ${range.missingCoordinates > 1 ? 'sont placés' : 'est placé'} à la fin.`
         : '';
       status.textContent = `3 semaines générées : ${range.totalVisits} visites, ${range.distinctStores} magasins distincts.${remaining}${gpsWarning}`;
+      renderExport(store.getState());
       return range;
     } catch (error) {
       status.textContent = error instanceof PlanningRangeError || error instanceof PlanningRangeFeatureError
@@ -147,16 +255,42 @@ export function createPlanningRangeFeature(options) {
     }
   }
 
+  async function copyForTeamHaven() {
+    const text = String(exportArea.value || '');
+    if (!text) {
+      copyStatus.textContent = 'Génère d’abord les 3 semaines.';
+      return false;
+    }
+    if (!clipboard) {
+      copyStatus.textContent = 'Copie automatique indisponible : le texte reste sélectionnable ci-dessus.';
+      return false;
+    }
+    try {
+      await clipboard.writeText(text);
+      copyStatus.textContent = 'Planning copié. Tu peux le coller dans TeamHaven.';
+      return true;
+    } catch (_) {
+      copyStatus.textContent = 'Copie automatique refusée : le texte reste sélectionnable ci-dessus.';
+      return false;
+    }
+  }
+
+  originButton.addEventListener('click', useCurrentPosition);
   button.addEventListener('click', generate);
+  copyButton.addEventListener('click', copyForTeamHaven);
   const unsubscribe = store.subscribe(state => {
     latestState = state;
     renderOrigin(state);
+    renderExport(state);
   });
   renderOrigin(latestState);
+  renderExport(latestState);
 
   return Object.freeze({
     element: root,
     generate,
+    useCurrentPosition,
+    copyForTeamHaven,
     destroy: unsubscribe,
   });
 }
