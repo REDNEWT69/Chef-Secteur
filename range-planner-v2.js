@@ -80,9 +80,10 @@ function lockEntry(id,source){
     const raw=map&&map[String(id)];
     if(!raw)return null;
     if(typeof raw==='string')return DAYS.includes(raw)?{day:raw,week:''}:null;
-    const day=String(raw.day||'');
-    if(!DAYS.includes(day))return null;
-    return{day,week:String(raw.week||'')};
+    if(typeof raw!=='object'||Array.isArray(raw))return null;
+    const day=String(raw.day||''),week=String(raw.week||''),weekDate=parse(week);
+    if(!DAYS.includes(day)||!/^\d{4}-\d{2}-\d{2}$/.test(week)||!weekDate||iso(weekDate)!==week||iso(monday(weekDate))!==week)return null;
+    return{day,week};
   }catch(e){return null}
 }
 function currentWeekKey(){try{return iso(monday(parse((state.settings&&state.settings.weekDate)||'')||new Date()))}catch(e){return ''}}
