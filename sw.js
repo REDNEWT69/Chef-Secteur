@@ -1,4 +1,4 @@
-const BUILD_REV = "20260913-terrainpool157";
+const BUILD_REV = "20260913-snailweek158";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
