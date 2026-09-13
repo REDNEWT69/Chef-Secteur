@@ -22,12 +22,22 @@ function dedupe(rows){const out=[];rows.forEach(s=>{if(!s||!s.id)return;const k=
 function regionOf(s){return s.region||REGION_BY_DEPT[String(s.dept||'')]||''}
 async function catalog(){let rows=(root.state&&root.state.stores?root.state.stores:[]).map(clone);try{if(root.ChefNationalSectors&&root.ChefNationalSectors.loadCatalog)rows=rows.concat(await root.ChefNationalSectors.loadCatalog())}catch(e){}rows=dedupe(rows);rows.forEach(s=>{if(!s.region)s.region=regionOf(s)});return rows}
 function migrateMap(map,oldId,newId){if(!map||oldId===newId)return;if(map[oldId]!==undefined&&map[newId]===undefined)map[newId]=clone(map[oldId])}
+function activeBrands(rows){return new Set((rows||[]).filter(s=>s&&s.active!==false).map(s=>String(s.enseigne||'')).filter(Boolean))}
+function repairBrandFilterOnSectorChange(target,oldRows,nextRows){
+ const selected=target&&target.settings&&Array.isArray(target.settings.brands)?target.settings.brands.filter(Boolean).map(String):[];
+ if(!selected.length)return false;
+ const before=activeBrands(oldRows),after=activeBrands(nextRows);if(!before.size)return false;
+ const selectedSet=new Set(selected);if(![...before].every(b=>selectedSet.has(b)))return false;
+ const changed=before.size!==after.size||[...before].some(b=>!after.has(b));if(!changed)return false;
+ target.settings=target.settings||{};target.settings.brands=[];return true
+}
 function applyExact(name,selected){
  if(!root.state||!root.ChefReliability)throw Error('Application pas encore prête.');
  if(!selected.length)throw Error('Sélectionne au moins un magasin.');
  const R=root.ChefReliability,store=db(),bundle=R.capture(root.state,store),old=bundle.state.stores||[],oldById=new Map(old.map(s=>[String(s.id),s])),oldByFp=new Map(old.map(s=>[fp(s),s]));
  const next=selected.map(s=>{const prev=oldById.get(String(s.id))||oldByFp.get(fp(s));if(!prev)return clone(s);const row=Object.assign({},clone(s),{freq:prev.freq||s.freq,intervalDays:prev.intervalDays||s.intervalDays,priority:prev.priority||s.priority,active:prev.active!==false,products:prev.products||s.products});for(const key of ['visits','notes','included','excluded','locks'])migrateMap(bundle.state[key],String(prev.id),String(row.id));return row});
  const validIds=new Set(next.map(s=>String(s.id)));if(Array.isArray(bundle.state.appointments))bundle.state.appointments=bundle.state.appointments.map(a=>{const prev=oldById.get(String(a.storeId)),matched=prev&&next.find(s=>fp(s)===fp(prev));return matched?Object.assign({},a,{storeId:String(matched.id)}):a}).filter(a=>validIds.has(String(a.storeId)));
+ repairBrandFilterOnSectorChange(bundle.state,old,next);
  bundle.state.stores=next;bundle.state.plan={};bundle.state.profile=bundle.state.profile||{};bundle.state.profile.sectorName=name||'Mon secteur';bundle.state.profile.nationalSector={name:bundle.state.profile.sectorName,mode:'exact',storeIds:next.map(s=>String(s.id)),fingerprints:next.map(fp)};
  R.checkpoint('Avant modification du secteur',store,bundle);R.persist(bundle,store);root.state=bundle.state;if(typeof root.initControls==='function')root.initControls();if(typeof root.renderAll==='function')root.renderAll();if(typeof root.renderHeader==='function')root.renderHeader();return next.length
 }
