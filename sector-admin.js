@@ -1,7 +1,7 @@
 /* Gestion du secteur : sélection exacte des magasins, import/export et conservation des historiques. */
 (function(root){
 'use strict';
-const esc=s=>String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[m]));
+const esc=s=>String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const BRANDS=['Boulanger','Darty','Fnac','Conforama','Cuisinella','Carrefour'];
 const PAGE_SIZE=150;
