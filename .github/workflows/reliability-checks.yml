@@ -46,6 +46,7 @@ jobs:
       - run: node tests/navigation-architecture.test.cjs
       - run: node tests/calendar-ownership.test.cjs
       - run: node tests/assistant-architecture.test.cjs
+      - run: node tests/assistant-archive-integrity.test.cjs
       - run: node tests/ai-gateway-cors.test.cjs
       - run: node tests/assistant-online-health.test.cjs
       - run: node tests/overnight-intent-ui.test.cjs
