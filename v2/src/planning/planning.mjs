@@ -7,6 +7,7 @@ import {
   generatePlanningWeek,
   getPlannedStore,
   resolvePlanningDays,
+  shiftWeekDate,
   weekMondayFromDate,
 } from './week.mjs';
 
@@ -48,6 +49,24 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function initialWeekMonday(state) {
+  const candidates = [state?.planning?.currentWeek, state?.settings?.weekDate, todayIso()];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      return weekMondayFromDate(candidate);
+    } catch (_) {
+      // Une ancienne valeur invalide ne doit pas empêcher l'écran de démarrer.
+    }
+  }
+  return weekMondayFromDate(todayIso());
+}
+
+function displayWeekLabel(weekMonday) {
+  const [year, month, day] = String(weekMonday).split('-');
+  return `Semaine du ${day}/${month}/${year}`;
+}
+
 function displayName(store) {
   return String(store?.enseigne || store?.name || 'Magasin sans nom').trim();
 }
@@ -80,7 +99,7 @@ export function createPlanningFeature(options) {
   const dateInput = doc.createElement('input');
   dateInput.setAttribute('type', 'date');
   dateInput.setAttribute('aria-label', 'Date de la semaine');
-  dateInput.value = String(initialSettings.weekDate || todayIso());
+  dateInput.value = initialWeekMonday(latestState);
   dateLabel.appendChild(dateInput);
 
   const generateButton = doc.createElement('button');
@@ -90,6 +109,30 @@ export function createPlanningFeature(options) {
 
   controls.appendChild(dateLabel);
   controls.appendChild(generateButton);
+
+  const weekNav = doc.createElement('div');
+  weekNav.classList.add('srv2-planning-week-nav');
+
+  const previousWeek = doc.createElement('button');
+  previousWeek.setAttribute('type', 'button');
+  previousWeek.setAttribute('aria-label', 'Semaine précédente');
+  previousWeek.setAttribute('data-week-shift', '-1');
+  previousWeek.classList.add('srv2-planning-week-shift');
+  previousWeek.textContent = '←';
+
+  const currentWeekLabel = doc.createElement('strong');
+  currentWeekLabel.classList.add('srv2-planning-week-current');
+
+  const nextWeek = doc.createElement('button');
+  nextWeek.setAttribute('type', 'button');
+  nextWeek.setAttribute('aria-label', 'Semaine suivante');
+  nextWeek.setAttribute('data-week-shift', '1');
+  nextWeek.classList.add('srv2-planning-week-shift');
+  nextWeek.textContent = '→';
+
+  weekNav.appendChild(previousWeek);
+  weekNav.appendChild(currentWeekLabel);
+  weekNav.appendChild(nextWeek);
 
   const status = doc.createElement('p');
   status.classList.add('srv2-planning-status');
@@ -104,6 +147,7 @@ export function createPlanningFeature(options) {
   list.classList.add('srv2-planning-list');
 
   root.appendChild(controls);
+  root.appendChild(weekNav);
   root.appendChild(status);
   root.appendChild(dayTabs);
   root.appendChild(list);
@@ -124,6 +168,15 @@ export function createPlanningFeature(options) {
     const days = configuredDays(state);
     if (!days.includes(selectedDay)) selectedDay = days[0];
     return days;
+  }
+
+  function ensurePlanningContainers(draft) {
+    if (!draft.planning || typeof draft.planning !== 'object' || Array.isArray(draft.planning)) {
+      draft.planning = {};
+    }
+    if (!draft.settings || typeof draft.settings !== 'object' || Array.isArray(draft.settings)) {
+      draft.settings = {};
+    }
   }
 
   function createPlannedCard(storeRow, storeId) {
@@ -182,6 +235,10 @@ export function createPlanningFeature(options) {
     return selectedDay;
   }
 
+  function renderWeekNavigation() {
+    currentWeekLabel.textContent = displayWeekLabel(selectedWeekMonday());
+  }
+
   function renderDays(state = latestState) {
     const days = ensureSelectedDay(state);
     const week = currentWeek(state);
@@ -203,8 +260,26 @@ export function createPlanningFeature(options) {
 
   function render(state) {
     latestState = state || store.getState();
+    renderWeekNavigation();
     renderDays(latestState);
     renderList(latestState);
+  }
+
+  function navigateToWeek(value) {
+    const monday = weekMondayFromDate(value);
+    dateInput.value = monday;
+    selectedDay = configuredDays()[0];
+    status.textContent = '';
+    store.update(draft => {
+      ensurePlanningContainers(draft);
+      draft.planning.currentWeek = monday;
+      draft.settings.weekDate = monday;
+    });
+    return monday;
+  }
+
+  function shiftWeek(offsetWeeks) {
+    return navigateToWeek(shiftWeekDate(selectedWeekMonday(), offsetWeeks));
   }
 
   function generate() {
@@ -212,16 +287,15 @@ export function createPlanningFeature(options) {
       const snapshot = store.getState();
       const week = generatePlanningWeek(snapshot, { weekDate: dateInput.value });
       store.update(draft => {
-        if (!draft.planning || typeof draft.planning !== 'object' || Array.isArray(draft.planning)) {
-          draft.planning = {};
-        }
+        ensurePlanningContainers(draft);
         if (!draft.planning.weeks || typeof draft.planning.weeks !== 'object' || Array.isArray(draft.planning.weeks)) {
           draft.planning.weeks = {};
         }
         draft.planning.weeks[week.weekMonday] = week;
         draft.planning.currentWeek = week.weekMonday;
-        draft.settings.weekDate = dateInput.value;
+        draft.settings.weekDate = week.weekMonday;
       });
+      dateInput.value = week.weekMonday;
       selectedDay = Object.keys(week.days)[0];
       const total = Object.values(week.days).reduce((sum, ids) => sum + ids.length, 0);
       status.textContent = `Semaine du ${week.weekMonday} générée : ${total} magasin${total > 1 ? 's' : ''}.`;
@@ -238,15 +312,13 @@ export function createPlanningFeature(options) {
 
   dateInput.addEventListener('change', () => {
     try {
-      weekMondayFromDate(dateInput.value);
-      selectedDay = configuredDays()[0];
-      status.textContent = '';
-      renderDays();
-      renderList();
+      navigateToWeek(dateInput.value);
     } catch (error) {
       status.textContent = error instanceof Error ? error.message : 'Date invalide.';
     }
   });
+  previousWeek.addEventListener('click', () => shiftWeek(-1));
+  nextWeek.addEventListener('click', () => shiftWeek(1));
   generateButton.addEventListener('click', generate);
 
   const unsubscribe = store.subscribe(render);
@@ -260,6 +332,8 @@ export function createPlanningFeature(options) {
     element: root,
     destroy,
     generate,
+    navigateToWeek,
+    shiftWeek,
     selectDay,
     getSelectedDay: () => selectedDay,
     getWeekMonday: selectedWeekMonday,
