@@ -143,6 +143,12 @@ export function createShell(options = {}) {
     if (!screenElements.has(screenId)) throw new ShellError(`Écran inconnu : "${screenId}"`);
     if (!node) throw new ShellError('mountScreen requiert un nœud à monter.');
     const target = screenElements.get(screenId);
+    // Le shell est propriétaire de ses placeholders : une feature n'a pas à
+    // rechercher/masquer un paragraphe construit ailleurs. Dès qu'un vrai
+    // contenu est monté, le shell retire lui-même le placeholder visuel.
+    for (const child of Array.from(target.children || [])) {
+      if (child.classList && child.classList.contains('srv2-screen-placeholder')) child.hidden = true;
+    }
     target.appendChild(node);
     return target;
   }
