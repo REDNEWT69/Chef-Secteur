@@ -11,6 +11,8 @@ export const PLANNING_DAYS = Object.freeze([
   'Samedi',
 ]);
 
+export const PLANNING_ALGORITHM = 'balanced-lru-v1';
+
 export class PlanningWeekError extends Error {
   constructor(message) {
     super(message);
@@ -89,6 +91,78 @@ function activeStoreIds(state) {
   return ids;
 }
 
+function validPastWeeks(state, targetWeekMonday) {
+  const weeks = state?.planning?.weeks;
+  if (!weeks || typeof weeks !== 'object' || Array.isArray(weeks)) return [];
+
+  const rows = [];
+  for (const [key, week] of Object.entries(weeks)) {
+    let monday;
+    try {
+      monday = weekMondayFromDate(key);
+    } catch (_) {
+      continue;
+    }
+    // Une clé non canonique ou une semaine courante/future ne doit pas peser
+    // sur le classement d'une semaine antérieure.
+    if (monday !== key || monday >= targetWeekMonday) continue;
+    if (!week || typeof week !== 'object' || Array.isArray(week)) continue;
+    rows.push([monday, week]);
+  }
+  rows.sort((a, b) => a[0].localeCompare(b[0]));
+  return rows;
+}
+
+function plannedIdsInWeek(week) {
+  const days = week?.days;
+  if (!days || typeof days !== 'object' || Array.isArray(days)) return [];
+  const result = [];
+  const seen = new Set();
+  for (const ids of Object.values(days)) {
+    if (!Array.isArray(ids)) continue;
+    for (const rawId of ids) {
+      if (rawId === undefined || rawId === null) continue;
+      const id = String(rawId);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      result.push(id);
+    }
+  }
+  return result;
+}
+
+export function rankActiveStoreIdsForWeek(state, weekDate) {
+  const targetWeekMonday = weekMondayFromDate(weekDate);
+  const ids = activeStoreIds(state);
+  const stats = new Map(ids.map((id, index) => [id, {
+    id,
+    catalogIndex: index,
+    visitCount: 0,
+    lastWeek: null,
+  }]));
+
+  for (const [weekMonday, week] of validPastWeeks(state, targetWeekMonday)) {
+    for (const id of plannedIdsInWeek(week)) {
+      const row = stats.get(id);
+      if (!row) continue;
+      row.visitCount += 1;
+      row.lastWeek = weekMonday;
+    }
+  }
+
+  return Array.from(stats.values())
+    .sort((a, b) => {
+      if (a.visitCount !== b.visitCount) return a.visitCount - b.visitCount;
+      if (a.lastWeek !== b.lastWeek) {
+        if (a.lastWeek === null) return -1;
+        if (b.lastWeek === null) return 1;
+        return a.lastWeek.localeCompare(b.lastWeek);
+      }
+      return a.catalogIndex - b.catalogIndex;
+    })
+    .map(row => row.id);
+}
+
 export function createEmptyPlanningWeek(weekDate, settings = {}) {
   const weekMonday = weekMondayFromDate(weekDate);
   const days = resolvePlanningDays(settings);
@@ -96,6 +170,7 @@ export function createEmptyPlanningWeek(weekDate, settings = {}) {
   for (const day of days) byDay[day] = [];
   return {
     weekMonday,
+    algorithm: PLANNING_ALGORITHM,
     days: byDay,
   };
 }
@@ -110,7 +185,7 @@ export function generatePlanningWeek(state, options = {}) {
 
   const week = createEmptyPlanningWeek(weekDate, settings);
   const days = Object.keys(week.days);
-  const ids = activeStoreIds(state);
+  const ids = rankActiveStoreIdsForWeek(state, week.weekMonday);
   const maxVisitsPerDay = positiveInteger(settings.maxVisitsPerDay, 4);
   const requestedTarget = positiveInteger(settings.target, ids.length || 1);
   const capacity = days.length * maxVisitsPerDay;
