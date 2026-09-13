@@ -13,7 +13,7 @@ const coreSource=fs.readFileSync(__dirname+'/../src/chef-secteur.html','utf8');
 // --- Garde-fous statiques -----------------------------------------------------------
 // La pose réutilise state.locks, que le moteur honore déjà : pas de second registre.
 assert.match(plannerSource,/function pinStore\(id,day\)/,'la pose manuelle doit exister dans le propriétaire du planning');
-assert.match(plannerSource,/state\.locks\[String\(id\)\]=day/,'un magasin posé doit être verrouillé sur son jour, via le mécanisme existant');
+assert.match(plannerSource,/state\.locks\[String\(id\)\]=\{day,week:currentWeekKey\(\)\}/,'un magasin posé doit être verrouillé sur son jour, via le mécanisme existant, et rattaché à sa semaine');
 assert.doesNotMatch(plannerSource,/state\.pins|state\.manualPlan|pinnedStores=/,'aucun registre concurrent ne doit doubler state.locks');
 assert.match(plannerSource,/function unpinStore\(id\)/,'l’utilisateur doit pouvoir rendre un magasin à la génération automatique');
 assert.match(plannerSource,/id="pinQuickStoreBtn"|pin\.id='pinQuickStoreBtn'/,'la fiche rapide doit proposer l’action poser/libérer');
@@ -23,7 +23,7 @@ assert.match(plannerSource,/window\.storeRunnerPinPlannedStore/,'la pose doit ê
 assert.match(plannerSource,/Déplacer de /,'un magasin déjà prévu ailleurs doit être présenté comme déplaçable, pas comme un faux bouton sans effet');
 assert.match(plannerSource,/store-moved-between-days/,'le déplacement inter-jours doit avoir un événement explicite');
 // Indication visuelle, chez le propriétaire du rendu de la timeline.
-assert.match(coreSource,/state\.locks&&state\.locks\[st\.id\]===selectedPlanningDay/,'la timeline doit distinguer une visite posée d’une visite automatique');
+assert.match(coreSource,/var pinned=lockDayNow\(st\.id\)===selectedPlanningDay/,'la timeline doit distinguer une visite posée d’une visite automatique');
 assert.match(coreSource,/\(pinned\?'<div class="tlPinned"/,'la ligne de timeline doit émettre le repère quand la visite est posée');
 assert.match(coreSource,/timelineRow'\+\(pinned\?' pinnedVisit':''\)/,'la ligne posée doit aussi être reconnaissable au niveau de la ligne entière');
 assert.match(coreSource,/\.tlPinned\{/,'le repère de visite posée doit être stylé');
@@ -168,7 +168,7 @@ function ids(route){return Array.from(route||[]).map(s=>String(s.id))}
     route:[pool[4],pool[3]],protectedIds:[],km:0,end:'12:00',reduced:false,previousCount:2
   });
   const apres=t6.ctx.__persisted.state;
-  assert.equal(apres.locks.a3,'Lundi','le magasin choisi à la main doit être posé sur ce jour');
+  assert.deepEqual(JSON.parse(JSON.stringify(apres.locks.a3)),{day:'Lundi',week:'2026-09-14'},'le magasin choisi à la main doit être posé sur ce jour, pour cette semaine');
   assert.equal(apres.locks.a1,undefined,'le magasin remplacé doit être libéré, sinon il reviendrait de force');
   assert.equal(ids(apres.plan.Lundi)[0],'a3','le remplacement doit être appliqué à la journée');
   assert(t6.checkpoints.some(r=>/Avant changement manuel/.test(r)),'un point de restauration doit précéder la modification manuelle');
@@ -187,7 +187,7 @@ function ids(route){return Array.from(route||[]).map(s=>String(s.id))}
   assert.equal(btn._attrs['aria-pressed'],'false');
 
   await t7.ctx.testPins.togglePlannedStorePin();
-  assert.equal(t7.state.locks.a1,'Lundi','le clic doit poser le magasin sur sa journée');
+  assert.deepEqual(JSON.parse(JSON.stringify(t7.state.locks.a1)),{day:'Lundi',week:'2026-09-14'},'le clic doit poser le magasin sur sa journée, pour la semaine affichée');
   assert.equal(btn.textContent,'↩ Libérer ce magasin','le libellé doit basculer');
   assert.equal(btn._attrs['aria-pressed'],'true');
   assert(t7.saves.length>=1,'la pose doit être enregistrée');
@@ -234,7 +234,7 @@ function ids(route){return Array.from(route||[]).map(s=>String(s.id))}
   assert(!ids(moved.state.plan.Mardi).includes('anchor'),'anchor ne doit plus exister sur Mardi');
   const occurrences=DAYS.reduce((n,d)=>n+ids(moved.state.plan[d]||[]).filter(id=>id==='anchor').length,0);
   assert.equal(occurrences,1,'un déplacement ne doit jamais créer de doublon dans la semaine');
-  assert.equal(moved.state.locks.anchor,'Lundi','la pose manuelle doit suivre le magasin sur son nouveau jour');
+  assert.deepEqual(JSON.parse(JSON.stringify(moved.state.locks.anchor)),{day:'Lundi',week:'2026-09-14'},'la pose manuelle doit suivre le magasin sur son nouveau jour, pour cette semaine');
   assert.equal(moved.state.locks.old,undefined,'le magasin remplacé doit être libéré');
   assert(t10.checkpoints.some(r=>/Avant déplacement manuel de Mardi vers Lundi/.test(r)),'le déplacement doit avoir son point de restauration explicite');
   assert(ids(moved.archive['2026-09-14'].plan.Lundi).includes('anchor'),'l’archive de période doit recevoir le nouveau Lundi');

@@ -64,12 +64,41 @@ function routeCredits(route){return (route||[]).reduce((n,s)=>n+visitCredit(s),0
    honore depuis toujours, plutôt que d'ouvrir un second registre concurrent. Un magasin
    posé est donc un magasin verrouillé sur un jour : buildWeekUnique le place en premier,
    décompte ses crédits du plafond, et ne complète qu'avec le budget restant. */
-function pinnedDay(id){try{return (state.locks&&state.locks[String(id)])||''}catch(e){return ''}}
+/* Une pose est rattachée à la semaine où elle a été faite. state.locks[id] accepte donc
+   deux formes, et ces trois fonctions sont le seul endroit du fichier qui les lit :
+   - "Mardi" : verrou récurrent, honoré sur toutes les semaines. Forme historique, écrite
+     par le sélecteur de jour de la fiche magasin. Les données existantes restent valides
+     sans migration.
+   - {day:"Mardi",week:"2026-09-14"} : pose datée, honorée uniquement sur la semaine dont
+     le lundi vaut week. C'est la clé déjà utilisée par state.manualWeekEdits dans ce même
+     fichier, pas une notation inventée pour l'occasion.
+   Sans dimension temporelle, une seule pose était réappliquée aux quatre semaines d'une
+   période et y consommait quatre créneaux au lieu d'un. */
+function lockEntry(id,source){
+  try{
+    const map=source||(state&&state.locks);
+    const raw=map&&map[String(id)];
+    if(!raw)return null;
+    if(typeof raw==='string')return DAYS.includes(raw)?{day:raw,week:''}:null;
+    if(typeof raw!=='object'||Array.isArray(raw))return null;
+    const day=String(raw.day||''),week=String(raw.week||''),weekDate=parse(week);
+    if(!DAYS.includes(day)||!/^\d{4}-\d{2}-\d{2}$/.test(week)||!weekDate||iso(weekDate)!==week||iso(monday(weekDate))!==week)return null;
+    return{day,week};
+  }catch(e){return null}
+}
+function currentWeekKey(){try{return iso(monday(parse((state.settings&&state.settings.weekDate)||'')||new Date()))}catch(e){return ''}}
+function lockDayForWeek(id,weekKey,source){
+  const entry=lockEntry(id,source);
+  if(!entry)return '';
+  if(!entry.week)return entry.day;               // verrou récurrent : toutes les semaines
+  return entry.week===String(weekKey||'')?entry.day:'';
+}
+function pinnedDay(id){return lockDayForWeek(id,currentWeekKey())}
 function isPinnedOn(id,day){return pinnedDay(id)===day}
 function pinStore(id,day){
   if(!id||!DAYS.includes(day))return false;
   if(!state.locks)state.locks={};
-  state.locks[String(id)]=day;
+  state.locks[String(id)]={day,week:currentWeekKey()};
   return true;
 }
 function unpinStore(id){
@@ -78,18 +107,20 @@ function unpinStore(id){
   delete state.locks[String(id)];
   return true;
 }
-function forcedRank(s){const id=s&&s.id;return (state.locks&&state.locks[id]?2:0)+(state.included&&state.included[id]?1:0)}
-function forcedCount(pool){return (pool||[]).reduce((n,s)=>n+(forcedRank(s)>0?1:0),0)}
-function forcedCredits(pool){return (pool||[]).reduce((n,s)=>n+(forcedRank(s)>0?visitCredit(s):0),0)}
-function selectionNeed(pool,usable,target,max){
+/* Le rang forcé dépend de la semaine construite : une pose datée sur une autre semaine ne
+   doit ni réserver un créneau, ni consommer de crédits, ni passer devant le vivier frais. */
+function forcedRank(s,weekKey){const id=s&&s.id;return (lockDayForWeek(id,weekKey)?2:0)+(state.included&&state.included[id]?1:0)}
+function forcedCount(pool,weekKey){return (pool||[]).reduce((n,s)=>n+(forcedRank(s,weekKey)>0?1:0),0)}
+function forcedCredits(pool,weekKey){return (pool||[]).reduce((n,s)=>n+(forcedRank(s,weekKey)>0?visitCredit(s):0),0)}
+function selectionNeed(pool,usable,target,max,weekKey){
   /* Deux unités différentes coexistent volontairement : target reste un objectif de
      magasins, tandis que maxVisitsPerDay est un budget de crédits. On ne convertit
      donc plus la capacité en crédits en faux « nombre de magasins ». */
-  const capacityCredits=max*usable.length,forced=forcedCount(pool),forcedCost=forcedCredits(pool);
+  const capacityCredits=max*usable.length,forced=forcedCount(pool,weekKey),forcedCost=forcedCredits(pool,weekKey);
   if(forcedCost>capacityCredits)throw new Error('Les magasins posés, imposés ou verrouillés demandent '+forcedCost+' crédit'+(forcedCost>1?'s':'')+' de visite pour seulement '+capacityCredits+' disponible'+(capacityCredits>1?'s':'')+'. Le planning précédent est conservé.');
   return{targetCount:Math.min(Math.max(Math.max(1,target),forced),pool.length),capacityCredits};
 }
-function chooseStores(pool,usedKeys,useCount,lastUsedWeek,targetCount,creditBudget){
+function chooseStores(pool,usedKeys,useCount,lastUsedWeek,targetCount,creditBudget,weekKey){
   const chosen=[],keys=new Set();let credits=0;
   const add=(s,isForced=false)=>{
     const k=storeKey(s),cost=visitCredit(s);
@@ -97,7 +128,7 @@ function chooseStores(pool,usedKeys,useCount,lastUsedWeek,targetCount,creditBudg
     if(!isForced&&credits+cost>creditBudget)return false;
     chosen.push(s);keys.add(k);credits+=cost;return true;
   };
-  const forced=pool.filter(s=>forcedRank(s)>0).sort((a,b)=>forcedRank(b)-forcedRank(a)||scoreOf(b)-scoreOf(a));
+  const forced=pool.filter(s=>forcedRank(s,weekKey)>0).sort((a,b)=>forcedRank(b,weekKey)-forcedRank(a,weekKey)||scoreOf(b)-scoreOf(a));
   for(const s of forced)add(s,true);
   /* Un magasin jamais réellement placé reste frais jusqu'à son premier passage.
      Le score ne départage que des magasins du même niveau de fraîcheur. */
@@ -130,7 +161,7 @@ function limitFor(day){return tm(day==='Samedi'?(state.settings.saturdayEnd||'12
 function optimizeRoute(route){try{if(typeof nearestRoute==='function'&&typeof twoOpt==='function')return twoOpt(nearestRoute(route));if(typeof nearestRoute==='function')return nearestRoute(route)}catch(e){}return route.slice()}
 function countPlan(plan,days){return (days||DAYS).reduce((n,d)=>n+((plan&&Array.isArray(plan[d]))?plan[d].length:0),0)}
 
-function buildWeekUnique(chosen,days){
+function buildWeekUnique(chosen,days,weekKey){
   const plan=Object.fromEntries(DAYS.map(d=>[d,[]]));
   if(!days.length||!chosen.length)return{plan,unplaced:chosen.slice()};
   const unique=[],seen=new Set();
@@ -141,7 +172,7 @@ function buildWeekUnique(chosen,days){
   const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
   const free=[];
   for(const store of unique){
-    const locked=state.locks&&state.locks[store.id];
+    const locked=lockDayForWeek(store.id,weekKey);
     if(!locked){free.push(store);continue}
     if(!days.includes(locked))throw new Error((store.enseigne||'Magasin')+' '+(store.ville||'')+' est verrouillé sur '+locked+', mais ce jour n’est pas disponible. Le planning précédent est conservé.');
     plan[locked].push(store);
@@ -174,8 +205,8 @@ function buildWeekUnique(chosen,days){
   }
   return{plan,unplaced};
 }
-function ensureForcedPlaced(built){
-  const blocked=((built&&built.unplaced)||[]).filter(s=>forcedRank(s)>0);
+function ensureForcedPlaced(built,weekKey){
+  const blocked=((built&&built.unplaced)||[]).filter(s=>forcedRank(s,weekKey)>0);
   if(!blocked.length)return;
   const plural=blocked.length>1;
   throw new Error(blocked.length+' magasin'+(plural?'s':'')+' imposé'+(plural?'s':'')+' ou verrouillé'+(plural?'s':'')+' ne '+(plural?'tiennent':'tient')+' pas dans les horaires disponibles. Le planning précédent est conservé.');
@@ -234,8 +265,8 @@ async function strictSingleWeek(){
     if(!usable.length)throw new Error('Aucun jour disponible cette semaine. Vérifie les jours travaillés et les indisponibilités Agenda. Le planning précédent est conservé.');
     const pool=eligible();if(!pool.length)throw new Error('Aucun magasin actif ne correspond aux filtres. Ouvre « Enseignes » et vérifie la sélection.');
     const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
-    const limits=selectionNeed(pool,usable,Number(state.settings.target)||20,max);
-    const chosen=chooseStores(pool,new Set(),new Map(),new Map(),limits.targetCount,limits.capacityCredits),built=buildWeekUnique(chosen,usable);ensureForcedPlaced(built);const visits=countPlan(built.plan,usable);
+    const limits=selectionNeed(pool,usable,Number(state.settings.target)||20,max,weekKey);
+    const chosen=chooseStores(pool,new Set(),new Map(),new Map(),limits.targetCount,limits.capacityCredits,weekKey),built=buildWeekUnique(chosen,usable,weekKey);ensureForcedPlaced(built,weekKey);const visits=countPlan(built.plan,usable);
     const credits=usable.reduce((n,d)=>n+routeCredits(built.plan[d]),0);
     if(!visits)throw new Error('0 visite possible avec les réglages actuels. Vérifie l’heure de fin, la durée par magasin et ton point de départ. Le planning précédent est conservé.');
     if(!await ChefReliability.propose({plan:built.plan,weekDate:iso(mon)})){showStatus('Planning précédent conservé.');return{ok:false,cancelled:true}}
@@ -274,8 +305,8 @@ async function generateRange(){
       }
       const usable=activeDays(mon,days,start,end);
       if(!usable.length){archive[iso(mon)]=snapshot(mon,start,end,Object.fromEntries(DAYS.map(d=>[d,[]])),days);mon=addDays(mon,7);weekIndex++;weeks++;continue}
-      const limits=selectionNeed(pool,usable,target,max);
-      const chosen=chooseStores(pool,usedKeys,useCount,lastUsedWeek,limits.targetCount,limits.capacityCredits),built=buildWeekUnique(chosen,usable);ensureForcedPlaced(built);const plan=built.plan,weekSeen=new Set();
+      const limits=selectionNeed(pool,usable,target,max,weekKey);
+      const chosen=chooseStores(pool,usedKeys,useCount,lastUsedWeek,limits.targetCount,limits.capacityCredits,weekKey),built=buildWeekUnique(chosen,usable,weekKey);ensureForcedPlaced(built,weekKey);const plan=built.plan,weekSeen=new Set();
       totalUnplaced+=built.unplaced.length;
       for(const d of usable)for(const s of (plan[d]||[])){const k=storeKey(s);if(!k||weekSeen.has(k))continue;weekSeen.add(k);unique.add(k);usedKeys.add(k);useCount.set(k,(useCount.get(k)||0)+1);lastUsedWeek.set(k,weekIndex);totalVisits++;totalCredits+=visitCredit(s)}
       archive[iso(mon)]=snapshot(mon,start,end,plan,days);mon=addDays(mon,7);weekIndex++;weeks++;await new Promise(r=>setTimeout(r,10));
@@ -314,12 +345,12 @@ function protectedDayIds(day,oldId){
   const out=new Set();
   for(const s of ((state.plan&&state.plan[day])||[])){
     if(String(s.id)===String(oldId))continue;
-    if((state.locks&&state.locks[s.id]===day)||(state.included&&state.included[s.id])||appointmentOnDay(s.id,day))out.add(String(s.id));
+    if(isPinnedOn(s.id,day)||(state.included&&state.included[s.id])||appointmentOnDay(s.id,day))out.add(String(s.id));
   }
   return out;
 }
 function manualCandidatePool(anchor,day,oldId,blocked){
-  const allowed=s=>s&&s.active!==false&&!(state.excluded&&state.excluded[s.id])&&String(s.id)!==String(oldId)&&!blocked.has(storeKey(s))&&!(state.locks&&state.locks[s.id]&&state.locks[s.id]!==day)&&!usedElsewhere(s.id,day);
+  const allowed=s=>s&&s.active!==false&&!(state.excluded&&state.excluded[s.id])&&String(s.id)!==String(oldId)&&!blocked.has(storeKey(s))&&!(pinnedDay(s.id)&&!isPinnedOn(s.id,day))&&!usedElsewhere(s.id,day);
   const primary=eligible().filter(allowed),fallback=(state.stores||[]).filter(allowed),seen=new Set(),out=[];
   for(const s of primary.concat(fallback)){const k=storeKey(s);if(!k||seen.has(k))continue;seen.add(k);out.push(s)}
   out.sort((a,b)=>distanceBetween(anchor,a)-distanceBetween(anchor,b)||scoreOf(b)-scoreOf(a)||String(a.ville||'').localeCompare(String(b.ville||'')));
@@ -343,7 +374,7 @@ function buildSourceAdjustment(sourceDay,anchor,targetDay,oldId,targetRoute){
   const allowed=s=>{
     if(!s||s.active===false||(state.excluded&&state.excluded[s.id])||String(s.id)===String(anchor.id))return false;
     const k=storeKey(s);if(!k||occupied.has(k))return false;
-    const lock=state.locks&&state.locks[s.id];
+    const lock=pinnedDay(s.id);
     if(lock&&!(String(s.id)===String(oldId)&&lock===targetDay)&&lock!==sourceDay)return false;
     const appt=appointmentDayForStore(s.id);if(appt&&appt!==sourceDay)return false;
     return true;
@@ -368,7 +399,7 @@ function buildSourceAdjustment(sourceDay,anchor,targetDay,oldId,targetRoute){
 function buildDayReplacement(oldId,anchor,day,recenter=true){
   if(!anchor||anchor.active===false)throw new Error('Ce magasin n’est pas actif dans ton secteur.');
   if(state.excluded&&state.excluded[anchor.id])throw new Error('Ce magasin est actuellement exclu du planning.');
-  const sourceDay=plannedOtherDayForStore(anchor.id,day),anchorLock=state.locks&&state.locks[anchor.id];
+  const sourceDay=plannedOtherDayForStore(anchor.id,day),anchorLock=pinnedDay(anchor.id);
   if(anchorLock&&anchorLock!==day&&anchorLock!==sourceDay)throw new Error('Ce magasin est verrouillé sur '+anchorLock+'.');
   const current=((state.plan&&state.plan[day])||[]).slice(),oldIndex=current.findIndex(s=>String(s.id)===String(oldId));
   if(oldIndex<0)throw new Error('Ce magasin n’est plus présent dans '+day+'. Recharge le planning.');
@@ -416,8 +447,8 @@ async function persistDayReplacement(preview){
      jour, son verrou suit le déplacement. Le magasin remplacé est libéré ; les visites
      ajoutées automatiquement pour combler l'ancien jour restent libres. */
   next.locks=next.locks||{};
-  if(preview.anchor&&preview.anchor.id)next.locks[String(preview.anchor.id)]=preview.day;
-  if(preview.oldId&&next.locks[String(preview.oldId)]===preview.day)delete next.locks[String(preview.oldId)];
+  if(preview.anchor&&preview.anchor.id)next.locks[String(preview.anchor.id)]={day:preview.day,week:weekKey};
+  if(preview.oldId&&lockDayForWeek(preview.oldId,weekKey,next.locks)===preview.day)delete next.locks[String(preview.oldId)];
   bundle.state=next;
   bundle.archive=bundle.archive||loadArchive()||{};
   if(!bundle.archive[weekKey]){
@@ -495,9 +526,12 @@ function syncPinButton(){
   btn.hidden=false;
   const pinned=isPinnedOn(id,day);
   btn.textContent=pinned?'↩ Libérer ce magasin':'📌 Poser ce magasin';
+  const entry=lockEntry(id),recurrent=!!(entry&&!entry.week);
   btn.title=pinned
-    ?'Rendre ce magasin à la génération automatique : elle pourra le déplacer ou le remplacer.'
-    :'Poser ce magasin sur '+day+' : la génération automatique ne le déplacera plus.';
+    ?(recurrent
+      ?'Ce magasin est verrouillé sur tous les '+day+'. Le libérer le rendra à la génération automatique.'
+      :'Rendre ce magasin à la génération automatique : elle pourra le déplacer ou le remplacer.')
+    :'Poser ce magasin sur ce '+day+', pour la semaine affichée uniquement. Les autres semaines restent libres.';
   btn.setAttribute('aria-pressed',pinned?'true':'false');
   return true;
 }
@@ -556,6 +590,23 @@ window.openDayStoreReplacement=openDayStoreReplacement;
 window.storeRunnerPinPlannedStore=function(id,day){const ok=pinStore(id,day);if(ok){try{if(typeof save==='function')save()}catch(e){}syncPinButton()}return ok};
 window.storeRunnerUnpinPlannedStore=function(id){const ok=unpinStore(id);if(ok){try{if(typeof save==='function')save()}catch(e){}syncPinButton()}return ok};
 window.storeRunnerPlannedStoreIsPinned=function(id,day){return isPinnedOn(id,day)};
+/* Le noyau historique affiche le repère « posé » et régénère une journée : il doit lire
+   le verrou avec la même règle que le moteur, sans redéfinir les deux formes de son côté. */
+window.storeRunnerLockDayForWeek=function(id,weekKey){return lockDayForWeek(id,weekKey===undefined?currentWeekKey():weekKey)};
+/* Décrire un verrou sans en redéfinir les formes ailleurs : la liste des magasins doit
+   pouvoir distinguer « tous les mardis » d'une pose sur une seule semaine. */
+window.storeRunnerLockInfo=function(id){const e=lockEntry(id);return e?{day:e.day,week:e.week,recurring:!e.week}:null};
+/* Verrou récurrent, écrit depuis la liste des magasins et depuis l'assistant : ces deux
+   entrées ne connaissent aucune semaine affichée, leur sens est « tous les mardis ». La
+   pose datée reste réservée au bouton du planning, qui agit sur une semaine précise. */
+window.storeRunnerSetRecurringLock=function(id,day){
+  if(!id)return false;
+  if(!state.locks)state.locks={};
+  if(!day){delete state.locks[String(id)];return true}
+  if(!DAYS.includes(day))return false;
+  state.locks[String(id)]=day;
+  return true;
+};
 function boot(){install()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 document.addEventListener('store-runner:planning-updated',recoverInstall);

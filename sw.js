@@ -1,4 +1,4 @@
-const BUILD_REV = "20260913-overnightux149";
+const BUILD_REV = "20260913-pinweekscope";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
