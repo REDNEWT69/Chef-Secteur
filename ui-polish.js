@@ -38,8 +38,31 @@
   function awayRangeForDay(day){
     try{const date=dateForDay(day),ranges=typeof window.chefSecteurAwayRanges==='function'?window.chefSecteurAwayRanges():[];return ranges.find(r=>date>=r.start&&date<=r.end)||null}catch(e){return null}
   }
-  function overnightForSelectedDay(){try{if(typeof window.overnightCandidate!=='function')return null;const o=window.overnightCandidate();if(!o)return null;const m=String(o.night||'').match(/Nuit\s+([^→]+)→\s*(.+)$/i);if(!m)return null;return selectedDay()===m[1].trim()?o:null}catch(e){return null}}
+  function overnightDisabled(){try{return !!(state.profile&&state.profile.overnightMode==='never')}catch(e){return false}}
+  function overnightForSelectedDay(){try{if(overnightDisabled()||typeof window.overnightCandidate!=='function')return null;const o=window.overnightCandidate();if(!o)return null;const m=String(o.night||'').match(/Nuit\s+([^→]+)→\s*(.+)$/i);if(!m)return null;return selectedDay()===m[1].trim()?o:null}catch(e){return null}}
   function hotelSearchUrl(text){return'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(text)}
+
+  function applyAssistantOvernightIntent(text){
+    const n=norm(text).replace(/[’']/g,' ');if(!n)return null;
+    const overnightWords=/(decouch|hotel|nuit)/.test(n);if(!overnightWords)return null;
+    let mode=null;
+    const noOvernight=/(sans|aucun|aucune|pas de|evite|eviter|ne veux pas|je rentre|rentre tous les soirs|retour maison)/.test(n);
+    if(noOvernight)mode='never';
+    else if(/(obligatoire|force|forcer|impose|imposer)/.test(n)&&/decouch/.test(n))mode='mandatory';
+    else if(/(autorise|autoriser|permet|permettre|si utile|automatique)/.test(n)&&/decouch/.test(n))mode='auto';
+    if(!mode)return null;
+    try{
+      if(!state.profile)state.profile={};
+      state.profile.overnightMode=mode;
+      if(typeof window.fillProfileForm==='function')window.fillProfileForm();
+      if(typeof window.save==='function')window.save();
+      if(typeof window.renderOvernight==='function')window.renderOvernight();
+      try{document.dispatchEvent(new CustomEvent('store-runner:overnight-mode-changed',{detail:{mode:mode,source:'assistant-intent'}}))}catch(e){}
+      setTimeout(polish,0);
+    }catch(e){}
+    return mode;
+  }
+  window.storeRunnerApplyAssistantOvernightIntent=applyAssistantOvernightIntent;
 
   function ensureHotelBanner(){
     const day=selectedDay(),date=dateForDay(day),dayTabs=document.getElementById('dayTabs'),shell=document.querySelector('#planPanel .timelineShell');if(!shell)return;
@@ -47,19 +70,31 @@
     if(!evs.length&&!overnight&&!away){if(box)box.remove();return}
     if(!box){box=document.createElement('div');box.id='planningHotelBanner';(dayTabs&&dayTabs.parentNode?dayTabs.parentNode:shell.parentNode).insertBefore(box,shell)}
     box.style.cssText='margin:12px 0 14px;padding:16px 17px;border:2px solid #efc14f;border-radius:18px;background:linear-gradient(135deg,#fff7d8,#fffdf4);box-shadow:0 8px 22px rgba(153,102,0,.10)';
-    let html='<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><b style="font-size:16px;color:#7a4b00">🌙 Découchage · Hôtel</b><div style="font-size:11px;color:#76572f;margin-top:4px">'+esc(day)+' '+esc(date)+' · affiché directement dans le planning</div></div><span style="font-size:10px;padding:5px 8px;border-radius:999px;background:#fff3bd;color:#7a4b00;font-weight:800">NUIT / DÉPLACEMENT</span></div>';
+    const kind=evs.length?'hotel':overnight?'overnight':'away';
+    const title=kind==='hotel'?'🌙 Hôtel prévu':kind==='overnight'?'🌙 Nuit d’hôtel conseillée':'🚗 Déplacement professionnel';
+    const pill=kind==='hotel'?'AGENDA':kind==='overnight'?'DÉCOUCHÉ':'AGENDA';
+    let html='<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><b style="font-size:16px;color:#7a4b00">'+title+'</b><div style="font-size:11px;color:#76572f;margin-top:4px">'+esc(day)+' '+esc(date)+' · '+(kind==='overnight'?'calculé depuis la tournée':'issu de Google Agenda')+'</div></div><span style="font-size:10px;padding:5px 8px;border-radius:999px;background:#fff3bd;color:#7a4b00;font-weight:800">'+pill+'</span></div>';
     if(evs.length){
       evs.forEach(ev=>{const label=ev.title||'Hôtel',where=ev.location||label;html+='<div style="margin-top:12px;padding-top:11px;border-top:1px solid rgba(122,75,0,.16)"><b style="font-size:14px">'+esc(label)+'</b>'+(ev.location?'<div style="font-size:11px;color:#76572f;margin-top:3px">'+esc(ev.location)+'</div>':'')+'<div style="font-size:10.5px;color:#76572f;margin-top:3px">Séjour couvert par cet événement Google Agenda.</div><a target="_blank" rel="noopener" href="'+hotelSearchUrl(where)+'" style="display:inline-block;margin-top:8px;color:#0f61d6;font-size:11.5px;font-weight:700;text-decoration:none">Voir / rechercher cet hôtel ↗</a></div>'});
     }else if(overnight){
-      const name='Hôtel près de '+(overnight.last&&overnight.last.ville?overnight.last.ville:'la fin de tournée');html+='<div style="margin-top:12px;padding-top:11px;border-top:1px solid rgba(122,75,0,.16)"><b style="font-size:14px">'+esc(name)+'</b><div style="font-size:11px;color:#76572f;margin-top:3px">Découchage calculé par la tournée.</div><a target="_blank" rel="noopener" href="'+hotelSearchUrl(name)+'" style="display:inline-block;margin-top:8px;color:#0f61d6;font-size:11.5px;font-weight:700;text-decoration:none">Chercher un hôtel ↗</a></div>';
+      const name='Hôtel près de '+(overnight.last&&overnight.last.ville?overnight.last.ville:'la fin de tournée');html+='<div style="margin-top:12px;padding-top:11px;border-top:1px solid rgba(122,75,0,.16)"><b style="font-size:14px">'+esc(name)+'</b><div style="font-size:11px;color:#76572f;margin-top:3px">Suggestion uniquement : elle disparaît lorsque le découché est désactivé.</div><a target="_blank" rel="noopener" href="'+hotelSearchUrl(name)+'" style="display:inline-block;margin-top:8px;color:#0f61d6;font-size:11.5px;font-weight:700;text-decoration:none">Chercher un hôtel ↗</a></div>';
     }else if(away){
-      html+='<div style="margin-top:12px;padding-top:11px;border-top:1px solid rgba(122,75,0,.16)"><b style="font-size:14px">Déplacement professionnel · '+esc(away.city||'hors secteur')+'</b><div style="font-size:11px;color:#76572f;margin-top:3px">Séjour déduit de Google Agenda du '+esc(away.start)+' au '+esc(away.end)+'.</div></div>';
+      html+='<div style="margin-top:12px;padding-top:11px;border-top:1px solid rgba(122,75,0,.16)"><b style="font-size:14px">Déplacement professionnel · '+esc(away.city||'hors secteur')+'</b><div style="font-size:11px;color:#76572f;margin-top:3px">Contrainte déduite de Google Agenda du '+esc(away.start)+' au '+esc(away.end)+'.</div></div>';
     }
     box.innerHTML=html;
   }
 
   function markHotelDayTab(){
-    try{document.querySelectorAll('#dayTabs .dayTab').forEach(btn=>btn.querySelectorAll('.hotelDayBadge').forEach(x=>x.remove()));document.querySelectorAll('#dayTabs .dayTab').forEach((btn,i)=>{const day=DAYS.find(d=>norm(btn.textContent||'').includes(norm(d)))||DAYS[i];if(!day)return;const hasHotel=hotelEventsForDay(day).length>0,away=awayRangeForDay(day);let has=hasHotel||!!away;if(!has&&typeof window.overnightCandidate==='function')try{const o=window.overnightCandidate();if(o&&String(o.night||'').includes('Nuit '+day+' →'))has=true}catch(e){}if(has){const s=document.createElement('span');s.className='hotelDayBadge';s.textContent=hasHotel?'🌙 hôtel':'✈ déplacement';s.style.cssText='display:block;margin-top:4px;font-size:9px;color:#9a6200;font-weight:800';btn.appendChild(s)}})}catch(e){}
+    try{
+      document.querySelectorAll('#dayTabs .dayTab').forEach(btn=>btn.querySelectorAll('.hotelDayBadge').forEach(x=>x.remove()));
+      document.querySelectorAll('#dayTabs .dayTab').forEach((btn,i)=>{
+        const day=DAYS.find(d=>norm(btn.textContent||'').includes(norm(d)))||DAYS[i];if(!day)return;
+        const hasHotel=hotelEventsForDay(day).length>0,away=awayRangeForDay(day);let overnight=false;
+        if(!hasHotel&&!away&&!overnightDisabled()&&typeof window.overnightCandidate==='function')try{const o=window.overnightCandidate();overnight=!!(o&&String(o.night||'').includes('Nuit '+day+' →'))}catch(e){}
+        const label=hasHotel?'🌙 hôtel':away?'🚗 déplacement':overnight?'🌙 découché':'';
+        if(label){const s=document.createElement('span');s.className='hotelDayBadge';s.textContent=label;s.style.cssText='display:block;margin-top:4px;font-size:9px;color:#9a6200;font-weight:800';btn.appendChild(s)}
+      })
+    }catch(e){}
   }
 
   function simplifyNativeCalendarCard(){const input=document.getElementById('googleClientId');if(!input)return;const connected=hasToken()||calendarCount()>0,card=input.closest('.calendarConnect');if(!card)return;const label=card.querySelector('label[for="googleClientId"]'),p=Array.from(card.querySelectorAll('p.tiny')).find(x=>/Configuration unique/i.test(x.textContent||''));if(connected){if(label)label.style.display='none';input.style.display='none';if(p)p.style.display='none'}else{if(label)label.style.display='';input.style.display='';if(p)p.style.display=''}}
@@ -67,12 +102,18 @@
   function refresh(){polish()}
   function installEvents(){
     if(window.__uiPolishEvents)return;
-    document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(polish,30)},true);
+    document.addEventListener('click',function(e){
+      if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(polish,30);
+      const send=e.target&&e.target.closest?e.target.closest('#assistantPanel .ainput button'):null;
+      if(send){const input=document.getElementById('assistantInput');if(input)applyAssistantOvernightIntent(input.value)}
+    },true);
+    document.addEventListener('keydown',function(e){if(e&&e.key==='Enter'&&e.target&&e.target.id==='assistantInput')applyAssistantOvernightIntent(e.target.value)},true);
     window.addEventListener('focus',refresh);
     document.addEventListener('visibilitychange',function(){if(!document.hidden)refresh()});
     window.addEventListener('chef-range-generated',function(){setTimeout(refresh,40)});
     document.addEventListener('store-runner:planning-updated',function(){setTimeout(refresh,30)});
     document.addEventListener('store-runner:calendar-updated',function(){setTimeout(refresh,20)});
+    document.addEventListener('store-runner:overnight-mode-changed',function(){setTimeout(refresh,0)});
     window.addEventListener('storage',function(e){if(e&&e.key&&/chef_sector|calendar|google/i.test(e.key))setTimeout(refresh,0)});
     window.__uiPolishEvents=true;
   }
