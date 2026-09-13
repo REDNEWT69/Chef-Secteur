@@ -7,19 +7,48 @@
 <title>Store Runner V2 (test)</title>
 <link rel="stylesheet" href="./app.css">
 <link rel="stylesheet" href="./planning.css">
+<link rel="stylesheet" href="./data-tools.css">
 </head>
 <body>
 <div id="app"></div>
 <script type="module">
   import { createShell } from '../src/app/shell.mjs';
+  import { createDataToolsFeature } from '../src/app/data-tools.mjs';
   import { createStore } from '../src/core/store.mjs';
   import { createPlanningFeature } from '../src/planning/planning.mjs';
   import { createPlanningRangeFeature } from '../src/planning/range-ui.mjs';
+  import { loadState, saveState } from '../src/storage/persistence.mjs';
   import { createStoresFeature } from '../src/stores/stores.mjs';
 
-  const response = await fetch('../fixtures/stores-demo-state.json', { cache: 'no-store' });
-  if (!response.ok) throw new Error(`Fixture V2 indisponible (${response.status})`);
-  const store = createStore(await response.json());
+  async function loadDemoState() {
+    const response = await fetch('../fixtures/stores-demo-state.json', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Fixture V2 indisponible (${response.status})`);
+    return response.json();
+  }
+
+  let initialState = null;
+  try {
+    initialState = loadState(localStorage);
+  } catch (error) {
+    // Une sauvegarde locale invalide ne doit pas rendre l'application
+    // inutilisable ni être supprimée silencieusement. On démarre en démo et
+    // on laisse l'utilisateur la remplacer par un import propre.
+    console.error('État V2 local ignoré :', error);
+  }
+  if (!initialState) initialState = await loadDemoState();
+
+  const store = createStore(initialState);
+  store.subscribe(state => {
+    try {
+      saveState(localStorage, state);
+    } catch (error) {
+      // Le store reste utilisable même si le navigateur refuse une écriture
+      // locale (quota / mode privé). Ne jamais annuler une génération réussie
+      // à cause d'un problème de persistance.
+      console.error('Sauvegarde locale V2 impossible :', error);
+    }
+  });
+
   const shell = createShell({ root: document.getElementById('app') });
 
   const planningFeature = createPlanningFeature({ document, store });
@@ -30,6 +59,9 @@
 
   const storesFeature = createStoresFeature({ document, store });
   shell.mountScreen('stores', storesFeature.element);
+
+  const dataToolsFeature = createDataToolsFeature({ document, store });
+  shell.mountScreen('more', dataToolsFeature.element);
 </script>
 </body>
 </html>
