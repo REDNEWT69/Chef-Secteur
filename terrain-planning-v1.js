@@ -16,7 +16,6 @@ function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
 function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim()}
 function storeKey(s){return s&&s.id!=null&&String(s.id)?String(s.id):norm((s&&s.enseigne)||'')+'|'+norm((s&&s.ville)||'')+'|'+norm((s&&s.adresse)||'')}
 function clock(v){const p=String(v||'').split(':');return (+p[0]||0)*60+(+p[1]||0)}
-function clockLabel(v){v=Math.max(0,Math.round(v));return pad(Math.floor(v/60)%24)+':'+pad(v%60)}
 function db(){try{return root.__chefStorage||root.localStorage}catch(e){return root.localStorage}}
 function validCoord(v){return v!==''&&v!==null&&v!==undefined&&Number.isFinite(Number(v))}
 function validStoreGps(s){return !!(s&&validCoord(s.lat)&&validCoord(s.lon))}
@@ -44,7 +43,11 @@ function routeMinutes(route,state=root.state){
   }catch(e){return null}
   return km*1.22/55*60+route.length*visit;
 }
-function dayFits(route,day,state=root.state){
+function dayFits(route,day,state=root.state,weekMonday){
+  try{
+    const hours=root.StoreOpeningHoursV1;
+    if(hours&&typeof hours.routeFits==='function')return !!hours.routeFits(route,day,state,{weekMonday:weekMonday instanceof Date?weekMonday:undefined});
+  }catch(e){}
   const settings=state.settings||{},start=clock(day==='Samedi'?(settings.saturdayStart||'08:00'):(settings.startTime||'08:30')),end=clock(day==='Samedi'?(settings.saturdayEnd||'12:00'):(settings.endTime||'18:00'));
   const work=routeMinutes(route,state);
   return work==null?true:start+work<=end+0.001;
@@ -122,6 +125,39 @@ function protectedPlanFor(weekKey,state,archive){
   if((snap&&snap.manualEdited)||manual)return copy((snap&&snap.plan)||(manual&&manual.plan)||emptyPlan());
   return null;
 }
+function safeDistance(a,b,distanceFn){
+  try{const d=Number((distanceFn||root.hav)(a,b));return Number.isFinite(d)?d:Infinity}catch(e){return Infinity}
+}
+function overnightForPlan(plan,state=root.state,distanceFn){
+  const profile=state&&state.profile||{},mode=profile.overnightMode||'auto',threshold=Math.max(0,Number(profile.overnightMinSaving)||80),days=((state&&state.settings&&state.settings.days)||DAYS.slice(0,5)).filter(d=>DAYS.includes(d));
+  const base=validBase(state)?{lat:Number(profile.baseLat),lon:Number(profile.baseLon),adresse:profile.baseAddress||'',ville:profile.baseName||'Base'}:null;
+  let best=null;
+  if(base){
+    for(let i=0;i<days.length-1;i++){
+      const a=(plan&&plan[days[i]])||[],b=(plan&&plan[days[i+1]])||[];if(!a.length||!b.length)continue;
+      const last=a[a.length-1],first=b[0],home1=safeDistance(last,base,distanceFn),home2=safeDistance(base,first,distanceFn),direct=safeDistance(last,first,distanceFn);
+      if(!Number.isFinite(home1)||!Number.isFinite(home2)||!Number.isFinite(direct))continue;
+      const saving=Math.max(0,home1+home2-direct),row={night:'Nuit '+days[i]+' → '+days[i+1],fromDay:days[i],toDay:days[i+1],saving,lastId:last.id,firstId:first.id};
+      if(!best||row.saving>best.saving)best=row;
+    }
+  }
+  const selected=!!best&&(mode==='mandatory'||(mode==='auto'&&best.saving>=threshold));
+  const reason=mode==='never'?'disabled':!best?'no-candidate':selected?'selected':'below-threshold';
+  return{mode,threshold,selected,reason,best};
+}
+function analyzeOvernightWeeks(weeks,state=root.state,distanceFn){return (weeks||[]).map(w=>({weekKey:w.weekKey,...overnightForPlan(w.plan,state,distanceFn)}))}
+function summarizeOpeningHours(weeks,state=root.state,hoursApi=root.StoreOpeningHoursV1){
+  const out={available:!!(hoursApi&&typeof hoursApi.intervalsFor==='function'),known:0,unknown:0,closed:0,uniqueUnknown:0};
+  if(!out.available)return out;
+  const unknown=new Set();
+  for(const week of (weeks||[]))for(const day of DAYS)for(const planned of ((week.plan&&week.plan[day])||[])){
+    const store=canonicalStore(planned.id,state)||planned,rows=hoursApi.intervalsFor(store,day);
+    if(rows===undefined){out.unknown++;unknown.add(storeKey(store))}
+    else if(!rows.length)out.closed++;
+    else out.known++;
+  }
+  out.uniqueUnknown=unknown.size;return out;
+}
 function buildThreeWeekSnail(options){
   const state=options.state,first=monday(options.firstMonday),days=(options.days||[]).filter(d=>DAYS.includes(d)),target=Math.max(1,Number(options.target)||20),max=Math.max(1,Number(options.maxCreditsPerDay)||4),archive=options.archive||{},distance=options.distanceOf||(()=>Infinity),credit=options.creditOf||(()=>1),lockFor=options.lockDayForWeek||(()=>''),apptFor=options.appointmentDay||(()=>''),fits=options.dayFits||(()=>true),blocked=options.dayBlocked||(()=>false),imposed=state&&state.included||{};
   if(!days.length)throw new Error('Choisis au moins un jour travaillé.');
@@ -196,6 +232,37 @@ function syncPlanningControlsForSnail(state=root.state){
   try{if(typeof root.save==='function')root.save()}catch(e){}
   return first;
 }
+function ensureInsightsBox(){
+  if(!root.document)return null;let box=root.document.getElementById('terrainSnailInsights');if(box)return box;
+  const status=root.document.getElementById('terrainSnailStatus');if(!status||!status.parentNode)return null;
+  box=root.document.createElement('div');box.id='terrainSnailInsights';box.hidden=true;box.style.cssText='margin-top:10px;padding:12px 13px;border:1px solid #e4e8ef;border-radius:15px;background:#fff;font-size:11.5px;line-height:1.45;color:#475467';status.insertAdjacentElement('afterend',box);return box;
+}
+function renderTerrainInsights(range){
+  const box=ensureInsightsBox();if(!box)return false;
+  const rows=range&&Array.isArray(range.overnightReport)?range.overnightReport:[],hours=range&&range.hoursReport;
+  if(!rows.length&&!hours){box.hidden=true;box.innerHTML='';return false}
+  const mode=rows[0]&&rows[0].mode||'auto',threshold=rows[0]&&Number(rows[0].threshold)||80,modeLabel=mode==='never'?'Jamais':mode==='mandatory'?'Obligatoire':'Automatique';
+  let html='<div style="font-weight:850;color:#1d2939;font-size:12.5px">🌙 Découchés sur 3 semaines</div><div style="margin-top:2px;color:#667085">Mode '+modeLabel+(mode==='auto'?' · seuil '+Math.round(threshold)+' km':'')+'</div>';
+  for(const row of rows){
+    const d=String(row.weekKey||'').split('-'),label=d.length===3?d[2]+'/'+d[1]:row.weekKey,b=row.best,saving=b?Math.max(0,Math.round(Number(b.saving)||0)):0;
+    let text='🏠 Retour domicile · aucun enchaînement exploitable';
+    if(row.mode==='never'&&b)text='🏠 Découché désactivé · meilleur gain ~'+saving+' km';
+    else if(row.selected&&b)text='🌙 '+b.fromDay+' → '+b.toDay+' · ~'+saving+' km économisés';
+    else if(b)text='🏠 Retour domicile · meilleur gain ~'+saving+' km'+(row.mode==='auto'?' (< '+Math.round(Number(row.threshold)||0)+' km)':'');
+    html+='<div style="margin-top:8px;padding-top:8px;border-top:1px solid #eef1f5"><b style="color:#344054">Semaine du '+label+'</b><div>'+text+'</div></div>';
+  }
+  if(hours){
+    let hoursText='Module horaires indisponible';
+    if(hours.available){
+      hoursText=hours.known+' passages connus · '+hours.unknown+' à vérifier';
+      if(hours.uniqueUnknown)hoursText+=' sur '+hours.uniqueUnknown+' magasin'+(hours.uniqueUnknown>1?'s':'');
+      if(hours.closed)hoursText+=' · '+hours.closed+' fermé'+(hours.closed>1?'s':'')+' dans une semaine protégée';
+    }
+    html+='<div style="margin-top:9px;padding-top:9px;border-top:1px solid #eef1f5"><b style="color:#344054">🕘 Horaires</b><div>'+hoursText+'</div></div>';
+  }
+  box.innerHTML=html;box.hidden=false;return true;
+}
+function renderStoredInsights(){try{const storage=db(),range=storage&&JSON.parse(storage.getItem(RANGE_KEY)||'null');return renderTerrainInsights(range)}catch(e){return false}}
 async function generateThreeWeekSnail(){
   const state=root.state,R=root.ChefReliability,storage=db();
   if(!state||!R||typeof R.capture!=='function'||typeof R.persist!=='function')throw new Error('Protection des données indisponible.');
@@ -207,8 +274,9 @@ async function generateThreeWeekSnail(){
   try{
     const calendarSynced=await syncCalendar(first,state);
     const archive=JSON.parse(storage.getItem(ARCHIVE_KEY)||'{}')||{};
-    const built=buildThreeWeekSnail({state,firstMonday:first,days,target:Number(state.settings.target)||20,maxCreditsPerDay:Number(state.settings.maxVisitsPerDay)||4,stores:pool,archive,distanceOf,creditOf:visitCredit,lockDayForWeek:lockDay,appointmentDay,dayBlocked:(date)=>dateBlocked(date,state),dayFits:(route,day)=>dayFits(route,day,state)});
+    const built=buildThreeWeekSnail({state,firstMonday:first,days,target:Number(state.settings.target)||20,maxCreditsPerDay:Number(state.settings.maxVisitsPerDay)||4,stores:pool,archive,distanceOf,creditOf:visitCredit,lockDayForWeek:lockDay,appointmentDay,dayBlocked:(date)=>dateBlocked(date,state),dayFits:(route,day,mon)=>dayFits(route,day,state,mon)});
     if(!built.totalVisits)throw new Error('Aucune visite ne tient dans les 3 semaines avec les réglages actuels.');
+    const overnightReport=analyzeOvernightWeeks(built.weeks,state),hoursReport=summarizeOpeningHours(built.weeks,state);
     R.checkpoint('Avant génération 3 semaines escargot',storage);
     const bundle=R.capture(state,storage);
     for(const week of built.weeks){
@@ -216,13 +284,13 @@ async function generateThreeWeekSnail(){
       bundle.archive[week.weekKey]={weekMonday:week.weekKey,plan:Object.fromEntries(DAYS.map(d=>[d,(week.plan[d]||[]).map(cloneStore)])),manualEdited:false,generatedMode:'snail-distance-v1',updatedAt:new Date().toISOString()};
     }
     const firstWeek=built.weeks[0];bundle.state.settings.weekDate=firstWeek.weekKey;bundle.state.plan=Object.fromEntries(DAYS.map(d=>[d,(firstWeek.plan[d]||[]).map(s=>canonicalStore(s.id,bundle.state)||s)]));
-    bundle.range={start:firstWeek.weekKey,end:iso(addDays(first,20)),weeks:3,workDays:days,uniqueStores:built.uniqueStores,totalVisits:built.totalVisits,rotation:'snail-distance-v1',calendarSynced,poolReport:report,updatedAt:new Date().toISOString()};
+    bundle.range={start:firstWeek.weekKey,end:iso(addDays(first,20)),weeks:3,workDays:days,uniqueStores:built.uniqueStores,totalVisits:built.totalVisits,rotation:'snail-distance-v1',calendarSynced,poolReport:report,overnightReport,hoursReport,updatedAt:new Date().toISOString()};
     R.persist(bundle,storage);if(storage&&typeof storage.flush==='function')await storage.flush();root.state=bundle.state;
     try{if(typeof root.initControls==='function')root.initControls();if(typeof root.renderAll==='function')root.renderAll()}catch(e){}
     root.dispatchEvent(new CustomEvent('chef-range-generated',{detail:{start:firstWeek.weekKey,end:bundle.range.end,weeks:3,workDays:days,uniqueStores:built.uniqueStores,mode:'snail-distance-v1'}}));
     root.document&&root.document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{reason:'three-week-snail',weekDate:firstWeek.weekKey}}));
-    if(status)status.textContent='3 semaines escargot : '+built.totalVisits+' visites · '+built.uniqueStores+' magasins distincts · vivier '+report.planifiable+' planifiables'+(report.imposed?' · '+report.imposed+' imposé'+(report.imposed>1?'s':''):'')+(report.withoutGps?' · '+report.withoutGps+' GPS à vérifier':'')+'.';
-    built.poolReport=report;
+    if(status)status.textContent='3 semaines escargot : '+built.totalVisits+' visites · '+built.uniqueStores+' magasins distincts · vivier '+report.planifiable+' planifiables'+(report.imposed?' · '+report.imposed+' imposé'+(report.imposed>1?'s':''):'')+(report.withoutGps?' · '+report.withoutGps+' GPS à vérifier':'')+(hoursReport.unknown?' · '+hoursReport.unknown+' horaires à vérifier':'')+'.';
+    renderTerrainInsights(bundle.range);built.poolReport=report;built.overnightReport=overnightReport;built.hoursReport=hoursReport;
     return built;
   }finally{if(button)button.disabled=false}
 }
@@ -233,7 +301,7 @@ async function startDayWithStore(storeId){
   const route=(state.plan[day]||[]).slice();if(route.length<2)return{day,route,unchanged:true};
   const reordered=reorderDayFromStore(route,storeId);
   if(String(reordered[0].id)!==String(storeId))throw new Error('Le magasin choisi n’a pas pu être placé en premier.');
-  if(!dayFits(reordered,day,state))throw new Error('En commençant par ce magasin, la tournée dépasserait l’heure de fin.');
+  if(!dayFits(reordered,day,state))throw new Error('En commençant par ce magasin, la tournée dépasserait l’heure de fin ou un horaire magasin connu.');
   const weekKey=iso(monday(parseISO(state.settings&&state.settings.weekDate)||new Date()));R.checkpoint('Avant choix du premier magasin de '+day,storage);const bundle=R.capture(state,storage);
   bundle.state.plan[day]=reordered.map(s=>canonicalStore(s.id,bundle.state)||s);bundle.state.manualWeekEdits=bundle.state.manualWeekEdits||{};bundle.state.manualWeekEdits[weekKey]={at:new Date().toISOString(),plan:Object.fromEntries(DAYS.map(d=>[d,((bundle.state.plan&&bundle.state.plan[d])||[]).map(cloneStore)]))};
   bundle.archive=bundle.archive||{};if(!bundle.archive[weekKey])bundle.archive[weekKey]={weekMonday:weekKey,plan:{}};bundle.archive[weekKey].plan=Object.fromEntries(DAYS.map(d=>[d,((bundle.state.plan&&bundle.state.plan[d])||[]).map(cloneStore)]));bundle.archive[weekKey].manualEdited=true;bundle.archive[weekKey].manualEditedAt=new Date().toISOString();
@@ -250,10 +318,10 @@ function installSnailButton(){
     const mark=()=>{rangeStart.dataset.snailUserEdited='1'};
     rangeStart.addEventListener('input',mark);rangeStart.addEventListener('change',mark);
   }
-  if(root.document.getElementById('terrainSnailBtn'))return true;
+  if(root.document.getElementById('terrainSnailBtn')){ensureInsightsBox();renderStoredInsights();return true}
   const normal=root.document.getElementById('generateRangeBtn'),btn=root.document.createElement('button');btn.id='terrainSnailBtn';btn.type='button';btn.className='primary full';btn.textContent='◎ Générer 3 semaines · escargot';btn.onclick=async()=>{try{await generateThreeWeekSnail()}catch(e){showError(e.message||String(e))}};
   const status=root.document.createElement('div');status.id='terrainSnailStatus';status.className='tiny';status.style.marginTop='7px';status.textContent='Mode terrain : 3 semaines, du plus proche du départ vers le plus loin.';
-  if(normal&&normal.nextSibling)host.insertBefore(btn,normal.nextSibling);else host.appendChild(btn);btn.insertAdjacentElement('afterend',status);return true;
+  if(normal&&normal.nextSibling)host.insertBefore(btn,normal.nextSibling);else host.appendChild(btn);btn.insertAdjacentElement('afterend',status);ensureInsightsBox();renderStoredInsights();return true;
 }
 function installStartButton(){
   const actions=root.document&&root.document.querySelector('#storeQuickSheet .sheetActions');if(!actions)return false;
@@ -262,7 +330,7 @@ function installStartButton(){
   const change=root.document.getElementById('changeQuickStoreBtn');actions.insertBefore(btn,change||actions.firstChild);return true;
 }
 function install(){installSnailButton();installStartButton()}
-function boot(){install();root.document&&root.document.addEventListener('store-runner:planning-updated',install);root.document&&root.document.addEventListener('store-runner:data-restored',install)}
-const api={rankStoresByDistance,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,resolveSnailStart,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+function boot(){install();root.document&&root.document.addEventListener('store-runner:planning-updated',()=>{install();renderStoredInsights()});root.document&&root.document.addEventListener('store-runner:data-restored',()=>{install();renderStoredInsights()})}
+const api={rankStoresByDistance,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,resolveSnailStart,dayFits,overnightForPlan,analyzeOvernightWeeks,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()}
 })(typeof window!=='undefined'?window:globalThis);
