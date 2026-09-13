@@ -3,6 +3,8 @@ const { test, expect } = require('@playwright/test');
 const BASE_URL = process.env.STORE_RUNNER_E2E_URL || 'http://127.0.0.1:4173/';
 const V2_URL = new URL('v2/public/', BASE_URL).toString();
 
+const STORAGE_KEY = 'store_runner_v2_state';
+
 test.use({
   viewport: { width: 390, height: 844 },
   isMobile: true,
@@ -24,6 +26,7 @@ test('V2-06 : trois semaines escargot sont générées et navigables à 390 px',
   const range = screen.locator('.srv2-planning-range');
   await expect(range).toBeVisible();
   await expect(range.locator('.srv2-planning-origin')).toHaveText('Départ : Base Démo · GPS prêt');
+  await expect(range.locator('.srv2-planning-range-reach')).toHaveText('3 planifiables sur 3 actifs · 1 désactivé');
 
   const generateRange = range.locator('.srv2-planning-range-generate');
   await expect(generateRange).toBeEnabled();
@@ -33,7 +36,7 @@ test('V2-06 : trois semaines escargot sont générées et navigables à 390 px',
 
   await generateRange.tap();
   await expect(range.locator('.srv2-planning-range-status')).toContainText('3 semaines générées : 9 visites, 3 magasins distincts.');
-  await expect(range.locator('.srv2-planning-range-status')).toContainText('Tous les magasins actifs sont couverts');
+  await expect(range.locator('.srv2-planning-range-status')).toContainText('Tous les magasins planifiables sont couverts');
 
   // Semaine 1 : le mode escargot remplit les journées dans l'ordre radial,
   // donc les deux magasins les plus proches sont ensemble le lundi.
@@ -69,5 +72,67 @@ test('V2-06 : trois semaines escargot sont générées et navigables à 390 px',
   // Aucun overlay, aucune couche bloquante : la nav basse reste immédiatement utilisable.
   await page.locator('.srv2-tab[data-tab="stores"]').tap();
   await expect(page.locator('.srv2-screen[data-screen="stores"]')).toBeVisible();
+  expect(pageErrors).toEqual([]);
+});
+
+test('V2-06 : exclusion et filtres passent avant la distance en mode escargot', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(String(error && error.message || error)));
+
+  const state = {
+    version: 2,
+    profile: { sectorName: 'Secteur Vivier', baseName: 'Maison Test', baseLat: 45, baseLon: 4 },
+    stores: [
+      { id: 'excluded-near', enseigne: 'Brand A', name: 'Exclu proche', ville: 'Ville 1', active: true, products: ['P'], lat: 45.01, lon: 4 },
+      { id: 'eligible-near', enseigne: 'Brand A', name: 'Planifiable proche', ville: 'Ville 2', active: true, products: ['P'], lat: 45.02, lon: 4 },
+      { id: 'filtered-brand', enseigne: 'Brand B', name: 'Hors filtre', ville: 'Ville 3', active: true, products: ['P'], lat: 45.03, lon: 4 },
+      { id: 'inactive', enseigne: 'Brand A', name: 'Désactivé', ville: 'Ville 4', active: false, products: ['P'], lat: 45.04, lon: 4 },
+      { id: 'eligible-far', enseigne: 'Brand A', name: 'Planifiable loin', ville: 'Ville 5', active: true, products: ['P'], lat: 45.05, lon: 4 },
+    ],
+    visits: [],
+    actions: [],
+    appointments: [],
+    planning: { weeks: {}, excludedStoreIds: ['excluded-near'] },
+    settings: {
+      weekDate: '2026-09-14',
+      days: ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'],
+      target: 5,
+      maxVisitsPerDay: 4,
+      brands: ['Brand A'],
+      products: ['P'],
+    },
+  };
+
+  await page.addInitScript(({ key, value }) => {
+    localStorage.setItem(key, JSON.stringify(value));
+  }, { key: STORAGE_KEY, value: state });
+
+  await page.goto(V2_URL, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.srv2-nav');
+  await page.locator('.srv2-tab[data-tab="planning"]').tap();
+
+  const screen = page.locator('.srv2-screen[data-screen="planning"]');
+  const range = screen.locator('.srv2-planning-range');
+  await expect(range.locator('.srv2-planning-range-reach')).toHaveText(
+    '2 planifiables sur 4 actifs · 1 exclu · 1 filtré · 1 désactivé'
+  );
+
+  await range.locator('.srv2-planning-range-generate').tap();
+  await expect(range.locator('.srv2-planning-range-status')).toContainText('6 visites, 2 magasins distincts');
+  await expect(range.locator('.srv2-planning-range-status')).toContainText('Tous les magasins planifiables sont couverts');
+
+  await expect(screen.locator('.srv2-planning-card')).toHaveCount(2);
+  await expect(screen.locator('.srv2-planning-card').nth(0)).toContainText('Brand A');
+  await expect(screen.locator('.srv2-planning-card').nth(0)).toContainText('Ville 2');
+  await expect(screen.locator('.srv2-planning-card').nth(1)).toContainText('Ville 5');
+  await expect(screen).not.toContainText('Ville 1');
+  await expect(screen).not.toContainText('Ville 3');
+  await expect(screen).not.toContainText('Ville 4');
+
+  const overflow = await page.evaluate(() => ({
+    documentScrollWidth: document.documentElement.scrollWidth,
+    documentClientWidth: document.documentElement.clientWidth,
+  }));
+  expect(overflow.documentScrollWidth).toBeLessThanOrEqual(overflow.documentClientWidth + 1);
   expect(pageErrors).toEqual([]);
 });
