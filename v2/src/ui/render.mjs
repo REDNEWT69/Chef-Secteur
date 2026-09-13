@@ -14,6 +14,7 @@ export function createScreenElement(document, screenId, label) {
   heading.textContent = label;
 
   const placeholder = document.createElement('p');
+  placeholder.classList.add('srv2-screen-placeholder');
   placeholder.textContent = `Écran ${label} — placeholder V2.`;
 
   section.appendChild(heading);
