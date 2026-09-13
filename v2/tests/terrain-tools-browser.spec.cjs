@@ -24,7 +24,7 @@ test('V2 terrain : départ local -> 3 semaines -> texte TeamHaven -> reload à 3
   const terrain = planning.locator('.srv2-terrain-tools');
   const range = planning.locator('.srv2-planning-range');
   await expect(terrain).toBeVisible();
-  await expect(terrain.locator('.srv2-terrain-privacy')).toContainText('reste sur cet appareil');
+  await expect(terrain.locator('.srv2-terrain-privacy')).toContainText('restent sur cet appareil');
 
   const name = terrain.locator('.srv2-origin-name');
   const lat = terrain.locator('.srv2-origin-lat');
