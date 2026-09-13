@@ -2,6 +2,7 @@
 // Propriétaire de son contenu uniquement. Le shell reste propriétaire de
 // l'écran Planning et reçoit cet élément via mountScreen('planning', ...).
 
+import { attachHorizontalSwipe } from '../ui/horizontal-swipe.mjs';
 import {
   PlanningWeekError,
   generatePlanningWeek,
@@ -182,6 +183,16 @@ export function createPlanningFeature(options) {
     return selectedDay;
   }
 
+  function moveDay(delta) {
+    const days = configuredDays();
+    const currentIndex = days.indexOf(selectedDay);
+    const safeIndex = currentIndex < 0 ? 0 : currentIndex;
+    const requested = safeIndex + Number(delta || 0);
+    const nextIndex = Math.max(0, Math.min(days.length - 1, requested));
+    if (nextIndex === safeIndex) return selectedDay;
+    return selectDay(days[nextIndex]);
+  }
+
   function renderDays(state = latestState) {
     const days = ensureSelectedDay(state);
     const week = currentWeek(state);
@@ -249,10 +260,17 @@ export function createPlanningFeature(options) {
   });
   generateButton.addEventListener('click', generate);
 
+  const swipe = attachHorizontalSwipe(list, {
+    onSwipe(direction) {
+      moveDay(direction === 'next' ? 1 : -1);
+    },
+  });
+
   const unsubscribe = store.subscribe(render);
   render(latestState);
 
   function destroy() {
+    swipe.destroy();
     unsubscribe();
   }
 
@@ -261,6 +279,7 @@ export function createPlanningFeature(options) {
     destroy,
     generate,
     selectDay,
+    moveDay,
     getSelectedDay: () => selectedDay,
     getWeekMonday: selectedWeekMonday,
   });
