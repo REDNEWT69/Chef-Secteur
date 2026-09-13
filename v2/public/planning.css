@@ -29,6 +29,13 @@
   overflow-wrap: anywhere;
 }
 
+/* Le navigateur conserve la propriété du pan vertical. Le JavaScript peut
+   observer le geste horizontal sans appeler preventDefault() sur touchmove. */
+.srv2-planning-swipe-zone {
+  min-width: 0;
+  touch-action: pan-y;
+}
+
 @media (prefers-color-scheme: dark) {
   .srv2-planning-week-shift {
     background: #16181d;
