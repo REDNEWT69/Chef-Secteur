@@ -54,7 +54,12 @@
   const planningFeature = createPlanningFeature({ document, store });
   shell.mountScreen('planning', planningFeature.element);
 
-  const planningRangeFeature = createPlanningRangeFeature({ document, store });
+  const planningRangeFeature = createPlanningRangeFeature({
+    document,
+    store,
+    geolocation: navigator.geolocation,
+    clipboard: navigator.clipboard,
+  });
   shell.mountScreen('planning', planningRangeFeature.element);
 
   const storesFeature = createStoresFeature({ document, store });
