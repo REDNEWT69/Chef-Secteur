@@ -281,3 +281,82 @@ test('Pose datée et verrou récurrent restent explicites dans Magasins à 390 p
   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
   expect(pageErrors, 'Le scénario pose → récurrent → libre ne doit produire aucune erreur JS').toEqual([]);
 });
+
+test('Le filtre Enseignes affiche le vrai vivier et Tout sélectionner à 390 px', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(String(error && error.message || error)));
+
+  await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.getElementById('planPanel') && typeof goTab === 'function');
+
+  await page.evaluate(() => {
+    const st = window.state || state;
+    const counts = [9,8,8,8,8,4,3,3,1,1,1];
+    const stores = [];
+    counts.forEach((count, brand) => {
+      for (let i = 0; i < count; i++) stores.push({
+        id: 'filter-' + stores.length,
+        enseigne: 'Brand ' + brand,
+        ville: 'Ville ' + stores.length,
+        adresse: (100 + stores.length) + ' rue Filtre',
+        lat: 45.70 + stores.length * 0.001,
+        lon: 4.80 + stores.length * 0.001,
+        active: true,
+        priority: 3
+      });
+    });
+    stores.push({id:'filter-disabled',enseigne:'Brand 0',ville:'Inactive',adresse:'1 rue Inactive',lat:45.7,lon:4.8,active:false,priority:3});
+    stores.push({id:'filter-excluded',enseigne:'Brand 0',ville:'Exclue',adresse:'2 rue Exclue',lat:45.71,lon:4.81,active:true,priority:3});
+    st.stores = stores;
+    st.excluded = {'filter-excluded':true};
+    st.included = {};
+    st.locks = {};
+    st.settings = Object.assign({}, st.settings || {}, {
+      brands:['Brand 0','Brand 1','Brand 2','Brand 3','Brand 4'],
+      products:[],days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],
+      target:20,weekDate:'2026-09-14'
+    });
+    st.plan = {Lundi:[],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
+    try { if (typeof save === 'function') save(); } catch (_) {}
+    try { if (typeof initControls === 'function') initControls(); } catch (_) {}
+    try { if (typeof renderAll === 'function') renderAll(); } catch (_) {}
+    goTab('planPanel');
+    document.dispatchEvent(new CustomEvent('store-runner:planning-updated'));
+  });
+  await page.waitForTimeout(950);
+  await page.evaluate(() => { const s=document.getElementById('planningSettings'); if(s) s.open=true; });
+
+  const countLine = page.locator('#planningDynamicStoreCount');
+  await expect(countLine).toContainText('41 magasins disponibles pour le planning');
+  await expect(countLine).toContainText('13 écartés par le filtre Enseignes');
+  const brandSummary = page.locator('#planningBrandsDetails [data-choice-summary]');
+  await expect(brandSummary).toHaveText('5 sur 11 · 13 magasins écartés');
+
+  const allBrands = page.locator('#planningAllBrands');
+  await expect(allBrands).toBeVisible();
+  const buttonBox = await allBrands.boundingBox();
+  if (!buttonBox) throw new Error('Bouton Toutes les enseignes introuvable');
+  expect(buttonBox.height).toBeGreaterThanOrEqual(44);
+  expect(buttonBox.x).toBeGreaterThanOrEqual(-1);
+  expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(391);
+
+  let overflow = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth
+  }));
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
+
+  await allBrands.click();
+  await page.waitForTimeout(180);
+  await expect(countLine).toHaveText('54 magasins disponibles pour le planning.');
+  await expect(brandSummary).toHaveText('Toutes');
+  await expect(page.locator('#planningAllBrands')).toHaveCount(0);
+  expect(await page.evaluate(() => (window.state || state).settings.brands.length)).toBe(0);
+
+  overflow = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth
+  }));
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
+  expect(pageErrors, 'Le compteur et le bouton Enseignes ne doivent produire aucune erreur JS').toEqual([]);
+});
