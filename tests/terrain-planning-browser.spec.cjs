@@ -41,7 +41,7 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
   await settings.evaluate(el=>{el.open=true});
   const range=page.locator('#rangePlannerCard');
   await range.evaluate(el=>{el.open=true});
-  await page.locator('#weekDate').fill('2026-09-21');
+  await expect(page.locator('#weekDate')).toHaveValue('2026-09-21');
   await page.locator('#rangeStart').fill('2026-09-14');
   const snail=page.locator('#terrainSnailBtn');
   await expect(snail).toBeVisible();
