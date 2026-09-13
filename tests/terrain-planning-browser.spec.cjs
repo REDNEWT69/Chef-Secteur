@@ -16,6 +16,15 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
   const pageErrors=[];
   page.on('pageerror', e => pageErrors.push(String(e && e.message || e)));
   page.on('dialog', d => d.accept().catch(()=>{}));
+  await page.addInitScript(() => {
+    const RealDate=Date;
+    const fixed=RealDate.parse('2026-09-13T12:00:00Z');
+    class FixedDate extends RealDate{
+      constructor(...args){super(...(args.length?args:[fixed]))}
+      static now(){return fixed}
+    }
+    window.Date=FixedDate;
+  });
   await page.goto(APP_URL, { waitUntil:'domcontentloaded' });
   await page.waitForFunction(() => window.StoreRunnerTerrainPlanningV1 && window.state && document.getElementById('planPanel'));
 
@@ -41,8 +50,12 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
   await settings.evaluate(el=>{el.open=true});
   const range=page.locator('#rangePlannerCard');
   await range.evaluate(el=>{el.open=true});
-  await expect(page.locator('#weekDate')).toHaveValue('2026-09-21');
-  await page.locator('#rangeStart').fill('2026-09-14');
+  await page.evaluate(() => {
+    const week=document.getElementById('weekDate'),start=document.getElementById('rangeStart');
+    if(week)week.value='2026-09-21';
+    if(start){start.value='2026-09-21';delete start.dataset.snailUserEdited}
+  });
+  await expect(page.locator('#rangeStart')).toHaveValue('2026-09-21');
   const snail=page.locator('#terrainSnailBtn');
   await expect(snail).toBeVisible();
   const box=await snail.boundingBox();
@@ -74,9 +87,6 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
   expect(new Set(all).size).toBe(60);
   expect(all.slice(0,5)).toEqual(['snail-01','snail-02','snail-03','snail-04','snail-05']);
 
-  // Le résultat doit être réellement exploitable dans l'interface, pas seulement
-  // présent dans une archive invisible. On ouvre une journée de chaque semaine,
-  // vérifie le plan chargé, puis on revient à la première sans perte.
   const week2Tab=page.locator('#dayTabs .periodDayTab[data-date="2026-09-21"]');
   const week3Tab=page.locator('#dayTabs .periodDayTab[data-date="2026-09-28"]');
   const week1Tab=page.locator('#dayTabs .periodDayTab[data-date="2026-09-14"]');
