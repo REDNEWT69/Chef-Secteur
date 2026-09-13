@@ -9,6 +9,7 @@ const ctx={
   state:{profile:{}},
   console,
   setTimeout(){return 0},
+  addEventListener(){},
   sessionStorage:{getItem(){return null}},
   CustomEvent:function(type,opts){this.type=type;this.detail=opts&&opts.detail},
   document:{
