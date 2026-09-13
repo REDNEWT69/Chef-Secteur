@@ -12,7 +12,7 @@ test.use({
   trace: 'retain-on-failure',
 });
 
-test('V2-04 Planning : génération et navigation jours fonctionnent réellement à 390 px', async ({ page }) => {
+test('V2-04 Planning : génération, jours et navigation multi-semaines restent tactiles à 390 px', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(String(error && error.message || error)));
 
@@ -25,10 +25,20 @@ test('V2-04 Planning : génération et navigation jours fonctionnent réellement
   await expect(screen.locator('.srv2-screen-placeholder')).toBeHidden();
 
   const date = screen.locator('.srv2-planning-date input');
-  await expect(date).toHaveValue('2026-09-16');
+  await expect(date).toHaveValue('2026-09-14');
   const dateBox = await date.boundingBox();
   if (!dateBox) throw new Error('Date planning V2 introuvable');
   expect(dateBox.height).toBeGreaterThanOrEqual(44);
+
+  const previous = screen.locator('.srv2-planning-week-shift[data-week-shift="-1"]');
+  const next = screen.locator('.srv2-planning-week-shift[data-week-shift="1"]');
+  for (const [name, button] of [['précédente', previous], ['suivante', next]]) {
+    const box = await button.boundingBox();
+    if (!box) throw new Error(`Navigation semaine ${name} introuvable`);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.width).toBeGreaterThanOrEqual(44);
+  }
+  await expect(screen.locator('.srv2-planning-week-current')).toHaveText('Semaine du 14/09/2026');
 
   const generate = screen.locator('.srv2-planning-generate');
   const generateBox = await generate.boundingBox();
@@ -36,6 +46,7 @@ test('V2-04 Planning : génération et navigation jours fonctionnent réellement
   expect(generateBox.height).toBeGreaterThanOrEqual(44);
   await expect(screen.locator('.srv2-planning-empty')).toContainText('Aucune semaine générée');
 
+  // Première semaine.
   await generate.tap();
   await expect(screen.locator('.srv2-planning-status')).toHaveText(
     'Semaine du 2026-09-14 générée : 3 magasins.'
@@ -55,17 +66,41 @@ test('V2-04 Planning : génération et navigation jours fonctionnent réellement
   await expect(screen.locator('.srv2-planning-card')).toContainText('Enseigne Alpha');
 
   await screen.locator('.srv2-planning-day[data-day="Mardi"]').tap();
-  await expect(screen.locator('.srv2-planning-card')).toHaveCount(1);
   await expect(screen.locator('.srv2-planning-card')).toContainText('Enseigne Bêta');
-
   await screen.locator('.srv2-planning-day[data-day="Mercredi"]').tap();
-  await expect(screen.locator('.srv2-planning-card')).toHaveCount(1);
   await expect(screen.locator('.srv2-planning-card')).toContainText('Enseigne Gamma');
-
   await screen.locator('.srv2-planning-day[data-day="Jeudi"]').tap();
   await expect(screen.locator('.srv2-planning-card')).toHaveCount(0);
   await expect(screen.locator('.srv2-planning-empty')).toContainText('Aucun magasin prévu jeudi');
   await expect(screen).not.toContainText('Enseigne Delta');
+
+  // Naviguer ne génère rien en douce : la semaine suivante est vide jusqu'au tap explicite.
+  await next.tap();
+  await expect(date).toHaveValue('2026-09-21');
+  await expect(screen.locator('.srv2-planning-week-current')).toHaveText('Semaine du 21/09/2026');
+  await expect(screen.locator('.srv2-planning-status')).toHaveText('');
+  await expect(screen.locator('.srv2-planning-empty')).toContainText('Aucune semaine générée');
+
+  // Deuxième semaine : elle est stockée sans effacer la première.
+  await generate.tap();
+  await expect(screen.locator('.srv2-planning-status')).toHaveText(
+    'Semaine du 2026-09-21 générée : 3 magasins.'
+  );
+  await expect(screen.locator('.srv2-planning-card')).toHaveCount(1);
+  await expect(screen.locator('.srv2-planning-card')).toContainText('Enseigne Alpha');
+
+  // Retour arrière sans régénération : la première semaine doit réapparaître telle quelle.
+  await previous.tap();
+  await expect(date).toHaveValue('2026-09-14');
+  await expect(screen.locator('.srv2-planning-week-current')).toHaveText('Semaine du 14/09/2026');
+  await expect(screen.locator('.srv2-planning-card')).toHaveCount(1);
+  await expect(screen.locator('.srv2-planning-card')).toContainText('Enseigne Alpha');
+
+  // Et la seconde existe toujours lorsqu'on repart vers l'avant.
+  await next.tap();
+  await expect(date).toHaveValue('2026-09-21');
+  await expect(screen.locator('.srv2-planning-card')).toHaveCount(1);
+  await expect(screen.locator('.srv2-planning-card')).toContainText('Enseigne Alpha');
 
   const overflow = await page.evaluate(() => ({
     documentScrollWidth: document.documentElement.scrollWidth,

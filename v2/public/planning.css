@@ -1,0 +1,38 @@
+/* Store Runner V2 — styles propres à la navigation du Planning.
+   Gardés séparés du shell pour éviter de recréer une feuille globale monolithique. */
+
+.srv2-planning-week-nav {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.srv2-planning-week-shift {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid #d8dbe1;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #14161a;
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.srv2-planning-week-current {
+  min-width: 0;
+  text-align: center;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-color-scheme: dark) {
+  .srv2-planning-week-shift {
+    background: #16181d;
+    color: #f2f3f5;
+    border-color: #2a2d34;
+  }
+}

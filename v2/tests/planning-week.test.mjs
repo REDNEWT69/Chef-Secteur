@@ -6,6 +6,7 @@ import {
   generatePlanningWeek,
   getPlannedStore,
   resolvePlanningDays,
+  shiftWeekDate,
   weekMondayFromDate,
 } from '../src/planning/week.mjs';
 import { createPlanningFeature, PlanningFeatureError } from '../src/planning/planning.mjs';
@@ -37,6 +38,13 @@ assert.equal(weekMondayFromDate('2026-09-20'), '2026-09-14');
 assert.equal(weekMondayFromDate('2026-09-21'), '2026-09-21');
 assert.throws(() => weekMondayFromDate('16/09/2026'), PlanningWeekError);
 assert.throws(() => weekMondayFromDate('2026-02-31'), PlanningWeekError);
+
+// Navigation hebdomadaire pure : toujours de lundi à lundi, sans dépendre du DOM.
+assert.equal(shiftWeekDate('2026-09-16', 0), '2026-09-14');
+assert.equal(shiftWeekDate('2026-09-16', 1), '2026-09-21');
+assert.equal(shiftWeekDate('2026-09-16', -1), '2026-09-07');
+assert.equal(shiftWeekDate('2026-12-30', 1), '2027-01-04');
+assert.throws(() => shiftWeekDate('2026-09-16', 1.5), PlanningWeekError);
 
 // Les jours sont filtrés, dédupliqués, et reviennent à Lun→Ven si la config
 // ne fournit rien d'exploitable.
@@ -94,22 +102,44 @@ assert.deepEqual(resolvePlanningDays({ days: [] }), ['Lundi', 'Mardi', 'Mercredi
   assert.equal(state.planning.weeks[week.weekMonday].days.Lundi[0], 'alpha');
 }
 
-// Feature DOM : génération explicite -> persistance dans le store central.
+// Feature DOM : génération explicite, navigation semaine par semaine et
+// conservation de plusieurs semaines dans le store central.
 {
   const document = createFakeDocument();
   const store = createStore(makeState());
   const feature = createPlanningFeature({ document, store });
 
+  // L'écran canonise la date initiale sur le lundi sans encore muter le store.
   assert.equal(feature.getWeekMonday(), '2026-09-14');
   assert.equal(feature.getSelectedDay(), 'Lundi');
 
-  const generated = feature.generate();
-  assert(generated);
-  const snapshot = store.getState();
+  const generatedFirst = feature.generate();
+  assert(generatedFirst);
+  let snapshot = store.getState();
   assert.equal(snapshot.planning.currentWeek, '2026-09-14');
   assert.deepEqual(snapshot.planning.weeks['2026-09-14'].days.Lundi, ['alpha']);
   assert.deepEqual(snapshot.planning.weeks['2026-09-14'].days.Mardi, ['beta']);
-  assert.equal(snapshot.settings.weekDate, '2026-09-16');
+  assert.equal(snapshot.settings.weekDate, '2026-09-14');
+
+  assert.equal(feature.shiftWeek(1), '2026-09-21');
+  snapshot = store.getState();
+  assert.equal(feature.getWeekMonday(), '2026-09-21');
+  assert.equal(snapshot.planning.currentWeek, '2026-09-21');
+  assert.equal(snapshot.settings.weekDate, '2026-09-21');
+  assert(snapshot.planning.weeks['2026-09-14'], 'la première semaine doit rester enregistrée');
+  assert.equal(snapshot.planning.weeks['2026-09-21'], undefined, 'naviguer ne doit pas générer en douce');
+
+  const generatedSecond = feature.generate();
+  assert(generatedSecond);
+  snapshot = store.getState();
+  assert.deepEqual(Object.keys(snapshot.planning.weeks).sort(), ['2026-09-14', '2026-09-21']);
+  assert.deepEqual(snapshot.planning.weeks['2026-09-21'].days.Lundi, ['alpha']);
+
+  assert.equal(feature.shiftWeek(-1), '2026-09-14');
+  snapshot = store.getState();
+  assert.equal(snapshot.planning.currentWeek, '2026-09-14');
+  assert.deepEqual(snapshot.planning.weeks['2026-09-14'].days.Lundi, ['alpha']);
+  assert.deepEqual(snapshot.planning.weeks['2026-09-21'].days.Lundi, ['alpha']);
 
   assert.equal(feature.selectDay('Mardi'), 'Mardi');
   assert.equal(feature.getSelectedDay(), 'Mardi');

@@ -47,6 +47,16 @@ export function weekMondayFromDate(value) {
   return toIsoDate(date);
 }
 
+export function shiftWeekDate(value, offsetWeeks) {
+  const offset = Number(offsetWeeks);
+  if (!Number.isInteger(offset)) {
+    throw new PlanningWeekError(`Décalage de semaine entier attendu, reçu : "${offsetWeeks}".`);
+  }
+  const monday = parseIsoDate(weekMondayFromDate(value));
+  monday.setUTCDate(monday.getUTCDate() + offset * 7);
+  return toIsoDate(monday);
+}
+
 export function resolvePlanningDays(settings = {}) {
   const requested = Array.isArray(settings.days) ? settings.days : [];
   const seen = new Set();
