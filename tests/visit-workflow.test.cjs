@@ -17,4 +17,10 @@ const db=new DB();global.state=s;global.__chefStorage=db;R.save(s);const bundle=
 const removed=M.clone(s);removed.stores=removed.stores.filter(x=>x.id!=='x');removed.plan={};removed.appointments=[];R.validateState(removed);
 const root=path.join(__dirname,'..'),ui=fs.readFileSync(path.join(root,'store-runner-visits.js'),'utf8'),sw=fs.readFileSync(path.join(root,'sw.js'),'utf8');
 assert(!/window\.(renderAll|renderWeek|save|openStore|saveStore|saveAppointment|goTab|switchTab)\s*=/.test(ui));assert(!/setInterval\s*\(/.test(ui));for(const asset of ['store-runner-visit-model.js','store-runner-visit-store.js','store-runner-visits.js','store-runner-visits.css'])assert(sw.split('const OPTIONAL_SHELL')[0].includes(asset));
-console.log('PASS: Visit/Action workflow, six P, bidirectional owner/date sync, idempotent conversions/closure, history compatibility, V2 backup/restore, interrupted draft, invalid data and module ownership.');
+assert(ui.includes('window.StoreRunnerVisits={start,openVisit,openHub,memoryFor,renderQuickMemory}'),'le module Visit doit publier un accès borné aux visites archivées');
+assert(ui.includes("data.visits.slice(0,3)"),'la fiche magasin doit commencer par les trois dernières visites');
+assert(ui.includes("Voir tout l’historique"),'la fiche magasin doit permettre d’ouvrir tout l’historique');
+assert(ui.includes("!['done','cancelled'].includes(a.status)"),'la mémoire terrain doit garder uniquement les actions encore ouvertes');
+assert(ui.includes("quickMemoryObserver.observe(sheet,{attributes:true,attributeFilter:['class','aria-hidden']})"),'l’observation doit rester bornée à la feuille magasin');
+assert(ui.includes("row.dataset.srHistoryVisit=v.id"),'chaque visite historique doit rester ouvrable dans son détail');
+console.log('PASS: Visit/Action workflow, six P, bidirectional owner/date sync, idempotent conversions/closure, history compatibility, store memory surface, V2 backup/restore, interrupted draft, invalid data and module ownership.');
