@@ -1,6 +1,11 @@
 {
   "version": 2,
-  "profile": {"sectorName": "Secteur Démo V2"},
+  "profile": {
+    "sectorName": "Secteur Démo V2",
+    "baseName": "Base Démo",
+    "baseLat": 45,
+    "baseLon": 4
+  },
   "stores": [
     {
       "id": "demo-alpha",
@@ -8,6 +13,8 @@
       "adresse": "10 rue Démonstration",
       "codePostal": "00001",
       "ville": "Ville Alpha",
+      "lat": 45.01,
+      "lon": 4,
       "active": true
     },
     {
@@ -16,6 +23,8 @@
       "adresse": "20 avenue Exemple",
       "codePostal": "00002",
       "ville": "Ville Bêta",
+      "lat": 45.02,
+      "lon": 4,
       "active": true
     },
     {
@@ -24,6 +33,8 @@
       "adresse": "30 boulevard Fictif",
       "codePostal": "00003",
       "ville": "Ville Gamma",
+      "lat": 45.03,
+      "lon": 4,
       "active": true
     },
     {
@@ -32,6 +43,8 @@
       "adresse": "40 allée Prototype",
       "codePostal": "00004",
       "ville": "Ville Delta",
+      "lat": 45.04,
+      "lon": 4,
       "active": false
     }
   ],
