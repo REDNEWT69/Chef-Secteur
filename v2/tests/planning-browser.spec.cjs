@@ -12,7 +12,34 @@ test.use({
   trace: 'retain-on-failure',
 });
 
-test('V2-04 Planning : génération, jours et navigation multi-semaines restent tactiles à 390 px', async ({ page }) => {
+async function touchDrag(page, from, to, steps = 6) {
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send('Input.dispatchTouchEvent', {
+      type: 'touchStart', touchPoints: [{ x: from.x, y: from.y }]
+    });
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{
+          x: Math.round(from.x + (to.x - from.x) * t),
+          y: Math.round(from.y + (to.y - from.y) * t)
+        }]
+      });
+      await page.waitForTimeout(18);
+    }
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  } finally {
+    await session.detach();
+  }
+}
+
+async function activeDay(screen) {
+  return screen.locator('.srv2-planning-day[aria-selected="true"]').getAttribute('data-day');
+}
+
+test('V2-05a Planning : génération, semaines et vrais gestes tactiles restent sûrs à 390 px', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(String(error && error.message || error)));
 
@@ -65,6 +92,79 @@ test('V2-04 Planning : génération, jours et navigation multi-semaines restent 
   await expect(screen.locator('.srv2-planning-card')).toHaveCount(1);
   await expect(screen.locator('.srv2-planning-card')).toContainText('Enseigne Alpha');
 
+  // --- Vrais gestes tactiles -------------------------------------------------
+  const swipeZone = screen.locator('.srv2-planning-swipe-zone');
+  await expect(swipeZone).toBeVisible();
+  await page.evaluate(() => {
+    window.__v2GhostClicks = 0;
+    document.querySelector('.srv2-planning-swipe-zone')?.addEventListener('click', () => {
+      window.__v2GhostClicks += 1;
+    });
+  });
+
+  // Swipe gauche sur la carte du lundi -> mardi, exactement un jour.
+  let cardBox = await screen.locator('.srv2-planning-card').first().boundingBox();
+  if (!cardBox) throw new Error('Carte planning V2 introuvable pour le swipe');
+  await touchDrag(page,
+    { x: Math.min(345, cardBox.x + cardBox.width * 0.82), y: cardBox.y + Math.min(30, cardBox.height * 0.5) },
+    { x: Math.max(45, cardBox.x + cardBox.width * 0.18), y: cardBox.y + Math.min(30, cardBox.height * 0.5) }
+  );
+  await page.waitForTimeout(140);
+  expect(await activeDay(screen)).toBe('Mardi');
+  await expect(screen.locator('.srv2-planning-card')).toContainText('Enseigne Bêta');
+  expect(await page.evaluate(() => window.__v2GhostClicks)).toBe(0);
+
+  // Petit mouvement horizontal : aucun changement de jour.
+  cardBox = await screen.locator('.srv2-planning-card').first().boundingBox();
+  if (!cardBox) throw new Error('Carte mardi introuvable');
+  await touchDrag(page,
+    { x: cardBox.x + cardBox.width * 0.58, y: cardBox.y + Math.min(28, cardBox.height * 0.5) },
+    { x: cardBox.x + cardBox.width * 0.50, y: cardBox.y + Math.min(28, cardBox.height * 0.5) },
+    3
+  );
+  await page.waitForTimeout(100);
+  expect(await activeDay(screen)).toBe('Mardi');
+
+  // Mouvement vertical : le navigateur garde le scroll, aucun preventDefault,
+  // et le jour actif ne bouge pas.
+  await page.evaluate(() => {
+    window.__v2VerticalPrevented = null;
+    document.querySelector('.srv2-planning-swipe-zone')?.addEventListener('touchmove', event => {
+      window.__v2VerticalPrevented = event.defaultPrevented;
+    }, { once: true, passive: true });
+  });
+  cardBox = await screen.locator('.srv2-planning-card').first().boundingBox();
+  if (!cardBox) throw new Error('Carte mardi introuvable pour le scroll vertical');
+  await touchDrag(page,
+    { x: cardBox.x + cardBox.width * 0.50, y: cardBox.y + Math.min(24, cardBox.height * 0.45) },
+    { x: cardBox.x + cardBox.width * 0.52, y: cardBox.y + 125 },
+    5
+  );
+  await page.waitForTimeout(100);
+  expect(await activeDay(screen)).toBe('Mardi');
+  expect(await page.evaluate(() => window.__v2VerticalPrevented)).toBe(false);
+
+  // Swipe droite -> lundi.
+  cardBox = await screen.locator('.srv2-planning-card').first().boundingBox();
+  if (!cardBox) throw new Error('Carte mardi introuvable pour le retour');
+  await touchDrag(page,
+    { x: cardBox.x + cardBox.width * 0.18, y: cardBox.y + Math.min(28, cardBox.height * 0.5) },
+    { x: cardBox.x + cardBox.width * 0.82, y: cardBox.y + Math.min(28, cardBox.height * 0.5) }
+  );
+  await page.waitForTimeout(120);
+  expect(await activeDay(screen)).toBe('Lundi');
+
+  // Bord gauche : un swipe droite supplémentaire reste sur lundi.
+  cardBox = await screen.locator('.srv2-planning-card').first().boundingBox();
+  if (!cardBox) throw new Error('Carte lundi introuvable pour la borne');
+  await touchDrag(page,
+    { x: cardBox.x + cardBox.width * 0.18, y: cardBox.y + Math.min(28, cardBox.height * 0.5) },
+    { x: cardBox.x + cardBox.width * 0.82, y: cardBox.y + Math.min(28, cardBox.height * 0.5) }
+  );
+  await page.waitForTimeout(100);
+  expect(await activeDay(screen)).toBe('Lundi');
+
+  // Les taps directs restent fonctionnels après les swipes.
   await screen.locator('.srv2-planning-day[data-day="Mardi"]').tap();
   await expect(screen.locator('.srv2-planning-card')).toContainText('Enseigne Bêta');
   await screen.locator('.srv2-planning-day[data-day="Mercredi"]').tap();
@@ -73,6 +173,18 @@ test('V2-04 Planning : génération, jours et navigation multi-semaines restent 
   await expect(screen.locator('.srv2-planning-card')).toHaveCount(0);
   await expect(screen.locator('.srv2-planning-empty')).toContainText('Aucun magasin prévu jeudi');
   await expect(screen).not.toContainText('Enseigne Delta');
+
+  // Bord droit : vendredi + swipe gauche reste vendredi.
+  await screen.locator('.srv2-planning-day[data-day="Vendredi"]').tap();
+  expect(await activeDay(screen)).toBe('Vendredi');
+  const zoneBox = await swipeZone.boundingBox();
+  if (!zoneBox) throw new Error('Zone tactile planning V2 introuvable');
+  await touchDrag(page,
+    { x: Math.min(345, zoneBox.x + zoneBox.width * 0.82), y: zoneBox.y + Math.min(35, zoneBox.height * 0.3) },
+    { x: Math.max(45, zoneBox.x + zoneBox.width * 0.18), y: zoneBox.y + Math.min(35, zoneBox.height * 0.3) }
+  );
+  await page.waitForTimeout(100);
+  expect(await activeDay(screen)).toBe('Vendredi');
 
   // Naviguer ne génère rien en douce : la semaine suivante est vide jusqu'au tap explicite.
   await next.tap();
