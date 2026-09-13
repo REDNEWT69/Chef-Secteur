@@ -1,4 +1,4 @@
-const BUILD_REV = "20260913-snailweek158";
+const BUILD_REV = "20260913-manualupdate159";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -71,7 +71,6 @@ self.addEventListener('install', event => {
     const cache = await caches.open(CACHE_NAME);
     await cache.addAll(CORE_SHELL.map(requestFor));
     await Promise.allSettled(OPTIONAL_SHELL.map(path => cache.add(requestFor(path))));
-    await self.skipWaiting();
   })());
 });
 self.addEventListener('activate', event => {
