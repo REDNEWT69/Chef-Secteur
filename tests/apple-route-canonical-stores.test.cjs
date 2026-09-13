@@ -8,8 +8,8 @@ const state={
   profile:{baseLat:45.758,baseLon:4.80,baseAddress:'Ancienne base'},
   settings:{days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi']},
   stores:[
-    {id:'s55',enseigne:'Boulanger',ville:'Limonest',adresse:'Route Nationale 6',lat:45.8377,lon:4.7715},
-    {id:'s69',enseigne:'Boulanger',ville:'Chalon-sur-Saône',adresse:'2 Rue René Cassin',lat:46.7808,lon:4.853}
+    {id:'s55',enseigne:'Boulanger',ville:'Limonest',adresse:'Route Nationale 6',codePostal:'69760',lat:45.8377,lon:4.7715},
+    {id:'s69',enseigne:'Boulanger',ville:'Chalon-sur-Saône',adresse:'2 Rue René Cassin',codePostal:'71100',lat:46.7808,lon:4.853}
   ],
   plan:{
     Jeudi:[
@@ -45,15 +45,17 @@ assert.equal(typeof ctx.storeRunnerBuildAppleRouteUrl,'function','Le constructeu
 assert.equal(ctx.storeRunnerCanonicalRouteStore(state.plan.Jeudi[0]),state.stores[0],'Le magasin actuel doit remplacer la copie périmée du planning');
 
 const url=decodeURIComponent(ctx.storeRunnerBuildAppleRouteUrl('Jeudi'));
-assert(url.includes('source=45.758,4.8'),'Le départ doit utiliser les coordonnées GPS actuelles');
-assert(url.includes('waypoint=45.8377,4.7715'),'Limonest doit utiliser les coordonnées de la fiche magasin actuelle');
-assert(url.includes('destination=46.7808,4.853'),'Chalon doit utiliser les coordonnées de la fiche magasin actuelle');
+assert(url.includes('source=45.758,4.8'),'Le départ conserve les coordonnées GPS actuelles');
+assert(url.includes('waypoint=Boulanger, Route Nationale 6, 69760, Limonest'),'Limonest doit utiliser l’adresse actuelle de la fiche magasin');
+assert(url.includes('destination=Boulanger, 2 Rue René Cassin, 71100, Chalon-sur-Saône'),'Chalon doit utiliser l’adresse actuelle de la fiche magasin');
 assert(!url.includes('MAUVAISE ADRESSE')&&!url.includes('ANCIENNE ADRESSE'),'Les anciennes adresses stockées dans le planning ne doivent jamais partir vers Plans');
 assert(!url.includes('1,2')&&!url.includes('3,4'),'Les anciennes coordonnées stockées dans le planning ne doivent jamais partir vers Plans');
+assert(!url.includes('45.8377,4.7715')&&!url.includes('46.7808,4.853'),'Une adresse actuelle doit être prioritaire sur les coordonnées magasin pour Apple Plans');
 
-state.stores[0].lat='';
-state.stores[0].lon='';
+state.stores[0].adresse='';
+state.stores[0].codePostal='';
+state.stores[0].ville='';
 const fallback=decodeURIComponent(ctx.storeRunnerBuildAppleRouteUrl('Jeudi'));
-assert(fallback.includes('waypoint=Boulanger, Route Nationale 6, Limonest'),'Sans GPS, le texte doit venir de la fiche magasin actuelle et inclure enseigne + adresse + ville');
+assert(fallback.includes('waypoint=45.8377,4.7715'),'Sans adresse exploitable, Plans doit reprendre les coordonnées GPS actuelles en secours');
 
-console.log('Apple route canonical stores: OK · Plans uses current store records and GPS coordinates');
+console.log('Apple route canonical stores: OK · Plans prefers current postal addresses and falls back to current GPS');
