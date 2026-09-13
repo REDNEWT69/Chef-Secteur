@@ -189,7 +189,6 @@ function resolveSnailStart(state=root.state,doc=root.document,now=new Date()){
   return upcomingWorkMonday(now);
 }
 function syncPlanningControlsForSnail(state=root.state){
-  if(typeof root.readPlanningControls==='function')root.readPlanningControls();
   const first=resolveSnailStart(state,root.document),start=iso(first),end=iso(addDays(first,20));
   if(!state.settings)state.settings={};state.settings.weekDate=start;
   const week=root.document&&root.document.getElementById('weekDate'),rangeStart=root.document&&root.document.getElementById('rangeStart'),rangeEnd=root.document&&root.document.getElementById('rangeEnd');
