@@ -92,6 +92,60 @@ async function touchDrag(page, from, to, steps = 6) {
   }
 }
 
+test('Les réglages ne sont visibles que dans leur feuille à 390 px', async ({ page }) => {
+  const errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.StoreRunnerNavigation&&window.state&&typeof window.renderAll==='function');
+  await installFixture(page);
+  const settings=page.locator('#planningSettings');
+  const shortcut=page.locator('#planningSettingsShortcut');
+  await expect(shortcut).toBeVisible();
+  await expect(settings).not.toBeVisible();
+  await settings.evaluate(el=>{el.open=true});
+  await expect(settings).not.toBeVisible();
+  await expect(settings).not.toHaveAttribute('role','dialog');
+  await shortcut.tap();
+  await expect(settings).toBeVisible();
+  await expect(settings).toHaveAttribute('role','dialog');
+  await expect(settings.locator(':scope > summary')).not.toBeVisible();
+  const close=settings.locator('[data-planning-settings-close]');
+  await expect(close).toBeVisible();
+  const closeBox=await close.boundingBox();
+  expect(closeBox.width).toBeGreaterThanOrEqual(44);
+  expect(closeBox.height).toBeGreaterThanOrEqual(44);
+  const field=settings.locator('#target');
+  await field.fill('17');
+  const structure=await page.evaluateHandle(()=>({
+    panel:document.getElementById('planningSettings'),
+    inner:document.querySelector('#planningSettings .settingsInner'),
+    field:document.getElementById('target'),
+    parent:document.getElementById('planningSettings').parentNode
+  }));
+  await page.evaluate(async()=>{
+    for(let i=0;i<6;i++){
+      renderAll();
+      document.dispatchEvent(new CustomEvent('store-runner:planning-updated'));
+      await new Promise(requestAnimationFrame);
+    }
+  });
+  expect(await structure.evaluate(s=>s.panel===document.getElementById('planningSettings')&&
+    s.inner===s.panel.querySelector('.settingsInner')&&s.field===document.getElementById('target')&&
+    s.panel.parentNode===s.parent)).toBe(true);
+  await expect(field).toHaveValue('17');
+  await expect(settings).toHaveCount(1);
+  await expect(shortcut).toHaveCount(1);
+  await close.tap();
+  await expect(settings).not.toBeVisible();
+  await page.evaluate(()=>{goTab('storesPanel');goTab('planPanel')});
+  await shortcut.tap();
+  await expect(field).toHaveValue('17');
+  await expect(settings.locator('[data-planning-settings-close]')).toHaveCount(1);
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  expect(errors).toEqual([]);
+});
+
 test('Store Runner V1 reste utilisable sur un vrai viewport mobile 390 px', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(String(error && error.message || error)));
@@ -311,9 +365,8 @@ test('Le filtre Enseignes affiche le vrai vivier et Tout sélectionner à 390 px
     document.dispatchEvent(new CustomEvent('store-runner:planning-updated'));
   });
   await page.waitForTimeout(950);
+  await page.locator('#planningSettingsShortcut').tap();
   await page.evaluate(() => {
-    const settings=document.getElementById('planningSettings');
-    if(settings)settings.open=true;
     const brands=document.getElementById('planningBrandsDetails');
     if(brands)brands.open=true;
   });

@@ -48,7 +48,8 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
   });
 
   const settings=page.locator('#planningSettings');
-  await settings.evaluate(el=>{el.open=true});
+  await page.locator('#planningSettingsShortcut').tap();
+  await expect(settings).toHaveAttribute('role','dialog');
   const range=page.locator('#rangePlannerCard');
   await range.evaluate(el=>{el.open=true});
   await page.evaluate(() => {
@@ -99,6 +100,8 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
   expect(new Set(all).size).toBe(60);
   expect(all.slice(0,5)).toEqual(['snail-01','snail-02','snail-03','snail-04','snail-05']);
 
+  await page.locator('[data-planning-settings-close]').tap();
+  await expect(settings).not.toBeVisible();
   const week2Tab=page.locator('#dayTabs .periodDayTab[data-date="2026-09-21"]');
   const week3Tab=page.locator('#dayTabs .periodDayTab[data-date="2026-09-28"]');
   const week1Tab=page.locator('#dayTabs .periodDayTab[data-date="2026-09-14"]');
