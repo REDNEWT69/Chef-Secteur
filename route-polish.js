@@ -6,16 +6,26 @@
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function selectedDay(){try{const active=document.querySelector('#dayTabs .dayTab.active');if(active){const txt=active.textContent||'';const d=DAYS.find(x=>norm(txt).includes(norm(x)));if(d)return d}if(typeof window.selectedPlanningDay==='string'&&window.selectedPlanningDay)return window.selectedPlanningDay;return ((state.settings&&state.settings.days)||DAYS)[0]||'Lundi'}catch(e){return'Lundi'}}
-  function routeForDay(day){try{return (state.plan&&state.plan[day])||[]}catch(e){return[]}}
+  function allStores(){try{return Array.isArray(state.stores)?state.stores:[]}catch(e){return[]}}
+  function canonicalStore(planned){
+    if(!planned)return planned;
+    const stores=allStores();
+    if(planned.id!=null){const byId=stores.find(s=>s&&String(s.id)===String(planned.id));if(byId)return byId}
+    const key=norm((planned.enseigne||'')+'|'+(planned.ville||''));
+    if(key!=='|'){const matches=stores.filter(s=>s&&norm((s.enseigne||'')+'|'+(s.ville||''))===key);if(matches.length===1)return matches[0]}
+    return planned;
+  }
+  function routeForDay(day){try{return ((state.plan&&state.plan[day])||[]).map(canonicalStore)}catch(e){return[]}}
   function profile(){try{return state.profile||{}}catch(e){return{}}}
-  function baseCoordinate(){const p=profile();return isFinite(Number(p.baseLat))&&isFinite(Number(p.baseLon))?{lat:Number(p.baseLat),lon:Number(p.baseLon)}:null}
-  function storeCoordinate(s){return s&&isFinite(Number(s.lat))&&isFinite(Number(s.lon))?{lat:Number(s.lat),lon:Number(s.lon)}:null}
-  function basePoint(){const p=profile();if(p.baseAddress)return p.baseAddress;if(isFinite(Number(p.baseLat))&&isFinite(Number(p.baseLon)))return Number(p.baseLat)+','+Number(p.baseLon);return''}
-  function storePoint(s){if(!s)return'';if(s.adresse||s.ville)return [s.adresse,s.ville].filter(Boolean).join(' ');if(isFinite(Number(s.lat))&&isFinite(Number(s.lon)))return Number(s.lat)+','+Number(s.lon);return s.ville||s.enseigne||''}
+  function coordValue(v,min,max){if(v==null||String(v).trim()==='')return null;const n=Number(v);return Number.isFinite(n)&&n>=min&&n<=max?n:null}
+  function baseCoordinate(){const p=profile(),lat=coordValue(p.baseLat,-90,90),lon=coordValue(p.baseLon,-180,180);return lat!=null&&lon!=null?{lat,lon}:null}
+  function storeCoordinate(s){s=canonicalStore(s);if(!s)return null;const lat=coordValue(s.lat,-90,90),lon=coordValue(s.lon,-180,180);return lat!=null&&lon!=null?{lat,lon}:null}
+  function basePoint(){const p=profile(),c=baseCoordinate();if(c)return c.lat+','+c.lon;if(p.baseAddress)return p.baseAddress;return''}
+  function storePoint(s){s=canonicalStore(s);if(!s)return'';const c=storeCoordinate(s);if(c)return c.lat+','+c.lon;if(s.adresse||s.ville)return [s.enseigne,s.adresse,s.ville].filter(Boolean).join(', ');return s.ville||s.enseigne||''}
 
   function appleDirectionsUrl(day){const route=routeForDay(day);if(!route.length)return'';const source=basePoint()||storePoint(route[0]),destination=storePoint(route[route.length-1]),startIndex=basePoint()?0:1;const middle=route.slice(startIndex,-1).map(storePoint).filter(Boolean);let url='https://maps.apple.com/directions?source='+encodeURIComponent(source)+'&destination='+encodeURIComponent(destination)+'&mode=driving';middle.forEach(w=>{url+='&waypoint='+encodeURIComponent(w)});return url}
   function openRoute(){const url=appleDirectionsUrl(selectedDay());if(url)window.open(url,'_blank','noopener')}
-  window.showPlanMap=openRoute;window.openSelectedDayRoute=openRoute;
+  window.showPlanMap=openRoute;window.openSelectedDayRoute=openRoute;window.storeRunnerBuildAppleRouteUrl=appleDirectionsUrl;window.storeRunnerCanonicalRouteStore=canonicalStore;
 
   function loadLeaflet(){if(window.L&&window.L.map)return Promise.resolve(window.L);if(leafletLoading)return leafletLoading;leafletLoading=new Promise((resolve,reject)=>{if(!document.getElementById('leaflet-css')){const css=document.createElement('link');css.id='leaflet-css';css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(css)}const existing=document.getElementById('leaflet-js');if(existing){if(window.L)return resolve(window.L);existing.addEventListener('load',()=>resolve(window.L),{once:true});existing.addEventListener('error',()=>reject(new Error('Leaflet indisponible')),{once:true});return}const js=document.createElement('script');js.id='leaflet-js';js.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';js.onload=()=>resolve(window.L);js.onerror=()=>reject(new Error('Impossible de charger la carte'));document.head.appendChild(js)}).finally(()=>{leafletLoading=null});return leafletLoading}
 
