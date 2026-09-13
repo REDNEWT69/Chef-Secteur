@@ -106,14 +106,12 @@ test('Store Runner V1 reste utilisable sur un vrai viewport mobile 390 px', asyn
   await expect(plan).toBeVisible();
   await expect(page.locator('#planningToolsV2')).toBeVisible();
 
-  // Pas de débordement horizontal global à 390 px.
   const overflow = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
     clientWidth: document.documentElement.clientWidth
   }));
   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
 
-  // Lun -> Ven doivent tous être réellement accessibles dans le viewport sans jour coupé.
   const tabs = page.locator('#dayTabs .periodDayTab');
   await expect(tabs).toHaveCount(5);
   const tabBoxes = await tabs.evaluateAll(nodes => nodes.map(n => {
@@ -126,13 +124,11 @@ test('Store Runner V1 reste utilisable sur un vrai viewport mobile 390 px', asyn
     expect(box.right).toBeLessThanOrEqual(391);
   }
 
-  // Tap direct sur un jour.
   await tabs.nth(0).click();
   await expect(tabs.nth(0)).toHaveClass(/active/);
   await tabs.nth(1).click();
   await expect(tabs.nth(1)).toHaveClass(/active/);
 
-  // Swipe franc depuis la liste : exactement un jour.
   const swipeTarget = page.locator('#planPanel .timelineRow .tlMain').first();
   await expect(swipeTarget).toBeVisible();
   const swipeBox = await swipeTarget.boundingBox();
@@ -146,7 +142,6 @@ test('Store Runner V1 reste utilisable sur un vrai viewport mobile 390 px', asyn
   await page.waitForTimeout(220);
   expect(await activeDate(page)).toBe('2026-09-15');
 
-  // Petit mouvement horizontal : aucun changement de jour.
   const beforeSmallMove = await activeDate(page);
   const freshBox = await page.locator('#planPanel .timelineRow .tlMain').first().boundingBox();
   if (!freshBox) throw new Error('Zone de swipe introuvable après changement de jour');
@@ -158,7 +153,6 @@ test('Store Runner V1 reste utilisable sur un vrai viewport mobile 390 px', asyn
   await page.waitForTimeout(120);
   expect(await activeDate(page)).toBe(beforeSmallMove);
 
-  // Le geste vertical de liste ne doit pas être preventDefault par le moteur de swipe.
   await page.evaluate(() => {
     window.__e2eVerticalPrevented = null;
     const shell = document.querySelector('#planPanel .timelineShell');
@@ -174,11 +168,9 @@ test('Store Runner V1 reste utilisable sur un vrai viewport mobile 390 px', asyn
   await page.waitForTimeout(120);
   expect(await page.evaluate(() => window.__e2eVerticalPrevented)).toBe(false);
 
-  // Après un swipe, un tap sur la bande des jours doit rester immédiat (pas de clic fantôme global).
   await tabs.nth(2).click();
   expect(await activeDate(page)).toBe('2026-09-16');
 
-  // Interaction sur une carte/bouton : elle ne doit jamais changer de jour à elle seule.
   const beforeCard = await activeDate(page);
   const rowAction = page.locator('#planPanel .timelineRow button').first();
   if (await rowAction.count()) {
@@ -188,7 +180,6 @@ test('Store Runner V1 reste utilisable sur un vrai viewport mobile 390 px', asyn
     await page.keyboard.press('Escape').catch(() => {});
   }
 
-  // À la fin du scroll, la dernière visite doit rester au-dessus de la navigation basse.
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await page.waitForTimeout(160);
   const lastRow = page.locator('#planPanel .timelineRow').last();
@@ -197,7 +188,6 @@ test('Store Runner V1 reste utilisable sur un vrai viewport mobile 390 px', asyn
   const navBox = await page.locator('.bottomAppNav').boundingBox();
   if (lastBox && navBox) expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(navBox.y + 2);
 
-  // Le bouton de génération doit produire un retour visible, même sur un scénario d'erreur contrôlé.
   await page.evaluate(() => {
     const st = window.state || state;
     st.stores = [];
@@ -244,7 +234,6 @@ test('Pose datée et verrou récurrent restent explicites dans Magasins à 390 p
   let select = line.locator('select');
   await expect(select).toBeVisible();
 
-  // La pose datée doit être décrite comme telle, et le contrôle doit rester dans le viewport.
   let selectedText = await select.locator('option:checked').textContent();
   expect(selectedText).toContain('Posé ce mardi');
   expect(selectedText).toContain('semaine du 14/09');
@@ -259,7 +248,6 @@ test('Pose datée et verrou récurrent restent explicites dans Magasins à 390 p
   }));
   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
 
-  // Le passage vers « Tous les mardis » est volontaire et écrit la forme chaîne historique.
   await select.selectOption('Mardi');
   await page.waitForTimeout(120);
   expect(await page.evaluate(() => (window.state || state).locks['e2e-1'])).toBe('Mardi');
@@ -267,7 +255,6 @@ test('Pose datée et verrou récurrent restent explicites dans Magasins à 390 p
   selectedText = await select.locator('option:checked').textContent();
   expect(selectedText).toBe('Tous les mardis');
 
-  // « Jour libre » libère réellement le magasin.
   await select.selectOption('');
   await page.waitForTimeout(120);
   expect(await page.evaluate(() => Object.prototype.hasOwnProperty.call((window.state || state).locks, 'e2e-1'))).toBe(false);
@@ -324,7 +311,13 @@ test('Le filtre Enseignes affiche le vrai vivier et Tout sélectionner à 390 px
     document.dispatchEvent(new CustomEvent('store-runner:planning-updated'));
   });
   await page.waitForTimeout(950);
-  await page.evaluate(() => { const s=document.getElementById('planningSettings'); if(s) s.open=true; });
+  await page.evaluate(() => {
+    const settings=document.getElementById('planningSettings');
+    if(settings)settings.open=true;
+    const brands=document.getElementById('planningBrandsDetails');
+    if(brands)brands.open=true;
+  });
+  await page.waitForTimeout(80);
 
   const countLine = page.locator('#planningDynamicStoreCount');
   await expect(countLine).toContainText('41 magasins disponibles pour le planning');
