@@ -17,6 +17,7 @@
   import { createStore } from '../src/core/store.mjs';
   import { createPlanningFeature } from '../src/planning/planning.mjs';
   import { createPlanningRangeFeature } from '../src/planning/range-ui.mjs';
+  import { createTerrainToolsFeature } from '../src/planning/terrain-tools.mjs';
   import { loadState, saveState } from '../src/storage/persistence.mjs';
   import { createStoresFeature } from '../src/stores/stores.mjs';
 
@@ -53,6 +54,9 @@
 
   const planningFeature = createPlanningFeature({ document, store });
   shell.mountScreen('planning', planningFeature.element);
+
+  const terrainToolsFeature = createTerrainToolsFeature({ document, store });
+  shell.mountScreen('planning', terrainToolsFeature.element);
 
   const planningRangeFeature = createPlanningRangeFeature({ document, store });
   shell.mountScreen('planning', planningRangeFeature.element);
