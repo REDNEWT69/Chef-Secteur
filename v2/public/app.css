@@ -196,6 +196,7 @@ body {
   display: grid;
   gap: 10px;
   min-width: 0;
+  touch-action: pan-y;
 }
 
 .srv2-planning-card {
