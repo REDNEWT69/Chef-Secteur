@@ -33,9 +33,13 @@ for(const [label,re] of [
 ])if(re.test(storeLookup))throw new Error(`Assistant magasins: wrapper ${label} interdit`);
 if(!/window\.chefSecteurStoreScheduleAnswer\s*=/.test(storeLookup))throw new Error('Assistant magasins: résolveur public absent');
 if(!/storeRunnerRegisterAssistantResolver/.test(storeLookup))throw new Error('Assistant magasins: résolveur non enregistré');
-if(!/store-runner:planning-updated/.test(storeLookup))throw new Error('Assistant magasins: écoute planning-updated absente');
-if(!/store-runner:data-restored/.test(storeLookup))throw new Error('Assistant magasins: écoute data-restored absente');
-if(!/MutationObserver/.test(storeLookup)||!/observedPlanHost/.test(storeLookup))throw new Error('Assistant magasins: observation du planning absente');
+// L'assistant magasins n'est pas propriétaire du planning ni de l'archive : il les lit.
+// Ces trois règles remplacent l'exigence inverse, qui imposait un MutationObserver sur
+// #planPanel et figeait ainsi le défaut corrigé ici — l'archive de la semaine courante
+// réécrite en magasins réduits 80 ms après n'importe quel rendu.
+if(/MutationObserver/.test(storeLookup))throw new Error('Assistant magasins: pas d’observateur sur une zone qui ne lui appartient pas');
+if(/setItem\s*\(\s*ARCHIVE_KEY/.test(storeLookup)||/saveArchive/.test(storeLookup))throw new Error('Assistant magasins: l’archive du planificateur est en lecture seule pour ce module');
+if(!/currentPlanEntry/.test(storeLookup)||!/state\.plan/.test(storeLookup))throw new Error('Assistant magasins: la semaine courante doit être lue dans state.plan');
 if(!/__chefStorage/.test(storeLookup))throw new Error('Assistant magasins: archive doit utiliser le stockage robuste de l’application');
 if(/localStorage\.getItem\(ARCHIVE_KEY\)|localStorage\.setItem\(ARCHIVE_KEY/.test(storeLookup))throw new Error('Assistant magasins: archive ne doit pas dépendre directement de localStorage');
 if(/addEventListener\(['"]load['"],[\s\S]{0,160}(?:observePlanning|scheduleSnapshot|refreshPlanningArchive)/.test(storeLookup))throw new Error('Assistant magasins: initialisation redondante au load interdite');
