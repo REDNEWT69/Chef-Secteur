@@ -8,6 +8,8 @@ import {
   distanceKm,
   flattenRangeChronologically,
   generatePlanningRange,
+  isPlanningEligibleStore,
+  planningReach,
   resolvePlanningOrigin,
   sortStoresByDistance,
 } from '../src/planning/range.mjs';
@@ -75,6 +77,50 @@ assert.equal(SNAIL_RANGE_ALGORITHM, 'snail-distance-v1');
   assert.deepEqual(sortStoresByDistance(rows, origin).map(row => row.id), ['near', 'mid', 'far', 'missing']);
 }
 
+// Le mode escargot doit consommer le même vivier métier que la V1 : actif,
+// non exclu, compatible filtre Enseignes et compatible filtre Produits.
+{
+  const state = sectorState(8);
+  for (let index = 0; index < state.stores.length; index += 1) {
+    state.stores[index].enseigne = index < 5 ? 'Brand A' : 'Brand B';
+    state.stores[index].products = ['P'];
+  }
+  state.stores[1].active = false;          // s2 désactivé
+  state.stores[2].products = ['Autre'];    // s3 filtré Produit
+  state.planning.excludedStoreIds = ['s1'];
+  state.settings.brands = ['Brand A'];     // s6-s8 filtrés Enseigne
+  state.settings.products = ['P'];
+  state.settings.target = 8;
+
+  assert.deepEqual(planningReach(state), {
+    totalStores: 8,
+    activeStores: 7,
+    inactiveStores: 1,
+    excludedStores: 1,
+    filteredStores: 4,
+    eligibleStores: 2,
+  });
+  assert.equal(isPlanningEligibleStore(state, state.stores[0]), false);
+  assert.equal(isPlanningEligibleStore(state, state.stores[3]), true);
+  assert.equal(isPlanningEligibleStore(state, state.stores[5]), false);
+
+  const range = generatePlanningRange(state, { weeks: 1 });
+  assert.deepEqual(flattenRangeChronologically(range), ['s4', 's5']);
+  assert.equal(range.eligibleStores, 2);
+  assert.equal(range.excludedStores, 1);
+  assert.equal(range.filteredStores, 4);
+  assert.equal(range.inactiveStores, 1);
+  assert.equal(range.remainingStores, 0);
+}
+
+// Si les filtres/exclusions vident entièrement le vivier, on refuse de créer
+// trois semaines qui auraient l'air valides mais seraient vides.
+{
+  const state = sectorState(2);
+  state.settings.brands = ['Enseigne inexistante'];
+  assert.throws(() => generatePlanningRange(state), /Aucun magasin planifiable/);
+}
+
 // Contrat opérationnel demandé : 83 magasins, 20 visites/semaine, 3 semaines.
 // Les 60 premiers magasins les plus proches doivent être couverts une seule
 // fois avant d'envisager une répétition, dans un ordre chronologique radial.
@@ -88,6 +134,7 @@ assert.equal(SNAIL_RANGE_ALGORITHM, 'snail-distance-v1');
   assert.equal(range.weeks.length, 3);
   assert.equal(range.totalVisits, 60);
   assert.equal(range.distinctStores, 60);
+  assert.equal(range.eligibleStores, 83);
   assert.equal(range.remainingStores, 23);
   assert.equal(range.missingCoordinates, 0);
   assert.equal(JSON.stringify(state), before, 'generatePlanningRange ne doit jamais muter l’état source');
@@ -133,6 +180,16 @@ assert.equal(SNAIL_RANGE_ALGORITHM, 'snail-distance-v1');
   assert.deepEqual(flattenRangeChronologically(range), ['s1', 's3', 's4', 's2']);
 }
 
+// Un magasin sans GPS mais hors vivier ne doit pas polluer l'alerte GPS.
+{
+  const state = sectorState(3);
+  state.stores[0].lat = '';
+  state.stores[0].lon = '';
+  state.planning.excludedStoreIds = ['s1'];
+  const range = generatePlanningRange(state, { weeks: 1 });
+  assert.equal(range.missingCoordinates, 0);
+}
+
 // Sans point de départ, le mode escargot refuse clairement de fabriquer un
 // ordre arbitraire qui aurait l'air crédible.
 {
@@ -159,10 +216,13 @@ assert.equal(SNAIL_RANGE_ALGORITHM, 'snail-distance-v1');
   assert.equal(snapshot.settings.weekDate, '2026-09-14');
   assert.equal(snapshot.planning.lastRange.algorithm, SNAIL_RANGE_ALGORITHM);
   assert.equal(snapshot.planning.lastRange.distinctStores, 60);
+  assert.equal(snapshot.planning.lastRange.eligibleStores, 83);
 
+  const reach = feature.element.children.find(child => child.classList.contains('srv2-planning-range-reach'));
+  assert.equal(reach.textContent, '83 magasins planifiables');
   const status = feature.element.children.find(child => child.classList.contains('srv2-planning-range-status'));
   assert(status.textContent.includes('60 visites'));
-  assert(status.textContent.includes('23 magasins restent'));
+  assert(status.textContent.includes('23 magasins planifiables restent'));
   feature.destroy();
 }
 
