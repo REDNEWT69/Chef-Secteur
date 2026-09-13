@@ -7,6 +7,7 @@ test.use({
   isMobile: true,
   hasTouch: true,
   deviceScaleFactor: 1,
+  serviceWorkers: 'block',
   screenshot: 'only-on-failure',
   trace: 'retain-on-failure'
 });
