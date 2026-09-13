@@ -61,10 +61,10 @@ test('V2 terrain : départ local -> 3 semaines -> texte TeamHaven -> reload à 3
 
   await range.locator('.srv2-planning-range-generate').tap();
   await expect(range.locator('.srv2-planning-range-status')).toContainText('3 semaines générées');
-  await expect(output).toContainText('SEMAINE DU 14/09/2026');
-  await expect(output).toContainText('Lundi 14/09/2026');
-  await expect(output).toContainText('Enseigne Alpha · Ville Alpha · 10 rue Démonstration');
-  await expect(output).toContainText('SEMAINE DU 28/09/2026');
+  await expect(output).toHaveValue(/SEMAINE DU 14\/09\/2026/);
+  await expect(output).toHaveValue(/Lundi 14\/09\/2026/);
+  await expect(output).toHaveValue(/Enseigne Alpha · Ville Alpha · 10 rue Démonstration/);
+  await expect(output).toHaveValue(/SEMAINE DU 28\/09\/2026/);
   await expect(copy).toBeEnabled();
 
   const copyBox = await copy.boundingBox();
