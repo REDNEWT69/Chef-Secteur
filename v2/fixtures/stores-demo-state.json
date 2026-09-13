@@ -38,6 +38,11 @@
   "visits": [],
   "actions": [],
   "appointments": [],
-  "planning": {},
-  "settings": {}
+  "planning": {"weeks": {}},
+  "settings": {
+    "weekDate": "2026-09-16",
+    "days": ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"],
+    "target": 3,
+    "maxVisitsPerDay": 2
+  }
 }

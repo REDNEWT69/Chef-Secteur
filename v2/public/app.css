@@ -60,8 +60,6 @@ body {
   min-width: 0;
   overflow-y: auto;
   padding: 16px;
-  /* La nav basse ne doit jamais masquer le contenu : on lui réserve sa
-     hauteur ici plutôt que de compter sur un margin approximatif. */
   padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
 }
 
@@ -107,8 +105,124 @@ body {
   font-weight: 600;
 }
 
-/* V2-03 — Magasins. Ces styles appartiennent à la feature V2 et restent
-   volontairement simples : aucune reprise des couches CSS historiques V1. */
+.srv2-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #55585f;
+}
+
+/* V2-04 — Planning semaine. */
+.srv2-planning-feature {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.srv2-planning-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  min-width: 0;
+}
+
+.srv2-planning-date {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.srv2-planning-date input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid #d5d8de;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #14161a;
+  font: inherit;
+  font-size: 16px;
+  padding: 9px 10px;
+}
+
+.srv2-planning-generate {
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  padding: 0 13px;
+  background: #0a66ff;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.srv2-planning-status {
+  min-height: 18px;
+  font-size: 13px;
+}
+
+.srv2-planning-days {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.srv2-planning-days::-webkit-scrollbar { display: none; }
+
+.srv2-planning-day {
+  flex: 1 0 58px;
+  min-width: 58px;
+  min-height: 44px;
+  border: 1px solid #d8dbe1;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #55585f;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 6px;
+}
+
+.srv2-planning-day.is-active {
+  border-color: #0a66ff;
+  color: #0a66ff;
+  font-weight: 700;
+}
+
+.srv2-planning-list {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.srv2-planning-card {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #e0e2e7;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.srv2-planning-card > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.srv2-planning-store-name { font-size: 15px; }
+.srv2-planning-store-location,
+.srv2-planning-store-address {
+  display: block;
+  font-size: 13px;
+  color: #666a72;
+}
+.srv2-planning-empty { padding: 16px 0; }
+
+/* V2-03 — Magasins. */
 .srv2-stores-feature {
   display: grid;
   gap: 12px;
@@ -119,12 +233,6 @@ body {
   display: grid;
   gap: 7px;
   min-width: 0;
-}
-
-.srv2-field-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: #55585f;
 }
 
 .srv2-store-search input {
@@ -140,9 +248,7 @@ body {
   padding: 10px 12px;
 }
 
-.srv2-store-summary {
-  font-size: 13px;
-}
+.srv2-store-summary { font-size: 13px; }
 
 .srv2-store-list {
   display: grid;
@@ -236,8 +342,12 @@ body {
   gap: 8px;
   margin-top: 12px;
 }
-
 .srv2-store-detail-body p { margin: 0; }
+
+@media (max-width: 360px) {
+  .srv2-planning-controls { grid-template-columns: 1fr; }
+  .srv2-planning-generate { width: 100%; }
+}
 
 @media (prefers-color-scheme: dark) {
   body { background: #0f1115; color: #f2f3f5; }
@@ -245,6 +355,9 @@ body {
   .srv2-screen p { color: #b7bac0; }
   .srv2-tab { color: #9a9ea6; }
   .srv2-field-label { color: #b7bac0; }
+  .srv2-planning-date input,
+  .srv2-planning-day,
+  .srv2-planning-card,
   .srv2-store-search input,
   .srv2-store-card,
   .srv2-store-detail-panel {
@@ -252,6 +365,9 @@ body {
     color: #f2f3f5;
     border-color: #2a2d34;
   }
+  .srv2-planning-day.is-active { border-color: #5b9cff; color: #8bb6ff; }
+  .srv2-planning-store-location,
+  .srv2-planning-store-address,
   .srv2-store-location,
   .srv2-store-address,
   .srv2-store-inactive { color: #b7bac0; }
