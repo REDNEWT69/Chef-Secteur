@@ -592,6 +592,20 @@ window.storeRunnerPlannedStoreIsPinned=function(id,day){return isPinnedOn(id,day
 /* Le noyau historique affiche le repère « posé » et régénère une journée : il doit lire
    le verrou avec la même règle que le moteur, sans redéfinir les deux formes de son côté. */
 window.storeRunnerLockDayForWeek=function(id,weekKey){return lockDayForWeek(id,weekKey===undefined?currentWeekKey():weekKey)};
+/* Décrire un verrou sans en redéfinir les formes ailleurs : la liste des magasins doit
+   pouvoir distinguer « tous les mardis » d'une pose sur une seule semaine. */
+window.storeRunnerLockInfo=function(id){const e=lockEntry(id);return e?{day:e.day,week:e.week,recurring:!e.week}:null};
+/* Verrou récurrent, écrit depuis la liste des magasins et depuis l'assistant : ces deux
+   entrées ne connaissent aucune semaine affichée, leur sens est « tous les mardis ». La
+   pose datée reste réservée au bouton du planning, qui agit sur une semaine précise. */
+window.storeRunnerSetRecurringLock=function(id,day){
+  if(!id)return false;
+  if(!state.locks)state.locks={};
+  if(!day){delete state.locks[String(id)];return true}
+  if(!DAYS.includes(day))return false;
+  state.locks[String(id)]=day;
+  return true;
+};
 function boot(){install()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 document.addEventListener('store-runner:planning-updated',recoverInstall);

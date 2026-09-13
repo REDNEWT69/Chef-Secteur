@@ -21,6 +21,23 @@ assert.doesNotMatch(plannerSource,/state\.pins|state\.pinnedWeeks|manualPins/,'a
 // Le noyau lit la même règle au lieu de la redéfinir.
 assert.match(coreSource,/window\.storeRunnerLockDayForWeek/,'le noyau doit consommer la règle publiée par le planificateur');
 assert.match(coreSource,/var pinned=lockDayNow\(st\.id\)===selectedPlanningDay/,'le repère « posé » doit survivre à la forme datée');
+// Onglet Magasins : le menu « Jour » ne doit ni mentir, ni convertir une pose en silence.
+assert.match(coreSource,/window\.storeRunnerLockInfo/,'la liste des magasins doit distinguer un verrou récurrent d’une pose datée');
+assert.match(coreSource,/Posé ce '\+esc\(posee\.day\.toLowerCase\(\)\)\+' \(semaine du /,'une pose datée doit être annoncée dans le menu, pas affichée « Jour libre »');
+assert.match(coreSource,/Tous les '\+DAYS\[d\]\.toLowerCase\(\)\+'s<\/option>/,'choisir un jour dans ce menu doit s’annoncer comme récurrent');
+assert.match(coreSource,/function setRecurringLock\(id,day\)/,'une seule écriture du verrou récurrent dans le noyau');
+assert.match(coreSource,/window\.storeRunnerSetRecurringLock/,'et elle doit passer par le propriétaire de la règle');
+assert.doesNotMatch(coreSource,/state\.locks\[found\.id\]=a\.day/,'l’assistant ne doit plus écrire le verrou en direct');
+assert.doesNotMatch(coreSource,/state\.locks\[x\.store\.id\]=day/,'l’assistant ne doit plus écrire le verrou en direct');
+// Les derniers lecteurs bruts du noyau sont convertis ; ne restent que les suppressions
+// et les deux replis internes, qui sont indifférents à la forme.
+assert.match(coreSource,/lock=lockDayNow\(s\.id\),km=/,'la vue semaine doit marquer « locked » selon la semaine affichée');
+assert.match(coreSource,/state\.included\[s\.id\]\|\|lockDayNow\(s\.id\)/,'le repli de sélection doit lire la même règle');
+assert.match(coreSource,/var lock=lockDayNow\(selected\[i\]\.id\);if\(lock&&groups\[lock\]\)/,'le repli de regroupement ne doit plus fabriquer groups["[object Object]"]');
+// Numérotation de version : la suivante après 149 est 150, pas le numéro du ticket.
+const versionJson=JSON.parse(fs.readFileSync(__dirname+'/../version.json','utf8'));
+assert.equal(versionJson.displayVersion,'150','displayVersion doit suivre main (149), pas le numéro de ticket');
+assert.doesNotMatch(versionJson.latestBuild,/1[0-9]{2}$/,'latestBuild ne doit pas se terminer par un nombre confondable avec une version');
 
 // --- Environnement de test ----------------------------------------------------------
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
@@ -187,6 +204,33 @@ async function runRange(locks){
   assert.equal(t4.ctx.testScope.unpinStore('s05'),true,'le bouton Libérer doit retirer la pose');
   assert.equal(t4.state.locks.s05,undefined);
   assert.equal(t4.ctx.testScope.pinnedDay('s05'),'');
+
+  // --- Les deux écritures publiques, et leur sens respectif -----------------------
+  // Le bouton du planning pose sur une semaine ; la liste des magasins et l'assistant
+  // verrouillent sur tous les jours de ce nom. Une seule règle, deux entrées explicites.
+  const tApi=env({max:4,target:20,stores:SECTOR,weekDate:'2026-09-21'});
+  assert.equal(tApi.ctx.storeRunnerLockInfo('s07'),null,'aucun verrou au départ');
+
+  tApi.ctx.storeRunnerPinPlannedStore('s07','Mardi');
+  let info=tApi.ctx.storeRunnerLockInfo('s07');
+  assert.deepEqual({day:info.day,week:info.week,recurring:info.recurring},{day:'Mardi',week:'2026-09-21',recurring:false},'le bouton du planning pose sur la semaine affichée');
+  assert.equal(tApi.ctx.testScope.lockDayForWeek('s07','2026-09-28'),'','et sur aucune autre');
+
+  // Choisir un jour dans la liste des magasins remplace la pose par un verrou récurrent.
+  assert.equal(tApi.ctx.storeRunnerSetRecurringLock('s07','Jeudi'),true);
+  info=tApi.ctx.storeRunnerLockInfo('s07');
+  assert.deepEqual({day:info.day,week:info.week,recurring:info.recurring},{day:'Jeudi',week:'',recurring:true},'la liste des magasins écrit un verrou récurrent');
+  assert.equal(tApi.ctx.testScope.lockDayForWeek('s07','2026-10-05'),'Jeudi','qui vaut sur toutes les semaines');
+
+  assert.equal(tApi.ctx.storeRunnerSetRecurringLock('s07',''),true,'« Jour libre » libère');
+  assert.equal(tApi.ctx.storeRunnerLockInfo('s07'),null);
+  assert.equal(tApi.ctx.storeRunnerSetRecurringLock('s07','Pizza'),false,'un jour inconnu est refusé, rien n’est écrit');
+  assert.equal(tApi.ctx.storeRunnerLockInfo('s07'),null);
+
+  // storeRunnerLockInfo décrit aussi la forme chaîne existante.
+  const tInfo=env({max:4,target:20,stores:SECTOR,locks:{s08:'Mardi'},weekDate:'2026-09-14'});
+  const i8=tInfo.ctx.storeRunnerLockInfo('s08');
+  assert.deepEqual({day:i8.day,week:i8.week,recurring:i8.recurring},{day:'Mardi',week:'',recurring:true},'la forme chaîne est décrite comme récurrente');
 
   // --- Une valeur inattendue ne fait pas planter et n’impose rien -----------------
   for(const bidon of [{day:'Pizza',week:'2026-09-14'},{week:'2026-09-14'},'Pizza',{},42]){
