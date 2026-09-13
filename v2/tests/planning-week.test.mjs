@@ -29,6 +29,16 @@ function makeState() {
   return state;
 }
 
+function dispatchPointer(element, type, x, y, pointerId = 1) {
+  element.dispatch(type, {
+    pointerId,
+    isPrimary: true,
+    pointerType: 'touch',
+    clientX: x,
+    clientY: y,
+  });
+}
+
 // La date sélectionnée n'a pas besoin d'être un lundi : le contrat est la
 // clé canonique ISO du lundi de la semaine.
 assert.equal(weekMondayFromDate('2026-09-14'), '2026-09-14');
@@ -94,7 +104,8 @@ assert.deepEqual(resolvePlanningDays({ days: [] }), ['Lundi', 'Mardi', 'Mercredi
   assert.equal(state.planning.weeks[week.weekMonday].days.Lundi[0], 'alpha');
 }
 
-// Feature DOM : génération explicite -> persistance dans le store central.
+// Feature DOM : génération explicite -> persistance dans le store central,
+// puis gestes horizontaux confinés à la liste du planning.
 {
   const document = createFakeDocument();
   const store = createStore(makeState());
@@ -115,7 +126,46 @@ assert.deepEqual(resolvePlanningDays({ days: [] }), ['Lundi', 'Mardi', 'Mercredi
   assert.equal(feature.getSelectedDay(), 'Mardi');
   assert.throws(() => feature.selectDay('Dimanche'), PlanningFeatureError);
 
+  const list = feature.element.children.find(child => child.classList.contains('srv2-planning-list'));
+  assert(list, 'liste planning introuvable');
+
+  feature.selectDay('Lundi');
+
+  // Même un très grand swipe gauche n'avance que d'un jour.
+  dispatchPointer(list, 'pointerdown', 320, 120);
+  dispatchPointer(list, 'pointermove', 150, 124);
+  dispatchPointer(list, 'pointerup', 40, 126);
+  assert.equal(feature.getSelectedDay(), 'Mardi');
+
+  // Petit déplacement horizontal sous le seuil : aucun changement.
+  dispatchPointer(list, 'pointerdown', 260, 120, 2);
+  dispatchPointer(list, 'pointermove', 232, 122, 2);
+  dispatchPointer(list, 'pointerup', 228, 123, 2);
+  assert.equal(feature.getSelectedDay(), 'Mardi');
+
+  // Geste vertical : abandonné comme swipe, donc le jour reste intact.
+  dispatchPointer(list, 'pointerdown', 200, 100, 3);
+  dispatchPointer(list, 'pointermove', 194, 170, 3);
+  dispatchPointer(list, 'pointerup', 190, 230, 3);
+  assert.equal(feature.getSelectedDay(), 'Mardi');
+
+  // Swipe droite = jour précédent, puis bord gauche bloqué sur lundi.
+  dispatchPointer(list, 'pointerdown', 80, 120, 4);
+  dispatchPointer(list, 'pointermove', 190, 122, 4);
+  dispatchPointer(list, 'pointerup', 280, 124, 4);
+  assert.equal(feature.getSelectedDay(), 'Lundi');
+
+  dispatchPointer(list, 'pointerdown', 80, 120, 5);
+  dispatchPointer(list, 'pointermove', 190, 122, 5);
+  dispatchPointer(list, 'pointerup', 280, 124, 5);
+  assert.equal(feature.getSelectedDay(), 'Lundi');
+
+  // Après destroy, les listeners du geste sont réellement retirés.
   feature.destroy();
+  dispatchPointer(list, 'pointerdown', 320, 120, 6);
+  dispatchPointer(list, 'pointermove', 150, 124, 6);
+  dispatchPointer(list, 'pointerup', 40, 126, 6);
+  assert.equal(feature.getSelectedDay(), 'Lundi');
 }
 
 // API stricte : document/store manquants refusés clairement.
