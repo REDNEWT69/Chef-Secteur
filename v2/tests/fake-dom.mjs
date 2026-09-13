@@ -1,9 +1,7 @@
 // Faux document minimal, écrit à la main pour les tests de comportement du
-// shell V2 (voir shell.test.mjs). Aucune bibliothèque de simulation DOM
-// (jsdom ou autre) n'est utilisée : ce fichier ne contient que les
-// primitives réellement consommées par v2/src/app/shell.mjs et
-// v2/src/ui/render.mjs (createElement, appendChild, setAttribute/
-// getAttribute, classList, addEventListener, textContent, hidden).
+// shell et des features V2. Aucune bibliothèque de simulation DOM (jsdom ou
+// autre) n'est utilisée : ce fichier ne contient que les primitives réellement
+// consommées par le code V2.
 //
 // `dispatch` n'est pas une primitive DOM : c'est un raccourci de test pour
 // déclencher synchronement les gestionnaires enregistrés via
@@ -36,6 +34,7 @@ function createElement(tagName) {
     children: [],
     parentNode: null,
     hidden: undefined,
+    value: '',
     _classes: new Set(),
     _attributes: new Map(),
     _listeners: new Map(),
@@ -45,6 +44,8 @@ function createElement(tagName) {
     },
     set textContent(value) {
       this._text = String(value);
+      for (const child of this.children) child.parentNode = null;
+      this.children = [];
     },
     setAttribute(name, value) {
       this._attributes.set(name, String(value));
@@ -59,6 +60,11 @@ function createElement(tagName) {
       child.parentNode = this;
       this.children.push(child);
       return child;
+    },
+    replaceChildren(...children) {
+      for (const child of this.children) child.parentNode = null;
+      this.children = [];
+      for (const child of children) this.appendChild(child);
     },
     addEventListener(type, handler) {
       if (!this._listeners.has(type)) this._listeners.set(type, []);

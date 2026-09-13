@@ -11,7 +11,15 @@
 <div id="app"></div>
 <script type="module">
   import { createShell } from '../src/app/shell.mjs';
-  createShell({ root: document.getElementById('app') });
+  import { createStore } from '../src/core/store.mjs';
+  import { createStoresFeature } from '../src/stores/stores.mjs';
+
+  const response = await fetch('../fixtures/stores-demo-state.json', { cache: 'no-store' });
+  if (!response.ok) throw new Error(`Fixture V2 indisponible (${response.status})`);
+  const store = createStore(await response.json());
+  const shell = createShell({ root: document.getElementById('app') });
+  const storesFeature = createStoresFeature({ document, store });
+  shell.mountScreen('stores', storesFeature.element);
 </script>
 </body>
 </html>

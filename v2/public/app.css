@@ -107,9 +107,153 @@ body {
   font-weight: 600;
 }
 
+/* V2-03 — Magasins. Ces styles appartiennent à la feature V2 et restent
+   volontairement simples : aucune reprise des couches CSS historiques V1. */
+.srv2-stores-feature {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.srv2-store-search {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.srv2-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #55585f;
+}
+
+.srv2-store-search input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid #d5d8de;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #14161a;
+  font: inherit;
+  font-size: 16px;
+  padding: 10px 12px;
+}
+
+.srv2-store-summary {
+  font-size: 13px;
+}
+
+.srv2-store-list {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.srv2-store-card {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  min-height: 64px;
+  padding: 12px;
+  border: 1px solid #e0e2e7;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #14161a;
+  font: inherit;
+  text-align: left;
+}
+
+.srv2-store-card > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.srv2-store-name { font-size: 15px; }
+.srv2-store-location,
+.srv2-store-address,
+.srv2-store-inactive {
+  display: block;
+  font-size: 13px;
+  color: #666a72;
+}
+.srv2-store-inactive { font-weight: 600; }
+.srv2-store-empty { padding: 18px 0; }
+
+.srv2-store-detail[hidden] { display: none; }
+.srv2-store-detail {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: rgba(20, 22, 26, .42);
+}
+
+.srv2-store-detail-panel {
+  width: min(100%, 520px);
+  max-height: min(72vh, 620px);
+  overflow: auto;
+  border-radius: 20px;
+  background: #ffffff;
+  color: #14161a;
+  box-shadow: 0 18px 52px rgba(20, 22, 26, .22);
+  padding: 16px;
+}
+
+.srv2-store-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.srv2-store-detail-title {
+  margin: 0;
+  min-width: 0;
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+
+.srv2-store-detail-close {
+  flex: 0 0 auto;
+  min-height: 44px;
+  min-width: 44px;
+  border: 0;
+  border-radius: 12px;
+  padding: 0 12px;
+  background: #eef2f8;
+  color: #14161a;
+  font: inherit;
+}
+
+.srv2-store-detail-body {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.srv2-store-detail-body p { margin: 0; }
+
 @media (prefers-color-scheme: dark) {
   body { background: #0f1115; color: #f2f3f5; }
   .srv2-header, .srv2-nav { background: #16181d; border-color: #24262c; }
   .srv2-screen p { color: #b7bac0; }
   .srv2-tab { color: #9a9ea6; }
+  .srv2-field-label { color: #b7bac0; }
+  .srv2-store-search input,
+  .srv2-store-card,
+  .srv2-store-detail-panel {
+    background: #16181d;
+    color: #f2f3f5;
+    border-color: #2a2d34;
+  }
+  .srv2-store-location,
+  .srv2-store-address,
+  .srv2-store-inactive { color: #b7bac0; }
+  .srv2-store-detail-close { background: #252932; color: #f2f3f5; }
 }

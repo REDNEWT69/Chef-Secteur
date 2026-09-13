@@ -1,0 +1,43 @@
+{
+  "version": 2,
+  "profile": {"sectorName": "Secteur Démo V2"},
+  "stores": [
+    {
+      "id": "demo-alpha",
+      "enseigne": "Enseigne Alpha",
+      "adresse": "10 rue Démonstration",
+      "codePostal": "00001",
+      "ville": "Ville Alpha",
+      "active": true
+    },
+    {
+      "id": "demo-beta",
+      "enseigne": "Enseigne Bêta",
+      "adresse": "20 avenue Exemple",
+      "codePostal": "00002",
+      "ville": "Ville Bêta",
+      "active": true
+    },
+    {
+      "id": "demo-gamma",
+      "enseigne": "Enseigne Gamma",
+      "adresse": "30 boulevard Fictif",
+      "codePostal": "00003",
+      "ville": "Ville Gamma",
+      "active": true
+    },
+    {
+      "id": "demo-delta",
+      "enseigne": "Enseigne Delta",
+      "adresse": "40 allée Prototype",
+      "codePostal": "00004",
+      "ville": "Ville Delta",
+      "active": false
+    }
+  ],
+  "visits": [],
+  "actions": [],
+  "appointments": [],
+  "planning": {},
+  "settings": {}
+}

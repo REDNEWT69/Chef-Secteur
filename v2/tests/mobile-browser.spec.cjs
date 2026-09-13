@@ -113,3 +113,65 @@ test('Store Runner V2 garde un shell mobile unique et réellement utilisable à 
   // Le shell ne doit déclencher aucune erreur JS bloquante au chargement ou à la navigation.
   expect(pageErrors, 'Aucune erreur JavaScript bloquante ne doit remonter dans V2').toEqual([]);
 });
+
+test('V2-03 Magasins : liste, recherche et fiche restent tactiles à 390 px', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(String(error && error.message || error)));
+
+  await page.goto(V2_URL, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.srv2-nav');
+  await page.locator('.srv2-tab[data-tab="stores"]').tap();
+
+  const screen = page.locator('.srv2-screen[data-screen="stores"]');
+  await expect(screen).toBeVisible();
+  await expect(screen.locator('.srv2-screen-placeholder')).toBeHidden();
+
+  const search = screen.locator('.srv2-store-search input');
+  await expect(search).toBeVisible();
+  const searchBox = await search.boundingBox();
+  if (!searchBox) throw new Error('Recherche magasins V2 introuvable');
+  expect(searchBox.height).toBeGreaterThanOrEqual(44);
+  expect(searchBox.x).toBeGreaterThanOrEqual(-1);
+  expect(searchBox.x + searchBox.width).toBeLessThanOrEqual(391);
+
+  const cards = screen.locator('.srv2-store-card');
+  await expect(cards).toHaveCount(4);
+  for (let i = 0; i < await cards.count(); i++) {
+    const box = await cards.nth(i).boundingBox();
+    if (!box) throw new Error(`Carte magasin V2 ${i} introuvable`);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.x).toBeGreaterThanOrEqual(-1);
+    expect(box.x + box.width).toBeLessThanOrEqual(391);
+  }
+
+  // Recherche sans accent : "beta" doit trouver la donnée fictive "Bêta".
+  await search.fill('beta');
+  await expect(screen.locator('.srv2-store-summary')).toHaveText('1 magasin trouvé sur 4');
+  await expect(cards).toHaveCount(1);
+  await expect(cards.first()).toContainText('Enseigne Bêta');
+
+  // Tap carte -> vraie fiche ; le bouton Fermer reste une cible tactile sûre.
+  await cards.first().tap();
+  const detail = page.locator('.srv2-store-detail');
+  await expect(detail).toBeVisible();
+  await expect(detail.locator('.srv2-store-detail-title')).toHaveText('Enseigne Bêta');
+  await expect(detail).toContainText('20 avenue Exemple');
+  const close = detail.locator('.srv2-store-detail-close');
+  const closeBox = await close.boundingBox();
+  if (!closeBox) throw new Error('Fermeture fiche magasin V2 introuvable');
+  expect(closeBox.height).toBeGreaterThanOrEqual(44);
+  expect(closeBox.width).toBeGreaterThanOrEqual(44);
+  await close.tap();
+  await expect(detail).toBeHidden();
+
+  // Une fiche fermée ne doit pas laisser d'overlay invisible devant la nav.
+  await page.locator('.srv2-tab[data-tab="home"]').tap();
+  await expect(page.locator('.srv2-screen[data-screen="home"]')).toBeVisible();
+
+  const overflow = await page.evaluate(() => ({
+    documentScrollWidth: document.documentElement.scrollWidth,
+    documentClientWidth: document.documentElement.clientWidth,
+  }));
+  expect(overflow.documentScrollWidth).toBeLessThanOrEqual(overflow.documentClientWidth + 1);
+  expect(pageErrors, 'La feature Magasins V2 ne doit produire aucune erreur JS').toEqual([]);
+});
