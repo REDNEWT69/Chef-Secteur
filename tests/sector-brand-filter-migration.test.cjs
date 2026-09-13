@@ -46,7 +46,7 @@ function apply(root,newBrands){
   const root=env(old,old);
   assert.deepEqual(apply(root,next),[],"un ancien filtre équivalent à Toutes doit rester Toutes après élargissement du secteur");
   assert.equal(root.state.stores.length,11);
-  assert.deepEqual(root.state.plan,{},'le changement de secteur continue à vider le planning');
+  assert.deepEqual(clone(root.state.plan),{},'le changement de secteur continue à vider le planning');
 }
 
 // Un filtre réellement volontaire doit survivre au changement de secteur.
