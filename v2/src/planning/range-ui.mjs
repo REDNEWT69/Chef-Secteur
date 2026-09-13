@@ -2,7 +2,7 @@
 // Cette feature ne possède que son petit bloc UI ; le shell et planning.mjs
 // restent propriétaires de leurs zones respectives.
 
-import { generatePlanningRange, PlanningRangeError } from './range.mjs';
+import { generatePlanningRange, PlanningRangeError, planningReach } from './range.mjs';
 
 export class PlanningRangeFeatureError extends Error {
   constructor(message) {
@@ -44,6 +44,17 @@ function ensureContainers(draft) {
   if (!draft.settings || typeof draft.settings !== 'object' || Array.isArray(draft.settings)) draft.settings = {};
 }
 
+function reachText(state) {
+  const reach = planningReach(state);
+  const details = [];
+  if (reach.excludedStores) details.push(`${reach.excludedStores} exclu${reach.excludedStores > 1 ? 's' : ''}`);
+  if (reach.filteredStores) details.push(`${reach.filteredStores} filtré${reach.filteredStores > 1 ? 's' : ''}`);
+  if (reach.inactiveStores) details.push(`${reach.inactiveStores} désactivé${reach.inactiveStores > 1 ? 's' : ''}`);
+  return details.length
+    ? `${reach.eligibleStores} planifiables sur ${reach.activeStores} actifs · ${details.join(' · ')}`
+    : `${reach.eligibleStores} magasins planifiables`;
+}
+
 export function createPlanningRangeFeature(options) {
   const { document: doc, store } = requireOptions(options);
   let latestState = store.getState();
@@ -62,6 +73,9 @@ export function createPlanningRangeFeature(options) {
   const origin = doc.createElement('p');
   origin.classList.add('srv2-planning-origin');
 
+  const reach = doc.createElement('p');
+  reach.classList.add('srv2-planning-range-reach');
+
   const button = doc.createElement('button');
   button.setAttribute('type', 'button');
   button.classList.add('srv2-planning-range-generate');
@@ -74,6 +88,7 @@ export function createPlanningRangeFeature(options) {
   root.appendChild(title);
   root.appendChild(description);
   root.appendChild(origin);
+  root.appendChild(reach);
   root.appendChild(button);
   root.appendChild(status);
 
@@ -84,11 +99,13 @@ export function createPlanningRangeFeature(options) {
     const lat = coordinate(rawLat, -90, 90);
     const lon = coordinate(rawLon, -180, 180);
     const hasOrigin = lat !== null && lon !== null;
+    const currentReach = planningReach(state);
     origin.textContent = hasOrigin
       ? `Départ : ${String(label)} · GPS prêt`
       : 'Départ : GPS manquant';
-    button.disabled = !hasOrigin;
-    button.setAttribute('aria-disabled', String(!hasOrigin));
+    reach.textContent = reachText(state);
+    button.disabled = !hasOrigin || currentReach.eligibleStores === 0;
+    button.setAttribute('aria-disabled', String(button.disabled));
   }
 
   function generate() {
@@ -110,14 +127,15 @@ export function createPlanningRangeFeature(options) {
           algorithm: range.algorithm,
           totalVisits: range.totalVisits,
           distinctStores: range.distinctStores,
+          eligibleStores: range.eligibleStores,
         };
       });
 
       const remaining = range.remainingStores > 0
-        ? ` ${range.remainingStores} magasin${range.remainingStores > 1 ? 's' : ''} reste${range.remainingStores > 1 ? 'nt' : ''} hors de ces 3 semaines.`
-        : ' Tous les magasins actifs sont couverts sur la période.';
+        ? ` ${range.remainingStores} magasin${range.remainingStores > 1 ? 's' : ''} planifiable${range.remainingStores > 1 ? 's' : ''} reste${range.remainingStores > 1 ? 'nt' : ''} hors de ces 3 semaines.`
+        : ' Tous les magasins planifiables sont couverts sur la période.';
       const gpsWarning = range.missingCoordinates > 0
-        ? ` ${range.missingCoordinates} magasin${range.missingCoordinates > 1 ? 's' : ''} sans GPS ${range.missingCoordinates > 1 ? 'sont placés' : 'est placé'} à la fin.`
+        ? ` ${range.missingCoordinates} magasin${range.missingCoordinates > 1 ? 's' : ''} planifiable${range.missingCoordinates > 1 ? 's' : ''} sans GPS ${range.missingCoordinates > 1 ? 'sont placés' : 'est placé'} à la fin.`
         : '';
       status.textContent = `3 semaines générées : ${range.totalVisits} visites, ${range.distinctStores} magasins distincts.${remaining}${gpsWarning}`;
       return range;
