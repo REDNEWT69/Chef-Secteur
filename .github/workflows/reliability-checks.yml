@@ -92,10 +92,10 @@ jobs:
           done
           cat /tmp/store-runner-http.log
           exit 1
-      - name: Tester les gestes et le layout mobile réels
+      - name: Tester V1 et V2 dans un vrai navigateur mobile
         env:
           STORE_RUNNER_E2E_URL: http://127.0.0.1:4173/
-        run: npx playwright test tests/mobile-browser.spec.cjs --workers=1 --reporter=line
+        run: npx playwright test tests/mobile-browser.spec.cjs v2/tests/mobile-browser.spec.cjs --workers=1 --reporter=line
       - name: Conserver traces et captures en cas d'échec
         if: failure()
         uses: actions/upload-artifact@v4
