@@ -65,6 +65,7 @@ jobs:
       - run: node v2/tests/state.test.mjs
       - run: node v2/tests/store.test.mjs
       - run: node v2/tests/stores.test.mjs
+      - run: node v2/tests/planning-week.test.mjs
       - run: node v2/tests/storage.test.mjs
       - run: node v2/tests/json-transfer.test.mjs
       - run: node v2/tests/navigation.test.mjs
