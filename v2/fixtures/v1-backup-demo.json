@@ -1,0 +1,51 @@
+{
+  "format": "ChefSecteurBackup",
+  "version": 1,
+  "createdAt": "2026-09-13T12:00:00.000Z",
+  "state": {
+    "schemaVersion": 5,
+    "profile": {
+      "sectorName": "Secteur Import Démo",
+      "repName": "Chef Démo",
+      "baseName": "Départ Import Démo",
+      "baseAddress": "Adresse locale fictive",
+      "baseLat": 45,
+      "baseLon": 4
+    },
+    "stores": [
+      {"id":"v1-01","enseigne":"Import Alpha","ville":"Ville 1","adresse":"1 rue Test","dept":"01","lat":45.01,"lon":4,"active":true,"products":["A"]},
+      {"id":"v1-02","enseigne":"Import Bêta","ville":"Ville 2","adresse":"2 rue Test","dept":"01","lat":45.02,"lon":4,"active":true,"products":["A"]},
+      {"id":"v1-03","enseigne":"Import Gamma","ville":"Ville 3","adresse":"3 rue Test","dept":"01","lat":45.03,"lon":4,"active":true,"products":["A"]},
+      {"id":"v1-04","enseigne":"Import Delta","ville":"Ville 4","adresse":"4 rue Test","dept":"02","lat":45.04,"lon":4,"active":true,"products":["B"]},
+      {"id":"v1-05","enseigne":"Import Epsilon","ville":"Ville 5","adresse":"5 rue Test","dept":"02","lat":45.05,"lon":4,"active":true,"products":["B"]},
+      {"id":"v1-06","enseigne":"Import Zêta","ville":"Ville 6","adresse":"6 rue Test","dept":"03","lat":45.06,"lon":4,"active":true,"products":["C"]},
+      {"id":"v1-07","enseigne":"Import Eta","ville":"Ville 7","adresse":"7 rue Test","dept":"03","lat":45.07,"lon":4,"active":true,"products":["C"]},
+      {"id":"v1-08","enseigne":"Import Inactif","ville":"Ville 8","adresse":"8 rue Test","dept":"04","lat":45.08,"lon":4,"active":false,"products":[]}
+    ],
+    "settings": {
+      "target": 6,
+      "days": ["Lundi","Mardi","Mercredi","Jeudi","Vendredi"],
+      "brands": ["Import Alpha","Import Bêta"],
+      "products": ["A","B","C"],
+      "strategy": "balanced",
+      "weekDate": "2026-09-14",
+      "startTime": "08:00",
+      "endTime": "17:00",
+      "visitMinutes": 60,
+      "maxVisitsPerDay": 2,
+      "visitCreditsByBrand": {"Import Alpha":1}
+    },
+    "visits": [],
+    "actions": [],
+    "appointments": [],
+    "notes": [{"id":"legacy-note","text":"Reste volontairement dans V1"}],
+    "included": [],
+    "excluded": [],
+    "locks": {},
+    "calendarEvents": [],
+    "calendarLastSync": null
+  },
+  "archive": {},
+  "range": null,
+  "catalog": []
+}
