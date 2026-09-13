@@ -3,19 +3,46 @@
   let returnToPlanning=false;
   let installed=false;
   let dragStartY=null;
+  let suppressNextQuickOpen=false;
 
   const SETTINGS_ID='planningSettings';
   const SETTINGS_SHORTCUT_ID='planningSettingsShortcut';
   const SETTINGS_SHEET_CLASS='planningSettingsSheetOpen';
   const SETTINGS_HEADER_ID='planningSettingsSheetHeader';
 
-  function goPlanning(){
+  function activatePlanning(){
     if(typeof window.goTab==='function')window.goTab('planPanel');
     else if(typeof window.switchTab==='function')window.switchTab('planPanel',null);
     if(typeof window.syncBottomNav==='function'){
       try{window.syncBottomNav('planPanel')}catch(e){}
     }
+  }
+
+  function goPlanning(){
+    activatePlanning();
     window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  /* Le remplacement manuel d'un magasin émet store-runner:planning-updated puis l'ancien
+     flux tente encore de rouvrir la fiche du nouveau magasin. La navigation absorbe
+     uniquement cette prochaine ouverture automatique : les ouvertures suivantes restent
+     normales. On évite ainsi le flash de la fiche et on conserve exactement le jour et
+     la position de planning que l'utilisateur était en train de modifier. */
+  function installStoreQuickReturnGuard(){
+    const current=window.openStoreQuick;
+    if(typeof current!=='function')return false;
+    if(current.__storeRunnerPlanningReturnGuard)return true;
+    function guardedOpenStoreQuick(){
+      if(suppressNextQuickOpen){
+        suppressNextQuickOpen=false;
+        activatePlanning();
+        return false;
+      }
+      return current.apply(this,arguments);
+    }
+    guardedOpenStoreQuick.__storeRunnerPlanningReturnGuard=true;
+    window.openStoreQuick=guardedOpenStoreQuick;
+    return true;
   }
 
   function ensureSettingsSheetCss(){
@@ -87,6 +114,7 @@
     if(installed)return;
     installed=true;
     ensureSettingsSheetCss();
+    installStoreQuickReturnGuard();
 
     document.addEventListener('click',function(e){
       const shortcut=e.target&&e.target.closest?e.target.closest('#'+SETTINGS_SHORTCUT_ID):null;
@@ -126,6 +154,17 @@
       if(!returnToPlanning)return;
       returnToPlanning=false;
       goPlanning();
+    });
+
+    document.addEventListener('store-runner:planning-updated',function(e){
+      const reason=e&&e.detail&&e.detail.reason;
+      if(reason!=='day-store-recenter'&&reason!=='store-moved-between-days')return;
+      suppressNextQuickOpen=true;
+      installStoreQuickReturnGuard();
+      if(typeof window.closeStoreQuick==='function'){
+        try{window.closeStoreQuick()}catch(err){}
+      }
+      activatePlanning();
     });
   }
 
