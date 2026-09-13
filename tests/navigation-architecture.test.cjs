@@ -20,7 +20,8 @@ forbid('navigation-controller.js','revalidation DOM des coordonnées',/savedProf
 // Les réglages restent physiquement à leur place dans .applePlan. Le contrôleur de
 // navigation transforme seulement ce même nœud en sheet fixe, ce qui évite les copies
 // d'état et les réorganisations qui ferment les sélecteurs natifs sur iOS.
-must('navigation-controller.js','interception du raccourci réglages',/#planningSettingsShortcut/);
+must('navigation-controller.js','identifiant du raccourci réglages',/SETTINGS_SHORTCUT_ID='planningSettingsShortcut'/);
+must('navigation-controller.js','interception déléguée du raccourci',/closest\('#'\+SETTINGS_SHORTCUT_ID\)/);
 must('navigation-controller.js','classe de sheet planning',/planningSettingsSheetOpen/);
 must('navigation-controller.js','ouverture du vrai panneau',/settings\.open=true/);
 must('navigation-controller.js','dialogue accessible',/aria-modal/);
