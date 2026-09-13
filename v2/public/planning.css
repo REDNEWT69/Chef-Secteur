@@ -48,41 +48,94 @@
   border-top: 1px solid #e2e4e8;
 }
 
-.srv2-planning-range-title {
+.srv2-planning-range-title,
+.srv2-planning-range-export-title {
   margin: 0;
   font-size: 17px;
   overflow-wrap: anywhere;
 }
 
-.srv2-planning-range-description,
-.srv2-planning-origin,
-.srv2-planning-range-status {
-  font-size: 13px;
+.srv2-planning-range-export-title {
+  margin-top: 6px;
+  font-size: 15px;
 }
 
-.srv2-planning-range-status {
+.srv2-planning-range-description,
+.srv2-planning-origin,
+.srv2-planning-origin-status,
+.srv2-planning-range-reach,
+.srv2-planning-range-status,
+.srv2-planning-range-copy-status {
+  margin: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.srv2-planning-origin-status,
+.srv2-planning-range-status,
+.srv2-planning-range-copy-status {
   min-height: 18px;
 }
 
-.srv2-planning-range-generate {
+.srv2-planning-origin-current,
+.srv2-planning-range-generate,
+.srv2-planning-range-copy {
   width: 100%;
   min-height: 44px;
-  border: 0;
   border-radius: 12px;
   padding: 10px 13px;
-  background: #0a66ff;
-  color: #ffffff;
   font: inherit;
   font-weight: 600;
   white-space: normal;
 }
 
-.srv2-planning-range-generate:disabled {
+.srv2-planning-origin-current,
+.srv2-planning-range-copy {
+  border: 1px solid #d8dbe1;
+  background: #ffffff;
+  color: #14161a;
+}
+
+.srv2-planning-range-generate {
+  border: 0;
+  background: #0a66ff;
+  color: #ffffff;
+}
+
+.srv2-planning-origin-current:disabled,
+.srv2-planning-range-generate:disabled,
+.srv2-planning-range-copy:disabled {
   opacity: .55;
 }
 
+.srv2-planning-range-export {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 220px;
+  resize: vertical;
+  border: 1px solid #d8dbe1;
+  border-radius: 12px;
+  padding: 12px;
+  background: #ffffff;
+  color: #14161a;
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow-wrap: normal;
+  white-space: pre-wrap;
+}
+
+.srv2-planning-range-export[hidden],
+.srv2-planning-range-export-title[hidden],
+.srv2-planning-range-copy[hidden] {
+  display: none;
+}
+
 @media (prefers-color-scheme: dark) {
-  .srv2-planning-week-shift {
+  .srv2-planning-week-shift,
+  .srv2-planning-origin-current,
+  .srv2-planning-range-copy,
+  .srv2-planning-range-export {
     background: #16181d;
     color: #f2f3f5;
     border-color: #2a2d34;
