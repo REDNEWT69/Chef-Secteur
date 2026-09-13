@@ -177,11 +177,16 @@ async function syncCalendar(first,state=root.state){
   return ok;
 }
 function currentDays(state=root.state){return ((state.settings&&state.settings.days)||DAYS.slice(0,5)).filter(d=>DAYS.includes(d))}
-function resolveSnailStart(state=root.state,doc=root.document){
+function upcomingWorkMonday(now=new Date()){
+  const d=new Date(now),base=monday(d),day=d.getDay();
+  return day===0||day===6?addDays(base,7):base;
+}
+function resolveSnailStart(state=root.state,doc=root.document,now=new Date()){
   const get=id=>doc&&typeof doc.getElementById==='function'?doc.getElementById(id):null;
-  const rangeStart=get('rangeStart'),weekDate=get('weekDate');
-  const raw=(rangeStart&&String(rangeStart.value||'').trim())||(weekDate&&String(weekDate.value||'').trim())||(state&&state.settings&&state.settings.weekDate)||'';
-  return monday(parseISO(raw)||new Date());
+  const rangeStart=get('rangeStart');
+  const explicitlyChosen=!!(rangeStart&&rangeStart.dataset&&rangeStart.dataset.snailUserEdited==='1');
+  if(explicitlyChosen){const chosen=parseISO(String(rangeStart.value||'').trim());if(chosen)return monday(chosen)}
+  return upcomingWorkMonday(now);
 }
 function syncPlanningControlsForSnail(state=root.state){
   if(typeof root.readPlanningControls==='function')root.readPlanningControls();
@@ -240,6 +245,12 @@ async function startDayWithStore(storeId){
 function showError(message){try{if(typeof root.showError==='function')root.showError(message);else root.alert(message)}catch(e){}}
 function installSnailButton(){
   const host=root.document&&root.document.querySelector('#rangePlannerCard .planningChoiceBody');if(!host)return false;
+  const rangeStart=root.document.getElementById('rangeStart');
+  if(rangeStart&&rangeStart.dataset&&!rangeStart.dataset.snailTracked){
+    rangeStart.dataset.snailTracked='1';
+    const mark=()=>{rangeStart.dataset.snailUserEdited='1'};
+    rangeStart.addEventListener('input',mark);rangeStart.addEventListener('change',mark);
+  }
   if(root.document.getElementById('terrainSnailBtn'))return true;
   const normal=root.document.getElementById('generateRangeBtn'),btn=root.document.createElement('button');btn.id='terrainSnailBtn';btn.type='button';btn.className='primary full';btn.textContent='◎ Générer 3 semaines · escargot';btn.onclick=async()=>{try{await generateThreeWeekSnail()}catch(e){showError(e.message||String(e))}};
   const status=root.document.createElement('div');status.id='terrainSnailStatus';status.className='tiny';status.style.marginTop='7px';status.textContent='Mode terrain : 3 semaines, du plus proche du départ vers le plus loin.';
