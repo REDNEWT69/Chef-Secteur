@@ -190,6 +190,19 @@
     }
   }
 
+  /* Le rechargement appartient à ce module, pas au bootloader. La garde d'index.html est
+     indexée sur le BUILD_REV de la page *déjà chargée* : le clients.claim() initial la
+     consomme, et l'activation du worker suivant retombe donc sur une clé déjà posée, qui
+     coupe le rechargement. Elle reste en place et garde son rôle — empêcher la boucle au
+     premier démarrage — mais elle ne peut pas appliquer une mise à jour demandée en cours
+     de session. Ici il n'y a aucune clé : chaque installation recharge. */
+  function reloadNow(){
+    try{
+      if(window.location&&typeof window.location.reload==='function'){window.location.reload();return true}
+    }catch(e){}
+    return false;
+  }
+
   async function installUpdate(){
     if(!('serviceWorker' in navigator)){
       state.error=new Error('Service Worker indisponible');render();return false;
@@ -201,7 +214,13 @@
       const registration=await navigator.serviceWorker.getRegistration();
       if(!registration)throw new Error('Service Worker non enregistré');
       let changed=false;
-      const onControllerChange=function(){changed=true;setBanner('Mise à jour installée','Store Runner recharge la nouvelle version…',null,null)};
+      /* Le bandeau n'annonce un rechargement que si un rechargement est réellement parti.
+         Sinon il dit quoi faire à la main, au lieu de promettre une page qui ne revient pas. */
+      const onControllerChange=function(){
+        changed=true;
+        if(reloadNow()){setBanner('Mise à jour installée','Store Runner recharge la nouvelle version…',null,null);return}
+        setBanner('Mise à jour installée','Ferme et rouvre l’application pour l’appliquer.',null,null).dataset.sticky='1';
+      };
       navigator.serviceWorker.addEventListener('controllerchange',onControllerChange,{once:true});
       await registration.update();
       if(registration.waiting)registration.waiting.postMessage({type:'SKIP_WAITING'});
