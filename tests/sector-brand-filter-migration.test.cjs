@@ -34,7 +34,7 @@ function env(oldBrands,selectedBrands){
 function apply(root,newBrands){
   const next=rows(newBrands,'new');
   root.ChefSectorAdmin.applyExact('Nouveau secteur',next);
-  return root.state.settings.brands;
+  return Array.from(root.state.settings.brands||[]);
 }
 
 // Cas réel : l'ancien secteur avait 5 enseignes et les 5 étaient cochées. Ce filtre
