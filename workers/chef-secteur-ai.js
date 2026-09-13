@@ -2,18 +2,22 @@
 // Secret requis côté Cloudflare : GROQ_API_KEY
 // Aucune clé API ne doit être placée dans GitHub Pages ou dans le navigateur.
 
-const ALLOWED_ORIGINS = new Set(['https://rednewt69.github.io']);
+const ALLOWED_ORIGINS = new Set([
+  'https://rednewt69.github.io',
+  'https://store-runner.fr',
+  'https://www.store-runner.fr'
+]);
 const DEFAULT_MODEL = 'openai/gpt-oss-20b';
 
 function cors(origin) {
-  const allowed = ALLOWED_ORIGINS.has(origin) ? origin : 'https://rednewt69.github.io';
-  return {
-    'Access-Control-Allow-Origin': allowed,
+  const headers = {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin'
   };
+  if (ALLOWED_ORIGINS.has(origin)) headers['Access-Control-Allow-Origin'] = origin;
+  return headers;
 }
 
 function json(data, status = 200, origin = '') {
