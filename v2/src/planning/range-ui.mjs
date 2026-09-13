@@ -29,6 +29,13 @@ function firstWeekDate(state) {
   return state?.planning?.currentWeek || state?.settings?.weekDate || new Date().toISOString().slice(0, 10);
 }
 
+function coordinate(value, min, max) {
+  if (value === null || value === undefined || typeof value === 'boolean') return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= min && number <= max ? number : null;
+}
+
 function ensureContainers(draft) {
   if (!draft.planning || typeof draft.planning !== 'object' || Array.isArray(draft.planning)) draft.planning = {};
   if (!draft.planning.weeks || typeof draft.planning.weeks !== 'object' || Array.isArray(draft.planning.weeks)) {
@@ -72,9 +79,11 @@ export function createPlanningRangeFeature(options) {
 
   function renderOrigin(state = latestState) {
     const label = state?.settings?.originName || state?.profile?.baseName || 'Point de départ';
-    const lat = Number(state?.settings?.originLat ?? state?.profile?.baseLat);
-    const lon = Number(state?.settings?.originLon ?? state?.profile?.baseLon);
-    const hasOrigin = Number.isFinite(lat) && Number.isFinite(lon);
+    const rawLat = state?.settings?.originLat ?? state?.profile?.baseLat;
+    const rawLon = state?.settings?.originLon ?? state?.profile?.baseLon;
+    const lat = coordinate(rawLat, -90, 90);
+    const lon = coordinate(rawLon, -180, 180);
+    const hasOrigin = lat !== null && lon !== null;
     origin.textContent = hasOrigin
       ? `Départ : ${String(label)} · GPS prêt`
       : 'Départ : GPS manquant';
