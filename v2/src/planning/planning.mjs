@@ -10,6 +10,7 @@ import {
   shiftWeekDate,
   weekMondayFromDate,
 } from './week.mjs';
+import { bindHorizontalSwipe } from '../ui/horizontal-swipe.mjs';
 
 export class PlanningFeatureError extends Error {
   constructor(message) {
@@ -146,11 +147,18 @@ export function createPlanningFeature(options) {
   const list = doc.createElement('div');
   list.classList.add('srv2-planning-list');
 
+  // Zone tactile locale au planning. Son CSS utilise touch-action: pan-y :
+  // le navigateur garde le scroll vertical, tandis que le module de geste
+  // observe seulement les swipes franchement horizontaux.
+  const swipeZone = doc.createElement('div');
+  swipeZone.classList.add('srv2-planning-swipe-zone');
+  swipeZone.appendChild(dayTabs);
+  swipeZone.appendChild(list);
+
   root.appendChild(controls);
   root.appendChild(weekNav);
   root.appendChild(status);
-  root.appendChild(dayTabs);
-  root.appendChild(list);
+  root.appendChild(swipeZone);
 
   function selectedWeekMonday() {
     return weekMondayFromDate(dateInput.value || todayIso());
@@ -233,6 +241,18 @@ export function createPlanningFeature(options) {
     renderDays();
     renderList();
     return selectedDay;
+  }
+
+  function shiftDay(offset) {
+    const direction = Number(offset);
+    if (!Number.isInteger(direction) || Math.abs(direction) !== 1) {
+      throw new PlanningFeatureError('shiftDay attend -1 ou 1.');
+    }
+    const days = configuredDays();
+    const index = Math.max(0, days.indexOf(selectedDay));
+    const nextIndex = Math.max(0, Math.min(days.length - 1, index + direction));
+    if (nextIndex === index) return selectedDay;
+    return selectDay(days[nextIndex]);
   }
 
   function renderWeekNavigation() {
@@ -321,11 +341,18 @@ export function createPlanningFeature(options) {
   nextWeek.addEventListener('click', () => shiftWeek(1));
   generateButton.addEventListener('click', generate);
 
+  const unbindSwipe = bindHorizontalSwipe({
+    element: swipeZone,
+    onSwipeLeft: () => shiftDay(1),
+    onSwipeRight: () => shiftDay(-1),
+  });
+
   const unsubscribe = store.subscribe(render);
   render(latestState);
 
   function destroy() {
     unsubscribe();
+    unbindSwipe();
   }
 
   return Object.freeze({
@@ -335,6 +362,7 @@ export function createPlanningFeature(options) {
     navigateToWeek,
     shiftWeek,
     selectDay,
+    shiftDay,
     getSelectedDay: () => selectedDay,
     getWeekMonday: selectedWeekMonday,
   });
