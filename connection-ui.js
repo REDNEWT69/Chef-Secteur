@@ -1,6 +1,10 @@
 (function(){
   'use strict';
 
+  const GATEWAY_HEALTH_TTL=60000;
+  const gatewayHealth={gateway:'',state:'idle',checkedAt:0,error:'',requestId:0};
+  let gatewayHealthTimer=null;
+
   function healStorage(){
     try{
       if(window.__chefStorage){
@@ -25,6 +29,117 @@
     }catch(e){}
   }
 
+  function assistantOnline(){
+    try{return !!(window.aiConfig&&window.aiConfig.mode==='online')}catch(e){return false}
+  }
+  function assistantGateway(){
+    try{return String(window.aiConfig&&window.aiConfig.gateway||'').trim()}catch(e){return ''}
+  }
+  function assistantStatusNode(){return document.getElementById('assistantAIStatus')}
+  function setAssistantStatus(className,text){
+    const status=assistantStatusNode();
+    if(!status)return;
+    if(status.className!==className)status.className=className;
+    if(status.textContent!==text)status.textContent=text;
+    status.dataset.gatewayHealthManaged='1';
+  }
+  function scheduleGatewayHealth(force){
+    if(gatewayHealthTimer)clearTimeout(gatewayHealthTimer);
+    gatewayHealthTimer=setTimeout(function(){gatewayHealthTimer=null;checkGatewayHealth(!!force)},0);
+  }
+  function renderAssistantHealth(){
+    if(!assistantStatusNode())return;
+    if(!assistantOnline()){
+      setAssistantStatus('ai-status','Mode local amélioré · comprend maintenant planning, agenda et déplacements');
+      return;
+    }
+    const gateway=assistantGateway();
+    if(!gateway){
+      setAssistantStatus('ai-status bad','IA en ligne non configurée · une passerelle serveur sécurisée est nécessaire');
+      return;
+    }
+    if(gatewayHealth.gateway!==gateway){
+      gatewayHealth.gateway=gateway;
+      gatewayHealth.state='idle';
+      gatewayHealth.checkedAt=0;
+      gatewayHealth.error='';
+    }
+    if(gatewayHealth.state==='ok'){
+      setAssistantStatus('ai-status ok','IA en ligne prête · connexion vérifiée · planning transmis uniquement lors d’une demande');
+      return;
+    }
+    if(gatewayHealth.state==='bad'){
+      setAssistantStatus('ai-status bad','IA en ligne indisponible · '+(gatewayHealth.error||'connexion à la passerelle impossible'));
+      return;
+    }
+    setAssistantStatus('ai-status','Vérification de l’IA en ligne…');
+    if(gatewayHealth.state==='idle')scheduleGatewayHealth(false);
+  }
+  async function checkGatewayHealth(force){
+    const gateway=assistantGateway();
+    if(!assistantOnline()||!gateway){renderAssistantHealth();return false}
+    if(gatewayHealth.gateway!==gateway){
+      gatewayHealth.gateway=gateway;
+      gatewayHealth.state='idle';
+      gatewayHealth.checkedAt=0;
+      gatewayHealth.error='';
+    }
+    const now=Date.now();
+    if(!force&&gatewayHealth.state==='checking')return false;
+    if(!force&&gatewayHealth.checkedAt&&now-gatewayHealth.checkedAt<GATEWAY_HEALTH_TTL&&(gatewayHealth.state==='ok'||gatewayHealth.state==='bad')){
+      renderAssistantHealth();
+      return gatewayHealth.state==='ok';
+    }
+    const requestId=++gatewayHealth.requestId;
+    gatewayHealth.state='checking';
+    gatewayHealth.error='';
+    renderAssistantHealth();
+    const ctrl=new AbortController();
+    const timeout=setTimeout(function(){ctrl.abort()},10000);
+    try{
+      const url=new URL(gateway,window.location.href);
+      url.searchParams.set('mode','ping');
+      url.searchParams.set('ts',String(Date.now()));
+      const response=await fetch(url.href,{method:'GET',cache:'no-store',signal:ctrl.signal});
+      let data={};
+      try{data=await response.json()}catch(e){}
+      if(!response.ok)throw new Error('HTTP '+response.status);
+      if(data&&data.ok===false)throw new Error(data.error||'passerelle indisponible');
+      if(requestId!==gatewayHealth.requestId)return false;
+      gatewayHealth.state='ok';
+      gatewayHealth.error='';
+      gatewayHealth.checkedAt=Date.now();
+    }catch(error){
+      if(requestId!==gatewayHealth.requestId)return false;
+      gatewayHealth.state='bad';
+      gatewayHealth.checkedAt=Date.now();
+      gatewayHealth.error=error&&error.name==='AbortError'?'délai de connexion dépassé':(error&&error.message?error.message:'connexion à la passerelle impossible');
+    }finally{
+      clearTimeout(timeout);
+    }
+    renderAssistantHealth();
+    return gatewayHealth.state==='ok';
+  }
+  function installAssistantHealth(){
+    const status=assistantStatusNode();
+    if(!status||window.__assistantHealthInstalled)return;
+    window.__assistantHealthInstalled=true;
+    const observer=new MutationObserver(function(){renderAssistantHealth()});
+    observer.observe(status,{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['class']});
+    document.addEventListener('store-runner:assistant-mode-changed',function(){
+      setTimeout(function(){
+        gatewayHealth.checkedAt=0;
+        if(assistantOnline()&&assistantGateway())checkGatewayHealth(true);else renderAssistantHealth();
+      },0);
+    });
+    document.addEventListener('click',function(e){
+      const el=e.target&&e.target.closest?e.target.closest('[data-assistant-mode],button[onclick*="setAssistantMode"]'):null;
+      if(el)setTimeout(function(){gatewayHealth.checkedAt=0;if(assistantOnline()&&assistantGateway())checkGatewayHealth(true);else renderAssistantHealth()},0);
+    },true);
+    window.storeRunnerCheckAssistantHealth=checkGatewayHealth;
+    renderAssistantHealth();
+  }
+
   function boot(){
     healStorage();
     setTimeout(healStorage,50);
@@ -35,6 +150,8 @@
     // écrasait silencieusement le libellé dynamique à chaque rendu de l'en-tête.
     window.addEventListener('focus',healStorage,{passive:true});
     document.addEventListener('visibilitychange',function(){if(!document.hidden)healStorage()});
+
+    installAssistantHealth();
 
     const home=document.getElementById('homePanel'),badge=document.getElementById('googleCalendarBadge'),status=document.getElementById('googleCalendarStatus');
     if(!home||!badge||!status||document.getElementById('calendarHomeStatus'))return;

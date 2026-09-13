@@ -42,6 +42,7 @@ jobs:
       - run: node tests/calendar-ownership.test.cjs
       - run: node tests/assistant-architecture.test.cjs
       - run: node tests/ai-gateway-cors.test.cjs
+      - run: node tests/assistant-online-health.test.cjs
       - run: node tests/business-v2-architecture.test.cjs
       - run: node tests/runtime-ownership.test.cjs
       - run: node tests/planning-visual-ownership.test.cjs
