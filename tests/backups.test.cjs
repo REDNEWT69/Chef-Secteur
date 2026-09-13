@@ -1,6 +1,8 @@
 const assert=require('assert/strict'),R=require(__dirname+'/../reliability-core.js');
 class DB{constructor(){this.map=new Map();this.fail=null}getItem(k){return this.map.get(k)??null}setItem(k,v){if(this.fail===k){this.fail=null;throw Error('quota')}this.map.set(k,String(v))}removeItem(k){this.map.delete(k)}}
 const original={schemaVersion:5,profile:{sectorName:'Rhône-Alpes'},settings:{days:['Lundi'],endTime:'18:00'},stores:[{id:'x',enseigne:'Darty',ville:'Lyon',lat:45,lon:4}],notes:{x:'Note à conserver'},visits:{x:{history:['2026-09-01']}},included:{},excluded:{},locks:{},plan:{Lundi:[{id:'x'}]},appointments:[{id:'a',storeId:'x',date:'2026-09-08',time:'09:00'}],calendarEvents:[]};
+original.stores[0].openingHours={Lundi:[{open:'09:00',close:'12:00'},{open:'14:00',close:'19:00'}],Mardi:[]};
+original.stores[0].openingHoursSource='manual';
 const catalog=[{id:'manual-1',enseigne:'Boulanger',ville:'Lyon',adresse:'1 rue Test',source:'Carnet officiel local'}];
 const db=new DB();global.state=structuredClone(original);global.localStorage=db;
 db.setItem(R.keys.MAIN,JSON.stringify(original));db.setItem(R.keys.ARCHIVE,JSON.stringify({'2026-09-07':{plan:original.plan}}));db.setItem(R.keys.RANGE,JSON.stringify({start:'2026-09-07',end:'2026-09-11'}));db.setItem(R.keys.CATALOG,JSON.stringify(catalog));db.setItem('chef_secteur_google_token_v2','SECRET');

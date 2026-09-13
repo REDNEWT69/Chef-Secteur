@@ -7,16 +7,21 @@ test.use({
   isMobile: true,
   hasTouch: true,
   deviceScaleFactor: 1,
-  serviceWorkers: 'block',
+  serviceWorkers: 'allow',
   screenshot: 'only-on-failure',
   trace: 'retain-on-failure'
 });
 
-test('V1 horaires : ouverture réelle décale la visite et recalcule départ/fin à 390 px', async ({ page }) => {
+test('V1 horaires : saisie, sauvegarde, planning et hors ligne à 390 px', async ({ page, context }) => {
+  test.setTimeout(60000);
   const pageErrors=[];
   page.on('pageerror', e => pageErrors.push(String(e && e.message || e)));
+  // Ce scénario teste le cache et la persistance ; neutraliser uniquement le
+  // rechargement automatique initial pour ne pas interrompre la fixture.
+  await page.addInitScript(()=>sessionStorage.setItem('store-runner-sw-reload:20260913-opening154','1'));
   await page.goto(APP_URL, {waitUntil:'domcontentloaded'});
   await page.waitForFunction(() => window.StoreOpeningHoursV1 && window.state && typeof window.openStoreQuick==='function');
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller);
 
   await page.evaluate(() => {
     const st=window.state;
@@ -27,7 +32,7 @@ test('V1 horaires : ouverture réelle décale la visite et recalcule départ/fin
     ];
     st.profile=Object.assign({},st.profile||{},{baseName:'Domicile test',baseAddress:'Lyon',baseLat:45.758,baseLon:4.832});
     st.settings=Object.assign({},st.settings||{},{weekDate:'2026-09-14',days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],startTime:'08:30',endTime:'18:00',visitMinutes:60});
-    st.stores=stores;st.plan={Lundi:stores.slice(),Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};st.appointments=[];st.calendarEvents=[];
+    st.stores=stores;st.plan={Lundi:JSON.parse(JSON.stringify(stores)),Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};st.appointments=[];st.calendarEvents=[];
     try{if(typeof save==='function')save()}catch(_){}
     try{if(typeof renderAll==='function')renderAll()}catch(_){}
     try{if(typeof goTab==='function')goTab('planPanel')}catch(_){}
@@ -46,7 +51,19 @@ test('V1 horaires : ouverture réelle décale la visite et recalcule départ/fin
   const dialog=page.locator('#storeHoursDialog');
   await expect(dialog).toBeVisible();
   const monday=dialog.locator('[data-hours-day="Lundi"]');
+  const visibleBox=await dialog.boundingBox();
+  expect(visibleBox.x).toBeGreaterThanOrEqual(0);
+  expect(visibleBox.x+visibleBox.width).toBeLessThanOrEqual(390);
+  await monday.fill('10:00-09:00');
+  await dialog.locator('#saveStoreHours').tap();
+  await expect(dialog.locator('#storeHoursError')).toContainText('invalide');
+  expect(await page.evaluate(()=>window.state.stores[0].openingHours)).toBeUndefined();
   await monday.fill('10:00-19:00');
+  await page.evaluate(()=>{window.__hoursTestSave=window.save;window.save=()=>{throw new Error('Quota test')}});
+  await dialog.locator('#saveStoreHours').tap();
+  await expect(dialog.locator('#storeHoursError')).toContainText('Quota test');
+  expect(await page.evaluate(()=>window.state.stores[0].openingHours)).toBeUndefined();
+  await page.evaluate(()=>{window.save=window.__hoursTestSave;delete window.__hoursTestSave});
   await dialog.locator('#copyMondayHours').tap();
   await expect(dialog.locator('[data-hours-day="Vendredi"]')).toHaveValue('10:00-19:00');
   await dialog.locator('#saveStoreHours').tap();
@@ -69,5 +86,30 @@ test('V1 horaires : ouverture réelle décale la visite et recalcule départ/fin
   const overflow=await page.evaluate(()=>({sw:document.documentElement.scrollWidth,cw:document.documentElement.clientWidth,dialog:document.getElementById('storeHoursDialog').scrollWidth}));
   expect(overflow.sw).toBeLessThanOrEqual(overflow.cw+1);
   expect(overflow.dialog).toBeLessThanOrEqual(390);
+
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.StoreOpeningHoursV1&&window.state);
+  expect(await page.evaluate(()=>window.state.stores.find(s=>s.id==='hours-1').openingHours.Lundi)).toEqual([{open:'10:00',close:'19:00'}]);
+  await page.evaluate(()=>window.StoreOpeningHoursV1.openHoursDialog('hours-1'));
+  await monday.fill('fermé');
+  await dialog.locator('#saveStoreHours').tap();
+  expect(await page.evaluate(()=>window.StoreOpeningHoursV1.scheduleRoute(window.state.plan.Lundi,'Lundi').estimatedEnd)).toBeNull();
+  await page.evaluate(()=>window.StoreOpeningHoursV1.openHoursDialog('hours-1'));
+  for(const day of ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'])await dialog.locator(`[data-hours-day="${day}"]`).fill('');
+  await dialog.locator('#saveStoreHours').tap();
+  expect(await page.evaluate(()=>window.state.stores[0].openingHours)).toBeUndefined();
+  await expect.poll(()=>page.evaluate(()=>window.StoreOpeningHoursV1.scheduleRoute(window.state.plan.Lundi,'Lundi').unknownCount)).toBe(1);
+
+  await expect.poll(()=>page.evaluate(async()=>!!await caches.match(new URL('./store-opening-hours.js',location.href).href,{ignoreSearch:true}))).toBe(true);
+  await context.setOffline(true);
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.StoreOpeningHoursV1&&window.state);
+  expect(await page.evaluate(()=>window.StoreOpeningHoursV1.scheduleRoute(window.state.plan.Lundi,'Lundi').unknownCount)).toBe(1);
+  await page.evaluate(()=>window.StoreOpeningHoursV1.openHoursDialog('hours-1'));
+  await monday.fill('10:00-19:00');
+  await dialog.locator('#saveStoreHours').tap();
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.StoreOpeningHoursV1&&window.state);
+  expect(await page.evaluate(()=>window.StoreOpeningHoursV1.scheduleRoute(window.state.plan.Lundi,'Lundi').rows[0].arrival)).toBe(600);
   expect(pageErrors).toEqual([]);
 });

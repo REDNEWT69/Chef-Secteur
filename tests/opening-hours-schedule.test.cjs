@@ -68,4 +68,25 @@ const hours = require('../store-opening-hours.js');
   assert.equal(JSON.stringify(store),before);
 })();
 
+(function safetyAndCanonicalHours(){
+  const store={id:'a',openingHours:{Lundi:[{open:'10:00',close:'19:00'}]}};
+  const state={stores:[store],settings:{startTime:'08:30',endTime:'18:00',visitMinutes:60},appointments:[]};
+  const opts={base:{},date:'2026-09-14',blocks:[],travelMinutes:()=>30,appointmentFor:()=>null};
+  assert.equal(hours.scheduleRoute([{id:'a'}],'Lundi',state,opts).rows[0].arrival,600,'les copies du planning utilisent les horaires canoniques');
+  for(const invalid of ['invalide',[{open:'oops',close:'18:00'}],[{open:'10:00',close:'15:00'},{open:'14:00',close:'19:00'}]]){
+    assert.equal(hours.intervalsFor({openingHours:{Lundi:invalid}},'Lundi'),undefined,'donnée invalide = inconnue');
+  }
+  assert.deepEqual(hours.intervalsFor({openTime:'09:00',closeTime:'18:00'},'Lundi'),[{open:'09:00',close:'18:00'}],'horaires historiques explicites conservés');
+  assert.equal(hours.intervalsFor({openTime:'09:00',closeTime:'18:00',openingHoursSource:'manual'},'Lundi'),undefined,'effacer un horaire ne ressuscite pas un horaire historique');
+  const conflict=hours.scheduleRoute([store],'Lundi',state,{...opts,appointmentFor:()=>({time:'09:00',duration:60})});
+  assert.equal(conflict.rows[0].arrival,540,'le RDV conserve son heure');
+  assert.equal(conflict.appointmentConflicts,1);
+  assert.equal(conflict.estimatedEnd,null);
+  const agenda=hours.scheduleRoute([store],'Lundi',state,{...opts,blocks:[{startMin:600,endMin:660}],appointmentFor:()=>({time:'10:00',duration:60})});
+  assert.equal(agenda.rows[0].arrival,600,'ne pas déplacer silencieusement un RDV Agenda');
+  assert.equal(agenda.appointmentConflicts,1);
+  const many=Array.from({length:25},(_,i)=>({startMin:600+i*10,endMin:610+i*10}));
+  assert.equal(hours.fitWithBlocks(store,'Lundi',600,15,many).arrival,850,'tous les blocs sont vérifiés, même au-delà de 20');
+})();
+
 console.log('opening-hours-schedule: OK');

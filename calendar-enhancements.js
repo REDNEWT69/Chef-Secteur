@@ -96,6 +96,7 @@
   }
 
   function decorateOpeningHours(){
+    if(window.StoreOpeningHoursV1)return;
     try{
       const day=typeof window.selectedPlanningDay!=='undefined'?window.selectedPlanningDay:null;if(!day)return;
       const stores=openingAwareRows(day).filter(x=>x.kind==='store');
