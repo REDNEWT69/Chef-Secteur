@@ -6,7 +6,7 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 // planning, sans que le bloc lui-même bouge dans le DOM.
 
 const source=fs.readFileSync(__dirname+'/../planning-ui-fixes.js','utf8')
-  .replace('  function run(){','  window.__planningAccessTest={ensureSettingsShortcut,openPlanningSettings,reorderPlanning,isSettingsShortcut};\n  function run(){');
+  .replace('  function run(){','  window.__planningAccessTest={ensureSettingsShortcut,openPlanningSettings,reorderPlanning,isSettingsShortcut,css,run};\n  function run(){');
 
 // --- Garde-fous statiques -----------------------------------------------------------
 assert.match(source,/⚙ Réglages/,'la barre d’outils du planning doit proposer un accès aux réglages');
@@ -59,6 +59,7 @@ function createDom(){
     };
     el.remove=function(){const p=el.parentNode;if(!p)return;const i=p.children.indexOf(el);if(i>=0)p.children.splice(i,1);el.parentNode=null};
     el.setAttribute=function(n,v){el._attrs[n]=String(v)};
+    el.removeAttribute=function(n){delete el._attrs[n]};
     el.getAttribute=function(n){return Object.prototype.hasOwnProperty.call(el._attrs,n)?el._attrs[n]:null};
     el.addEventListener=function(t,fn){(el._listeners[t]=el._listeners[t]||[]).push(fn)};
     el.removeEventListener=function(){};
@@ -68,7 +69,11 @@ function createDom(){
     el.querySelector=function(sel){return find(el,sel)[0]||null};
     el.querySelectorAll=function(sel){return find(el,sel)};
     Object.defineProperty(el,'innerHTML',{get:()=>el._html||'',set(v){el._html=String(v);el.children=[]}});
-    el.click=function(){(el._listeners.click||[]).slice().forEach(fn=>fn({target:el,preventDefault(){},stopPropagation(){}}))};
+    el.click=function(){
+      const event={target:el,stopped:false,preventDefault(){},stopPropagation(){this.stopped=true}};
+      document.dispatch('click',event);
+      if(!event.stopped)(el._listeners.click||[]).slice().forEach(fn=>fn(event));
+    };
     return el;
   }
   function matchOne(el,token){
@@ -137,10 +142,11 @@ function buildPlanning(dom){
   const metrics=dom.make('div');metrics.id='planMetrics';plan.appendChild(metrics);
   const departure=dom.make('div');departure.className='departureCard';plan.appendChild(departure);
   const settings=dom.make('details');settings.id='planningSettings';
+  const summary=dom.make('summary');summary.textContent='⚙︎ Réglages du planning';settings.appendChild(summary);
   const inner=dom.make('div');inner.className='settingsInner';settings.appendChild(inner);
   const field=dom.make('input');field.type='date';field.id='rangeStart';inner.appendChild(field);
   plan.appendChild(settings);
-  return {panel,plan,tabs,tools,timeline,settings,inner,field};
+  return {panel,plan,tabs,tools,timeline,settings,summary,inner,field};
 }
 
 function boot(){
@@ -219,4 +225,93 @@ assert.equal(t.api.isSettingsShortcut(t.ui.field),false,'un champ des réglages 
 t.dom.document.dispatch('pointerdown',{target:t.ui.timeline});
 assert(t.frames()>framesAvant,'un clic ailleurs doit continuer à lever le verrou et relancer un rendu');
 
-console.log('PASS: la barre d’outils du planning offre un accès direct aux réglages, le clic les ouvre et y défile sans déplacer #planningSettings ni réorganiser le panneau pendant une saisie.');
+// --- 5. Une seule entrée fermée, sans deuxième gestionnaire du panneau -------------
+// Ce test vérifie la règle émise et les invariants DOM, pas un rendu navigateur.
+t=boot();
+t.api.run();
+const css=t.dom.document.getElementById('planning-fix-css').textContent;
+assert.match(css,/#planningSettings:not\(\[open\]\),\s*#planningSettings:not\(\.planningSettingsSheetOpen\)\s*\{\s*display:none!important\s*;?\s*\}/,
+  'fermé OU ouvert sans classe de feuille, le panneau entier doit disparaître');
+assert.doesNotMatch(css,/#planningSettings(?:\[open\])?\s*\{[^}]*display:none/,
+  'la règle ne doit pas masquer la feuille ouverte');
+assert.doesNotMatch(css,/#planningSettings\s+summary\s*\{[^}]*display:none/,
+  'les résumés imbriqués Jours et Enseignes doivent rester utilisables');
+const summary=t.ui.summary,inner=t.ui.inner,parent=t.ui.settings.parentNode;
+const settingsButton=t.ui.tools.querySelector('#planningSettingsShortcut');
+settingsButton.click();
+assert.equal(t.ui.settings.open,true);
+assert.equal(t.ui.summary,summary,'aucun résumé ni contenu ne doit être recréé');
+assert.equal(summary.parentNode,t.ui.settings);
+assert.equal(summary.getAttribute('hidden'),null);
+assert.equal(summary.getAttribute('tabindex'),null);
+
+// Six rendus pendant la saisie ne doivent ni recréer ni déplacer les réglages.
+t.ui.field.value='2026-10-05';
+t.dom.document.activeElement=t.ui.field;
+t.dom.document.dispatch('focusin',{target:t.ui.field});
+const order=t.ui.plan.children.slice();
+t.ui.settings.parentNode.appendChild=function(){throw new Error('déplacement pendant la saisie')};
+for(let i=0;i<6;i++)t.api.run();
+assert.equal(t.ui.field.value,'2026-10-05');
+assert.deepEqual(t.ui.plan.children,order);
+assert.equal(t.ui.settings.parentNode,parent);
+assert.equal(t.ui.inner,inner);
+assert.equal(t.dom.document.querySelectorAll('#planningSettings').length,1);
+assert.equal(t.dom.document.querySelectorAll('#planningSettingsShortcut').length,1);
+
+// --- 6. Intégration avec le vrai propriétaire de la feuille ------------------------
+t=boot();t.api.run();
+vm.runInNewContext(fs.readFileSync(__dirname+'/../navigation-controller.js','utf8'),t.ctx);
+const sheetSettings=t.ui.settings,sheetInner=t.ui.inner,sheetOrder=t.ui.plan.children.slice();
+const sheetButton=t.ui.tools.querySelector('#planningSettingsShortcut');
+sheetSettings.open=true; // Chemin historique : aucune classe/aucun en-tête ajouté.
+assert.equal(sheetSettings.classList.contains('planningSettingsSheetOpen'),false);
+assert.equal(sheetSettings.getAttribute('role'),null);
+sheetButton.click(); // Le listener document intercepte le raccourci réel.
+assert.equal(sheetSettings.classList.contains('planningSettingsSheetOpen'),true);
+assert.equal(sheetSettings.getAttribute('role'),'dialog');
+assert.equal(sheetSettings.getAttribute('aria-modal'),'true');
+assert.equal(sheetSettings.scrollCalls.length,0,'la feuille intercepte le vieux défilement');
+const header=t.dom.document.getElementById('planningSettingsSheetHeader');
+assert(header&&header.parentNode===sheetInner);
+assert.match(header.innerHTML,/data-planning-settings-close aria-label="Fermer les réglages"/);
+const sheetCss=t.dom.document.getElementById('planning-settings-sheet-css').textContent;
+assert.match(sheetCss,/#planningSettings\.planningSettingsSheetOpen>summary\{display:none!important\}/);
+assert.match(sheetCss,/width:44px;height:44px;min-width:44px/);
+
+t.ui.field.value='2026-10-05';
+t.dom.document.activeElement=t.ui.field;
+t.dom.document.dispatch('focusin',{target:t.ui.field});
+const lockedFrames=t.frames();
+const originalAppend=t.ui.plan.appendChild;
+t.ui.plan.appendChild=function(){throw new Error('déplacement pendant la saisie')};
+for(let i=0;i<6;i++){
+  t.dom.document.dispatch('store-runner:planning-updated',{});
+  t.api.run();
+}
+assert.deepEqual(t.ui.plan.children,sheetOrder);
+assert.equal(t.ui.field.value,'2026-10-05');
+assert.equal(t.dom.document.querySelectorAll('#planningSettings').length,1);
+assert.equal(t.dom.document.querySelectorAll('#planningSettingsShortcut').length,1);
+
+// Le faux DOM ne parse pas innerHTML : la cible de la croix est fournie au
+// listener délégué réel, dont on vérifie les effets (pas le rendu tactile).
+const closeTarget={closest:selector=>selector==='[data-planning-settings-close]'?closeTarget:null};
+t.dom.document.dispatch('click',{target:closeTarget,preventDefault(){},stopPropagation(){}});
+assert.equal(sheetSettings.open,false);
+assert.equal(sheetSettings.classList.contains('planningSettingsSheetOpen'),false);
+assert.equal(sheetSettings.getAttribute('role'),null);
+assert.equal(sheetSettings.getAttribute('aria-modal'),null);
+assert.equal(t.frames(),lockedFrames+6,'la fermeture ne doit ajouter aucun rendu au propriétaire visuel');
+t.ui.plan.appendChild=originalAppend;
+t.dom.document.activeElement=null;
+t.dom.document.dispatch('toggle',{target:sheetSettings});
+sheetButton.click();
+assert.equal(sheetSettings.open,true);
+assert.equal(sheetSettings.getAttribute('role'),'dialog');
+assert.equal(t.ui.field.value,'2026-10-05');
+assert.equal(t.ui.inner,sheetInner);
+assert.equal(t.dom.document.getElementById('planningSettingsSheetHeader'),header);
+assert.deepEqual(t.ui.plan.children,sheetOrder);
+
+console.log('PASS: réglages invisibles hors feuille, raccourci et fermeture déléguée, six rendus sans duplication/déplacement, saisie conservée.');

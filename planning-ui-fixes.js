@@ -191,6 +191,9 @@
   function compactSettings(){ensureChoiceDetails('daysBox','planningDaysDetails','Jours travaillés','days');ensureChoiceDetails('brandsBox','planningBrandsDetails','Enseignes','brands');ensureAdvancedDetails();ensureCalendarDetails();suppressDuplicateGeneration();syncDynamicStoreCount()}
 
   function css(){if(document.getElementById('planning-fix-css'))return;const s=document.createElement('style');s.id='planning-fix-css';s.textContent=`
+    /* Seule la feuille de navigation affiche les réglages. open=true seul ne
+       doit pas révéler un panneau sans son en-tête ni sa croix en bas de page. */
+    #planningSettings:not([open]),#planningSettings:not(.planningSettingsSheetOpen){display:none!important}
     #planPanel .timelineRow{min-width:0!important}#planPanel .tlMain{min-width:0!important}#planPanel .timelineRow *{max-width:100%}
     #planPanel .applePlan{padding-top:2px!important}body:has(#planPanel.active) #smartBrief{display:none!important}#planPanel #iosDayHero{display:none!important}
     .planningHeroV2{margin:0 0 8px;padding:8px 2px 2px;background:transparent;border:0;box-shadow:none}.planningHeroTop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}.planningHeroPill{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.78);border:1px solid rgba(60,60,67,.12);font-size:11px;font-weight:800;color:#667085;box-shadow:0 4px 14px rgba(31,41,55,.04)}.planningHeroWeek{font-size:11px;color:#8a93a2;font-weight:650;text-align:right}.planningHeroDay{font-family:Georgia,"Times New Roman",serif;font-size:44px;line-height:.98;letter-spacing:-.045em;font-weight:500;color:#111318;margin:0}.planningHeroFull{font-size:14px;color:#717987;margin-top:8px;font-weight:600}
