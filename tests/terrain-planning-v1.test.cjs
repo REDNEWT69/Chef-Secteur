@@ -107,6 +107,16 @@ function flat(week){
   assert.deepStrictEqual(report,{total:5,active:4,excluded:1,filtered:1,planifiable:2,withGps:1,withoutGps:1,imposed:1});
 })();
 
+(function visibleRangeStartWinsOverStaleSavedWeek(){
+  const state={settings:{weekDate:'2026-09-21'}};
+  const fields={rangeStart:{value:'2026-09-14'},weekDate:{value:'2026-09-21'}};
+  const doc={getElementById:id=>fields[id]||null};
+  const start=terrain.resolveSnailStart(state,doc);
+  assert.strictEqual(start.getFullYear(),2026);
+  assert.strictEqual(start.getMonth(),8);
+  assert.strictEqual(start.getDate(),14,'le début de période visible doit gagner sur une ancienne semaine persistée');
+})();
+
 (function missingGpsCountsTheWholeEligiblePoolNotOnlyPlacedStores(){
   const stores=Array.from({length:65},(_,i)=>Object.assign(store(i+1),{lat:45+i*0.001,lon:4}));
   stores[64].lat=null;stores[64].lon=null;
