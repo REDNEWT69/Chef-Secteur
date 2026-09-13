@@ -14,6 +14,7 @@ import {
   sortStoresByDistance,
 } from '../src/planning/range.mjs';
 import { createPlanningRangeFeature } from '../src/planning/range-ui.mjs';
+import { formatPlanningRangeForTeamHaven, storedLastPlanningRange } from '../src/planning/terrain-tools.mjs';
 import { createFakeDocument } from './fake-dom.mjs';
 
 function sectorState(count = 83) {
@@ -27,6 +28,8 @@ function sectorState(count = 83) {
   state.stores = Array.from({ length: count }, (_, index) => ({
     id: `s${index + 1}`,
     enseigne: `Magasin ${index + 1}`,
+    ville: `Ville ${index + 1}`,
+    adresse: `${index + 1} rue Test`,
     active: true,
     // Tous les magasins sont sur le même méridien, de plus en plus loin :
     // l'ordre radial attendu est donc strictement s1, s2, ...
@@ -153,6 +156,13 @@ assert.equal(SNAIL_RANGE_ALGORITHM, 'snail-distance-v1');
   assert.deepEqual(range.weeks[0].days.Vendredi, ['s17', 's18', 's19', 's20']);
   assert.deepEqual(range.weeks[1].days.Lundi, ['s21', 's22', 's23', 's24']);
   assert.deepEqual(range.weeks[2].days.Vendredi, ['s57', 's58', 's59', 's60']);
+
+  const text = formatPlanningRangeForTeamHaven(state, range);
+  assert(text.startsWith('PLAN 3 SEMAINES · STORE RUNNER'));
+  assert(text.includes('Semaine du 14/09/2026'));
+  assert(text.includes('Lundi 14/09/2026'));
+  assert(text.includes('1. Magasin 1 · Ville 1 · 1 rue Test'));
+  assert(text.includes('Semaine du 28/09/2026'));
 }
 
 // Si le secteur est plus petit que la période, on recommence seulement après
@@ -218,12 +228,72 @@ assert.equal(SNAIL_RANGE_ALGORITHM, 'snail-distance-v1');
   assert.equal(snapshot.planning.lastRange.distinctStores, 60);
   assert.equal(snapshot.planning.lastRange.eligibleStores, 83);
 
+  const stored = storedLastPlanningRange(snapshot);
+  assert(stored);
+  assert.equal(stored.weeks.length, 3);
+  assert.equal(stored.startWeek, '2026-09-14');
+  assert.equal(stored.endWeek, '2026-09-28');
+
   const reach = feature.element.children.find(child => child.classList.contains('srv2-planning-range-reach'));
   assert.equal(reach.textContent, '83 magasins planifiables');
   const status = feature.element.children.find(child => child.classList.contains('srv2-planning-range-status'));
   assert(status.textContent.includes('60 visites'));
   assert(status.textContent.includes('23 magasins planifiables restent'));
+  const exportArea = feature.element.children.find(child => child.classList.contains('srv2-planning-range-export'));
+  assert.equal(exportArea.hidden, false);
+  assert(exportArea.value.includes('Magasin 1'));
   feature.destroy();
+}
+
+// Terrain : l'utilisateur peut enregistrer son point de départ sans adresse
+// codée en dur, puis copier le résultat prêt à coller dans TeamHaven.
+{
+  const document = createFakeDocument();
+  const state = sectorState(6);
+  delete state.profile.baseLat;
+  delete state.profile.baseLon;
+  state.settings.target = 3;
+  state.settings.maxVisitsPerDay = 2;
+  const store = createStore(state);
+  let copied = '';
+  const geolocation = {
+    getCurrentPosition(success) {
+      success({ coords: { latitude: 45.123, longitude: 4.456 } });
+    },
+  };
+  const clipboard = {
+    async writeText(text) {
+      copied = text;
+    },
+  };
+  const feature = createPlanningRangeFeature({ document, store, geolocation, clipboard });
+  assert.equal(await feature.useCurrentPosition(), true);
+  let snapshot = store.getState();
+  assert.equal(snapshot.settings.originLat, 45.123);
+  assert.equal(snapshot.settings.originLon, 4.456);
+  assert.equal(snapshot.settings.originName, 'Ma position');
+  assert.deepEqual(resolvePlanningOrigin(snapshot), { lat: 45.123, lon: 4.456, label: 'Ma position' });
+
+  const range = feature.generate();
+  assert(range);
+  assert.equal(await feature.copyForTeamHaven(), true);
+  assert(copied.includes('PLAN 3 SEMAINES · STORE RUNNER'));
+  assert(copied.includes('Semaine du 14/09/2026'));
+  assert(copied.includes('Magasin 1'));
+  snapshot = store.getState();
+  assert(storedLastPlanningRange(snapshot));
+  feature.destroy();
+}
+
+// API stricte de l'export : une période absente ou incomplète ne fabrique
+// jamais un faux document TeamHaven.
+{
+  const state = sectorState(3);
+  assert.equal(storedLastPlanningRange(state), null);
+  assert.equal(formatPlanningRangeForTeamHaven(state, null), '');
+  state.planning.lastRange = { startWeek: '2026-09-14', endWeek: '2026-09-28' };
+  state.planning.weeks['2026-09-14'] = generatePlanningRange(state, { weeks: 1 }).weeks[0];
+  assert.equal(storedLastPlanningRange(state), null);
 }
 
 console.log('v2 planning range: ok');
