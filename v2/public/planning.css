@@ -36,6 +36,93 @@
   touch-action: pan-y;
 }
 
+/* Outils terrain : origine locale + synthèse copiable pour TeamHaven. */
+.srv2-terrain-tools {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e4e8;
+}
+
+.srv2-terrain-title,
+.srv2-terrain-subtitle {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.srv2-terrain-title { font-size: 17px; }
+.srv2-terrain-subtitle { font-size: 15px; }
+
+.srv2-terrain-privacy,
+.srv2-origin-status,
+.srv2-teamhaven-help,
+.srv2-teamhaven-status {
+  margin: 0;
+  font-size: 13px;
+}
+
+.srv2-terrain-origin-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  min-width: 0;
+}
+
+.srv2-terrain-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.srv2-terrain-field:first-child {
+  grid-column: 1 / -1;
+}
+
+.srv2-terrain-field input,
+.srv2-teamhaven-output {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #d8dbe1;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #14161a;
+  font: inherit;
+}
+
+.srv2-terrain-field input {
+  min-height: 44px;
+  padding: 9px 10px;
+}
+
+.srv2-origin-save,
+.srv2-teamhaven-copy {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 13px;
+  background: #0a66ff;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 600;
+  white-space: normal;
+}
+
+.srv2-teamhaven-copy:disabled {
+  opacity: .55;
+}
+
+.srv2-teamhaven-output {
+  min-height: 180px;
+  padding: 10px;
+  resize: vertical;
+  line-height: 1.45;
+  font-size: 13px;
+}
+
 /* V2-06 — bloc indépendant du générateur semaine existant. Le bouton et le
    statut ont leurs propres classes afin que les propriétaires UI ne confondent
    jamais « une semaine » avec « trois semaines ». */
@@ -87,5 +174,12 @@
     color: #f2f3f5;
     border-color: #2a2d34;
   }
-  .srv2-planning-range { border-color: #2a2d34; }
+  .srv2-planning-range,
+  .srv2-terrain-tools { border-color: #2a2d34; }
+  .srv2-terrain-field input,
+  .srv2-teamhaven-output {
+    background: #16181d;
+    color: #f2f3f5;
+    border-color: #2a2d34;
+  }
 }
