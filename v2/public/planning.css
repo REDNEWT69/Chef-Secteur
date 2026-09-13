@@ -36,10 +36,51 @@
   touch-action: pan-y;
 }
 
+/* V2-06 — bloc indépendant du générateur semaine existant. Le bouton a sa
+   propre classe afin que les tests et propriétaires UI ne confondent jamais
+   « une semaine » avec « trois semaines ». */
+.srv2-planning-range {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e4e8;
+}
+
+.srv2-planning-range-title {
+  margin: 0;
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.srv2-planning-range-description,
+.srv2-planning-origin {
+  font-size: 13px;
+}
+
+.srv2-planning-range-generate {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 13px;
+  background: #0a66ff;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 600;
+  white-space: normal;
+}
+
+.srv2-planning-range-generate:disabled {
+  opacity: .55;
+}
+
 @media (prefers-color-scheme: dark) {
   .srv2-planning-week-shift {
     background: #16181d;
     color: #f2f3f5;
     border-color: #2a2d34;
   }
+  .srv2-planning-range { border-color: #2a2d34; }
 }
