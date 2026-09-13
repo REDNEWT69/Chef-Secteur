@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const hours = require('../store-opening-hours.js');
+const boulanger = require('../boulanger-default-hours.js');
 
 (function parsing(){
   assert.deepEqual(hours.parseDayHours('09:00-12:30,14:00-19:00'), [
@@ -9,6 +10,38 @@ const hours = require('../store-opening-hours.js');
   assert.equal(hours.parseDayHours(''), undefined);
   assert.throws(()=>hours.parseDayHours('09:00-08:00'), /invalide/);
   assert.throws(()=>hours.parseDayHours('09:00-13:00,12:00-18:00'), /chevauchent/);
+})();
+
+(function boulangerDefaultsAvoidManualTyping(){
+  const store={id:'b',enseigne:'Boulanger'};
+  assert.equal(boulanger.applyStore(store),true,'un Boulanger sans horaire reçoit le défaut enseigne');
+  assert.equal(store.openingHoursSource,'brand-default');
+  assert.deepEqual(store.openingHours.Lundi,[{open:'09:30',close:'19:30'}]);
+  assert.deepEqual(store.openingHours.Samedi,[{open:'09:30',close:'19:30'}]);
+  assert.deepEqual(hours.intervalsFor(store,'Lundi'),[{open:'09:30',close:'19:30'}]);
+  const state={stores:[store],settings:{weekDate:'2026-09-14',startTime:'08:30',endTime:'18:00',visitMinutes:60},appointments:[]};
+  const result=hours.scheduleRoute([{id:'b'}],'Lundi',state,{base:{},date:'2026-09-14',blocks:[],travelMinutes:()=>20,appointmentFor:()=>null});
+  assert.equal(result.rows[0].arrival,570,'la visite attend 09:30 au lieu de partir sur un horaire inconnu');
+  assert.equal(result.rows[0].status,'wait-opening');
+  assert.equal(result.unknownCount,0,'le défaut Boulanger est un horaire connu pour le planning');
+  assert.equal(hours.intervalsFor(store,'Dimanche'),undefined,'aucun dimanche n’est inventé par la V1');
+})();
+
+(function explicitAndManualHoursAlwaysWinOverBrandDefault(){
+  const manual={id:'m',enseigne:'Boulanger',openingHoursSource:'manual',openingHours:{Lundi:[{open:'10:00',close:'18:00'}]}};
+  assert.equal(boulanger.applyStore(manual),false);
+  assert.deepEqual(manual.openingHours.Lundi,[{open:'10:00',close:'18:00'}]);
+  const cleared={id:'c',enseigne:'Boulanger',openingHoursSource:'manual'};
+  assert.equal(boulanger.applyStore(cleared),false,'un effacement manuel doit empêcher le retour automatique du défaut');
+  assert.equal(hours.intervalsFor(cleared,'Lundi'),undefined);
+  const explicit={id:'e',enseigne:'Boulanger',openingHours:{Lundi:[{open:'09:00',close:'20:00'}]}};
+  assert.equal(boulanger.applyStore(explicit),false,'un horaire explicite sans source ne doit pas être écrasé');
+  const legacy={id:'l',enseigne:'Boulanger',openTime:'08:45',closeTime:'19:00'};
+  assert.equal(boulanger.applyStore(legacy),false,'les horaires historiques explicites restent prioritaires');
+  assert.deepEqual(hours.intervalsFor(legacy,'Lundi'),[{open:'08:45',close:'19:00'}]);
+  const other={id:'d',enseigne:'Darty'};
+  assert.equal(boulanger.applyStore(other),false,'les autres enseignes restent inchangées');
+  assert.equal(hours.intervalsFor(other,'Lundi'),undefined);
 })();
 
 (function firstStoreWaitsForOpeningAndDepartureMovesLater(){

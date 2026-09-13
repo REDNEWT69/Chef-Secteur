@@ -1,4 +1,4 @@
-const BUILD_REV = "20260913-storehistory162";
+const BUILD_REV = "20260913-boulangerhours163";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -37,6 +37,7 @@ const OPTIONAL_SHELL = [
   "./visit-counting.js",
   "./range-planner-v2.js",
   "./store-opening-hours.js",
+  "./boulanger-default-hours.js",
   "./terrain-planning-v1.js",
   "./working-hours-end.js",
   "./daily-capacity.js",
