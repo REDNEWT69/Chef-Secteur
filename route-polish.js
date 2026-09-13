@@ -21,7 +21,12 @@
   function baseCoordinate(){const p=profile(),lat=coordValue(p.baseLat,-90,90),lon=coordValue(p.baseLon,-180,180);return lat!=null&&lon!=null?{lat,lon}:null}
   function storeCoordinate(s){s=canonicalStore(s);if(!s)return null;const lat=coordValue(s.lat,-90,90),lon=coordValue(s.lon,-180,180);return lat!=null&&lon!=null?{lat,lon}:null}
   function basePoint(){const p=profile(),c=baseCoordinate();if(c)return c.lat+','+c.lon;if(p.baseAddress)return p.baseAddress;return''}
-  function storePoint(s){s=canonicalStore(s);if(!s)return'';const c=storeCoordinate(s);if(c)return c.lat+','+c.lon;if(s.adresse||s.ville)return [s.enseigne,s.adresse,s.ville].filter(Boolean).join(', ');return s.ville||s.enseigne||''}
+  function storePoint(s){
+    s=canonicalStore(s);if(!s)return'';
+    if(s.adresse||s.codePostal||s.ville)return [s.enseigne,s.adresse,s.codePostal,s.ville].filter(Boolean).join(', ');
+    const c=storeCoordinate(s);if(c)return c.lat+','+c.lon;
+    return s.ville||s.enseigne||'';
+  }
 
   function appleDirectionsUrl(day){const route=routeForDay(day);if(!route.length)return'';const source=basePoint()||storePoint(route[0]),destination=storePoint(route[route.length-1]),startIndex=basePoint()?0:1;const middle=route.slice(startIndex,-1).map(storePoint).filter(Boolean);let url='https://maps.apple.com/directions?source='+encodeURIComponent(source)+'&destination='+encodeURIComponent(destination)+'&mode=driving';middle.forEach(w=>{url+='&waypoint='+encodeURIComponent(w)});return url}
   function openRoute(){const url=appleDirectionsUrl(selectedDay());if(url)window.open(url,'_blank','noopener')}

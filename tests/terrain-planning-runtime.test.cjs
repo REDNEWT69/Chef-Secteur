@@ -8,10 +8,10 @@ const source = fs.readFileSync('terrain-planning-v1.js','utf8');
 
 assert(index.includes("'./range-planner-v2.js','./store-opening-hours.js','./terrain-planning-v1.js','./working-hours-end.js'"), 'les horaires doivent charger avant le module terrain');
 assert(sw.includes('"./terrain-planning-v1.js"'), 'le module terrain doit être disponible hors ligne');
-assert.strictEqual(version.displayVersion, '159');
-assert.strictEqual(version.latestBuild, '20260913-manualupdate159');
-assert(index.includes("const BUILD_REV='20260913-manualupdate159'"));
-assert(sw.includes('const BUILD_REV = "20260913-manualupdate159"'));
+assert.strictEqual(version.displayVersion, '160');
+assert.strictEqual(version.latestBuild, '20260913-terraininsights160');
+assert(index.includes("const BUILD_REV='20260913-terraininsights160'"));
+assert(sw.includes('const BUILD_REV = "20260913-terraininsights160"'));
 assert(sw.includes('"./store-opening-hours.js"'), 'horaires disponibles hors ligne');
 assert(!source.includes('window.generateWeek='), 'le module terrain ne doit pas reprendre generateWeek');
 assert(!source.includes('root.generateWeek='), 'le module terrain ne doit pas reprendre generateWeek');
