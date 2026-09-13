@@ -35,7 +35,8 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
       adresse:(i+1)+' rue Escargot', dept:'69', lat:i===64?null:45.758+(i+1)*0.002, lon:i===64?null:4.832,
       active:true, priority:3, intervalDays:30, products:[]
     }));
-    st.profile=Object.assign({},st.profile||{},{baseName:'Domicile test',baseAddress:'Lyon',baseLat:45.758,baseLon:4.832});
+    stores[0].openingHours={Lundi:[{open:'09:30',close:'19:30'}],Mardi:[{open:'09:30',close:'19:30'}],Mercredi:[{open:'09:30',close:'19:30'}],Jeudi:[{open:'09:30',close:'19:30'}],Vendredi:[{open:'09:30',close:'19:30'}]};
+    st.profile=Object.assign({},st.profile||{},{baseName:'Domicile test',baseAddress:'Lyon',baseLat:45.758,baseLon:4.832,overnightMode:'auto',overnightMinSaving:80});
     st.settings=Object.assign({},st.settings||{},{weekDate:'2026-09-21',days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],target:20,maxVisitsPerDay:4,startTime:'08:30',endTime:'18:00',visitMinutes:45,brands:[],products:[]});
     st.stores=stores;st.plan={Lundi:[],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};st.locks={};st.included={};st.excluded={};st.appointments=[];st.calendarEvents=[];st.manualWeekEdits={};
     window.syncGoogleCalendar=async()=>({ok:true});
@@ -66,6 +67,12 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
   await expect(terrainStatus).toContainText('3 semaines escargot');
   await expect(terrainStatus).toContainText('65 planifiables');
   await expect(terrainStatus).toContainText('1 GPS à vérifier');
+  await expect(terrainStatus).toContainText('horaires à vérifier');
+  const insights=page.locator('#terrainSnailInsights');
+  await expect(insights).toBeVisible();
+  await expect(insights).toContainText('Découchés sur 3 semaines');
+  await expect(insights).toContainText('Mode Automatique · seuil 80 km');
+  await expect(insights).toContainText('Horaires');
   await expect(page.locator('#rangeStart')).toHaveValue('2026-09-14');
   await expect(page.locator('#rangeEnd')).toHaveValue('2026-10-04');
   await expect(page.locator('#weekDate')).toHaveValue('2026-09-14');
@@ -76,12 +83,17 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
     const keys=['2026-09-14','2026-09-21','2026-09-28'];
     const flatten=k=>['Lundi','Mardi','Mercredi','Jeudi','Vendredi'].flatMap(d=>(a[k]?.plan?.[d]||[]).map(s=>s.id));
     const range=JSON.parse(db.getItem('chef_sector_range_v1')||'{}');
-    return {keys:keys.filter(k=>a[k]),weeks:keys.map(flatten),firstPlan:(window.state.plan.Lundi||[]).map(s=>s.id),poolReport:range.poolReport||null,rangeStart:range.start,rangeEnd:range.end};
+    return {keys:keys.filter(k=>a[k]),weeks:keys.map(flatten),firstPlan:(window.state.plan.Lundi||[]).map(s=>s.id),poolReport:range.poolReport||null,overnightReport:range.overnightReport||null,hoursReport:range.hoursReport||null,rangeStart:range.start,rangeEnd:range.end};
   });
   expect(generated.keys).toEqual(['2026-09-14','2026-09-21','2026-09-28']);
   expect(generated.rangeStart).toBe('2026-09-14');
   expect(generated.rangeEnd).toBe('2026-10-04');
   expect(generated.poolReport).toMatchObject({planifiable:65,withGps:64,withoutGps:1,imposed:0});
+  expect(generated.overnightReport).toHaveLength(3);
+  expect(generated.overnightReport[0]).toMatchObject({mode:'auto',threshold:80});
+  expect(generated.hoursReport.available).toBe(true);
+  expect(generated.hoursReport.unknown).toBeGreaterThan(0);
+  expect(generated.hoursReport.uniqueUnknown).toBeGreaterThan(0);
   const all=generated.weeks.flat();
   expect(all).toHaveLength(60);
   expect(new Set(all).size).toBe(60);
