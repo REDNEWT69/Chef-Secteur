@@ -12,13 +12,13 @@ test.use({
   trace: 'retain-on-failure'
 });
 
-test('V1 horaires : saisie, défaut Boulanger, planning et hors ligne à 390 px', async ({ page, context }) => {
+test('V1 horaires : saisie, défauts Boulanger/Darty, planning et hors ligne à 390 px', async ({ page, context }) => {
   test.setTimeout(60000);
   const pageErrors=[];
   page.on('pageerror', e => pageErrors.push(String(e && e.message || e)));
   // Ce scénario teste le cache et la persistance ; neutraliser uniquement le
   // rechargement automatique initial pour ne pas interrompre la fixture.
-  await page.addInitScript(()=>sessionStorage.setItem('store-runner-sw-reload:20260913-boulangerhours163','1'));
+  await page.addInitScript(()=>sessionStorage.setItem('store-runner-sw-reload:20260913-storephotos164','1'));
   await page.goto(APP_URL, {waitUntil:'domcontentloaded'});
   await page.waitForFunction(() => window.StoreOpeningHoursV1 && window.BoulangerDefaultHoursV1 && window.state && typeof window.openStoreQuick==='function');
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
@@ -26,8 +26,9 @@ test('V1 horaires : saisie, défaut Boulanger, planning et hors ligne à 390 px'
   await page.evaluate(() => {
     const st=window.state;
     const stores=[
-      {id:'hours-1',enseigne:'Darty',ville:'Premier',adresse:'1 rue Ouverture',dept:'69',lat:45.760,lon:4.832,active:true,priority:3},
-      {id:'hours-2',enseigne:'Boulanger',ville:'Deuxième',adresse:'2 rue Ouverture',dept:'69',lat:45.770,lon:4.832,active:true,priority:3}
+      {id:'hours-1',enseigne:'Fnac',ville:'Premier',adresse:'1 rue Ouverture',dept:'69',lat:45.760,lon:4.832,active:true,priority:3},
+      {id:'hours-2',enseigne:'Boulanger',ville:'Deuxième',adresse:'2 rue Ouverture',dept:'69',lat:45.770,lon:4.832,active:true,priority:3},
+      {id:'hours-3',enseigne:'Darty',ville:'Troisième',adresse:'3 rue Ouverture',dept:'69',lat:45.780,lon:4.842,active:true,priority:3}
     ];
     st.profile=Object.assign({},st.profile||{},{baseName:'Domicile test',baseAddress:'Lyon',baseLat:45.758,baseLon:4.832});
     st.settings=Object.assign({},st.settings||{},{weekDate:'2026-09-14',days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],startTime:'08:30',endTime:'18:00',visitMinutes:60});
@@ -40,17 +41,27 @@ test('V1 horaires : saisie, défaut Boulanger, planning et hors ligne à 390 px'
   });
 
   await expect.poll(()=>page.evaluate(()=>window.state.stores.find(s=>s.id==='hours-2').openingHoursSource)).toBe('brand-default');
+  await expect.poll(()=>page.evaluate(()=>window.state.stores.find(s=>s.id==='hours-3').openingHoursSource)).toBe('brand-default');
   expect(await page.evaluate(()=>window.state.stores.find(s=>s.id==='hours-2').openingHours.Lundi)).toEqual([{open:'09:30',close:'19:30'}]);
-  expect(await page.evaluate(()=>window.StoreOpeningHoursV1.scheduleRoute([window.state.stores.find(s=>s.id==='hours-2')],'Lundi',window.state,{base:{},date:'2026-09-14',blocks:[],travelMinutes:()=>20,appointmentFor:()=>null}).unknownCount)).toBe(0);
+  expect(await page.evaluate(()=>window.state.stores.find(s=>s.id==='hours-3').openingHours.Samedi)).toEqual([{open:'09:30',close:'19:30'}]);
+  expect(await page.evaluate(()=>window.StoreOpeningHoursV1.scheduleRoute([window.state.stores.find(s=>s.id==='hours-3')],'Lundi',window.state,{base:{},date:'2026-09-14',blocks:[],travelMinutes:()=>20,appointmentFor:()=>null}).unknownCount)).toBe(0);
 
   const dialog=page.locator('#storeHoursDialog');
   await page.evaluate(()=>window.StoreOpeningHoursV1.openHoursDialog('hours-2'));
   await expect(dialog).toBeVisible();
+  await expect(dialog.locator('#boulangerDefaultHoursHint')).toContainText('Boulanger');
   await expect(dialog.locator('#boulangerDefaultHoursHint')).toContainText('09:30–19:30');
   await expect(dialog.locator('#boulangerDefaultHoursHint')).toContainText('rien à saisir');
   const monday=dialog.locator('[data-hours-day="Lundi"]');
   await expect(monday).toHaveValue('09:30-19:30');
   await expect(dialog.locator('[data-hours-day="Samedi"]')).toHaveValue('09:30-19:30');
+  await dialog.locator('button[value="cancel"]').tap();
+  await expect(dialog).not.toBeVisible();
+
+  await page.evaluate(()=>window.StoreOpeningHoursV1.openHoursDialog('hours-3'));
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('#boulangerDefaultHoursHint')).toContainText('Darty');
+  await expect(monday).toHaveValue('09:30-19:30');
   await dialog.locator('button[value="cancel"]').tap();
   await expect(dialog).not.toBeVisible();
 
@@ -103,6 +114,7 @@ test('V1 horaires : saisie, défaut Boulanger, planning et hors ligne à 390 px'
   await page.waitForFunction(()=>window.StoreOpeningHoursV1&&window.BoulangerDefaultHoursV1&&window.state);
   expect(await page.evaluate(()=>window.state.stores.find(s=>s.id==='hours-1').openingHours.Lundi)).toEqual([{open:'10:00',close:'19:00'}]);
   expect(await page.evaluate(()=>window.state.stores.find(s=>s.id==='hours-2').openingHoursSource)).toBe('brand-default');
+  expect(await page.evaluate(()=>window.state.stores.find(s=>s.id==='hours-3').openingHoursSource)).toBe('brand-default');
   await page.evaluate(()=>window.StoreOpeningHoursV1.openHoursDialog('hours-1'));
   await monday.fill('fermé');
   await dialog.locator('#saveStoreHours').tap();
@@ -120,6 +132,7 @@ test('V1 horaires : saisie, défaut Boulanger, planning et hors ligne à 390 px'
   await page.waitForFunction(()=>window.StoreOpeningHoursV1&&window.BoulangerDefaultHoursV1&&window.state);
   expect(await page.evaluate(()=>window.StoreOpeningHoursV1.scheduleRoute(window.state.plan.Lundi,'Lundi').unknownCount)).toBe(1);
   expect(await page.evaluate(()=>window.state.stores.find(s=>s.id==='hours-2').openingHours.Lundi)).toEqual([{open:'09:30',close:'19:30'}]);
+  expect(await page.evaluate(()=>window.state.stores.find(s=>s.id==='hours-3').openingHours.Lundi)).toEqual([{open:'09:30',close:'19:30'}]);
   await page.evaluate(()=>window.StoreOpeningHoursV1.openHoursDialog('hours-1'));
   await monday.fill('10:00-19:00');
   await dialog.locator('#saveStoreHours').tap();
