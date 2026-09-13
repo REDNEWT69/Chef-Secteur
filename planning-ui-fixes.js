@@ -101,10 +101,39 @@
   function choiceSummary(boxId,type){
     const all=[...document.querySelectorAll('#'+boxId+' input[type="checkbox"]')],checked=all.filter(x=>x.checked);
     if(type==='days')return checked.length?checked.map(x=>SHORT[x.value]||x.value).join(', '):'Aucun jour';
-    if(!all.length||checked.length===all.length)return'Toutes';
-    if(!checked.length)return'Aucune';
-    if(checked.length<=2)return checked.map(x=>x.value).join(', ');
-    return checked.length+' sélectionnées';
+    const counts=planningFilterCounts();if(!counts)return'';
+    const label=!all.length||checked.length===all.length?'Toutes':checked.length+' sur '+all.length;
+    return label+(counts.filtered?' · '+counts.filtered+' magasin'+(counts.filtered>1?'s':'')+' écarté'+(counts.filtered>1?'s':''):'');
+  }
+
+  function planningFilterCounts(){
+    if(typeof includedByFilters!=='function')return null;
+    const stores=Array.isArray(state.stores)?state.stores:[],excluded=state.excluded||{};
+    let available=0,filtered=0;
+    for(const store of stores){
+      if(!store||store.active===false||excluded[store.id])continue;
+      if(includedByFilters(store))available++;else filtered++;
+    }
+    return {available,filtered};
+  }
+
+  function syncBrandChoice(){
+    const details=document.getElementById('planningBrandsDetails');if(!details)return;
+    const summary=details.querySelector('[data-choice-summary]');if(summary)summary.textContent=choiceSummary('brandsBox','brands');
+    const box=document.getElementById('brandsBox'),body=details.querySelector('.planningChoiceBody');if(!box||!body)return;
+    const partial=[...box.querySelectorAll('input[type="checkbox"]')].some(input=>!input.checked);
+    let button=document.getElementById('planningAllBrands');
+    if(!partial){if(button)button.remove();return}
+    if(!button){
+      button=document.createElement('button');button.id='planningAllBrands';button.type='button';button.className='secondary';button.textContent='Toutes les enseignes';
+      button.style.cssText='min-height:44px;margin-top:8px;white-space:normal';
+      button.addEventListener('click',()=>{
+        document.querySelectorAll('#brandsBox input[type="checkbox"]').forEach(input=>{input.checked=true});
+        state.settings.brands=[];save();syncDynamicStoreCount();syncBrandChoice();schedule();
+      });
+    }
+    // Hors de brandsBox : renderFilterControls() en remplace intégralement le contenu.
+    if(button.parentNode!==body||box.nextElementSibling!==button)box.insertAdjacentElement('afterend',button);
   }
 
   function ensureChoiceDetails(boxId,detailsId,title,type){
@@ -118,6 +147,7 @@
       parent.insertBefore(details,label||box);details.appendChild(summary);details.appendChild(body);if(label)body.appendChild(label);body.appendChild(box);
     }
     const summary=details.querySelector('[data-choice-summary]');if(summary)summary.textContent=choiceSummary(boxId,type);
+    if(type==='brands')syncBrandChoice();
   }
 
   function ensureAdvancedDetails(){
@@ -152,7 +182,10 @@
     // passer un compteur figé « 83 magasins » sans que rien ne le détecte).
     const notice=document.getElementById('departureStoreNotice');
     if(notice){const label=active+' magasin'+(active>1?'s':'')+' actif'+(active>1?'s':'')+' dans ton secteur'+(total!==active?' · '+total+' au total':'')+'. Le compteur suit automatiquement tes données.';if(notice.textContent!==label)notice.textContent=label}
-    const settings=document.querySelector('#planningSettings .settingsInner');if(settings){let line=document.getElementById('planningDynamicStoreCount');if(!line){line=document.createElement('div');line.id='planningDynamicStoreCount';line.className='planningStoreCount tiny';const target=document.getElementById('target');if(target)target.insertAdjacentElement('afterend',line)}if(line)line.textContent=active+' magasin'+(active>1?'s':'')+' actif'+(active>1?'s':'')+' disponible'+(active>1?'s':'')+' pour le planning.'}
+    const counts=planningFilterCounts();
+    let line=document.getElementById('planningDynamicStoreCount');
+    if(!counts){if(line)line.remove();return}
+    const settings=document.querySelector('#planningSettings .settingsInner');if(settings){if(!line){line=document.createElement('div');line.id='planningDynamicStoreCount';line.className='planningStoreCount tiny';const target=document.getElementById('target');if(target)target.insertAdjacentElement('afterend',line);else settings.appendChild(line)}const n=counts.available;line.textContent=n+' magasin'+(n>1?'s':'')+' disponible'+(n>1?'s':'')+' pour le planning'+(counts.filtered?' · '+counts.filtered+' écarté'+(counts.filtered>1?'s':'')+' par le filtre Enseignes':'')+'.'}
   }
 
   function compactSettings(){ensureChoiceDetails('daysBox','planningDaysDetails','Jours travaillés','days');ensureChoiceDetails('brandsBox','planningBrandsDetails','Enseignes','brands');ensureAdvancedDetails();ensureCalendarDetails();suppressDuplicateGeneration();syncDynamicStoreCount()}
@@ -183,6 +216,12 @@
   document.addEventListener('pointerdown',e=>{if(editingLocked&&!isSettingsShortcut(e.target)&&!(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD)))releaseEditingLock()},true);
   document.addEventListener('focusin',e=>{if(editingLocked&&!isSettingsShortcut(e.target)&&!(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD)))releaseEditingLock()},true);
   document.addEventListener('change',e=>{
+    if(e.target&&e.target.matches&&e.target.matches('#brandsBox input[type="checkbox"]')){
+      // Le moteur lit ces mêmes cases à la génération. Enregistrer le choix dès le
+      // change permet de compter via includedByFilters, sans dupliquer sa règle.
+      state.settings.brands=[...document.querySelectorAll('#brandsBox input[type="checkbox"]')].filter(input=>input.checked).map(input=>input.value);
+      save();syncDynamicStoreCount();syncBrandChoice();
+    }
     if(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD)){editingLocked=false;schedule()}
     if(e.target&&e.target.matches&&(e.target.matches('[data-day],[data-brand]')||e.target.matches('#rangeStart,#rangeEnd')))setTimeout(schedule,20);
   },true);

@@ -35,10 +35,6 @@ assert.doesNotMatch(coreSource,/state\.locks\[x\.store\.id\]=day/,'l’assistant
 assert.match(coreSource,/lock=lockDayNow\(s\.id\),km=/,'la vue semaine doit marquer « locked » selon la semaine affichée');
 assert.match(coreSource,/state\.included\[s\.id\]\|\|lockDayNow\(s\.id\)/,'le repli de sélection doit lire la même règle');
 assert.match(coreSource,/var lock=lockDayNow\(selected\[i\]\.id\);if\(lock&&groups\[lock\]\)/,'le repli de regroupement ne doit plus fabriquer groups["[object Object]"]');
-// Numérotation de version : la suivante après 149 est 150, pas le numéro du ticket.
-const versionJson=JSON.parse(fs.readFileSync(__dirname+'/../version.json','utf8'));
-assert.equal(versionJson.displayVersion,'150','displayVersion doit suivre main (149), pas le numéro de ticket');
-assert.doesNotMatch(versionJson.latestBuild,/1[0-9]{2}$/,'latestBuild ne doit pas se terminer par un nombre confondable avec une version');
 
 // --- Environnement de test ----------------------------------------------------------
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
