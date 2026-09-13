@@ -68,7 +68,7 @@ export function createPlanningRangeFeature(options) {
   button.textContent = 'Générer 3 semaines · escargot';
 
   const status = doc.createElement('p');
-  status.classList.add('srv2-planning-status', 'srv2-planning-range-status');
+  status.classList.add('srv2-planning-range-status');
   status.setAttribute('aria-live', 'polite');
 
   root.appendChild(title);
