@@ -17,6 +17,18 @@ forbid('navigation-controller.js','attente temporelle de sauvegarde',/setTimeout
 forbid('navigation-controller.js','couplage direct à saveProfile',/saveProfile/);
 forbid('navigation-controller.js','revalidation DOM des coordonnées',/savedProfileMatchesForm/);
 
+// Après un remplacement manuel, la persistance émet un événement métier puis l'ancien
+// flux tente encore de rouvrir la fiche magasin. Le contrôleur doit absorber uniquement
+// cette prochaine ouverture automatique et laisser toutes les ouvertures suivantes normales.
+must('navigation-controller.js','écoute des modifications manuelles du planning',/store-runner:planning-updated/);
+must('navigation-controller.js','raison remplacement manuel',/day-store-recenter/);
+must('navigation-controller.js','raison déplacement inter-jours',/store-moved-between-days/);
+must('navigation-controller.js','garde ouverture fiche magasin',/installStoreQuickReturnGuard/);
+must('navigation-controller.js','suppression unique de la prochaine fiche',/suppressNextQuickOpen=false/);
+must('navigation-controller.js','retour planning sans remonter en haut',/activatePlanning\(\)/);
+must('navigation-controller.js','fermeture fiche existante',/closeStoreQuick/);
+forbid('navigation-controller.js','temporisation UX du retour planning',/setTimeout\s*\(/);
+
 // Les réglages restent physiquement à leur place dans .applePlan. Le contrôleur de
 // navigation transforme seulement ce même nœud en sheet fixe, ce qui évite les copies
 // d'état et les réorganisations qui ferment les sélecteurs natifs sur iOS.
