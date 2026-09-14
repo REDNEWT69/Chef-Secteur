@@ -1,4 +1,4 @@
-const BUILD_REV = "20260915-ai-report172";
+const BUILD_REV = "20260915-pilotage173";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -50,6 +50,7 @@ const OPTIONAL_SHELL = [
   "./assistant-sheet-drag.js",
   "./visual-refresh-v1.js",
   "./home-refresh-v2.js",
+  "./sector-pilotage.js",
   "./auto-planning-fix.js",
   "./connection-ui.js",
   "./update-manager.js",
