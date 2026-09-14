@@ -92,7 +92,11 @@ for(const [enseigne,attendu] of [['Darty','grands-magasins'],['BOULANGER','grand
 (function photos(){
   const {s,id}=freshVisit('Darty');
   const rows=[{family:'blanc',moment:'avant'},{family:'blanc',moment:'avant'},{family:'',moment:'avant'},{family:'blanc',moment:'apres'}];
-  assert.ok(R.build(s,id,'blanc',rows).includes('> **Photos :** 3 avant / 1 après jointes à ce message.'),'trois avant et un après');
+  const txt=R.build(s,id,'blanc',rows);
+  assert.ok(txt.includes('> **Photos :** 3 avant / 1 après jointes à ce message.'),'trois avant et un après');
+  const count=txt.match(/\*\*Photos :\*\* (\d+) avant \/ (\d+) après/);
+  assert(count,'la ligne photo doit rester lisible et comptable');
+  assert.equal(Number(count[1])+Number(count[2]),rows.length,'le texte annonce exactement le nombre de fichiers transmis au bouton de partage');
   assert.ok(R.build(s,id,'blanc',[]).includes('> **Photos :** '+PH),'aucune photo → le marqueur, pas une ligne « 0 avant / 0 après »');
   assert.ok(R.build(s,id,'brun',[{family:'blanc',moment:'avant'}]).includes('> **Photos :** '+PH),'une photo BLANC ne compte pas pour BRUN');
   console.error('  Photos BLANC (3 avant, 1 après, 1 non étiquetée) : ligne « 3 avant / 1 après »');
@@ -168,8 +172,12 @@ for(const [enseigne,attendu] of [['Darty','grands-magasins'],['BOULANGER','grand
   assert.ok(!/\bfetch\s*\(|XMLHttpRequest/.test(src),'aucun appel réseau : tout doit marcher hors ligne');
   assert.ok(/store-runner:data-restored/.test(src)&&/store-runner:planning-updated/.test(src),'réinstallation sur les seuls événements publics');
   assert.equal((src.match(/srReportSheet/g)||[]).length>0,true,'la feuille porte bien son identifiant');
+  assert.ok(src.includes("api.listByFamily(v.storeId,activeTab)"),'le bouton relit les photos de la famille active');
+  assert.ok(src.includes("api.shareRecords(rows)"),'le bouton transmet exactement ces lignes à StorePhotosV1');
+  assert.ok(src.includes("Aucune photo pour cette famille."),'zéro photo donne un état explicite et désactivé');
+  assert.ok(src.includes("Partage annulé."),'une annulation du partage n’est pas traitée comme une panne');
   for(const nom of ['window.renderAll','window.state=','window.StoreRunnerVisits='])
     assert.ok(!src.includes(nom+'='),'ne redéfinit pas '+nom);
 })();
 
-console.log('PASS: trois squelettes, familles étanches, marqueurs sur tout champ vide, comptage photos, et build pure — sans DOM, sans réseau, sans global.');
+console.log('PASS: trois squelettes, familles étanches, marqueurs sur tout champ vide, comptage photos, partage par famille et build pure — sans DOM, sans réseau, sans global.');
