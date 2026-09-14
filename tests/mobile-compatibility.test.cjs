@@ -1,11 +1,19 @@
 const fs=require('fs'),assert=require('assert/strict');
 const planning=fs.readFileSync(__dirname+'/../planning-ui-fixes.js','utf8');
 const profile=fs.readFileSync(__dirname+'/../profile-controller.js','utf8');
+const visits=fs.readFileSync(__dirname+'/../store-runner-visits.css','utf8');
 
 assert.match(planning,/#planningDaysDetails \.planningChoiceBody #daysBox\{max-height:none!important;overflow:visible!important/,'les six jours travaillés doivent rester visibles sans scroll interne fragile');
 assert.match(planning,/#planPanel #dayTabs\{[^}]*display:flex!important;[^}]*overflow-x:auto!important;[^}]*touch-action:pan-x/,'le bandeau des jours doit autoriser explicitement le swipe horizontal Android');
 assert.match(planning,/#planPanel #dayTabs \.dayTab\{[^}]*flex:1 1 0!important;[^}]*touch-action:pan-x/,'les boutons de jour ne doivent pas absorber le geste horizontal');
 assert.match(planning,/#planPanel #dayTabs \.dayTab\{[^}]*min-width:56px!important;[^}]*max-width:96px!important/,'les jours doivent se répartir sur la largeur disponible pour éviter qu’un jour soit tronqué à 390px');
+
+assert.match(visits,/#storeQuickSheet \.sheetActions\{grid-template-columns:1fr 1fr!important\}/,'la fiche magasin doit rester une grille compacte à deux colonnes');
+assert.match(visits,/#pinQuickStoreBtn\{order:40\}/,'Poser ce magasin doit ouvrir la rangée compacte terrain');
+assert.match(visits,/#storePhotosQuickBtn\{order:41;grid-column:auto!important\}/,'Photos doit rester à côté de Poser ce magasin');
+assert.match(visits,/button\[onclick\*="fullStoreFromQuick"\]\{order:50;grid-column:auto!important\}/,'Voir la fiche doit ouvrir la rangée de sortie');
+assert.match(visits,/#srReportQuickBtn\{order:51;grid-column:auto!important\}/,'Sortie magasin doit rester à côté de Voir la fiche');
+assert.match(visits,/#openingHoursQuickBtn\{order:60;grid-column:1\/-1!important\}/,'Horaires doit occuper toute la dernière ligne');
 
 assert.match(profile,/function acquireBestPosition\(/,'la localisation doit passer par une phase d’affinage');
 assert.match(profile,/watchPosition\(/,'la localisation doit pouvoir recevoir plusieurs fixes GPS');
@@ -20,4 +28,4 @@ assert.match(profile,/\/search\?format=jsonv2&limit=1&countrycodes=fr/,'un PC sa
 assert.match(profile,/countrycodes=fr/,'la recherche manuelle doit rester bornée à la France');
 assert.match(profile,/lookupDepartureAddress/,'le profil doit exposer une action explicite de recherche du départ');
 
-console.log('PASS: Android garde les jours accessibles au toucher et la localisation retient le meilleur fix GPS avant géocodage.');
+console.log('PASS: mobile garde les jours accessibles, la fiche magasin compacte et le meilleur fix GPS avant géocodage.');

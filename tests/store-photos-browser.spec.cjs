@@ -63,12 +63,15 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
   expect(brandHours.sourceB).toBe('brand-default');expect(brandHours.sourceD).toBe('brand-default');
 
   await page.evaluate(()=>window.openStoreQuick('photo-store','Lundi','09:30'));
-  const sheet=page.locator('#storeQuickSheet'),hoursButton=page.locator('#openingHoursQuickBtn'),photoButton=page.locator('#storePhotosQuickBtn'),fullButton=page.locator('#storeQuickSheet .sheetActions>button[onclick*="fullStoreFromQuick"]');
+  const sheet=page.locator('#storeQuickSheet'),hoursButton=page.locator('#openingHoursQuickBtn'),photoButton=page.locator('#storePhotosQuickBtn'),pinButton=page.locator('#pinQuickStoreBtn'),fullButton=page.locator('#storeQuickSheet .sheetActions>button[onclick*="fullStoreFromQuick"]'),reportQuick=page.locator('#srReportQuickBtn');
   await expect(sheet).toHaveClass(/open/);await page.waitForTimeout(350);
-  await expect(hoursButton).toBeVisible();await expect(photoButton).toBeVisible();await expect(photoButton).toBeInViewport();
-  const photoBox=await photoButton.boundingBox(),fullBox=await fullButton.boundingBox();expect(photoBox.height).toBeGreaterThanOrEqual(44);expect(fullBox).toBeTruthy();
-  expect(Math.abs(photoBox.y-fullBox.y)).toBeLessThanOrEqual(2);
-  expect(fullBox.x+fullBox.width).toBeLessThanOrEqual(photoBox.x+2);
+  await expect(hoursButton).toBeVisible();await expect(photoButton).toBeVisible();await expect(photoButton).toBeInViewport();await expect(reportQuick).toBeVisible();
+  const photoBox=await photoButton.boundingBox(),pinBox=await pinButton.boundingBox(),fullBox=await fullButton.boundingBox(),quickReportBox=await reportQuick.boundingBox();
+  expect(photoBox.height).toBeGreaterThanOrEqual(44);expect(pinBox).toBeTruthy();expect(fullBox).toBeTruthy();expect(quickReportBox).toBeTruthy();
+  expect(Math.abs(photoBox.y-pinBox.y)).toBeLessThanOrEqual(2);
+  expect(pinBox.x+pinBox.width).toBeLessThanOrEqual(photoBox.x+2);
+  expect(Math.abs(quickReportBox.y-fullBox.y)).toBeLessThanOrEqual(2);
+  expect(fullBox.x+fullBox.width).toBeLessThanOrEqual(quickReportBox.x+2);
 
   await hoursButton.tap();
   const hoursDialog=page.locator('#storeHoursDialog');await expect(hoursDialog).toBeVisible();
@@ -117,7 +120,7 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
   // Ticket 2B : depuis « Sortie magasin », le bouton partage exactement les photos BRUN
   // déjà comptées dans le texte, sans devoir rouvrir la galerie.
   await page.evaluate(()=>{window.__sharedStorePhotos=null});
-  const reportQuick=page.locator('#srReportQuickBtn');await expect(reportQuick).toBeVisible();await expect(reportQuick).toBeInViewport();await reportQuick.tap();
+  await expect(reportQuick).toBeVisible();await expect(reportQuick).toBeInViewport();await reportQuick.tap();
   const report=page.locator('#srReportSheet');await expect(report).toBeVisible();
   const reportBox=await report.boundingBox();expect(reportBox.x).toBeGreaterThanOrEqual(0);expect(reportBox.x+reportBox.width).toBeLessThanOrEqual(390);
   await expect(report.locator('[data-family="brun"]')).toHaveAttribute('aria-selected','true');
