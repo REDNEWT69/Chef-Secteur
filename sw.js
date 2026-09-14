@@ -1,4 +1,4 @@
-const BUILD_REV = "20260913-storephotos164";
+const BUILD_REV = "20260914-visitcredits165";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
