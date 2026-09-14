@@ -22,6 +22,7 @@ jobs:
       - run: node tests/backups.test.cjs
       - run: node tests/visit-workflow.test.cjs
       - run: node tests/visit-family-report.test.cjs
+      - run: node tests/visit-report-slack.test.cjs
       - run: node tests/visit-storage.test.cjs
       - run: node tests/assistant-visit-context.test.cjs
       - run: node tests/calendar.test.cjs

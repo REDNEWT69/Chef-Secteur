@@ -1,4 +1,4 @@
-const BUILD_REV = "20260915-family167";
+const BUILD_REV = "20260915-slackreport168";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -11,6 +11,7 @@ const CORE_SHELL = [
   "./reliability-core.js"
 ];
 const OPTIONAL_SHELL = [
+  "./visit-report-slack.js",
   "./region-stores.js", "./region-stores.css",
   "./region-fetch-resilience.js",
   "./official-catalog.js",
