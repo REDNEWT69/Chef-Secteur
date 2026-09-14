@@ -16,17 +16,21 @@ class DB{constructor(){this.map=new Map()}getItem(k){return this.map.get(k)??nul
 const db=new DB();global.state=s;global.__chefStorage=db;R.save(s);const bundle=R.capture();assert.deepEqual(bundle.state,s);const clean=new DB();R.persist(R.decode(JSON.stringify(bundle),original),clean);assert.deepEqual(R.load(clean),s);assert.equal(M.start(R.load(clean),'y'),s.businessV2.visits.find(v=>v.storeId==='y').id);assert.deepEqual(R.restore(bundle),s);assert.equal(R.decode(JSON.stringify(original),s).state.businessV2,undefined);
 const removed=M.clone(s);removed.stores=removed.stores.filter(x=>x.id!=='x');removed.plan={};removed.appointments=[];R.validateState(removed);
 const root=path.join(__dirname,'..'),ui=fs.readFileSync(path.join(root,'store-runner-visits.js'),'utf8'),sw=fs.readFileSync(path.join(root,'sw.js'),'utf8');
-assert(!/window\.(renderAll|renderWeek|save|openStore|saveStore|saveAppointment|goTab|switchTab)\s*=/.test(ui));assert(!/setInterval\s*\(/.test(ui));for(const asset of ['store-runner-visit-model.js','store-runner-visit-store.js','store-runner-visits.js','store-runner-visits.css'])assert(sw.split('const OPTIONAL_SHELL')[0].includes(asset));
+// Un simple `===` ne doit pas être confondu avec une réappropriation de fonction globale.
+assert(!/window\.(renderAll|renderWeek|save|openStore|saveStore|saveAppointment|goTab|switchTab)\s*=(?!=)/.test(ui));assert(!/setInterval\s*\(/.test(ui));for(const asset of ['store-runner-visit-model.js','store-runner-visit-store.js','store-runner-visits.js','store-runner-visits.css'])assert(sw.split('const OPTIONAL_SHELL')[0].includes(asset));
 assert(ui.includes('window.StoreRunnerVisits={start,openVisit,openHub,memoryFor,renderQuickMemory,activeVisitId:()=>activeId}'),'le module Visit doit publier un accès borné aux visites archivées, activeVisitId compris et rien de plus');
 assert(ui.includes("data.visits.slice(0,3)"),'la fiche magasin doit commencer par les trois dernières visites');
 assert(ui.includes("Voir tout l’historique"),'la fiche magasin doit permettre d’ouvrir tout l’historique');
 assert(ui.includes("!['done','cancelled'].includes(a.status)"),'la mémoire terrain doit garder uniquement les actions encore ouvertes');
 assert(ui.includes("quickMemoryObserver.observe(sheet,{attributes:true,attributeFilter:['class','aria-hidden']})"),'l’observation doit rester bornée à la feuille magasin');
 assert(ui.includes("row.dataset.srHistoryVisit=v.id"),'chaque visite historique doit rester ouvrable dans son détail');
-// L'étiquetage automatique et le compteur sont calculés à l'enregistrement : sans un
-// rafraîchissement ciblé, l'écran ne les montre qu'au rendu suivant — select figé sur
-// « Non étiqueté », compteur figé sur 0/5. Ciblé, et pas un render() complet : ce sont des
-// champs de saisie, le curseur doit rester où il est.
-assert(/field\(box,label,item\[key\],value=>save\(s=>M\.edit6P\(s,v\.id,p,i,key,value\),\(\)=>refreshFamilySelect\(famSel,v,p,i\)\)/.test(ui),'la saisie d’une ligne 6P doit rafraîchir son select Famille');
-assert(/save\(s=>M\.editReport\(s,v\.id,active,key,value\),\(\)=>refreshReportCount\(count,v\)\)/.test(ui),'la saisie d’un bloc de compte rendu doit rafraîchir le compteur BLANC/BRUN');
-console.log('PASS: Visit/Action workflow, six P, bidirectional owner/date sync, idempotent conversions/closure, history compatibility, store memory surface, V2 backup/restore, interrupted draft, invalid data and module ownership.');
+// Le modèle 6P reste testé ci-dessus pour la compatibilité des anciennes visites, mais le
+// parcours terrain V170 ne doit plus l'exposer comme un second TeamHaven.
+assert(ui.includes('const VISIBLE_STEPS=[3,5]'),'le parcours visible doit rester Terrain / Suivi');
+assert(!ui.includes('Méthode 6P'),'la Méthode 6P n’est plus une étape visible');
+assert(!ui.includes('function sixP('),'aucun formulaire 6P ne doit être rendu');
+assert(ui.includes('Famille active : '),'le changement BLANC / BRUN doit donner un retour visuel persistant');
+assert(ui.includes("'Note terrain '+family.toUpperCase()"),'une grande note terrain remplace les sous-options');
+assert(ui.includes("'Prochain passage / formation '+family.toUpperCase()"),'le prochain passage reste directement saisissable');
+assert(ui.includes('api.open(v.storeId)'),'les photos restent accessibles directement depuis la visite');
+console.log('PASS: Visit/Action model legacy, carnet terrain V170, history compatibility, store memory surface, V2 backup/restore, invalid data and module ownership.');

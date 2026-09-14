@@ -22,7 +22,7 @@ const forbidden=[
   ['useCurrentLocation',/window\.useCurrentLocation\s*=/],
   ['baseObj',/window\.baseObj\s*=/],
   ['havBase',/window\.havBase\s*=/],
-  ['renderAll',/window\.renderAll\s*=/],
+  ['renderAll',/window\.renderAll\s*=(?!=)/],
   ['renderWeek',/window\.renderWeek\s*=/],
   ['renderHistory',/window\.renderHistory\s*=/],
   ['switchTab',/window\.switchTab\s*=/],

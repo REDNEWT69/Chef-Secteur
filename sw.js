@@ -1,4 +1,4 @@
-const BUILD_REV = "20260915-slackphotos169";
+const BUILD_REV = "20260915-terrainnotes170";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
