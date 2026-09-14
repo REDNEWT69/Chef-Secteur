@@ -113,8 +113,10 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.StorePhotosV1&&window.BoulangerDefaultHoursV1&&window.state&&typeof window.openStoreQuick==='function'&&window.state.stores.some(s=>s.id==='photo-store'));
   await reopenQuickAndTapPhotos(page);
-  await expect(page.locator('#storePhotosDialog .sr-photoCard')).toHaveCount(2);
-  await expect(page.locator('#storePhotosDialog')).toContainText('Après implantation');
+  const reloadedCards=page.locator('#storePhotosDialog .sr-photoCard');
+  await expect(reloadedCards).toHaveCount(2);
+  await expect(reloadedCards.first().locator('.sr-photoNote')).toHaveValue('Après implantation');
+  await expect(reloadedCards.nth(1).locator('.sr-photoNote')).toHaveValue('Avant implantation');
   await page.locator('#srPhotoClose').tap();
 
   await context.setOffline(true);
