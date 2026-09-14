@@ -1,4 +1,4 @@
-const BUILD_REV = "20260914-updatereload166";
+const BUILD_REV = "20260915-family167";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
