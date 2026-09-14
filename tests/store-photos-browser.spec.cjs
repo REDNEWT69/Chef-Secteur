@@ -1,7 +1,7 @@
 const {test,expect}=require('@playwright/test');
 
 const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
-const PNG=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=','base64');
+const PNG=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=','base64');
 
 test.use({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1,serviceWorkers:'allow',screenshot:'only-on-failure',trace:'retain-on-failure'});
 
@@ -19,9 +19,9 @@ async function reopenQuickAndTapPhotos(page){
 test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rapport',async({page,context})=>{
   test.setTimeout(90000);
   const pageErrors=[];page.on('pageerror',e=>pageErrors.push(String(e&&e.message||e)));
-  await page.addInitScript(()=>sessionStorage.setItem('store-runner-sw-reload:20260913-storephotos164','1'));
+  await page.addInitScript(()=>sessionStorage.setItem('store-runner-sw-reload:20260915-slackphotos169','1'));
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>window.StorePhotosV1&&window.BoulangerDefaultHoursV1&&window.StoreOpeningHoursV1&&window.StoreRunnerVisitModel&&window.ChefReliability&&window.state&&typeof window.openStoreQuick==='function');
+  await page.waitForFunction(()=>window.StorePhotosV1&&window.StoreRunnerVisitReport&&window.BoulangerDefaultHoursV1&&window.StoreOpeningHoursV1&&window.StoreRunnerVisitModel&&window.ChefReliability&&window.state&&typeof window.openStoreQuick==='function');
   await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
   await page.evaluate(()=>{
     Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});
@@ -82,6 +82,9 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
   const dialog=page.locator('#storePhotosDialog');await expect(dialog).toBeVisible();
   const dbox=await dialog.boundingBox();expect(dbox.x).toBeGreaterThanOrEqual(0);expect(dbox.x+dbox.width).toBeLessThanOrEqual(390);
   await expect(dialog.locator('#srPhotoCameraInput')).toHaveAttribute('capture','environment');
+  const tagRows=dialog.locator('#srPhotoTags .sr-photoTagRow');
+  await expect(tagRows.nth(0).locator('[data-tag="brun"]')).toHaveAttribute('aria-pressed','true');
+  await tagRows.nth(1).locator('[data-tag="avant"]').tap();
 
   await dialog.locator('#srPhotoCameraInput').setInputFiles({name:'avant.png',mimeType:'image/png',buffer:PNG});
   await expect(dialog.locator('.sr-photoCard')).toHaveCount(1);
@@ -90,6 +93,7 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
   await expect(dialog.locator('#srPhotoStatus')).toContainText('Note photo enregistrée');
   await page.waitForTimeout(15);
 
+  await tagRows.nth(1).locator('[data-tag="apres"]').tap();
   await dialog.locator('#srPhotoLibraryInput').setInputFiles({name:'apres.png',mimeType:'image/png',buffer:PNG});
   await expect(dialog.locator('.sr-photoCard')).toHaveCount(2);
   await dialog.locator('.sr-photoCard').first().locator('.sr-photoNote').fill('Après implantation');
@@ -109,6 +113,26 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
   const overflow=await page.evaluate(()=>({sw:document.documentElement.scrollWidth,cw:document.documentElement.clientWidth,dw:document.getElementById('storePhotosDialog').scrollWidth}));
   expect(overflow.sw).toBeLessThanOrEqual(overflow.cw+1);expect(overflow.dw).toBeLessThanOrEqual(390);
   await dialog.locator('#srPhotoClose').tap();
+
+  // Ticket 2B : depuis « Sortie magasin », le bouton partage exactement les photos BRUN
+  // déjà comptées dans le texte, sans devoir rouvrir la galerie.
+  await page.evaluate(()=>{window.__sharedStorePhotos=null});
+  const reportQuick=page.locator('#srReportQuickBtn');await expect(reportQuick).toBeVisible();await expect(reportQuick).toBeInViewport();await reportQuick.tap();
+  const report=page.locator('#srReportSheet');await expect(report).toBeVisible();
+  const reportBox=await report.boundingBox();expect(reportBox.x).toBeGreaterThanOrEqual(0);expect(reportBox.x+reportBox.width).toBeLessThanOrEqual(390);
+  await expect(report.locator('[data-family="brun"]')).toHaveAttribute('aria-selected','true');
+  await expect(report.locator('#srReportText')).toHaveValue(/1 avant \/ 1 après jointes à ce message\./);
+  const shareFamily=report.locator('#srReportSharePhotos');await expect(shareFamily).toBeEnabled();await expect(shareFamily).toHaveText('Partager les 2 photos BRUN');
+  const shareBox=await shareFamily.boundingBox();expect(shareBox.height).toBeGreaterThanOrEqual(44);
+  await shareFamily.tap();
+  await expect.poll(()=>page.evaluate(()=>window.__sharedStorePhotos&&window.__sharedStorePhotos.count)).toBe(2);
+  const sharedFromReport=await page.evaluate(()=>window.__sharedStorePhotos);
+  expect(sharedFromReport.title).toBe('Photos terrain · Boulanger · Lyon');
+  expect(sharedFromReport.names.every(n=>n.startsWith('Boulanger-Lyon_brun_'))).toBe(true);
+  expect(sharedFromReport.names.some(n=>n.includes('_avant_'))).toBe(true);
+  expect(sharedFromReport.names.some(n=>n.includes('_apres_'))).toBe(true);
+  await expect(report.locator('#srReportStatus')).toContainText('2 photos BRUN partagées');
+  await report.locator('.sr-reportClose').tap();await expect(report).not.toBeVisible();
 
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.StorePhotosV1&&window.BoulangerDefaultHoursV1&&window.state&&typeof window.openStoreQuick==='function'&&window.state.stores.some(s=>s.id==='photo-store'));

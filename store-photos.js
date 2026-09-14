@@ -130,10 +130,12 @@ function downloadRecord(record){
   const store=storeById(record.storeId),url=URL.createObjectURL(record.blob),a=el('a');a.href=url;a.download=shareFileName(record,store);a.style.display='none';root.document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)
 }
 async function shareRecords(records){
-  const store=storeById(activeStoreId),files=records.map(r=>new File([r.blob],shareFileName(r,store),{type:r.type||r.blob.type||'image/jpeg',lastModified:new Date(r.createdAt).getTime()||Date.now()})),nav=root.navigator||{};
+  const rows=Array.isArray(records)?records:[];
+  const files=rows.map(r=>new File([r.blob],shareFileName(r,storeById(r.storeId)),{type:r.type||r.blob.type||'image/jpeg',lastModified:new Date(r.createdAt).getTime()||Date.now()})),nav=root.navigator||{};
+  const titleStoreId=rows.length?rows[0].storeId:activeStoreId;
   let can=false;try{can=!!(nav.share&&(!nav.canShare||nav.canShare({files})))}catch(e){can=false}
-  if(can){await nav.share({files,title:'Photos terrain · '+storeName(activeStoreId),text:'Photos Store Runner à joindre au rapport terrain.'});return'shared'}
-  if(records.length===1){downloadRecord(records[0]);return'downloaded'}
+  if(can){await nav.share({files,title:'Photos terrain · '+storeName(titleStoreId),text:'Photos Store Runner à joindre au rapport terrain.'});return'shared'}
+  if(rows.length===1){downloadRecord(rows[0]);return'downloaded'}
   return'unsupported';
 }
 async function shareSelected(){

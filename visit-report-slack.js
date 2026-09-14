@@ -7,6 +7,7 @@
 const SHEET_ID='srReportSheet';
 const VISIT_BTN_ID='srReportBtn';
 const QUICK_BTN_ID='srReportQuickBtn';
+const SHARE_BTN_ID='srReportSharePhotos';
 const PLACEHOLDER='[Non renseigné par le FMT]';
 const STATUS_LABEL={ok:'OK',correct:'À corriger',opportunity:'Opportunité'};
 
@@ -168,7 +169,7 @@ function ensureStyle(){
     +'#srReportText{width:100%;box-sizing:border-box;min-height:300px;border:1px solid #d9dee8;border-radius:14px;padding:10px;font:400 12px ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.45;background:#fbfcff;color:#1d1d1f;-webkit-text-fill-color:#1d1d1f;resize:vertical}'
     +'.sr-reportStatus{min-height:18px;font-size:12px;color:#315b9d;margin:8px 0}.sr-reportStatus.sr-reportError{color:#b42318}'
     +'.sr-reportActions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px}.sr-reportBtn{min-height:48px;border-radius:14px;font-weight:800}'
-    +'.sr-reportCopy{background:#1428a0;color:#fff;border:0}.sr-reportClose{background:#eef0f4;color:#1d1d1f;border:0}'
+    +'.sr-reportCopy{background:#1428a0;color:#fff;border:0}.sr-reportPhotos{background:#eef0f4;color:#1d1d1f;border:0}.sr-reportPhotos:disabled{opacity:.55}.sr-reportClose{background:#eef0f4;color:#1d1d1f;border:0}'
     +'#'+VISIT_BTN_ID+',#'+QUICK_BTN_ID+'{min-height:44px}';
   root.document.head.appendChild(s);
 }
@@ -184,7 +185,8 @@ function ensureSheet(){
     +'<p id="srReportStatus" class="sr-reportStatus" role="status"></p>'
     +'<div class="sr-reportActions"></div>';
   const actions=sheet.querySelector('.sr-reportActions');
-  actions.append(btn('Copier le compte rendu',copy,'sr-reportBtn sr-reportCopy'),btn('Fermer',close,'sr-reportBtn sr-reportClose'));
+  const share=btn('Aucune photo pour cette famille.',sharePhotos,'sr-reportBtn sr-reportPhotos');share.id=SHARE_BTN_ID;share.disabled=true;
+  actions.append(btn('Copier le compte rendu',copy,'sr-reportBtn sr-reportCopy'),share,btn('Fermer',close,'sr-reportBtn sr-reportClose'));
   sheet.addEventListener('cancel',e=>{e.preventDefault();close()});
   root.document.body.appendChild(sheet);
   return sheet;
@@ -193,6 +195,14 @@ async function photosFor(storeId,family){
   const api=root.StorePhotosV1;
   if(!api||typeof api.listByFamily!=='function')return [];
   try{return await api.listByFamily(storeId,family)}catch(e){return []}
+}
+function updatePhotoButton(photos,merged){
+  const b=sheet&&sheet.querySelector('#'+SHARE_BTN_ID);if(!b)return;
+  b.hidden=!!merged;
+  if(merged){b.disabled=true;return}
+  const n=Array.isArray(photos)?photos.length:0,FAM=activeTab.toUpperCase();
+  b.disabled=!n;
+  b.textContent=n?(n===1?'Partager la photo '+FAM:'Partager les '+n+' photos '+FAM):'Aucune photo pour cette famille.';
 }
 async function refresh(){
   const v=visitById(activeVisit);
@@ -205,7 +215,7 @@ async function refresh(){
   if(!merged){
     const M=model();
     for(const family of M.FAMILIES){
-      const b=btn(family.toUpperCase(),()=>{activeTab=family;refresh()},'sr-reportTab');
+      const b=btn(family.toUpperCase(),()=>{activeTab=family;say('');refresh()},'sr-reportTab');
       b.setAttribute('role','tab');b.setAttribute('aria-selected',activeTab===family?'true':'false');
       b.dataset.family=family;tabs.append(b);
     }
@@ -213,6 +223,7 @@ async function refresh(){
   /* Jamais de cache : on relit l'état et les photos à chaque affichage. */
   const photos=merged?[]:await photosFor(v.storeId,activeTab);
   sheet.querySelector('#srReportText').value=build(state(),v.id,activeTab,photos);
+  updatePhotoButton(photos,merged);
 }
 async function copy(){
   const area=sheet&&sheet.querySelector('#srReportText');
@@ -230,6 +241,28 @@ async function copy(){
   }catch(e){}
   say('Copie impossible ici. Sélectionne le texte et copie-le à la main.',true);
   return false;
+}
+async function sharePhotos(){
+  const v=visitById(activeVisit);
+  if(!v){say('Visite introuvable.',true);return false}
+  const api=root.StorePhotosV1;
+  if(!api||typeof api.listByFamily!=='function'||typeof api.shareRecords!=='function'){
+    say('Partage photo indisponible ici. Ouvre Photos magasin pour les télécharger une par une.',true);return false;
+  }
+  let rows;
+  try{rows=await api.listByFamily(v.storeId,activeTab)}catch(e){say('Photos indisponibles : '+(e.message||String(e)),true);return false}
+  updatePhotoButton(rows,false);
+  const area=sheet&&sheet.querySelector('#srReportText');if(area)area.value=build(state(),v.id,activeTab,rows);
+  if(!rows.length){say('Aucune photo pour cette famille.');return false}
+  try{
+    const result=await api.shareRecords(rows);
+    if(result==='shared'){say(rows.length+' photo'+(rows.length>1?'s':'')+' '+activeTab.toUpperCase()+' partagée'+(rows.length>1?'s':'')+'.');return true}
+    if(result==='downloaded'){say('Photo téléchargée.');return true}
+    say('Partage de plusieurs fichiers indisponible ici. Ouvre Photos magasin pour les télécharger une par une.',true);return false;
+  }catch(e){
+    if(e&&e.name==='AbortError'){say('Partage annulé.');return false}
+    say('Partage impossible : '+(e.message||String(e))+'. Ouvre Photos magasin pour les télécharger une par une.',true);return false;
+  }
 }
 function close(){if(sheet&&sheet.open)sheet.close()}
 async function open(visitId){

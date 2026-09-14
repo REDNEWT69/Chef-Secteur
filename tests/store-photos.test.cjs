@@ -106,6 +106,26 @@ function fakeIndexedDB(rows){
   assert.equal(nettoye.moment,'','un moment hors contrat aussi');
   assert.equal(await photos.updateTags('inconnue',{family:'brun'}),false,'un identifiant inconnu ne casse rien');
 
+  // Ticket 2B : shareRecords doit fonctionner sans open() préalable et prendre le magasin
+  // porté par chaque enregistrement, jamais activeStoreId d'une ancienne galerie.
+  const oldState=globalThis.state,oldNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator'),oldFile=Object.getOwnPropertyDescriptor(globalThis,'File');
+  try{
+    globalThis.state={stores:[{id:'s-direct',enseigne:'Boulanger',ville:'Lyon'}]};
+    class FakeFile{constructor(parts,name,opts){this.parts=parts;this.name=name;this.type=opts&&opts.type;this.lastModified=opts&&opts.lastModified}}
+    Object.defineProperty(globalThis,'File',{configurable:true,writable:true,value:FakeFile});
+    let shared=null;
+    Object.defineProperty(globalThis,'navigator',{configurable:true,value:{canShare:()=>true,share:async payload=>{shared=payload}}});
+    const result=await photos.shareRecords([{id:'direct',storeId:'s-direct',createdAt:'2026-09-14T14:00:00Z',family:'brun',moment:'avant',type:'image/jpeg',blob:{type:'image/jpeg'}}]);
+    assert.equal(result,'shared','shareRecords partage directement sans ouvrir la galerie');
+    assert.equal(shared.files[0].name,'Boulanger-Lyon_brun_avant_2026-09-14_14-00-00.jpg','le nom vient du storeId de l’enregistrement');
+    assert.equal(shared.title,'Photos terrain · Boulanger · Lyon','le titre vient du même magasin');
+    assert(!shared.files[0].name.startsWith('magasin_'),'aucun nom générique quand le magasin est connu');
+  }finally{
+    globalThis.state=oldState;
+    if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else delete globalThis.navigator;
+    if(oldFile)Object.defineProperty(globalThis,'File',oldFile);else delete globalThis.File;
+  }
+
   console.error('  listByFamily — BRUN : '+brun.map(r=>r.id).join(', ')+' · BLANC : '+blanc.map(r=>r.id).join(', '));
   console.log('store-photos: OK');
 })().catch(e=>{console.error(e);process.exit(1)});
