@@ -19,7 +19,7 @@ Présenter ensuite les contacts rencontrés, l’équipe et les informations mag
 
 Décrire les nouveautés, références, démonstrations et tendances commerciales avec les références exactes fournies par le FMT, sans en inventer.
 
-Expliquer le positionnement Samsung face à la concurrence et les retours vendeurs uniquement lorsque ces informations existent dans la source.
+Expliquer le positionnement de la marque face à la concurrence et les retours vendeurs uniquement lorsque ces informations existent dans la source.
 
 Concernant les massifications, résumer la situation constatée et la raison éventuelle quand elle est connue.
 
@@ -34,11 +34,11 @@ Première visite sur le magasin [Enseigne Ville]. Présenter en une phrase le co
 
 Présenter les contacts rencontrés et les informations d’équipe pertinentes.
 
-Décrire naturellement la situation Samsung sur le froid, le lavage et les autres familles uniquement avec les faits réellement saisis, y compris les objections ou retours SAV lorsqu’ils existent.
+Décrire naturellement la situation de la marque sur le froid, le lavage et les autres familles uniquement avec les faits réellement saisis, y compris les objections ou retours SAV lorsqu’ils existent.
 
 Faire ressortir les tendances locales utiles au business et les opportunités réellement observées, sans extrapolation.
 
-Concernant les massifications, résumer clairement la situation Samsung et concurrence ainsi que les éventuels points à revoir.
+Concernant les massifications, résumer clairement la situation de la marque et de la concurrence ainsi que les éventuels points à revoir.
 
 Formation / prochain passage
 
@@ -90,7 +90,7 @@ function aiPrompt(data){
  const source=JSON.stringify(data,null,2);
  if(data.skeleton==='grands-magasins'){
   const fam=String(data.family||'brun').toUpperCase(),sample=GRAND_SAMPLE[data.family]||GRAND_SAMPLE.brun;
-  return `Tu es un Field Merchandising Trainer (FMT) Samsung d’excellence. Tu transformes des notes terrain brutes en un résumé Slack professionnel, naturel, concret et immédiatement exploitable par la direction.
+  return `Tu es un Field Merchandising Trainer (FMT) d’excellence. Tu transformes des notes terrain brutes en un résumé Slack professionnel, naturel, concret et immédiatement exploitable par la direction.
 
 RÈGLES ABSOLUES :
 1. Utilise UNIQUEMENT les faits présents dans DONNEES_SOURCE. N’invente jamais un nom, un chiffre, une référence produit, une tendance, une action, une cause ou une formation.
@@ -121,7 +121,7 @@ EXEMPLE_DE_STYLE_VALIDÉ — STYLE UNIQUEMENT, PAS UNE SOURCE FACTUELLE :
 ${sample}`;
  }
  const title=data.skeleton==='cuisinistes'?'COMPTE RENDU DE VISITE CUISINISTE':'COMPTE RENDU DE VISITE BUYING GROUP';
- return `Tu es un Field Merchandising Trainer (FMT) Samsung. Rédige un ${title} professionnel à partir UNIQUEMENT de DONNEES_SOURCE. N’invente aucun fait. Corrige uniquement la forme, déduplique, et transforme les anciennes observations techniques en français naturel sans afficher les libellés 6P. Si une information attendue manque, écris exactement ${PLACEHOLDER}. Le texte doit être directement collable dans Slack, sans préambule ni bloc de code. Respecte cette trame métier : ${officialStructure(data.skeleton)}\n\nDONNEES_SOURCE :\n${source}`
+ return `Tu es un Field Merchandising Trainer (FMT). Rédige un ${title} professionnel à partir UNIQUEMENT de DONNEES_SOURCE. N’invente aucun fait. Corrige uniquement la forme, déduplique, et transforme les anciennes observations techniques en français naturel sans afficher les libellés 6P. Si une information attendue manque, écris exactement ${PLACEHOLDER}. Le texte doit être directement collable dans Slack, sans préambule ni bloc de code. Respecte cette trame métier : ${officialStructure(data.skeleton)}\n\nDONNEES_SOURCE :\n${source}`
 }
 function cleanAIText(value){let s=text(value);s=s.replace(/^```(?:markdown|md|text)?\s*/i,'').replace(/\s*```$/,'').trim();s=s.replace(/^(?:Voici|Voilà)\s+(?:le|ton|votre)\s+(?:compte rendu|résumé)[^\n]*\n+/i,'').trim();return s}
 let sheet=null,activeVisit='',activeTab='blanc',aiDrafts=Object.create(null);
