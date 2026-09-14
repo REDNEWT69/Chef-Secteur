@@ -33,4 +33,79 @@ const source=fs.readFileSync('store-photos.js','utf8');
   assert(source.includes("navigator")||source.includes("root.navigator"),'le partage natif doit rester disponible');
 })();
 
-console.log('store-photos: OK');
+(function nomDeFichierEtiquete(){
+  // 12. Non-régression : sans famille ni moment, le nom est celui d'avant ce ticket.
+  const nu=photos.shareFileName({createdAt:'2026-09-13T12:34:56.000Z',type:'image/jpeg'},{enseigne:'Boulanger',ville:'Lyon'});
+  assert.equal(nu,'Boulanger-Lyon_2026-09-13_12-34-56-000.jpg','un enregistrement sans étiquette garde son nom historique');
+  const etiquete=photos.shareFileName({createdAt:'2026-09-13T12:34:56.000Z',type:'image/jpeg',family:'brun',moment:'avant'},{enseigne:'Darty',ville:'Lyon'});
+  assert.equal(etiquete,'Darty-Lyon_brun_avant_2026-09-13_12-34-56-000.jpg','famille et moment s’insèrent avant l’horodatage');
+  const partiel=photos.shareFileName({createdAt:'2026-09-13T12:34:56.000Z',type:'image/jpeg',moment:'apres'},{enseigne:'Darty',ville:'Lyon'});
+  assert.equal(partiel,'Darty-Lyon_apres_2026-09-13_12-34-56-000.jpg','une seule étiquette suffit');
+  assert(!/redne|responsable/i.test(etiquete),'aucun nom de personne dans le nom de fichier');
+})();
+
+/* IndexedDB de fortune : listByFamily lit réellement le stockage, on ne teste pas une
+   copie du filtre. Assez fidèle pour les curseurs et la fin de transaction. */
+function fakeIndexedDB(rows){
+  const data=new Map(rows.map(r=>[String(r.id),Object.assign({},r)]));
+  function makeTx(){
+    const tx={oncomplete:null,onerror:null,onabort:null,abort(){if(tx.onabort)tx.onabort()}};
+    let pending=0;
+    function settle(fn){pending++;queueMicrotask(()=>{fn();pending--;if(!pending)setTimeout(()=>{if(!pending&&tx.oncomplete)tx.oncomplete()},0)})}
+    const os={
+      put(r){data.set(String(r.id),r);const req={};settle(()=>{if(req.onsuccess)req.onsuccess()});return req},
+      delete(id){data.delete(String(id));const req={};settle(()=>{if(req.onsuccess)req.onsuccess()});return req},
+      get(id){const req={};settle(()=>{req.result=data.get(String(id));if(req.onsuccess)req.onsuccess()});return req},
+      index(){return{openCursor(range){
+        const req={},matching=[...data.values()].filter(r=>String(r.storeId)===String(range.only));
+        let i=0;
+        const step=()=>settle(()=>{
+          if(i>=matching.length){req.result=null;if(req.onsuccess)req.onsuccess();return}
+          req.result={value:matching[i++],continue:step};if(req.onsuccess)req.onsuccess();
+        });
+        step();return req;
+      }}}
+    };
+    tx.objectStore=()=>os;
+    return tx;
+  }
+  return {open(){const req={};setTimeout(()=>{req.result={transaction:(_n,_m)=>makeTx(),objectStoreNames:{contains:()=>true}};if(req.onsuccess)req.onsuccess()},0);return req}};
+}
+
+(async function familleDesPhotos(){
+  globalThis.indexedDB=fakeIndexedDB([
+    {id:'p1',storeId:'s1',createdAt:'2026-09-14T09:00:00Z',family:'brun',moment:'avant'},
+    {id:'p2',storeId:'s1',createdAt:'2026-09-14T10:00:00Z',family:'blanc',moment:'apres'},
+    {id:'p3',storeId:'s1',createdAt:'2026-09-14T11:00:00Z'},                       // d'avant ce ticket
+    {id:'p4',storeId:'s1',createdAt:'2026-09-14T12:00:00Z',family:'',moment:''},
+    {id:'p9',storeId:'s2',createdAt:'2026-09-14T13:00:00Z',family:'brun'}
+  ]);
+  globalThis.IDBKeyRange={only:v=>({only:v})};
+
+  const toutes=await photos.list('s1');
+  assert.deepEqual(toutes.map(r=>r.id),['p4','p3','p2','p1'],'la liste reste triée du plus récent au plus ancien');
+
+  // 11. La famille demandée, plus les non étiquetées, jamais celles de l'autre famille.
+  const brun=await photos.listByFamily('s1','brun');
+  assert.deepEqual(brun.map(r=>r.id).sort(),['p1','p3','p4'],'BRUN : ses photos et les non étiquetées');
+  const blanc=await photos.listByFamily('s1','blanc');
+  assert.deepEqual(blanc.map(r=>r.id).sort(),['p2','p3','p4'],'BLANC : ses photos et les non étiquetées');
+  assert(!brun.some(r=>r.family==='blanc')&&!blanc.some(r=>r.family==='brun'),'jamais la famille opposée');
+  const communes=brun.filter(r=>blanc.some(b=>b.id===r.id)).map(r=>r.id).sort();
+  assert.deepEqual(communes,['p3','p4'],'les non étiquetées sont volontairement rendues aux deux');
+  assert.deepEqual((await photos.listByFamily('s2','brun')).map(r=>r.id),['p9'],'le magasin reste la première clé de lecture');
+
+  // updateTags persiste, et n'accepte que les valeurs du contrat.
+  assert.equal(await photos.updateTags('p3',{family:'blanc',moment:'apres'}),true);
+  const apres=await photos.listByFamily('s1','blanc');
+  assert(apres.some(r=>r.id==='p3'&&r.family==='blanc'&&r.moment==='apres'),'l’étiquette posée après coup est enregistrée');
+  assert(!(await photos.listByFamily('s1','brun')).some(r=>r.id==='p3'),'et la photo quitte l’autre famille');
+  await photos.updateTags('p3',{family:'violet',moment:'plus tard'});
+  const nettoye=(await photos.list('s1')).find(r=>r.id==='p3');
+  assert.equal(nettoye.family,'','une famille hors contrat retombe sur non étiquetée');
+  assert.equal(nettoye.moment,'','un moment hors contrat aussi');
+  assert.equal(await photos.updateTags('inconnue',{family:'brun'}),false,'un identifiant inconnu ne casse rien');
+
+  console.error('  listByFamily — BRUN : '+brun.map(r=>r.id).join(', ')+' · BLANC : '+blanc.map(r=>r.id).join(', '));
+  console.log('store-photos: OK');
+})().catch(e=>{console.error(e);process.exit(1)});

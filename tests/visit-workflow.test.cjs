@@ -17,7 +17,7 @@ const db=new DB();global.state=s;global.__chefStorage=db;R.save(s);const bundle=
 const removed=M.clone(s);removed.stores=removed.stores.filter(x=>x.id!=='x');removed.plan={};removed.appointments=[];R.validateState(removed);
 const root=path.join(__dirname,'..'),ui=fs.readFileSync(path.join(root,'store-runner-visits.js'),'utf8'),sw=fs.readFileSync(path.join(root,'sw.js'),'utf8');
 assert(!/window\.(renderAll|renderWeek|save|openStore|saveStore|saveAppointment|goTab|switchTab)\s*=/.test(ui));assert(!/setInterval\s*\(/.test(ui));for(const asset of ['store-runner-visit-model.js','store-runner-visit-store.js','store-runner-visits.js','store-runner-visits.css'])assert(sw.split('const OPTIONAL_SHELL')[0].includes(asset));
-assert(ui.includes('window.StoreRunnerVisits={start,openVisit,openHub,memoryFor,renderQuickMemory}'),'le module Visit doit publier un accès borné aux visites archivées');
+assert(ui.includes('window.StoreRunnerVisits={start,openVisit,openHub,memoryFor,renderQuickMemory,activeVisitId:()=>activeId}'),'le module Visit doit publier un accès borné aux visites archivées, activeVisitId compris et rien de plus');
 assert(ui.includes("data.visits.slice(0,3)"),'la fiche magasin doit commencer par les trois dernières visites');
 assert(ui.includes("Voir tout l’historique"),'la fiche magasin doit permettre d’ouvrir tout l’historique');
 assert(ui.includes("!['done','cancelled'].includes(a.status)"),'la mémoire terrain doit garder uniquement les actions encore ouvertes');
