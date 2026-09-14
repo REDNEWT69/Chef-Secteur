@@ -42,6 +42,20 @@ Ne pas remplacer une fonction globale métier appartenant à un autre module. Pr
 - `.github/workflows/build-native-calendar.yml` est un workflow **legacy/manual-only** qui cible encore `v3-premium`. Ne pas le réactiver sur les pushes `main` et ne pas utiliser `v3-premium` comme source de vérité du produit actuel.
 - `tests/ci-policy.test.cjs` protège ces règles et doit rester dans Reliability.
 
+### Qui fusionne
+
+- L'agent qui a ouvert une PR la sort du brouillon et **la fusionne lui-même**
+  dès que Reliability est verte et que le rapport de la PR est complet.
+  Il n'attend pas une validation humaine pour ça.
+- Il supprime la branche juste après la fusion.
+- Il ne fusionne **jamais** une PR ouverte par un autre agent.
+- Exceptions qui exigent un accord humain explicite avant fusion :
+  suppression de données, changement du schéma de `state`, modification de
+  `sw.js` au-delà de `BUILD_REV`, ou toute PR marquée « ne pas fusionner »
+  dans son titre.
+- Après fusion : vérifier que `main` est vert et que la version déployée est
+  bien la nouvelle.
+
 ## Métier V2
 
 Le plan de référence est `PLAN_METIER_STORE_RUNNER.md`.
