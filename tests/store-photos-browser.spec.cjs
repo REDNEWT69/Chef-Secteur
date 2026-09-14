@@ -6,6 +6,7 @@ const PNG=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42
 test.use({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1,serviceWorkers:'allow',screenshot:'only-on-failure',trace:'retain-on-failure'});
 
 async function reopenQuickAndTapPhotos(page){
+  await page.waitForFunction(()=>window.state&&Array.isArray(window.state.stores)&&window.state.stores.some(s=>s.id==='photo-store'));
   await page.evaluate(()=>window.openStoreQuick('photo-store','Lundi','09:30'));
   const sheet=page.locator('#storeQuickSheet'),photo=page.locator('#storePhotosQuickBtn');
   await expect(sheet).toHaveClass(/open/);
@@ -20,7 +21,7 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
   const pageErrors=[];page.on('pageerror',e=>pageErrors.push(String(e&&e.message||e)));
   await page.addInitScript(()=>sessionStorage.setItem('store-runner-sw-reload:20260913-storephotos164','1'));
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>window.StorePhotosV1&&window.BoulangerDefaultHoursV1&&window.StoreOpeningHoursV1&&window.state&&typeof window.openStoreQuick==='function');
+  await page.waitForFunction(()=>window.StorePhotosV1&&window.BoulangerDefaultHoursV1&&window.StoreOpeningHoursV1&&window.StoreRunnerVisitModel&&window.ChefReliability&&window.state&&typeof window.openStoreQuick==='function');
   await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
   await page.evaluate(()=>{
     Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});
@@ -38,10 +39,13 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
     ];
     st.plan={Lundi:[JSON.parse(JSON.stringify(st.stores[0])),JSON.parse(JSON.stringify(st.stores[1]))],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
     st.appointments=[];st.calendarEvents=[];
-    st.businessV2={visits:[{id:'visit-photo',storeId:'photo-store',status:'draft',updatedAt:'2026-09-13T20:00:00.000Z'}],actions:[],storeSnapshots:{}};
+    st.businessV2=window.StoreRunnerVisitModel.empty();
+    window.StoreRunnerVisitModel.start(st,'photo-store');
     document.dispatchEvent(new CustomEvent('store-runner:data-restored'));
-    try{if(typeof save==='function')save()}catch(_){}
-    try{if(typeof renderAll==='function')renderAll()}catch(_){}
+    if(typeof save==='function')save();
+    const persisted=window.ChefReliability.load(window.__chefStorage||window.localStorage);
+    if(!persisted||!persisted.stores.some(s=>s.id==='photo-store'))throw new Error('Fixture magasin non persistée avant reload');
+    if(typeof renderAll==='function')renderAll();
   });
 
   const brandHours=await page.evaluate(()=>{
@@ -107,7 +111,7 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
   await dialog.locator('#srPhotoClose').tap();
 
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>window.StorePhotosV1&&window.BoulangerDefaultHoursV1&&window.state&&typeof window.openStoreQuick==='function');
+  await page.waitForFunction(()=>window.StorePhotosV1&&window.BoulangerDefaultHoursV1&&window.state&&typeof window.openStoreQuick==='function'&&window.state.stores.some(s=>s.id==='photo-store'));
   await reopenQuickAndTapPhotos(page);
   await expect(page.locator('#storePhotosDialog .sr-photoCard')).toHaveCount(2);
   await expect(page.locator('#storePhotosDialog')).toContainText('Après implantation');
@@ -115,7 +119,7 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
 
   await context.setOffline(true);
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>window.StorePhotosV1&&window.BoulangerDefaultHoursV1&&window.state&&typeof window.openStoreQuick==='function');
+  await page.waitForFunction(()=>window.StorePhotosV1&&window.BoulangerDefaultHoursV1&&window.state&&typeof window.openStoreQuick==='function'&&window.state.stores.some(s=>s.id==='photo-store'));
   await reopenQuickAndTapPhotos(page);
   await expect(page.locator('#storePhotosDialog .sr-photoCard')).toHaveCount(2);
   expect(await page.evaluate(()=>window.StoreOpeningHoursV1.openingLabel(window.state.stores.find(s=>s.id==='photo-store'),'Lundi'))).toBe('09:30–19:30');
