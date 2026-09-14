@@ -1,4 +1,4 @@
-/* Store Runner V1 — règle terrain Boulanger confirmée par l’utilisateur.
+/* Store Runner V1 — règle terrain Boulanger/Darty confirmée par l’utilisateur.
    09:30–19:30 du lundi au samedi tant qu’aucun horaire explicite n’existe.
    Les horaires manuels/officiels restent prioritaires. */
 (function(root){
@@ -9,10 +9,13 @@ let dialogObserver=null;
 
 function norm(v){return String(v==null?'':v).trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
 function isBoulanger(store){return !!store&&norm(store.enseigne)==='boulanger'}
+function isDarty(store){return !!store&&norm(store.enseigne)==='darty'}
+function isSupportedBrand(store){return isBoulanger(store)||isDarty(store)}
+function brandLabel(store){if(isBoulanger(store))return'Boulanger';if(isDarty(store))return'Darty';return''}
 function defaultHours(){const hours={};for(const day of DAYS)hours[day]=[{open:OPEN,close:CLOSE}];return hours}
 function hasExplicitLegacy(store){return !!(String(store&&store.openTime||'').trim()||String(store&&store.closeTime||'').trim())}
 function shouldApply(store){
-  if(!isBoulanger(store))return false;
+  if(!isSupportedBrand(store))return false;
   const source=String(store.openingHoursSource||'');
   if(source==='manual')return false;
   if(source&&source!==SOURCE)return false;
@@ -42,9 +45,9 @@ function ensureDialogHint(){
 }
 function decorateDialog(){
   const d=root.document&&root.document.getElementById('storeHoursDialog'),hint=ensureDialogHint();if(!d||!hint)return false;
-  const store=byId(d.dataset.storeId),active=!!(store&&isBoulanger(store)&&store.openingHoursSource===SOURCE&&sameDefault(store.openingHours));
+  const store=byId(d.dataset.storeId),active=!!(store&&isSupportedBrand(store)&&store.openingHoursSource===SOURCE&&sameDefault(store.openingHours));
   hint.hidden=!active;
-  if(active)hint.textContent='Boulanger : 09:30–19:30 appliqué par défaut du lundi au samedi. Tu n’as rien à saisir sauf si ce magasin est une exception.';
+  if(active)hint.textContent=brandLabel(store)+' : 09:30–19:30 appliqué par défaut du lundi au samedi. Tu n’as rien à saisir sauf si ce magasin est une exception.';
   return active;
 }
 function refresh(){
@@ -57,8 +60,8 @@ function observeDialog(){
   dialogObserver=new MutationObserver(decorateDialog);dialogObserver.observe(d,{attributes:true,attributeFilter:['open','data-store-id']});
 }
 function boot(){refresh();observeDialog();decorateDialog()}
-const api={DAYS,OPEN,CLOSE,SOURCE,isBoulanger,defaultHours,shouldApply,applyStore,apply,decorateDialog,refresh};
-root.BoulangerDefaultHoursV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={DAYS,OPEN,CLOSE,SOURCE,isBoulanger,isDarty,isSupportedBrand,brandLabel,defaultHours,shouldApply,sameDefault,applyStore,apply,decorateDialog,refresh};
+root.BoulangerDefaultHoursV1=api;root.StoreBrandDefaultHoursV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){
   if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
   root.document.addEventListener('store-runner:data-restored',refresh);
