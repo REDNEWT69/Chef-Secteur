@@ -39,20 +39,29 @@ function arrival(host,v){M.CHECKS.forEach((label,i)=>{const wrap=element('label'
  visitField(host,v,'arrival','positives','Constats positifs',v.arrival.positives);visitField(host,v,'arrival','opportunities','Opportunités identifiées (notes)',v.arrival.opportunities);
  host.append(element('h4','Anomalies'));for(const a of v.arrival.anomalies){const box=element('section',undefined,'sr-item');select(box,'Famille',a.family||'',FAMILY_OPTIONS,value=>save(s=>M.setAnomalyFamily(s,v.id,a.id,value)),v.status==='completed');field(box,'Anomalie',a.text,value=>save(s=>M.editAnomaly(s,v.id,a.id,value)),'textarea',v.status==='completed');if(v.status==='draft'){const convert=button(a.actionId?'Action déjà créée':'Transformer en action',()=>save(s=>M.actionFromAnomaly(s,v.id,a.id),render));convert.disabled=!!a.actionId;box.append(convert)}host.append(box)}if(v.status==='draft')host.append(button('Ajouter une anomalie',()=>save(s=>M.addAnomaly(s,v.id),render)));
 }
-function sixP(host,v){for(const [p,section] of Object.entries(M.SIX_P)){const details=element('details');details.dataset.section=p;details.append(element('summary',section.label));section.items.forEach((label,i)=>{const item=v.sixP[p][i],box=element('section',undefined,'sr-item');box.append(element('h4',label));select(box,'Famille',item.family||'',FAMILY_OPTIONS,value=>save(s=>M.edit6P(s,v.id,p,i,'family',value)),v.status==='completed');select(box,'Statut',item.status,[['','Non évalué'],['ok','OK'],['correct','À corriger'],['opportunity','Opportunité']],value=>save(s=>M.edit6P(s,v.id,p,i,'status',value)),v.status==='completed');
- for(const [key,label,type] of [['comment','Commentaire','textarea'],['action','Action','textarea'],['owner','Responsable','text'],['dueDate','Échéance','date']])field(box,label,item[key],value=>save(s=>M.edit6P(s,v.id,p,i,key,value)),type,v.status==='completed');
+function sixP(host,v){for(const [p,section] of Object.entries(M.SIX_P)){const details=element('details');details.dataset.section=p;details.append(element('summary',section.label));section.items.forEach((label,i)=>{const item=v.sixP[p][i],box=element('section',undefined,'sr-item');box.append(element('h4',label));const famSel=select(box,'Famille',item.family||'',FAMILY_OPTIONS,value=>save(s=>M.edit6P(s,v.id,p,i,'family',value)),v.status==='completed');select(box,'Statut',item.status,[['','Non évalué'],['ok','OK'],['correct','À corriger'],['opportunity','Opportunité']],value=>save(s=>M.edit6P(s,v.id,p,i,'status',value),()=>refreshFamilySelect(famSel,v,p,i)),v.status==='completed');
+ for(const [key,label,type] of [['comment','Commentaire','textarea'],['action','Action','textarea'],['owner','Responsable','text'],['dueDate','Échéance','date']])field(box,label,item[key],value=>save(s=>M.edit6P(s,v.id,p,i,key,value),()=>refreshFamilySelect(famSel,v,p,i)),type,v.status==='completed');
  if(v.status==='draft')box.append(button(item.actionId?'Action liée : synchronisation automatique':'Créer l’action',()=>save(s=>M.actionFrom6P(s,v.id,p,i),render)));details.append(box)});host.append(details)}}
+function savedVisit(v){return domain().visits.find(x=>x.id===v.id)||v}
+/* L'étiquetage automatique et le compteur sont calculés par le modèle au moment de
+   l'enregistrement. Sans ces deux rafraîchissements ciblés, l'écran ne les montrait qu'au
+   rendu suivant : le select restait sur « Non étiqueté » et le compteur sur 0/5. On ne
+   re-rend pas toute l'étape — ce sont des champs de saisie, le curseur doit rester où il est. */
+function refreshFamilySelect(sel,v,p,i){const row=savedVisit(v).sixP[p][i];if(sel&&row)sel.value=row.family||''}
+function refreshReportCount(node,v){const d=M.reportOf(savedVisit(v)),total=Object.keys(M.REPORT_FIELDS).length;
+ if(node)node.textContent='BLANC : '+filledCount(d.blanc)+'/'+total+' blocs remplis · BRUN : '+filledCount(d.brun)+'/'+total}
 function filledCount(block){return Object.keys(M.REPORT_FIELDS).filter(k=>String(block[k]||'').trim()).length}
 function report(host,v){
  const data=M.reportOf(v),total=Object.keys(M.REPORT_FIELDS).length,active=activeFamily(v);
  /* Le compteur sert à une seule chose : voir avant de sortir du magasin qu'une famille
     n'a pas été oubliée. Il reste discret et n'empêche jamais de terminer la visite. */
- host.append(element('p','BLANC : '+filledCount(data.blanc)+'/'+total+' blocs remplis · BRUN : '+filledCount(data.brun)+'/'+total,'sr-reportCount'));
+ const count=element('p','BLANC : '+filledCount(data.blanc)+'/'+total+' blocs remplis · BRUN : '+filledCount(data.brun)+'/'+total,'sr-reportCount');
+ host.append(count);
  for(const [key,label] of Object.entries(M.REPORT_SHARED))
   field(host,label,data.shared[key],value=>save(s=>M.editReport(s,v.id,'shared',key,value)),'textarea',v.status==='completed').rows=4;
  host.append(element('h4',M.FAMILY_LABELS[active]));
  for(const [key,label] of Object.entries(M.REPORT_FIELDS)){
-  field(host,label,data[active][key],value=>save(s=>M.editReport(s,v.id,active,key,value)),'textarea',v.status==='completed').rows=4;
+  field(host,label,data[active][key],value=>save(s=>M.editReport(s,v.id,active,key,value),()=>refreshReportCount(count,v)),'textarea',v.status==='completed').rows=4;
   if(key==='team')host.append(element('p','Qui tu as vu, sa fonction, et ce qu’il t’a dit — mot pour mot si possible.','sr-hint'));
  }
 }

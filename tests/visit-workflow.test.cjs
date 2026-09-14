@@ -23,4 +23,10 @@ assert(ui.includes("Voir tout l’historique"),'la fiche magasin doit permettre 
 assert(ui.includes("!['done','cancelled'].includes(a.status)"),'la mémoire terrain doit garder uniquement les actions encore ouvertes');
 assert(ui.includes("quickMemoryObserver.observe(sheet,{attributes:true,attributeFilter:['class','aria-hidden']})"),'l’observation doit rester bornée à la feuille magasin');
 assert(ui.includes("row.dataset.srHistoryVisit=v.id"),'chaque visite historique doit rester ouvrable dans son détail');
+// L'étiquetage automatique et le compteur sont calculés à l'enregistrement : sans un
+// rafraîchissement ciblé, l'écran ne les montre qu'au rendu suivant — select figé sur
+// « Non étiqueté », compteur figé sur 0/5. Ciblé, et pas un render() complet : ce sont des
+// champs de saisie, le curseur doit rester où il est.
+assert(/field\(box,label,item\[key\],value=>save\(s=>M\.edit6P\(s,v\.id,p,i,key,value\),\(\)=>refreshFamilySelect\(famSel,v,p,i\)\)/.test(ui),'la saisie d’une ligne 6P doit rafraîchir son select Famille');
+assert(/save\(s=>M\.editReport\(s,v\.id,active,key,value\),\(\)=>refreshReportCount\(count,v\)\)/.test(ui),'la saisie d’un bloc de compte rendu doit rafraîchir le compteur BLANC/BRUN');
 console.log('PASS: Visit/Action workflow, six P, bidirectional owner/date sync, idempotent conversions/closure, history compatibility, store memory surface, V2 backup/restore, interrupted draft, invalid data and module ownership.');
