@@ -14,7 +14,7 @@ const state={
   },
   businessV2:{
     visits:[
-      {id:'va',storeId:'a',status:'completed',completedDate:'2026-09-10',updatedAt:'2026-09-10T18:00:00Z',conclusion:'',preparation:{marketShare:'PDM : 12 %'},arrival:{anomalies:[{id:'anom-a',text:'PLV manquante',family:'brun'}]},sixP:{promotion:[{status:'correct',comment:'PLV à corriger',action:'',family:'brun'}],place:[{status:'opportunity',comment:'Part de linéaire : 18%',action:'',family:'brun'}]},report:{shared:{context:'Magasin récent'},brun:{team:'Samsung à renforcer',actions:'',massification:'',omni:'',training:''},blanc:{team:'',actions:'',massification:'',omni:'',training:''}}},
+      {id:'va',storeId:'a',status:'completed',completedDate:'2026-09-10',updatedAt:'2026-09-10T18:00:00Z',conclusion:'',preparation:{marketShare:'PDM : 12 %'},arrival:{anomalies:[{id:'anom-a',text:'PLV manquante',family:'brun'}]},sixP:{promotion:[{status:'correct',comment:'PLV à corriger',action:'',family:'brun'}],place:[{status:'opportunity',comment:'Part de linéaire : 18%',action:'',family:'brun'}]},report:{shared:{context:'Magasin récent'},brun:{team:'Marque à renforcer',actions:'',massification:'',omni:'',training:''},blanc:{team:'',actions:'',massification:'',omni:'',training:''}}},
       {id:'vb',storeId:'b',status:'completed',completedDate:'2026-09-11',updatedAt:'2026-09-11T18:00:00Z',conclusion:'',preparation:{marketShare:'Part de marché 31%'},arrival:{anomalies:[]},sixP:{promotion:[{status:'ok',comment:'',action:'',family:'brun'}],place:[{status:'ok',comment:'PDL 35%',action:'',family:'brun'}]},report:{shared:{context:''},brun:{team:'RAS',actions:'',massification:'',omni:'',training:''},blanc:{team:'',actions:'',massification:'',omni:'',training:''}}}
     ],
     actions:[
@@ -37,7 +37,7 @@ assert.strictEqual(all.lowestPdl.store.id,'a');
 assert.strictEqual(all.lowestPdl.pdl,18);
 assert.strictEqual(all.rows.find(r=>r.store.id==='c').pdm,null,'une donnée absente reste absente');
 assert(all.rows.find(r=>r.store.id==='a').priority>all.rows.find(r=>r.store.id==='b').priority,'les alertes terrain remontent le magasin prioritaire');
-assert.strictEqual(all.rows.find(r=>r.store.id==='c').level,'orange','un magasin jamais visité est à surveiller, pas présenté comme conforme');
+assert.strictEqual(all.rows.find(r=>r.store.id==='c').level,'gray','un magasin jamais visité reste à qualifier et ne devient pas une fausse alerte');
 
 const brun=Pilotage.compute(state,{family:'brun',now:new Date('2026-09-15T12:00:00Z')});
 assert.strictEqual(brun.total,2,'le filtre BRUN respecte les produits magasin');
