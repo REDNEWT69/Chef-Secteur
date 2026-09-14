@@ -47,6 +47,7 @@ jobs:
       - run: node tests/planning-pin-week-scope.test.cjs
       - run: node tests/stores-reach-count.test.cjs
       - run: node tests/region-stores.test.cjs
+      - run: node tests/sector-admin-import.test.cjs
       - run: node tests/architecture.test.cjs
       - run: node tests/navigation-architecture.test.cjs
       - run: node tests/calendar-ownership.test.cjs
