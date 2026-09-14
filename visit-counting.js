@@ -3,7 +3,7 @@
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 const ARCHIVE_KEY='chef_sector_plan_archive_v1';
 const RANGE_KEY='chef_sector_range_v1';
-const DEFAULT_RULES={darty:2,boulanger:2,carrefour:2};
+const DEFAULT_RULES={darty:2,boulanger:2,carrefour:2,but:2,conforama:2};
 const OBSERVED_UI_IDS=['summary','smartBrief','premiumHomeV2','proMonthBody','storeQuickSheet'];
 let patchScheduled=false,uiObserver=null;
 
