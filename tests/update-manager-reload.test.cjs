@@ -139,6 +139,18 @@ function makeApp(opts){
   bloque.controllerChange();
   bloque.clock.flushUpTo(400);
   assert.equal(bloque.reloads(),0);
+  assert.deepEqual(bloque.banner(),{titre:'Mise à jour installée',detail:'Ferme et rouvre Store Runner pour l’appliquer.',sticky:'1'},
+    'un rechargement refusé doit laisser une consigne manuelle persistante');
+  bloque.clock.flushUpTo(3500);
+  assert.doesNotMatch(bloque.banner().detail,/recharge la nouvelle version/,'le message manuel ne doit pas être écrasé par le délai d’attente');
+
+  const sansReload=makeApp();
+  delete sansReload.ctx.location.reload;
+  assert.equal(await sansReload.ctx.window.StoreRunnerUpdates.installUpdate(),true);
+  sansReload.controllerChange();
+  sansReload.clock.flushUpTo(400);
+  assert.deepEqual(sansReload.banner(),{titre:'Mise à jour installée',detail:'Ferme et rouvre Store Runner pour l’appliquer.',sticky:'1'},
+    'une API reload absente doit aussi afficher la consigne manuelle');
 
   // --- Cas dégradés --------------------------------------------------------------------
   const sansSW=makeApp({noServiceWorker:true});

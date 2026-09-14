@@ -190,6 +190,13 @@
     }
   }
 
+  function reloadNow(){
+    try{
+      if(window.location&&typeof window.location.reload==='function'){window.location.reload();return true}
+    }catch(e){}
+    return false;
+  }
+
   async function installUpdate(){
     if(!('serviceWorker' in navigator)){
       state.error=new Error('Service Worker indisponible');render();return false;
@@ -211,7 +218,11 @@
         changed=true;
         const done=setBanner('Mise à jour installée','Store Runner recharge la nouvelle version…',null,null);
         if(done)done.dataset.sticky='1';
-        window.setTimeout(function(){try{window.location.reload()}catch(e){}},350);
+        window.setTimeout(function(){
+          if(reloadNow())return;
+          const manual=setBanner('Mise à jour installée','Ferme et rouvre Store Runner pour l’appliquer.',null,null);
+          if(manual)manual.dataset.sticky='1';
+        },350);
       };
       navigator.serviceWorker.addEventListener('controllerchange',onControllerChange,{once:true});
       await registration.update();
