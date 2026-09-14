@@ -1,7 +1,7 @@
 const {test,expect}=require('@playwright/test');
 
 const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
-const PNG=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=','base64');
+const PNG=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=','base64');
 
 test.use({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1,serviceWorkers:'allow',screenshot:'only-on-failure',trace:'retain-on-failure'});
 
@@ -121,7 +121,7 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
   const report=page.locator('#srReportSheet');await expect(report).toBeVisible();
   const reportBox=await report.boundingBox();expect(reportBox.x).toBeGreaterThanOrEqual(0);expect(reportBox.x+reportBox.width).toBeLessThanOrEqual(390);
   await expect(report.locator('[data-family="brun"]')).toHaveAttribute('aria-selected','true');
-  await expect(report.locator('#srReportText')).toContainText('1 avant / 1 après jointes à ce message.');
+  await expect(report.locator('#srReportText')).toHaveValue(/1 avant \/ 1 après jointes à ce message\./);
   const shareFamily=report.locator('#srReportSharePhotos');await expect(shareFamily).toBeEnabled();await expect(shareFamily).toHaveText('Partager les 2 photos BRUN');
   const shareBox=await shareFamily.boundingBox();expect(shareBox.height).toBeGreaterThanOrEqual(44);
   await shareFamily.tap();
