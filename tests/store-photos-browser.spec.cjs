@@ -16,10 +16,10 @@ async function reopenQuickAndTapPhotos(page){
   await photo.tap();
 }
 
-test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rapport',async({page,context})=>{
+test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA FMT',async({page,context})=>{
   test.setTimeout(90000);
   const pageErrors=[];page.on('pageerror',e=>pageErrors.push(String(e&&e.message||e)));
-  await page.addInitScript(()=>sessionStorage.setItem('store-runner-sw-reload:20260915-slackphotos169','1'));
+  await page.addInitScript(()=>sessionStorage.setItem('store-runner-sw-reload:20260915-ai-report172','1'));
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.StorePhotosV1&&window.StoreRunnerVisitReport&&window.BoulangerDefaultHoursV1&&window.StoreOpeningHoursV1&&window.StoreRunnerVisitModel&&window.ChefReliability&&window.state&&typeof window.openStoreQuick==='function');
   await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
@@ -40,7 +40,10 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
     st.plan={Lundi:[JSON.parse(JSON.stringify(st.stores[0])),JSON.parse(JSON.stringify(st.stores[1]))],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
     st.appointments=[];st.calendarEvents=[];
     st.businessV2=window.StoreRunnerVisitModel.empty();
-    window.StoreRunnerVisitModel.start(st,'photo-store');
+    const visitId=window.StoreRunnerVisitModel.start(st,'photo-store');
+    window.StoreRunnerVisitModel.editReport(st,visitId,'shared','context','Première visite, magasin récent et équipe demandeuse.');
+    window.StoreRunnerVisitModel.editReport(st,visitId,'brun','team','Glare Free est un argument différenciant face à LG.');
+    window.StoreRunnerVisitModel.editReport(st,visitId,'brun','training','Prévoir une formation BRUN sur les nouveautés 2026.');
     document.dispatchEvent(new CustomEvent('store-runner:data-restored'));
     if(typeof save==='function')save();
     const persisted=window.ChefReliability.load(window.__chefStorage||window.localStorage);
@@ -117,14 +120,37 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
   expect(overflow.sw).toBeLessThanOrEqual(overflow.cw+1);expect(overflow.dw).toBeLessThanOrEqual(390);
   await dialog.locator('#srPhotoClose').tap();
 
-  // Ticket 2B : depuis « Sortie magasin », le bouton partage exactement les photos BRUN
-  // déjà comptées dans le texte, sans devoir rouvrir la galerie.
-  await page.evaluate(()=>{window.__sharedStorePhotos=null});
+  // Depuis « Sortie magasin », le rapport local reste disponible et l'IA peut le reformuler au style FMT validé.
+  await page.evaluate(()=>{
+    window.__sharedStorePhotos=null;
+    window.__reportAIPayload=null;
+    window.callAIGateway=async payload=>{
+      window.__reportAIPayload=payload;
+      return {text:'Résumé BRUN\n\nPremière visite reformulée proprement à partir des notes terrain Samsung, avec Glare Free comme argument différenciant face à LG et deux photos jointes.\n\nFormation / prochain passage\n\nPrévoir une formation BRUN sur les nouveautés 2026 et contrôler les points relevés lors du prochain passage.'};
+    };
+  });
   await expect(reportQuick).toBeVisible();await expect(reportQuick).toBeInViewport();await reportQuick.tap();
   const report=page.locator('#srReportSheet');await expect(report).toBeVisible();
   const reportBox=await report.boundingBox();expect(reportBox.x).toBeGreaterThanOrEqual(0);expect(reportBox.x+reportBox.width).toBeLessThanOrEqual(390);
   await expect(report.locator('[data-family="brun"]')).toHaveAttribute('aria-selected','true');
   await expect(report.locator('#srReportText')).toHaveValue(/1 avant \/ 1 après jointes à ce message\./);
+  const aiButton=report.locator('#srReportAI');await expect(aiButton).toBeVisible();await expect(aiButton).toHaveText('✨ Générer le résumé BRUN');
+  const aiBox=await aiButton.boundingBox();expect(aiBox.height).toBeGreaterThanOrEqual(44);
+  await aiButton.tap();
+  await expect(report.locator('#srReportText')).toHaveValue(/^Résumé BRUN[\s\S]*Formation \/ prochain passage/);
+  await expect(report.locator('#srReportStatus')).toContainText('Résumé BRUN généré');
+  const aiPayload=await page.evaluate(()=>window.__reportAIPayload);
+  expect(aiPayload.mode).toBe('assistant');
+  expect(aiPayload.message).toContain('EXEMPLE_DE_STYLE_VALIDÉ');
+  expect(aiPayload.message).toContain('Glare Free est un argument différenciant face à LG.');
+  expect(aiPayload.context.task).toBe('visit_report');
+  expect(aiPayload.context.visit.photos.total).toBe(2);
+
+  const editButton=report.locator('#srReportEdit'),area=report.locator('#srReportText');
+  await editButton.tap();await expect(area).toBeEditable();
+  const generated=await area.inputValue();await area.fill(generated+'\n\nCorrection terrain.');
+  await editButton.tap();await expect(area).not.toBeEditable();await expect(area).toHaveValue(/Correction terrain\.$/);
+
   const shareFamily=report.locator('#srReportSharePhotos');await expect(shareFamily).toBeEnabled();await expect(shareFamily).toHaveText('Partager les 2 photos BRUN');
   const shareBox=await shareFamily.boundingBox();expect(shareBox.height).toBeGreaterThanOrEqual(44);
   await shareFamily.tap();
@@ -135,6 +161,7 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes et partage rap
   expect(sharedFromReport.names.some(n=>n.includes('_avant_'))).toBe(true);
   expect(sharedFromReport.names.some(n=>n.includes('_apres_'))).toBe(true);
   await expect(report.locator('#srReportStatus')).toContainText('2 photos BRUN partagées');
+  await expect(area).toHaveValue(/Correction terrain\.$/);
   await report.locator('.sr-reportClose').tap();await expect(report).not.toBeVisible();
 
   await page.reload({waitUntil:'domcontentloaded'});
