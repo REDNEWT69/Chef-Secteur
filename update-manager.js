@@ -190,6 +190,13 @@
     }
   }
 
+  function reloadNow(){
+    try{
+      if(window.location&&typeof window.location.reload==='function'){window.location.reload();return true}
+    }catch(e){}
+    return false;
+  }
+
   async function installUpdate(){
     if(!('serviceWorker' in navigator)){
       state.error=new Error('Service Worker indisponible');render();return false;
@@ -201,7 +208,22 @@
       const registration=await navigator.serviceWorker.getRegistration();
       if(!registration)throw new Error('Service Worker non enregistré');
       let changed=false;
-      const onControllerChange=function(){changed=true;setBanner('Mise à jour installée','Store Runner recharge la nouvelle version…',null,null)};
+      /* Le rechargement appartient à ce module, pas au bootloader. Le garde-fou
+         'store-runner-sw-reload:' d'index.html est indexé sur le BUILD_REV de la page
+         chargée, donc sur l'ancienne révision : une fois posé par le clients.claim()
+         initial, il bloque tous les controllerchange suivants de la session. Ici on sait
+         que la prise de contrôle est volontaire — l'utilisateur vient d'appuyer — donc on
+         recharge sans borne, autant de fois qu'il y a de mises à jour dans la session. */
+      const onControllerChange=function(){
+        changed=true;
+        const done=setBanner('Mise à jour installée','Store Runner recharge la nouvelle version…',null,null);
+        if(done)done.dataset.sticky='1';
+        window.setTimeout(function(){
+          if(reloadNow())return;
+          const manual=setBanner('Mise à jour installée','Ferme et rouvre Store Runner pour l’appliquer.',null,null);
+          if(manual)manual.dataset.sticky='1';
+        },350);
+      };
       navigator.serviceWorker.addEventListener('controllerchange',onControllerChange,{once:true});
       await registration.update();
       if(registration.waiting)registration.waiting.postMessage({type:'SKIP_WAITING'});
@@ -212,8 +234,12 @@
       }
       window.setTimeout(function(){
         if(changed)return;
+        /* Sans prise de contrôle il n'y a pas de rechargement : on retire l'écouteur pour
+           qu'il ne s'accumule pas d'un essai à l'autre, et on annonce ce qui se passe
+           réellement au lieu de promettre un rechargement qui n'aura pas lieu. */
+        try{navigator.serviceWorker.removeEventListener('controllerchange',onControllerChange)}catch(e){}
         state.status='ready';render();
-        setBanner('Mise à jour détectée','Le téléchargement est lancé. Tu peux réessayer dans quelques instants.','Vérifier',function(){checkForUpdates(false)},4200);
+        setBanner('Mise à jour prête','Ferme et rouvre Store Runner pour l’appliquer.','Vérifier',function(){checkForUpdates(false)},4200);
       },3500);
       return true;
     }catch(error){
