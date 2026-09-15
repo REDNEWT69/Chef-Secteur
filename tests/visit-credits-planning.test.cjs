@@ -3,10 +3,13 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 // #131 + #225 : le générateur remplit une journée en crédits de visite. Darty,
 // Boulanger, Carrefour et BUT valent 2 crédits métier, mais Boulanger réserve en plus
 // la capacité nécessaire pour n'avoir qu'un seul magasin à 1 crédit à ses côtés.
+// #229 : l'objectif hebdomadaire saisi par l'utilisateur doit être persisté dès la saisie
+// pour qu'un rendu intermédiaire ne puisse pas remettre la valeur historique 20.
 
 const plannerSource=fs.readFileSync(__dirname+'/../range-planner-v2.js','utf8')
   .replace('window.generatePlanningRange=generateRange;','window.testCredits={strictSingleWeek,generateRange,visitCredit,routeCredits};window.generatePlanningRange=generateRange;');
 const countingSource=fs.readFileSync(__dirname+'/../visit-counting.js','utf8');
+const weeklyTargetSource=fs.readFileSync(__dirname+'/../weekly-target.js','utf8');
 
 assert.doesNotMatch(plannerSource,/DEFAULT_RULES|visitCreditsByBrand/,'le planificateur ne doit pas redéfinir les règles de crédit : elles appartiennent à visit-counting.js');
 assert.match(plannerSource,/window\.storeVisitCredit/,'le planificateur doit consommer l’API publique des crédits de visite');
@@ -15,6 +18,8 @@ assert.doesNotMatch(plannerSource,/\(plan\[day\]\|\|\[\]\)\.length>=max/,'l’an
 assert.match(countingSource,/function norm\(v\)[\s\S]*?toLowerCase\(\)/,'la normalisation de casse doit rester chez le propriétaire des crédits');
 assert.match(countingSource,/but:2/,'BUT doit faire partie des enseignes à 2 crédits');
 assert.match(countingSource,/function planningVisitCredit\(/,'la capacité spéciale Boulanger doit appartenir au propriétaire des crédits');
+assert.match(weeklyTargetSource,/addEventListener\('input'/,'l’objectif hebdomadaire doit être persisté dès la saisie');
+assert.match(weeklyTargetSource,/state\.settings\.target=next/,'la saisie doit devenir immédiatement la source de vérité');
 
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 
@@ -71,6 +76,28 @@ function actualCreditsOf(ctx,route){return (route||[]).reduce((n,s)=>n+(ctx.Stor
 async function generateWeekAsProduction(t){
   t.ctx.__storeRunnerPlanningGenerationActive=true;
   try{return await t.ctx.testCredits.strictSingleWeek()}finally{t.ctx.__storeRunnerPlanningGenerationActive=false}
+}
+
+// Régression V178 : 15 saisi doit devenir 15 dans l'état au premier événement input,
+// puis un rendu/sync doit conserver 15 au lieu de restaurer l'ancien 20.
+{
+  const listeners={};let saves=0;
+  const input={value:'20',addEventListener(type,fn){listeners[type]=fn}};
+  const targetCtx={
+    console,
+    state:{settings:{target:20}},
+    document:{readyState:'complete',activeElement:null,getElementById:id=>id==='target'?input:null,addEventListener(){}},
+    save(){saves++}
+  };
+  targetCtx.window=targetCtx;
+  vm.runInNewContext(weeklyTargetSource,targetCtx);
+  input.value='15';listeners.input.call(input);
+  assert.equal(targetCtx.state.settings.target,15,'la saisie 15 doit être persistée immédiatement');
+  assert(saves>0,'la saisie doit déclencher la sauvegarde locale');
+  input.value='20';targetCtx.StoreRunnerWeeklyTarget.sync();
+  assert.equal(input.value,'15','un rendu ultérieur ne doit pas remettre 20');
+  input.value='18';listeners.change.call(input);
+  assert.equal(targetCtx.state.settings.target,18,'le change doit confirmer la nouvelle valeur');
 }
 
 (async()=>{
@@ -170,5 +197,5 @@ async function generateWeekAsProduction(t){
   assert.equal(JSON.stringify(t8.state.plan),planAvant,'le planning précédent doit être conservé intact');
   assert.match(t8.els.rangePlanStatus.textContent,/crédits? de visite/,'le refus doit s’expliquer en crédits de visite');
 
-  console.log('PASS: Boulanger reste à 2 crédits métier mais réserve une journée Boulanger + 1 crédit maximum pendant la génération, BUT vaut 2 crédits, la semaine/période respectent la règle et les statistiques restent en crédits réels.');
+  console.log('PASS: crédits de visite + règle Boulanger conservés, et l’objectif hebdomadaire saisi reste la source de vérité au lieu de revenir à 20.');
 })().catch(e=>{console.error(e);process.exit(1)});
