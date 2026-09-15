@@ -1,6 +1,7 @@
 const {test,expect}=require('@playwright/test');
 const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
 test.use({viewport:{width:390,height:844},hasTouch:true,isMobile:true,serviceWorkers:'block'});
+// Le message détaillé est garanti dans errorBox, la zone de statut courte peut ne pas être montée dans la feuille Réglages.
 
 test('V181 : recalcul du planning sépare les Boulanger sans perdre de magasin',async({page})=>{
   page.on('dialog',d=>d.accept());
