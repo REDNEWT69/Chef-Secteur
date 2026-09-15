@@ -11,6 +11,19 @@ test('Pilotage secteur reste lisible et sûr à 390 px',async({page})=>{
   await page.waitForTimeout(250);
   const shortcut=page.locator('.phPilotageShortcut [data-pilotage]');
   await expect(shortcut).toBeVisible();
+  expect(await page.evaluate(()=>{
+    const home=document.getElementById('premiumHomeV2');
+    return !!home&&home.lastElementChild&&home.lastElementChild.classList.contains('phPilotageShortcut');
+  })).toBeTruthy();
+  await page.evaluate(()=>{
+    const home=document.getElementById('premiumHomeV2');
+    const temp=document.createElement('div');
+    temp.id='pilotage-order-probe';
+    home.appendChild(temp);
+    document.dispatchEvent(new CustomEvent('store-runner:home-rendered'));
+  });
+  await page.waitForFunction(()=>document.getElementById('premiumHomeV2').lastElementChild.classList.contains('phPilotageShortcut'));
+  expect(await page.locator('#pilotage-order-probe').count()).toBe(1);
   await shortcut.click();
   const panel=page.locator('#pilotagePanel');
   await expect(panel).toBeVisible();
