@@ -1,4 +1,4 @@
-const BUILD_REV = "20260915-terrainfocus180";
+const BUILD_REV = "20260915-planningcascade181";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -24,6 +24,7 @@ const OPTIONAL_SHELL = [
   "./profile-controller.js",
   "./calendar-oauth.js",
   "./planning-generation-controller.js",
+  "./planning-cascade-v181.js",
   "./calendar-enhancements.js",
   "./ui-polish.js",
   "./route-polish.js",
