@@ -124,7 +124,8 @@ function rebalancePlanByGeography(plan,options){
   const out=Object.fromEntries(DAYS.map(d=>[d,workDays.includes(d)?[]:clone((plan&&plan[d])||[])])),free=[],seen=new Set(),origin={};
   for(const day of workDays)for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(!id||seen.has(id))continue;seen.add(id);origin[id]=day;const fixed=lockDayV185(id,weekKey)||appointmentDayV185(id,mon)||(visitedOnV185(id,iso(addDays(mon,DAYS.indexOf(day))))?day:'');if(fixed){if(!workDays.includes(fixed))return{ok:false,plan,changed:false,reason:'fixed-outside'};out[fixed].push(store)}else free.push(store)}
   for(const day of workDays){out[day]=optimizeRouteV185(out[day]);if(routeCreditsV185(out[day])>max||!dayFitsV185(out[day],day,mon))return{ok:false,plan,changed:false,reason:'fixed-capacity'}}
-  free.sort((a,b)=>homeDistance(b)-homeDistance(a)||DAYS.indexOf(origin[String(a.id)])-DAYS.indexOf(origin[String(b.id)]));
+  const sortDirection=options.preferNearFirst?1:-1;
+  free.sort((a,b)=>sortDirection*(homeDistance(a)-homeDistance(b))||DAYS.indexOf(origin[String(a.id)])-DAYS.indexOf(origin[String(b.id)]));
   for(const store of free){
     let best=null;for(const day of workDays){const date=iso(addDays(mon,DAYS.indexOf(day)));if(dayBlockedV185(date))continue;const current=out[day]||[];if(routeCreditsV185(current)+planningCreditV185(store)>max)continue;const trial=optimizeRouteV185(current.concat([store]));if(!dayFitsV185(trial,day,mon))continue;const score=candidateScoreV185(out,day,store,trial,workDays);if(!best||score<best.score-0.001||(Math.abs(score-best.score)<0.001&&DAYS.indexOf(day)<DAYS.indexOf(best.day)))best={day,trial,score}}
     if(!best)return{ok:false,plan,changed:false,reason:'unplaced',store};out[best.day]=best.trial
@@ -157,7 +158,7 @@ function terrainOvernightRow(week){
 async function persistSnailGeography(result){
   if(!result||!Array.isArray(result.weeks)||!result.weeks.length)return false;
   const archive=loadArchive();let changed=false;
-  for(const week of result.weeks){if(!week||week.manual)continue;const geo=rebalancePlanByGeography(week.plan,{weekKey:week.weekKey});if(!geo.ok)continue;if(geo.changed){week.plan=geo.plan;changed=true;const prev=archive[week.weekKey]||{weekMonday:week.weekKey};archive[week.weekKey]=Object.assign({},prev,{weekMonday:week.weekKey,plan:clone(geo.plan),manualEdited:false,generatedMode:'snail-distance-geo-v185',geographyOptimized:'v185',updatedAt:new Date().toISOString()})}}
+  for(const week of result.weeks){if(!week||week.manual)continue;const geo=rebalancePlanByGeography(week.plan,{weekKey:week.weekKey,preferNearFirst:true});if(!geo.ok)continue;if(geo.changed){week.plan=geo.plan;changed=true;const prev=archive[week.weekKey]||{weekMonday:week.weekKey};archive[week.weekKey]=Object.assign({},prev,{weekMonday:week.weekKey,plan:clone(geo.plan),manualEdited:false,generatedMode:'snail-distance-geo-v185',geographyOptimized:'v185',updatedAt:new Date().toISOString()})}}
   if(changed){saveArchive(archive);const first=result.weeks[0];if(first&&String(state.settings&&state.settings.weekDate||'')===String(first.weekKey||''))state.plan=Object.fromEntries(DAYS.map(d=>[d,((first.plan&&first.plan[d])||[]).map(resolveStore)]));try{if(typeof window.save==='function')window.save();else if(typeof save==='function')save()}catch(e){}}
   const report=result.weeks.map(terrainOvernightRow);result.overnightReport=report;
   try{const s=storage(),range=s&&JSON.parse(s.getItem(RANGE_KEY)||'null');if(range){range.overnightReport=report;range.rotation='snail-distance-geo-v185';range.updatedAt=new Date().toISOString();s.setItem(RANGE_KEY,JSON.stringify(range))}if(s&&typeof s.flush==='function')await s.flush()}catch(e){}
@@ -200,7 +201,7 @@ function mapsHotelUrl(s){
   try{if(typeof window.mapsHotelUrl==='function'&&window.mapsHotelUrl!==mapsHotelUrl)return window.mapsHotelUrl(s)}catch(e){}
   const q='hotel près de '+String((s&&s.adresse)||'')+' '+String((s&&s.ville)||'');return'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q)
 }
-function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]))}
 function renderOvernightV182(){
   const box=document.getElementById('overnightBox');if(!box||!window.state)return false;
   const a=overnightAnalysis();
