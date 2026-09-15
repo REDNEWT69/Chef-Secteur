@@ -87,3 +87,54 @@ test('La fiche magasin retrouve notes, visites et actions à 390 px', async ({ p
   await expect(page.locator('#srVisitTitle')).toContainText('Visite terminée');
   expect(pageErrors,'La mémoire magasin ne doit produire aucune erreur JavaScript').toEqual([]);
 });
+
+test('La fiche magasin mémorise les contacts et leurs emails après rechargement', async ({ page }) => {
+  const pageErrors=[];
+  page.on('pageerror', e => pageErrors.push(String(e && e.message || e)));
+
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(() => window.StoreRunnerStoreContacts && typeof window.openStore==='function' && window.StoreRunnerVisitModel);
+
+  await page.evaluate(() => {
+    const st=window.state;
+    st.stores=[{id:'contact-1',enseigne:'Boulanger',ville:'Saint-Priest',adresse:'6 boulevard Test',dept:'69',lat:45.70,lon:4.94,active:true,priority:5,freq:'Hebdo',intervalDays:7,products:['Blanc','Brun']}];
+    st.notes={};st.visits={};st.included={};st.excluded={};st.locks={};st.plan={};st.appointments=[];st.calendarEvents=[];
+    st.businessV2=window.StoreRunnerVisitModel.empty();
+    st.storeContacts={};
+    save();
+    openStore('contact-1');
+  });
+
+  const dialog=page.locator('#storeDlg');
+  await expect(dialog).toBeVisible();
+  await page.locator('#storeDlg [data-sr-store-tab="contacts"]').tap();
+  await expect(page.locator('#srStoreContactsPane')).toBeVisible();
+  await page.locator('#srStoreContactAdd').tap();
+
+  const row=page.locator('#srStoreContactList .srStoreContactRow').first();
+  await row.locator('[data-sr-contact-name]').fill('Amandine');
+  await row.locator('[data-sr-contact-role]').fill('Responsable SAV');
+  await row.locator('[data-sr-contact-email]').fill('amandine@example.test');
+  await expect(row.locator('[data-sr-contact-mail]')).toHaveAttribute('href','mailto:amandine@example.test');
+  await page.locator('#srStoreContactSave').tap();
+  await expect(page.locator('#srStoreContactStatus')).toContainText('Contacts enregistrés');
+
+  const stored=await page.evaluate(()=>state.storeContacts['contact-1']);
+  expect(stored).toEqual([{name:'Amandine',role:'Responsable SAV',email:'amandine@example.test'}]);
+  let overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(() => window.StoreRunnerStoreContacts && typeof window.openStore==='function');
+  await page.evaluate(()=>openStore('contact-1'));
+  await page.locator('#storeDlg [data-sr-store-tab="contacts"]').tap();
+
+  const restored=page.locator('#srStoreContactList .srStoreContactRow').first();
+  await expect(restored.locator('[data-sr-contact-name]')).toHaveValue('Amandine');
+  await expect(restored.locator('[data-sr-contact-role]')).toHaveValue('Responsable SAV');
+  await expect(restored.locator('[data-sr-contact-email]')).toHaveValue('amandine@example.test');
+  await expect(restored.locator('[data-sr-contact-mail]')).toHaveAttribute('href','mailto:amandine@example.test');
+  overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  expect(pageErrors,'Le carnet de contacts ne doit produire aucune erreur JavaScript').toEqual([]);
+});
