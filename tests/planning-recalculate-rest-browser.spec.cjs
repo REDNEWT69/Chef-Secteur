@@ -29,11 +29,13 @@ test('V177 : recalcul du reste de semaine sépare les Boulanger sans perdre de m
   await expect(button).toBeVisible();
   await expect(button).toContainText('Recalculer le reste de la semaine');
   const before=await page.evaluate(()=>Object.values(state.plan).flat().map(s=>s.id).sort());
-  await button.click();
-  await page.waitForFunction(()=>{
-    const routes=Object.values(state.plan||{});
-    return routes.every(route=>(route||[]).filter(s=>/boulanger/i.test(s.enseigne||'')).length<=1);
-  });
+
+  // Appel explicite de la même commande publique que le bouton. Cela permet au test
+  // d'afficher immédiatement la raison métier d'un éventuel refus au lieu d'attendre
+  // 30 secondes sur un simple changement de DOM.
+  const recalc=await page.evaluate(async()=>await window.storeRunnerRecalculateRemainingWeek());
+  expect(recalc&&recalc.ok,JSON.stringify(recalc)).toBeTruthy();
+
   const result=await page.evaluate(()=>({
     after:Object.values(state.plan).flat().map(s=>s.id).sort(),
     routes:Object.fromEntries(Object.entries(state.plan).map(([d,r])=>[d,(r||[]).map(s=>({id:s.id,enseigne:s.enseigne}))])),
