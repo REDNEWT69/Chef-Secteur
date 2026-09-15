@@ -9,12 +9,12 @@ test('V177 : bouton de recalcul visible et deux Boulanger sont séparés sans pe
   await page.evaluate(()=>{
     const mk=(id,enseigne,ville)=>({id,enseigne,ville,adresse:'1 rue test',dept:'69',active:true,lat:45.7,lon:4.9,priority:3});
     const a=mk('b1','Boulanger','Saint-Priest'),b=mk('b2','Boulanger','Vénissieux'),f=mk('f1','Fnac','Bron'),but=mk('but1','BUT','Villeurbanne');
-    const now=new Date(),monday=new Date(now);const w=monday.getDay()||7;monday.setDate(monday.getDate()-w+1);
+    const now=new Date(),nextMonday=new Date(now),weekday=now.getDay()||7,delta=(8-weekday)%7||7;nextMonday.setDate(now.getDate()+delta);
     const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-    state.stores=[a,b,f,but];state.visits={};state.locks={};state.appointments=[];state.manualWeekEdits={};state.calendarEvents=[];
-    state.settings=Object.assign({},state.settings,{weekDate:iso(monday),days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],maxVisitsPerDay:4});
-    state.plan={Lundi:[],Mardi:[a,b,f],Mercredi:[but],Jeudi:[],Vendredi:[],Samedi:[]};
-    const input=document.getElementById('weekDate');if(input)input.value=iso(monday);
+    state.stores=[a,b,f,but];state.visits={};state.businessV2=state.businessV2||{visits:[],actions:[],storeSnapshots:{}};state.locks={};state.appointments=[];state.manualWeekEdits={};state.calendarEvents=[];
+    state.settings=Object.assign({},state.settings,{weekDate:iso(nextMonday),days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],maxVisitsPerDay:4});
+    state.plan={Lundi:[a,b,f],Mardi:[but],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
+    const input=document.getElementById('weekDate');if(input)input.value=iso(nextMonday);
     if(window.ChefReliability)ChefReliability.propose=async candidate=>{state.plan=candidate.plan;return true};
     if(typeof renderAll==='function')renderAll();
     if(typeof goTab==='function')goTab('planPanel');
