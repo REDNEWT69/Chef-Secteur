@@ -105,8 +105,21 @@
     try{if(window.StoreVisitCounting&&typeof window.StoreVisitCounting.credit==='function')return Math.max(1,Number(window.StoreVisitCounting.credit(store))||1)}catch(e){}
     return 1;
   }
-  function candidateName(store){return String((store&&store.enseigne)||'Magasin')+' '+String((store&&store.ville)||'').trim()}
+  function actualRouteCredits(route){return (route||[]).reduce(function(n,s){return n+actualVisitCredit(s)},0)}
+  function candidateName(store){return (String((store&&store.enseigne)||'Magasin')+' '+String((store&&store.ville)||'').trim()).trim()}
   function storeId(store){return String((store&&store.id)||'')}
+  function fixedCapacityError(day,route,max){
+    const rows=(route||[]).map(function(store){return candidateName(store)+' ('+actualVisitCredit(store)+')'});
+    const actual=actualRouteCredits(route),capacity=routePlanningCredits(route);
+    let message=day+' contient déjà '+actual+' crédit'+(actual>1?'s':'')+' fixe'+(actual>1?'s':'')+(rows.length?' : '+rows.join(' + '):'')+'. Ton maximum est réglé sur '+max+'. ';
+    if(actual>max){
+      if(actual<=8)message+='Passe-le à '+actual+' dans Réglages ou libère une visite. ';
+      else message+='Augmente le maximum dans Réglages si c’est volontaire, ou libère une visite. ';
+    }else if(capacity>max){
+      message+='La règle Boulanger n’autorise qu’un seul magasin à 1 crédit à ses côtés. Libère ou déplace le magasin incompatible. ';
+    }
+    return message+'Rien n’a été changé.';
+  }
 
   function insertRecalculateButton(){
     if(document.getElementById('recalculateRemainingWeekBtn'))return true;
@@ -177,7 +190,7 @@
 
     for(const day of eligible){
       const used=routePlanningCredits(candidate[day]);
-      if(used>max)return{ok:false,error:'Les rendez-vous, visites déjà faites ou magasins verrouillés de '+day+' occupent '+used+' unités de capacité pour un maximum de '+max+'. Rien n’a été changé.'};
+      if(used>max)return{ok:false,error:fixedCapacityError(day,candidate[day],max)};
     }
 
     movable.sort(function(a,b){
