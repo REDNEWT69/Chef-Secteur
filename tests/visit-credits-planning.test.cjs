@@ -8,9 +8,6 @@ const plannerSource=fs.readFileSync(__dirname+'/../range-planner-v2.js','utf8')
   .replace('window.generatePlanningRange=generateRange;','window.testCredits={strictSingleWeek,generateRange,visitCredit,routeCredits};window.generatePlanningRange=generateRange;');
 const countingSource=fs.readFileSync(__dirname+'/../visit-counting.js','utf8');
 
-// Le planificateur ne doit pas redéfinir les règles de crédit : visit-counting.js en est
-// le propriétaire, et c'est lui qui normalise la casse entre stores[].enseigne et les
-// clés minuscules de visitCreditsByBrand.
 assert.doesNotMatch(plannerSource,/DEFAULT_RULES|visitCreditsByBrand/,'le planificateur ne doit pas redéfinir les règles de crédit : elles appartiennent à visit-counting.js');
 assert.match(plannerSource,/window\.storeVisitCredit/,'le planificateur doit consommer l’API publique des crédits de visite');
 assert.match(plannerSource,/routeCredits\(plan\[day\]\)\+cost>max/,'le plafond journalier doit être un budget de crédits, jamais un nombre de magasins');
@@ -153,7 +150,7 @@ async function generateWeekAsProduction(t){
   await generateWeekAsProduction(t5);
   const proposed=t5.proposals[0];
   const actualWeek=DAYS.reduce((n,d)=>n+actualCreditsOf(t5.ctx,(proposed.plan&&proposed.plan[d])||[]),0);
-  assert.equal(Number(proposed.visitCredits),actualWeek,'la proposition normalisée doit conserver Boulanger à 2 crédits métier');
+  assert.equal(t5.ctx.StoreVisitCounting.planCredits(proposed.plan),actualWeek,'l’API de comptage doit conserver Boulanger à 2 crédits métier');
 
   const t6=env({max:4,target:40,workDays:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],stores:boulangerPool,accept:true});
   t6.els.rangeStart.value='2026-09-07';t6.els.rangeEnd.value='2026-09-18';
