@@ -1,4 +1,4 @@
-const BUILD_REV = "20260915-planningcascade181";
+const BUILD_REV = "20260915-fieldfixes182";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -53,6 +53,7 @@ const OPTIONAL_SHELL = [
   "./visual-refresh-v1.js",
   "./home-refresh-v2.js",
   "./sector-pilotage.js",
+  "./v182-fixes.js",
   "./auto-planning-fix.js",
   "./connection-ui.js",
   "./update-manager.js",
