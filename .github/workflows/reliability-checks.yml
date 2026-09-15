@@ -35,6 +35,7 @@ jobs:
       - run: node tests/darty-default-hours.test.cjs
       - run: node tests/store-photos.test.cjs
       - run: node tests/planning-manual-week-protection.test.cjs
+      - run: node tests/planning-manual-visits.test.cjs
       - run: node tests/period-day-slider.test.cjs
       - run: node tests/planning-period-date.test.cjs
       - run: node tests/mobile-compatibility.test.cjs
@@ -116,7 +117,7 @@ jobs:
       - name: Tester V1 et V2 dans un vrai navigateur mobile
         env:
           STORE_RUNNER_E2E_URL: http://127.0.0.1:4173/
-        run: npx playwright test tests/mobile-browser.spec.cjs tests/stores-reach-browser.spec.cjs tests/terrain-planning-browser.spec.cjs tests/opening-hours-browser.spec.cjs tests/store-history-browser.spec.cjs tests/store-photos-browser.spec.cjs tests/sector-pilotage-browser.spec.cjs v2/tests/mobile-browser.spec.cjs v2/tests/planning-browser.spec.cjs v2/tests/planning-range-browser.spec.cjs v2/tests/terrain-tools-browser.spec.cjs v2/tests/v1-import-browser.spec.cjs --workers=1 --reporter=line
+        run: npx playwright test tests/mobile-browser.spec.cjs tests/stores-reach-browser.spec.cjs tests/terrain-planning-browser.spec.cjs tests/opening-hours-browser.spec.cjs tests/store-history-browser.spec.cjs tests/store-photos-browser.spec.cjs tests/sector-pilotage-browser.spec.cjs tests/planning-manual-visits-browser.spec.cjs v2/tests/mobile-browser.spec.cjs v2/tests/planning-browser.spec.cjs v2/tests/planning-range-browser.spec.cjs v2/tests/terrain-tools-browser.spec.cjs v2/tests/v1-import-browser.spec.cjs --workers=1 --reporter=line
       - name: Conserver traces et captures en cas d'échec
         if: failure()
         uses: actions/upload-artifact@v4
