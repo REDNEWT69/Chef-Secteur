@@ -1,6 +1,6 @@
 const {test,expect}=require('@playwright/test');
 const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
-test.use({viewport:{width:390,height:844},hasTouch:true,isMobile:true});
+test.use({viewport:{width:390,height:844},hasTouch:true,isMobile:true,serviceWorkers:'block'});
 
 test('Planning V174 : + déplace un magasin et swipe le retire avec confirmation',async({page})=>{
   page.on('dialog',d=>d.accept());
