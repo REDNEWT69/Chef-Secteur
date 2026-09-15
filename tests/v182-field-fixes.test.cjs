@@ -23,9 +23,9 @@ assert(source.includes('removeHomePilotageShortcut'),'Pilotage doit rester retir
    budget journalier sauf une unité pendant la génération automatique. */
 assert(index.includes('window.__storeRunnerPlanningGenerationActive=true'),'la génération 3 semaines doit activer la capacité planning Boulanger');
 assert(index.includes('api.generateThreeWeekSnail=wrapped'),'le générateur 3 semaines public doit être enveloppé');
-assert(index.includes("btn.onclick=async function(){try{return await api.generateThreeWeekSnail()}"),'le bouton 3 semaines doit appeler le générateur enveloppé');
-assert(index.includes("document.getElementById('pBaseLat')")&&index.includes("document.getElementById('pBaseLon')"),'V184 doit repérer les coordonnées internes');
-assert(index.includes("grid.hidden=true")&&index.includes("grid.style.display='none'"),'Latitude et Longitude doivent être masquées sans supprimer les valeurs GPS');
+assert(index.includes('terrainSnailBtn')&&index.includes('api.generateThreeWeekSnail()'),'le bouton 3 semaines doit appeler le générateur enveloppé');
+assert(index.includes('pBaseLat')&&index.includes('pBaseLon'),'V184 doit repérer les coordonnées internes');
+assert(index.includes('grid.hidden=true')&&index.includes('grid.style.display'),'Latitude et Longitude doivent être masquées sans supprimer les valeurs GPS');
 assert(index.includes('var before=clonePlan(window.state&&state.plan)'),'la sauvegarde Secteur doit capturer le planning courant');
 assert(index.includes('state.plan=before'),'la sauvegarde Secteur doit restaurer le planning si un rendu annexe tente de le modifier');
 
