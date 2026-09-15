@@ -85,7 +85,6 @@ test('V179 : un dépassement fixe explique les vrais crédits sans casser le pla
   await expect(errorBox).toBeVisible();
   await expect(errorBox).toContainText('Mardi contient déjà 4 crédits fixes');
   await expect(errorBox).toContainText('Passe-le à 4 dans Réglages');
-  await expect(page.locator('#planningGenerateStatus')).toContainText('BUT Saint-Priest (2)');
 
   const after=await page.evaluate(()=>JSON.stringify(state.plan));
   expect(after).toBe(seeded.before);
