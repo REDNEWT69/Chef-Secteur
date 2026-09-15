@@ -24,6 +24,14 @@ function ensurePilotageShortcut(){
   const b=document.createElement('button');b.type='button';b.dataset.pilotage='1';b.textContent='▥ Pilotage';
   grid.insertBefore(b,grid.firstChild);return true;
 }
+/* V183 : Pilotage reste accessible depuis Plus / trois points, mais il ne doit plus
+   occuper une carte dédiée sur l'accueil. On enlève aussi une éventuelle carte héritée
+   d'un rendu précédent, puis les événements de rendu maintiennent cette règle. */
+function removeHomePilotageShortcut(){
+  let removed=false;
+  try{document.querySelectorAll('#premiumHomeV2 .phPilotageShortcut').forEach(node=>{if(node&&typeof node.remove==='function'){node.remove();removed=true}})}catch(e){}
+  return removed;
+}
 function removeRuntimeBoot(){
   const boot=document.getElementById('srRuntimeBoot');if(!boot)return false;
   boot.classList.add('srRuntimeBootOut');
@@ -35,6 +43,7 @@ function repairMobileRuntime(){
   try{
     const ready=!!document.getElementById('premiumHomeV2');
     ensurePilotageShortcut();
+    removeHomePilotageShortcut();
     if(ready)removeRuntimeBoot();
     return ready;
   }finally{repairing=false}

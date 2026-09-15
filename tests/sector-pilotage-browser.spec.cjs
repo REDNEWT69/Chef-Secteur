@@ -3,28 +3,26 @@ const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
 
 test.use({viewport:{width:390,height:844},hasTouch:true,isMobile:true});
 
-test('Pilotage secteur reste lisible et sûr à 390 px',async({page})=>{
+test('Pilotage reste dans Plus sans carte dédiée sur l’accueil à 390 px',async({page})=>{
   const errors=[];
   page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>window.StoreRunnerSectorPilotage&&document.getElementById('premiumHomeV2'));
-  await page.waitForTimeout(250);
-  const shortcut=page.locator('.phPilotageShortcut [data-pilotage]');
-  await expect(shortcut).toBeVisible();
-  expect(await page.evaluate(()=>{
-    const home=document.getElementById('premiumHomeV2');
-    return !!home&&home.lastElementChild&&home.lastElementChild.classList.contains('phPilotageShortcut');
-  })).toBeTruthy();
-  await page.evaluate(()=>{
-    const home=document.getElementById('premiumHomeV2');
-    const temp=document.createElement('div');
-    temp.id='pilotage-order-probe';
-    home.appendChild(temp);
-    document.dispatchEvent(new CustomEvent('store-runner:home-rendered'));
-  });
-  await page.waitForFunction(()=>document.getElementById('premiumHomeV2').lastElementChild.classList.contains('phPilotageShortcut'));
-  expect(await page.locator('#pilotage-order-probe').count()).toBe(1);
-  await shortcut.click();
+  await page.waitForFunction(()=>window.StoreRunnerSectorPilotage&&document.getElementById('premiumHomeV2')&&document.getElementById('moreSheetV2'));
+  await page.waitForTimeout(300);
+
+  await expect(page.locator('#premiumHomeV2 .phPilotageShortcut')).toHaveCount(0);
+  const menuShortcut=page.locator('#moreSheetV2 .moreSheetGrid [data-pilotage]');
+  await expect(menuShortcut).toHaveCount(1);
+
+  await page.evaluate(()=>document.dispatchEvent(new CustomEvent('store-runner:home-rendered')));
+  await page.waitForTimeout(80);
+  await expect(page.locator('#premiumHomeV2 .phPilotageShortcut')).toHaveCount(0);
+  await expect(menuShortcut).toHaveCount(1);
+
+  await page.locator('.bottomNavBtn[data-more="1"]').click();
+  await expect(menuShortcut).toBeVisible();
+  await menuShortcut.click();
+
   const panel=page.locator('#pilotagePanel');
   await expect(panel).toBeVisible();
   await expect(panel.locator('.spKpi')).toHaveCount(4);

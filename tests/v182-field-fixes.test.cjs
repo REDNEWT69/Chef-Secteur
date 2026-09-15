@@ -8,19 +8,22 @@ const index=fs.readFileSync(path.join(process.cwd(),'index.html'),'utf8');
 const sw=fs.readFileSync(path.join(process.cwd(),'sw.js'),'utf8');
 const version=JSON.parse(fs.readFileSync(path.join(process.cwd(),'version.json'),'utf8'));
 
-assert(index.includes("const BUILD_REV='20260915-fieldfixes182'"),'index doit publier le build V182');
-assert(sw.includes('const BUILD_REV = "20260915-fieldfixes182"'),'sw doit publier le même build V182');
-assert.equal(version.latestBuild,'20260915-fieldfixes182');
-assert.equal(version.displayVersion,'182');
-assert(index.includes("'./v182-fixes.js'"),'le runtime V182 doit être chargé');
+assert(index.includes("const BUILD_REV='20260915-homepolish183'"),'index doit publier le build V183');
+assert(sw.includes('const BUILD_REV = "20260915-homepolish183"'),'sw doit publier le même build V183');
+assert.equal(version.latestBuild,'20260915-homepolish183');
+assert.equal(version.displayVersion,'183');
+assert(index.includes("'./v182-fixes.js'"),'le runtime de fiabilisation doit rester chargé');
 assert(index.includes('id="srRuntimeBoot"'),'le boot historique doit être masqué pendant le rendu moderne');
-assert(sw.includes('"./v182-fixes.js"'),'les correctifs V182 doivent fonctionner hors ligne après installation');
+assert(index.includes('<img src="./app-icon.svg?rev=20260915-homepolish183" alt="S-RUNNER">'),'le loader doit afficher le vrai logo S-RUNNER');
+assert(sw.includes('"./v182-fixes.js"'),'les correctifs terrain doivent fonctionner hors ligne après installation');
+assert(source.includes('removeHomePilotageShortcut'),'V183 doit retirer le raccourci Pilotage de l’accueil');
 
 const pilotageButtons=[];
 const grid={
   querySelector(sel){return sel==='[data-pilotage]'?pilotageButtons[0]||null:null},
   insertBefore(node){pilotageButtons.unshift(node)}
 };
+const homeShortcut={removed:false,remove(){this.removed=true}};
 const elements={
   premiumHomeV2:{},
   srRuntimeBoot:{classList:{add(){}},parentNode:{},remove(){}},
@@ -31,7 +34,7 @@ const document={
   addEventListener(){},dispatchEvent(){},
   getElementById(id){return elements[id]||null},
   querySelector(sel){return sel==='#moreSheetV2 .moreSheetGrid'?grid:null},
-  querySelectorAll(){return[]},
+  querySelectorAll(sel){return sel==='#premiumHomeV2 .phPilotageShortcut'?[homeShortcut]:[]},
   createElement(tag){return{tagName:String(tag).toUpperCase(),dataset:{},classList:{add(){}},setAttribute(){},remove(){}}}
 };
 const state={
@@ -55,6 +58,7 @@ assert.equal(typeof ctx.storeRunnerRepairMobileRuntime,'function');
 ctx.storeRunnerRepairMobileRuntime();
 assert.equal(pilotageButtons.length,1,'Pilotage doit être ajouté même si le menu Plus apparaît après son module');
 assert.equal(pilotageButtons[0].dataset.pilotage,'1');
+assert.equal(homeShortcut.removed,true,'Pilotage ne doit plus rester affiché sur l’accueil');
 ctx.storeRunnerRepairMobileRuntime();
 assert.equal(pilotageButtons.length,1,'la réparation Android ne doit pas dupliquer Pilotage');
 
@@ -94,4 +98,4 @@ assert.deepEqual(merged.Samedi.map(x=>x.id),['old-sat']);
 assert(source.includes('Cette période touche une semaine déjà modifiée ou recalculée'),'une semaine protégée doit demander confirmation avant régénération partielle');
 assert(source.includes("outsideIds.forEach(id=>"),'les magasins hors plage doivent être protégés pendant la génération');
 
-console.log('V182 field fixes: OK · Android menu, overnight threshold, partial 16-18 merge and offline build');
+console.log('V183 polish: OK · vrai logo, Pilotage uniquement dans Plus, correctifs terrain conservés');
