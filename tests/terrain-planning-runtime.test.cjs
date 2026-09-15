@@ -9,10 +9,12 @@ const capacity = fs.readFileSync('daily-capacity.js','utf8');
 
 assert(index.includes("'./range-planner-v2.js','./store-opening-hours.js','./boulanger-default-hours.js','./store-photos.js','./terrain-planning-v1.js','./working-hours-end.js'"), 'les horaires enseigne et les photos doivent charger avant le module terrain');
 assert(sw.includes('"./terrain-planning-v1.js"'), 'le module terrain doit être disponible hors ligne');
-assert.strictEqual(version.displayVersion, '180');
-assert.strictEqual(version.latestBuild, '20260915-terrainfocus180');
-assert(index.includes("const BUILD_REV='20260915-terrainfocus180'"));
-assert(sw.includes('const BUILD_REV = "20260915-terrainfocus180"'));
+assert.strictEqual(version.displayVersion, '181');
+assert.strictEqual(version.latestBuild, '20260915-planningcascade181');
+assert(index.includes("const BUILD_REV='20260915-planningcascade181'"));
+assert(sw.includes('const BUILD_REV = "20260915-planningcascade181"'));
+assert(index.includes("'./planning-generation-controller.js','./planning-cascade-v181.js','./calendar-enhancements.js'"), 'la cascade doit prendre la main juste après le contrôleur planning');
+assert(sw.includes('"./planning-cascade-v181.js"'), 'le recalcul en cascade doit rester disponible hors ligne');
 assert(sw.includes('"./store-opening-hours.js"'), 'horaires disponibles hors ligne');
 assert(sw.includes('"./boulanger-default-hours.js"'), 'défauts Boulanger/Darty disponibles hors ligne');
 assert(sw.includes('"./store-photos.js"'), 'mémoire photo magasin disponible hors ligne');
