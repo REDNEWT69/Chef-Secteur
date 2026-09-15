@@ -1,8 +1,8 @@
 (function(){
 'use strict';
 const M=window.StoreRunnerVisitModel;
-const VISIBLE_STEPS=[3,5];
-const STEP_LABELS={3:'Terrain',5:'Suivi'};
+const VISIBLE_STEPS=[3];
+const STEP_LABELS={3:'Terrain'};
 let dialog,body,status,title,session,activeId=null,viewStep=3,opener=null,quickMemoryObserver=null,expandedMemoryStore='',previewFamily='';
 function element(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n}
 function button(text,fn,cls='secondary'){const b=element('button',text,cls);b.type='button';b.addEventListener('click',fn);return b}
@@ -36,9 +36,29 @@ function legacyReport(host,block){
  for(const [key,label] of rows){const row=element('div',undefined,'sr-legacyRow');row.append(element('b',label),element('p',block[key]));details.append(row)}
  host.append(details)
 }
+function frenchDay(iso){const p=String(iso||'').split('-');return p.length===3?p[2]+'/'+p[1]:String(iso||'')}
+/* La promesse de la visite précédente, pour la famille affichée uniquement. Lecture seule :
+   aucune écriture, aucun champ supplémentaire à remplir en magasin. */
+function lastPromise(v,family){
+ const rows=domain().visits
+  .filter(x=>String(x.storeId)===String(v.storeId)&&x.id!==v.id&&x.status==='completed')
+  .sort((a,b)=>String(b.completedDate||b.completedAt||'').localeCompare(String(a.completedDate||a.completedAt||'')));
+ for(const row of rows){
+  const t=String((M.reportOf(row)[family]||{}).training||'').trim();
+  if(t)return{date:row.completedDate||'',text:t};
+ }
+ return null;
+}
 function openPhotos(v){const api=window.StorePhotosV1;if(!api||typeof api.open!=='function'){message('Photos indisponibles sur cet appareil.',true);return}api.open(v.storeId).catch(e=>message('Photos indisponibles : '+(e.message||String(e)),true))}
 function report(host,v){
  const data=M.reportOf(v),family=shownFamily(v),block=data[family];
+ const promise=lastPromise(v,family);
+ if(promise){
+  const box=element('section',undefined,'sr-lastPromise');
+  box.append(element('b','La dernière fois'+(promise.date?' ('+frenchDay(promise.date)+')':'')+', tu notais :'));
+  box.append(element('p',promise.text));
+  host.append(box);
+ }
  const intro=element('section',undefined,'sr-terrainIntro');intro.append(element('h3','Carnet terrain · '+family.toUpperCase()),element('p','Note seulement ce que TeamHaven ne capte pas : retour vendeur, perception de la marque, concurrence, opportunité, formation ou point à revoir.'));host.append(intro);
  const context=field(host,'Contexte magasin · facultatif, commun BLANC / BRUN',data.shared.context,value=>save(s=>M.editReport(s,v.id,'shared','context',value)),'textarea',v.status==='completed');context.rows=3;
  const note=field(host,'Note terrain '+family.toUpperCase(),block.team,value=>save(s=>M.editReport(s,v.id,family,'team',value)),'textarea',v.status==='completed');note.rows=8;note.placeholder='Ex. vendeur rencontré, ce qu’il t’a dit, perception de la marque, concurrence, produit remarqué, problème ou opportunité…';
@@ -56,12 +76,20 @@ function localDay(){const d=new Date(),p=n=>String(n).padStart(2,'0');return d.g
 async function completeVisit(v){
  await save(s=>{const live=M.getVisit(s,v.id);if(!String(live.conclusion||'').trim())M.editVisit(s,v.id,'conclusion',null,completionText(live).slice(0,500));M.complete(s,v.id,localDay())},()=>{viewStep=3;render();if(typeof window.renderAll==='function')window.renderAll();renderQuickMemory();message('Visite terminée et enregistrée dans l’historique.')})
 }
-function actions(host,v){const rows=domain().actions.filter(a=>a.storeId===v.storeId);if(!rows.length){host.append(element('p','Aucune action en cours pour ce magasin. Les anciennes actions 6P restent conservées si elles existent.','sr-empty'));return}for(const a of rows){const box=element('section',undefined,'sr-item');box.append(element('h4',a.category+' · '+a.description));field(box,'Responsable',a.owner,value=>save(s=>M.editAction(s,a.id,'owner',value)),'text');field(box,'Échéance',a.dueDate,value=>save(s=>M.editAction(s,a.id,'dueDate',value)),'date');const completed=element('p',a.completedAt?'Réalisée le '+new Date(a.completedAt).toLocaleString('fr-FR'):'');const wrap=element('label','Avancement','sr-field'),sel=element('select');for(const [key,text] of [['open','À faire'],['in_progress','En cours'],['done','Réalisée'],['cancelled','Annulée']]){const o=element('option',text);o.value=key;sel.append(o)}sel.value=a.status;sel.onchange=()=>save(s=>M.editAction(s,a.id,'status',sel.value),()=>{const saved=domain().actions.find(x=>x.id===a.id);completed.textContent=saved.completedAt?'Réalisée le '+new Date(saved.completedAt).toLocaleString('fr-FR'):'';renderQuickMemory()});wrap.append(sel);box.append(wrap,completed);host.append(box)}}
-function stepOf(v){if(v.status==='completed')return VISIBLE_STEPS.includes(viewStep)?viewStep:3;return v.step===5?5:3}
-function render(){const v=current();if(!v){hub();return}body.replaceChildren();title.textContent=name(v.storeId)+' · '+(v.status==='draft'?'Visite en cours':'Visite terminée');const step=stepOf(v),nav=element('nav',undefined,'sr-steps');nav.setAttribute('aria-label','Étapes de la visite');for(const i of VISIBLE_STEPS){const b=button(STEP_LABELS[i],async()=>{if(v.status==='draft')await save(s=>M.editVisit(s,v.id,'step',null,i),()=>{render();dialog.scrollTop=0});else{viewStep=i;render();dialog.scrollTop=0}});b.setAttribute('aria-current',step===i?'step':'false');nav.append(b)}body.append(nav);if(step===3){familySwitch(body,v);report(body,v)}else{body.append(element('h3','Suivi'));actions(body,v)}}
+/* Le parcours terrain n'a plus qu'une étape : l'ancien onglet Suivi ne pouvait plus rien
+   afficher, aucun chemin ne créant plus d'action. Les actions encore ouvertes restent
+   exposées par memoryFor() et affichées par renderQuickMemory() dans la fiche magasin. */
+function stepOf(){return 3}
+function steps(host,v){
+ if(VISIBLE_STEPS.length<2)return;
+ const step=stepOf(),nav=element('nav',undefined,'sr-steps');nav.setAttribute('aria-label','Étapes de la visite');
+ for(const i of VISIBLE_STEPS){const b=button(STEP_LABELS[i],async()=>{if(v.status==='draft')await save(s=>M.editVisit(s,v.id,'step',null,i),()=>{render();dialog.scrollTop=0});else{viewStep=i;render();dialog.scrollTop=0}});b.setAttribute('aria-current',step===i?'step':'false');nav.append(b)}
+ host.append(nav)
+}
+function render(){const v=current();if(!v){hub();return}body.replaceChildren();title.textContent=name(v.storeId)+' · '+(v.status==='draft'?'Visite en cours':'Visite terminée');steps(body,v);familySwitch(body,v);report(body,v)}
 function hub(){activeId=null;title.textContent='Visites';body.replaceChildren();const rows=domain().visits.slice().sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));if(!rows.length)body.append(element('p','Démarre une visite depuis une fiche magasin, le planning ou la tournée.'));for(const v of rows){const box=element('section',undefined,'sr-item');box.append(element('h3',name(v.storeId)),element('p',v.status==='draft'?'Visite en cours':('Terminée le '+v.completedDate)),button(v.status==='draft'?'Reprendre la visite':'Consulter la visite',()=>{activeId=v.id;previewFamily=activeFamily(v);viewStep=3;render()}));body.append(box)}}
 function show(){if(!dialog.open){opener=document.activeElement;dialog.showModal()}}
-async function start(storeId){show();let id;await save(s=>{id=M.start(s,String(storeId));const v=M.getVisit(s,id);if(v.status==='draft'&&v.step!==3&&v.step!==5)M.editVisit(s,id,'step',null,3)},()=>{activeId=id;previewFamily=activeFamily(current());viewStep=3;render()})}
+async function start(storeId){show();let id;await save(s=>{id=M.start(s,String(storeId));const v=M.getVisit(s,id);if(v.status==='draft'&&v.step!==3)M.editVisit(s,id,'step',null,3)},()=>{activeId=id;previewFamily=activeFamily(current());viewStep=3;render()})}
 function openVisit(visitId){const v=domain().visits.find(x=>x.id===String(visitId));if(!v)return false;show();activeId=v.id;previewFamily=activeFamily(v);viewStep=3;render();return true}
 function openHub(){show();save(undefined,hub);return true}
 async function close(){if(!await save())return;dialog.close();if(opener&&opener.isConnected)opener.focus();if(typeof window.renderAll==='function')window.renderAll()}

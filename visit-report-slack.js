@@ -51,7 +51,7 @@ function text(v){return String(v==null?'':v).trim()}
 function orPlaceholder(v){return text(v)||PLACEHOLDER}
 function keeper(families){if(families.length>1)return()=>true;const target=families[0];return f=>{const x=text(f);return !x||x==='both'||x===target}}
 function sixPRows(M,v,keep){const out=[];for(const p of Object.keys(M.SIX_P)){const section=M.SIX_P[p],rows=(v.sixP&&v.sixP[p])||[];rows.forEach((row,i)=>{if(keep(row.family))out.push({label:section.label,item:section.items[i]||('Ligne '+(i+1)),row})})}return out}
-function blockers(M,state,v,keep){const lines=[];for(const a of (v.arrival&&v.arrival.anomalies)||[])if(keep(a.family)&&text(a.text))lines.push('- '+text(a.text));for(const e of sixPRows(M,v,keep))if(e.row.status==='correct'||e.row.status==='opportunity')lines.push('- '+e.label+' · '+e.item+(text(e.row.comment)?' : '+text(e.row.comment):''));const actions=((state.businessV2&&state.businessV2.actions)||[]).filter(a=>a.visitId===v.id&&['done','cancelled'].indexOf(a.status)<0);for(const a of actions)lines.push('- À suivre : '+text(a.description)+' · '+(text(a.owner)||'responsable à définir')+' · '+(text(a.dueDate)||'sans échéance'));return lines.length?lines.join('\n'):PLACEHOLDER}
+function blockers(M,state,v,keep){const lines=[];for(const a of (v.arrival&&v.arrival.anomalies)||[])if(keep(a.family)&&text(a.text))lines.push('- '+text(a.text));for(const e of sixPRows(M,v,keep))if(e.row.status==='correct'||e.row.status==='opportunity')lines.push('- '+e.label+' · '+e.item+(text(e.row.comment)?' : '+text(e.row.comment):''));const actions=((state.businessV2&&state.businessV2.actions)||[]).filter(a=>a.visitId===v.id&&['done','cancelled'].indexOf(a.status)<0);for(const a of actions)lines.push('- À suivre : '+text(a.description)+' · '+(text(a.owner)||'responsable à définir')+' · '+(text(a.dueDate)||'sans échéance'));return lines.join('\n')}
 function photoStats(photos,families){const keep=keeper(families),rows=(photos||[]).filter(r=>keep(r&&r.family));const before=rows.filter(r=>r&&r.moment==='avant').length,after=rows.filter(r=>r&&r.moment==='apres').length,other=rows.length-before-after;return{total:rows.length,before,after,other}}
 function photoLine(photos,families){const s=photoStats(photos,families);if(!s.total)return '> **Photos :** '+PLACEHOLDER;let bits=[];if(s.before)bits.push(s.before+' avant');if(s.after)bits.push(s.after+' après');if(s.other)bits.push(s.other+' sans moment');return '> **Photos :** '+bits.join(' / ')+' jointe'+(s.total>1?'s':'')+' à ce message.'}
 function tidy(body){return body.split('\n').map(l=>l.replace(/[ \t]+$/,'')).join('\n').replace(/\n{3,}/g,'\n\n').replace(/\s+$/,'')+'\n'}
@@ -66,7 +66,8 @@ function build(state,visitId,family,photos){
  out=appendLegacy(out,'Actions réalisées',value('actions'));
  out=appendLegacy(out,'Massification / exposition',value('massification'));
  out=appendLegacy(out,'Suivi OMNI',value('omni'));
- out+='\n### À suivre / points de blocage\n'+blockers(M,state,v,keep)+'\n\n### Formation / prochain passage\n'+orPlaceholder(value('training'))+'\n';
+ out=appendLegacy(out,'À suivre / points de blocage',blockers(M,state,v,keep));
+ out+='\n### Formation / prochain passage\n'+orPlaceholder(value('training'))+'\n';
  return tidy(out)
 }
 function buildAIPayload(state,visitId,family,photos){

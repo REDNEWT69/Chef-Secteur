@@ -26,7 +26,16 @@ assert(ui.includes("quickMemoryObserver.observe(sheet,{attributes:true,attribute
 assert(ui.includes("row.dataset.srHistoryVisit=v.id"),'chaque visite historique doit rester ouvrable dans son détail');
 // Le modèle 6P reste testé ci-dessus pour la compatibilité des anciennes visites, mais le
 // parcours terrain V170 ne doit plus l'exposer comme un second TeamHaven.
-assert(ui.includes('const VISIBLE_STEPS=[3,5]'),'le parcours visible doit rester Terrain / Suivi');
+assert(ui.includes('const VISIBLE_STEPS=[3]'),'le parcours visible se réduit au seul carnet Terrain');
+// L'onglet Suivi ne pouvait plus rien afficher : aucun chemin ne crée plus d'action.
+assert(!/function actions\(/.test(ui),'la vue Suivi, devenue inatteignable, ne doit plus subsister');
+assert(!ui.includes("STEP_LABELS={3:'Terrain',5:'Suivi'}"),'le libellé Suivi disparaît avec son onglet');
+assert(/if\(VISIBLE_STEPS\.length<2\)return/.test(ui),'un onglet Terrain orphelin ne doit pas rester en haut de l’écran');
+// La promesse précédente remplace l'onglet : lecture seule, famille par famille, jamais la visite courante.
+assert(ui.includes('function lastPromise(v,family)'),'l’écran Terrain doit rappeler la promesse précédente');
+assert(ui.includes("x.id!==v.id&&x.status==='completed'"),'la promesse doit venir d’une autre visite, déjà terminée');
+assert(ui.includes("(M.reportOf(row)[family]||{}).training"),'la promesse reste cloisonnée par famille');
+assert(!/lastPromise[\s\S]{0,400}?M\.edit/.test(ui),'le rappel de promesse ne doit rien écrire dans l’état');
 assert(!ui.includes('Méthode 6P'),'la Méthode 6P n’est plus une étape visible');
 assert(!ui.includes('function sixP('),'aucun formulaire 6P ne doit être rendu');
 assert(ui.includes('Famille active : '),'le changement BLANC / BRUN doit donner un retour visuel persistant');
