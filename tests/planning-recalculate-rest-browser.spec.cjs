@@ -81,10 +81,12 @@ test('V179 : un dépassement fixe explique les vrais crédits sans casser le pla
   expect(recalc.error).toContain('Passe-le à 4 dans Réglages');
   expect(recalc.error).toContain('Rien n’a été changé');
 
-  const status=page.locator('#planningGenerateStatus');
-  await expect(status).toBeVisible();
-  await expect(status).toContainText('4 crédits fixes');
-  await expect(status).toContainText('Passe-le à 4 dans Réglages');
+  const errorBox=page.locator('#errorBox');
+  await expect(errorBox).toBeVisible();
+  await expect(errorBox).toContainText('Mardi contient déjà 4 crédits fixes');
+  await expect(errorBox).toContainText('Passe-le à 4 dans Réglages');
+  // Le statut de la feuille Réglages conserve aussi le détail, même lorsque la feuille est fermée.
+  await expect(page.locator('#planningGenerateStatus')).toContainText('BUT Saint-Priest (2)');
 
   const after=await page.evaluate(()=>JSON.stringify(state.plan));
   expect(after).toBe(seeded.before);
