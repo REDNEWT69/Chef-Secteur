@@ -88,7 +88,7 @@
           return {
             getItem(key){key=String(key);return memory.has(key)?memory.get(key):null},
             setItem(key,value){key=String(key);value=String(value);memory.set(key,value);persist('put',key,value)},
-            removeItem(key){key=String(key);memory.delete(key);persist('delete',key)},
+            removeItem(key){key=String(key);memory.delete(String(key));persist('delete',key)},
             clear(){memory.clear();persist('clear')},
             flush(){const snapshot=new Map(memory);return new Promise((resolve,reject)=>{
               const tx=db.transaction('kv','readwrite'),store=tx.objectStore('kv');
@@ -139,7 +139,7 @@
       const scriptTag=(src)=>'<script src="'+withRev(src)+'"><\/script>';
       const styleTag=(href)=>'<link rel="stylesheet" href="'+withRev(href)+'">';
       const calendarOauthShim=[
-        './calendar-oauth.js','./planning-generation-controller.js','./calendar-enhancements.js','./ui-polish.js','./route-polish.js','./navigation-controller.js','./profile-controller.js','./store-runner-branding.js','./planning-ui-fixes.js','./ai-gateway-config.js','./assistant-upgrade.js','./assistant-visit-context.js','./ai-context-limit.js','./assistant-store-lookup.js','./map-layer-fix.js','./timeline-end-times.js','./visit-counting.js','./range-planner-v2.js','./store-opening-hours.js','./boulanger-default-hours.js','./store-photos.js','./terrain-planning-v1.js','./working-hours-end.js','./daily-capacity.js','./weekly-target.js','./planning-pro-plus.js','./period-day-slider.js','./planning-manual-visits.js','./workdays-enforcer.js','./visit-history-delete.js','./assistant-sheet-drag.js','./visual-refresh-v1.js','./home-refresh-v2.js','./sector-pilotage.js','./auto-planning-fix.js','./update-manager.js'
+        './calendar-oauth.js','./planning-generation-controller.js','./calendar-enhancements.js','./ui-polish.js','./route-polish.js','./navigation-controller.js','./profile-controller.js','./store-runner-branding.js','./planning-ui-fixes.js','./ai-gateway-config.js','./assistant-upgrade.js','./assistant-visit-context.js','./ai-context-limit.js','./assistant-store-lookup.js','./map-layer-fix.js','./timeline-end-times.js','./visit-counting.js','./range-planner-v2.js','./store-opening-hours.js','./boulanger-default-hours.js','./store-photos.js','./terrain-planning-v1.js','./working-hours-end.js','./daily-capacity.js','./planning-pro-plus.js','./period-day-slider.js','./planning-manual-visits.js','./workdays-enforcer.js','./visit-history-delete.js','./assistant-sheet-drag.js','./visual-refresh-v1.js','./home-refresh-v2.js','./sector-pilotage.js','./auto-planning-fix.js','./update-manager.js'
       ].map(scriptTag).join('');
       const regionUi=styleTag('./region-stores.css')+['./region-fetch-resilience.js','./region-stores.js','./official-catalog.js','./boulanger-national.js','./national-sectors.js','./sector-admin.js','./stores-layout-order.js'].map(scriptTag).join('');
       const connectionUi=scriptTag('./connection-ui.js');
