@@ -12,7 +12,7 @@ test('Planning V174 : + déplace un magasin et swipe le retire avec confirmation
     state.stores=[a,b,c];state.excluded={};state.locks={};state.manualWeekEdits={};
     state.settings=Object.assign({},state.settings,{weekDate:'2026-09-14',days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],maxVisitsPerDay:8,startTime:'08:30',endTime:'18:00',visitMinutes:60});
     state.plan={Lundi:[a,b],Mardi:[c],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
-    if(typeof save==='function')save();renderAll();if(typeof goTab==='function')goTab('planPanel');if(typeof selectPlanningDay==='function')selectPlanningDay('Lundi');
+    renderAll();if(typeof goTab==='function')goTab('planPanel');if(typeof selectPlanningDay==='function')selectPlanningDay('Lundi');
   });
   await page.waitForTimeout(250);
   const add=page.locator('#planPanel .pmvAdd');await expect(add).toBeVisible();
