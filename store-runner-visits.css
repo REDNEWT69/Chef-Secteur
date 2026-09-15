@@ -31,3 +31,8 @@
 #storeQuickSheet .sheetActions>button[onclick*="fullStoreFromQuick"]{order:50;grid-column:auto!important}
 #storeQuickSheet .sheetActions>#srReportQuickBtn{order:51;grid-column:auto!important}
 #storeQuickSheet .sheetActions>#openingHoursQuickBtn{order:60;grid-column:1/-1!important}
+
+/* Finition V174 : l'aide au swipe doit rester une indication discrète, pas un bloc
+   blanc collé à la première carte du planning. */
+#planPanel .timelineShell .pmvHead{background:transparent!important;padding-bottom:4px!important}
+#planPanel .timelineShell .pmvHint{display:block!important;background:transparent!important;padding:1px 13px 0!important;margin:0 0 16px!important;line-height:1.35!important;position:relative;z-index:2}
