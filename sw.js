@@ -1,4 +1,4 @@
-const BUILD_REV = "20260915-pilotage173";
+const BUILD_REV = "20260915-manualplanning174";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -45,6 +45,7 @@ const OPTIONAL_SHELL = [
   "./daily-capacity.js",
   "./planning-pro-plus.js",
   "./period-day-slider.js",
+  "./planning-manual-visits.js",
   "./workdays-enforcer.js",
   "./visit-history-delete.js",
   "./assistant-sheet-drag.js",
