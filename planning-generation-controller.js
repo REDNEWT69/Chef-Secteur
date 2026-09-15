@@ -56,10 +56,18 @@
   }
   function dayDate(mon,day){return isoDate(addDays(mon,DAYS.indexOf(day)))}
   function visitedOn(storeId,date){
-    const visits=window.state&&state.visits&&state.visits[String(storeId)];
-    if(!visits)return false;
-    if(String(visits.lastVisit||'')===date)return true;
-    return Array.isArray(visits.history)&&visits.history.some(function(d){return String(d||'')===date});
+    const legacy=window.state&&state.visits&&state.visits[String(storeId)];
+    if(legacy){
+      if(String(legacy.lastVisit||'')===date)return true;
+      if(Array.isArray(legacy.history)&&legacy.history.some(function(d){return String(d||'')===date}))return true;
+    }
+    const domain=window.state&&state.businessV2;
+    const visits=domain&&Array.isArray(domain.visits)?domain.visits:[];
+    return visits.some(function(v){
+      if(String(v&&v.storeId)!==String(storeId)||String(v&&v.status)!=='completed')return false;
+      const completed=String((v&&v.completedDate)||(v&&v.completedAt)||'').slice(0,10);
+      return completed===date;
+    });
   }
   function lockDayForWeek(storeId,weekKey){
     try{if(typeof window.storeRunnerLockDayForWeek==='function'){const d=window.storeRunnerLockDayForWeek(storeId,weekKey);if(DAYS.includes(d))return d}}catch(e){}
@@ -136,7 +144,7 @@
     const mon=currentWeekMonday(),weekKey=isoDate(mon),today=isoDate(new Date()),weekEnd=isoDate(addDays(mon,5));
     const workDays=selectedWorkDays(),max=Math.max(1,Math.min(8,Number(state.settings&&state.settings.maxVisitsPerDay)||4));
     const candidate=Object.fromEntries(DAYS.map(function(day){return[day,[]]}));
-    const movable=[],seen=new Set(),fixedIds=new Set();
+    const movable=[],seen=new Set();
     let visitedKept=0,appointmentsKept=0,locksKept=0,pastUnvisited=0;
 
     for(const day of DAYS){
@@ -150,7 +158,7 @@
         if(visited){fixedDay=day;visitedKept++}
         else if(appointmentDay){fixedDay=appointmentDay;appointmentsKept++}
         else if(lockedDay){fixedDay=lockedDay;locksKept++}
-        if(fixedDay){candidate[fixedDay].push(store);fixedIds.add(id);continue}
+        if(fixedDay){candidate[fixedDay].push(store);continue}
         if(date<today)pastUnvisited++;
         movable.push({store:store,originalDay:day,originalIndex:index});
       }
