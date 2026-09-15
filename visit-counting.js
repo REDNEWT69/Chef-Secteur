@@ -30,6 +30,31 @@ function visitCredit(store){
   return 1;
 }
 function routeCredits(route){return (route||[]).reduce((n,s)=>n+visitCredit(s),0)}
+function isBoulanger(store){const brand=norm(store&&store.enseigne);return /(^| )boulanger( |$)/.test(brand)}
+/*
+ * Les crédits métier restent inchangés : Boulanger vaut toujours 2 visites comptabilisées.
+ * Pour la capacité du générateur uniquement, une journée contenant Boulanger doit réserver
+ * tout le budget sauf une unité. Avec un plafond de 4, le moteur raisonne donc comme si le
+ * Boulanger occupait 3 unités de capacité : il peut ajouter un seul magasin à 1 crédit,
+ * mais jamais un second Boulanger, un BUT ou une autre enseigne à 2 crédits.
+ *
+ * Le moteur semaine est explicitement signalé par planning-generation-controller.js.
+ * Le moteur période désactive son bouton pendant son travail ; ce signal reste local à la
+ * génération et évite de modifier les données ou les crédits affichés à l'utilisateur.
+ */
+function planningCapacityActive(){
+  try{
+    if(window.__storeRunnerPlanningGenerationActive)return true;
+    const button=document.getElementById('generateRangeBtn');
+    return !!(button&&button.disabled);
+  }catch(e){return false}
+}
+function planningVisitCredit(store){
+  const actual=visitCredit(store);
+  if(!isBoulanger(store)||!planningCapacityActive())return actual;
+  const max=Math.max(1,Math.min(8,Number(window.state&&state.settings&&state.settings.maxVisitsPerDay)||4));
+  return Math.max(actual,Math.max(1,max-1));
+}
 function planStores(plan,days){return (days||DAYS).reduce((n,d)=>n+((plan&&Array.isArray(plan[d]))?plan[d].length:0),0)}
 function planCredits(plan,days){return (days||DAYS).reduce((n,d)=>n+routeCredits((plan&&plan[d])||[]),0)}
 function storeKey(s){const b=norm((s&&s.enseigne)||''),v=norm((s&&s.ville)||''),a=norm((s&&s.adresse)||'');return (b||v||a)?b+'|'+v+'|'+a:'id|'+String((s&&s.id)||'')}
@@ -141,11 +166,11 @@ function onPlanningUpdated(e){
 }
 function boot(){ensureRules();window.assistantSummary=formatAssistantSummary;hookReliability();observeUi();schedulePatch();document.addEventListener('store-runner:planning-updated',onPlanningUpdated);document.addEventListener('store-runner:data-restored',()=>{ensureRules();schedulePatch()});document.addEventListener('chef-range-generated',schedulePatch);document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('.proMonthPrev,.proMonthNext'))schedulePatch()});document.addEventListener('touchend',e=>{if(e.target&&e.target.closest&&e.target.closest('#proMonthBody'))schedulePatch()},{passive:true})}
 
-window.storeVisitCredit=visitCredit;
+window.storeVisitCredit=planningVisitCredit;
 window.storeVisitCreditsForRoute=routeCredits;
 window.storeVisitCreditsForPlan=planCredits;
 window.storeVisitStoresForPlan=planStores;
-window.StoreVisitCounting={credit:visitCredit,routeCredits,planCredits,planStores,archiveStats,normalizeCandidate,reconcileStoredRangeStats,monthArchiveStats,rules};
+window.StoreVisitCounting={credit:visitCredit,planningCredit:planningVisitCredit,routeCredits,planCredits,planStores,archiveStats,normalizeCandidate,reconcileStoredRangeStats,monthArchiveStats,rules};
 document.addEventListener('store-runner:reliability-propose-ready',hookReliability);
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
