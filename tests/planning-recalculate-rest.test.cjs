@@ -29,12 +29,12 @@ function env(){
   mem.set(ARCHIVE_KEY,JSON.stringify({'2026-09-14':{weekMonday:'2026-09-14',manualEdited:true,plan:JSON.parse(JSON.stringify(plan))}}));
   const storage={getItem:k=>mem.has(k)?mem.get(k):null,setItem:(k,v)=>mem.set(k,String(v)),removeItem:k=>mem.delete(k),flush:()=>Promise.resolve()};
   const weekInput={value:'2026-09-14'};
-  const doc={readyState:'loading',addEventListener(){},dispatchEvent(){},getElementById(id){return id==='weekDate'?weekInput:null},querySelector(){return null},querySelectorAll(){return[]},createElement(){return{style:{},addEventListener(){},insertAdjacentElement(){}}}};
+  const doc={readyState:'complete',addEventListener(){},dispatchEvent(){},getElementById(id){return id==='weekDate'?weekInput:null},querySelector(){return null},querySelectorAll(){return[]},createElement(){return{style:{},addEventListener(){},insertAdjacentElement(){}}}};
   const proposals=[];
   const ctx={
     console,Date:FakeDate,Map,Set,JSON,Object,Array,String,Number,Math,RegExp,Promise,setTimeout,clearTimeout,
     state,document:doc,confirm:()=>true,CustomEvent:class{constructor(type,init){this.type=type;Object.assign(this,init)}},
-    localStorage:storage,__chefStorage:storage,addEventListener(){},dispatchEvent(){},save(){},renderAll(){},calendarEventsForDate:()=>[],
+    localStorage:storage,__chefStorage:storage,addEventListener(){},dispatchEvent(){},generateWeek:async()=>({ok:true}),storeRunnerHasValidBase:()=>true,save(){},renderAll(){},calendarEventsForDate:()=>[],
     storeVisitCredit:s=>planningCredit(s,ctx.__storeRunnerPlanningGenerationActive===true,state.settings.maxVisitsPerDay||4),StoreVisitCounting:{credit:actualCredit},
     ChefReliability:{checkpoint(){},propose:async candidate=>{
       proposals.push(JSON.parse(JSON.stringify(candidate)));
