@@ -9,10 +9,10 @@ const capacity = fs.readFileSync('daily-capacity.js','utf8');
 
 assert(index.includes("'./range-planner-v2.js','./store-opening-hours.js','./boulanger-default-hours.js','./store-photos.js','./terrain-planning-v1.js','./working-hours-end.js'"), 'les horaires enseigne et les photos doivent charger avant le module terrain');
 assert(sw.includes('"./terrain-planning-v1.js"'), 'le module terrain doit être disponible hors ligne');
-assert.strictEqual(version.displayVersion, '183');
-assert.strictEqual(version.latestBuild, '20260915-homepolish183');
-assert(index.includes("const BUILD_REV='20260915-homepolish183'"));
-assert(sw.includes('const BUILD_REV = "20260915-homepolish183"'));
+assert.strictEqual(version.displayVersion, '184');
+assert.strictEqual(version.latestBuild, '20260915-overnightguard184');
+assert(index.includes("const BUILD_REV='20260915-overnightguard184'"));
+assert(sw.includes('const BUILD_REV = "20260915-overnightguard184"'));
 assert(index.includes("'./planning-generation-controller.js','./planning-cascade-v181.js','./calendar-enhancements.js'"), 'la cascade doit prendre la main juste après le contrôleur planning');
 assert(sw.includes('"./planning-cascade-v181.js"'), 'le recalcul en cascade doit rester disponible hors ligne');
 assert(index.includes("'./sector-pilotage.js','./v182-fixes.js','./auto-planning-fix.js'"), 'les correctifs V182 doivent charger après Pilotage sans reprendre son ownership');
@@ -25,6 +25,9 @@ assert(index.includes("'./period-day-slider.js','./planning-manual-visits.js','.
 assert(index.includes("'./daily-capacity.js','./planning-pro-plus.js'"), 'les réglages de capacité doivent rester dans le runtime PWA existant');
 assert(capacity.includes("target.addEventListener('input'"), 'l’objectif hebdomadaire doit être persisté dès la saisie');
 assert(capacity.includes('state.settings.target='), 'le module capacité doit conserver la valeur hebdomadaire choisie');
+assert(index.includes('window.__storeRunnerPlanningGenerationActive=true'), 'V184 doit activer la capacité planning pendant la génération 3 semaines');
+assert(index.includes('api.generateThreeWeekSnail=wrapped'), 'V184 doit envelopper le générateur terrain 3 semaines');
+assert(index.includes("document.getElementById('terrainSnailBtn')"), 'le bouton terrain existant doit être rebranché vers le générateur corrigé');
 assert(!source.includes('window.generateWeek='), 'le module terrain ne doit pas reprendre generateWeek');
 assert(!source.includes('root.generateWeek='), 'le module terrain ne doit pas reprendre generateWeek');
 assert(!source.includes('window.generatePlanningRange='), 'le générateur de période stable doit rester propriétaire');
