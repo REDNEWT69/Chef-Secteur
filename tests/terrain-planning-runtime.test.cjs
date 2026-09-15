@@ -27,7 +27,7 @@ assert(capacity.includes("target.addEventListener('input'"), 'l’objectif hebdo
 assert(capacity.includes('state.settings.target='), 'le module capacité doit conserver la valeur hebdomadaire choisie');
 assert(index.includes('window.__storeRunnerPlanningGenerationActive=true'), 'V184 doit activer la capacité planning pendant la génération 3 semaines');
 assert(index.includes('api.generateThreeWeekSnail=wrapped'), 'V184 doit envelopper le générateur terrain 3 semaines');
-assert(index.includes("document.getElementById('terrainSnailBtn')"), 'le bouton terrain existant doit être rebranché vers le générateur corrigé');
+assert(index.includes('terrainSnailBtn')&&index.includes('api.generateThreeWeekSnail()'), 'le bouton terrain existant doit être rebranché vers le générateur corrigé');
 assert(!source.includes('window.generateWeek='), 'le module terrain ne doit pas reprendre generateWeek');
 assert(!source.includes('root.generateWeek='), 'le module terrain ne doit pas reprendre generateWeek');
 assert(!source.includes('window.generatePlanningRange='), 'le générateur de période stable doit rester propriétaire');
