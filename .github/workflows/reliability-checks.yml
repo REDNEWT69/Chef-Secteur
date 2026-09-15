@@ -31,6 +31,7 @@ jobs:
       - run: node tests/planning-range-rotation.test.cjs
       - run: node tests/terrain-planning-v1.test.cjs
       - run: node tests/terrain-planning-runtime.test.cjs
+      - run: node tests/v182-field-fixes.test.cjs
       - run: node tests/opening-hours-schedule.test.cjs
       - run: node tests/darty-default-hours.test.cjs
       - run: node tests/store-photos.test.cjs
