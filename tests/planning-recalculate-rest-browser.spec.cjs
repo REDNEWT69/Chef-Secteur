@@ -11,7 +11,9 @@ test('V177 : recalcul du reste de semaine sépare les Boulanger sans perdre de m
     const a=mk('b1','Boulanger','Saint-Priest'),b=mk('b2','Boulanger','Vénissieux'),f=mk('f1','Fnac','Bron'),but=mk('but1','BUT','Villeurbanne');
     const now=new Date(),nextMonday=new Date(now),weekday=now.getDay()||7,delta=(8-weekday)%7||7;nextMonday.setDate(now.getDate()+delta);
     const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-    state.stores=[a,b,f,but];state.visits={};state.businessV2=state.businessV2||{visits:[],actions:[],storeSnapshots:{}};state.locks={};state.appointments=[];state.manualWeekEdits={};state.calendarEvents=[];
+    state.stores=[a,b,f,but];state.visits={};
+    state.businessV2=window.StoreRunnerVisitModel&&typeof StoreRunnerVisitModel.empty==='function'?StoreRunnerVisitModel.empty():{version:2,revision:0,visits:[],actions:[],storeSnapshots:{}};
+    state.locks={};state.appointments=[];state.manualWeekEdits={};state.calendarEvents=[];
     state.settings=Object.assign({},state.settings,{weekDate:iso(nextMonday),days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],maxVisitsPerDay:4});
     state.plan={Lundi:[a,b,f],Mardi:[but],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
     const input=document.getElementById('weekDate');if(input)input.value=iso(nextMonday);
