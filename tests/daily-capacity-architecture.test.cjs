@@ -14,15 +14,15 @@ if(/state\.plan/.test(source)||/capPlan\s*\(/.test(source)||/route\.slice\s*\(\s
 if(!/planning déjà généré est conservé/.test(source))throw new Error('Capacité journalière: l’interface doit préciser que le planning existant est conservé.');
 if(!/target\.addEventListener\('input'/.test(source)||!/state\.settings\.target/.test(source))throw new Error('Objectif hebdomadaire: persistance immédiate absente.');
 
-// Régression V178 : 20 -> 15 doit être sauvegardé au premier input. Un rerender du
-// planning doit ensuite relire 15 depuis state.settings au lieu de restaurer 20.
-{
+function capacityEnv(explicitMax){
   const targetListeners={},docListeners={};let saves=0;
   const target={value:'20',addEventListener(type,fn){targetListeners[type]=fn}};
-  const max={value:'4'};
+  const max={value:''};
+  const settings={target:20};
+  if(explicitMax!==undefined)settings.maxVisitsPerDay=explicitMax;
   const context={
     console,
-    state:{settings:{target:20,maxVisitsPerDay:4}},
+    state:{settings},
     document:{
       readyState:'complete',activeElement:null,
       getElementById(id){return id==='target'?target:id==='maxVisitsPerDay'?max:null},
@@ -32,14 +32,33 @@ if(!/target\.addEventListener\('input'/.test(source)||!/state\.settings\.target/
   };
   context.window=context;
   vm.runInNewContext(source,context);
-  assert.equal(typeof targetListeners.input,'function','le champ objectif doit écouter la saisie');
-  target.value='15';targetListeners.input.call(target);
-  assert.equal(context.state.settings.target,15,'15 doit devenir immédiatement la valeur sauvegardée');
-  assert.ok(saves>0,'la saisie doit appeler save()');
-  target.value='20';docListeners['store-runner:planning-updated']();
-  assert.equal(target.value,'15','un rerender ne doit plus remettre 20');
-  target.value='18';targetListeners.change.call(target);
-  assert.equal(context.state.settings.target,18,'un changement confirmé doit rester la nouvelle source de vérité');
+  return{context,target,max,targetListeners,docListeners,get saves(){return saves}};
 }
 
-console.log('Daily capacity architecture guards + weekly target persistence: OK');
+// V179 : le réglage métier par défaut est 4, mais une valeur explicite existante
+// (notamment 3) reste un choix utilisateur et ne doit pas être migrée silencieusement.
+{
+  const fresh=capacityEnv(undefined);
+  assert.equal(fresh.context.state.settings.maxVisitsPerDay,4,'une configuration sans maximum doit démarrer à 4 crédits');
+  assert.equal(fresh.max.value,'4','le champ Réglages doit refléter le défaut à 4');
+
+  const explicit=capacityEnv(3);
+  assert.equal(explicit.context.state.settings.maxVisitsPerDay,3,'une valeur utilisateur explicite à 3 doit rester à 3');
+  assert.equal(explicit.max.value,'3','le champ Réglages ne doit jamais remplacer un 3 explicite par 4');
+}
+
+// Régression V178 : 20 -> 15 doit être sauvegardé au premier input. Un rerender du
+// planning doit ensuite relire 15 depuis state.settings au lieu de restaurer 20.
+{
+  const t=capacityEnv(4);
+  assert.equal(typeof t.targetListeners.input,'function','le champ objectif doit écouter la saisie');
+  t.target.value='15';t.targetListeners.input.call(t.target);
+  assert.equal(t.context.state.settings.target,15,'15 doit devenir immédiatement la valeur sauvegardée');
+  assert.ok(t.saves>0,'la saisie doit appeler save()');
+  t.target.value='20';t.docListeners['store-runner:planning-updated']();
+  assert.equal(t.target.value,'15','un rerender ne doit plus remettre 20');
+  t.target.value='18';t.targetListeners.change.call(t.target);
+  assert.equal(t.context.state.settings.target,18,'un changement confirmé doit rester la nouvelle source de vérité');
+}
+
+console.log('Daily capacity architecture guards + default 4 + explicit 3 + weekly target persistence: OK');

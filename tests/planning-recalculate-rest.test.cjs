@@ -10,19 +10,19 @@ class FakeDate extends RealDate{
 }
 function mk(id,enseigne,ville){return{id,enseigne,ville:ville||id,adresse:'1 rue test',dept:'69',active:true,lat:45.7,lon:4.9,priority:3}}
 function emptyPlan(){return Object.fromEntries(DAYS.map(d=>[d,[]]))}
-function actualCredit(s){return /boulanger|but|darty/i.test(String(s&&s.enseigne||''))?2:1}
+function actualCredit(s){return /boulanger|but|darty|carrefour|conforama/i.test(String(s&&s.enseigne||''))?2:1}
 function planningCredit(s,active){if(/boulanger/i.test(String(s&&s.enseigne||''))&&active)return 3;return actualCredit(s)}
 function ids(route){return JSON.stringify(Array.from(route||[],s=>String(s.id)))}
 
 function env(){
-  const b0=mk('b0','Boulanger','Lyon'),missed=mk('f0','Fnac','Bron'),b1=mk('b1','Boulanger','Saint-Priest'),b2=mk('b2','Boulanger','Vénissieux'),but1=mk('but1','BUT','Saint-Priest'),f1=mk('f1','Fnac','Villeurbanne');
+  const b0=mk('b0','Boulanger','Lyon'),missed=mk('f0','Fnac','Bron'),b1=mk('b1','Boulanger','Saint-Priest'),b2=mk('b2','Boulanger','Vénissieux'),but1=mk('but1','BUT','Saint-Priest'),d1=mk('d1','Darty','Bron'),f1=mk('f1','Fnac','Villeurbanne');
   const plan=emptyPlan();
   plan.Lundi=[b0,missed];
   plan.Mardi=[b1,b2];
   plan.Mercredi=[but1,f1];
   const state={
     settings:{weekDate:'2026-09-14',days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],maxVisitsPerDay:4},
-    stores:[b0,missed,b1,b2,but1,f1],plan,
+    stores:[b0,missed,b1,b2,but1,d1,f1],plan,
     visits:{},
     businessV2:{visits:[{id:'visit-b0',storeId:'b0',status:'completed',completedDate:'2026-09-14'}],actions:[],storeSnapshots:{}},
     locks:{b2:{day:'Vendredi',week:'2026-09-14'}},
@@ -54,7 +54,21 @@ function env(){
   };
   ctx.window=ctx;
   vm.runInNewContext(source,ctx);
-  return{ctx,state,mem,proposals,stores:{b0,missed,b1,b2,but1,f1}};
+  return{ctx,state,mem,proposals,stores:{b0,missed,b1,b2,but1,d1,f1}};
+}
+function buildAsPlanning(t){
+  t.ctx.__storeRunnerPlanningGenerationActive=true;
+  try{return t.ctx.__storeRunnerBuildRemainingWeekPlan()}finally{t.ctx.__storeRunnerPlanningGenerationActive=false}
+}
+function setFixedTuesday(t,stores,max){
+  t.state.settings.maxVisitsPerDay=max;
+  t.state.plan=emptyPlan();
+  t.state.plan.Mardi=stores.slice();
+  t.state.visits={};
+  t.state.businessV2={visits:[],actions:[],storeSnapshots:{}};
+  t.state.appointments=[];
+  t.state.locks={};
+  for(const s of stores)t.state.locks[s.id]={day:'Mardi',week:'2026-09-14'};
 }
 
 (async()=>{
@@ -62,9 +76,7 @@ function env(){
   assert.equal(typeof t.ctx.storeRunnerRecalculateRemainingWeek,'function','la commande publique de recalcul doit exister');
   assert.equal(typeof t.ctx.__storeRunnerBuildRemainingWeekPlan,'function','le constructeur du reste de semaine doit être testable');
 
-  t.ctx.__storeRunnerPlanningGenerationActive=true;
-  const built=t.ctx.__storeRunnerBuildRemainingWeekPlan();
-  t.ctx.__storeRunnerPlanningGenerationActive=false;
+  const built=buildAsPlanning(t);
   assert.equal(built.ok,true,built.error||'le recalcul doit être possible');
 
   // La visite terrain réellement terminée lundi ne bouge pas, même sans marqueur legacy state.visits.
@@ -99,14 +111,42 @@ function env(){
   assert.equal(archive['2026-09-14'].manualEdited,true,'l’archive doit rester marquée manuelle');
   assert.equal(ids(archive['2026-09-14'].plan.Lundi),'["b0"]','l’archive doit refléter le nouveau planning sans réécrire la visite faite');
 
-  // Cas impossible : Boulanger verrouillé + BUT rendez-vous le même jour dépassent la capacité.
-  const bad=env();
-  bad.state.locks.b1={day:'Jeudi',week:'2026-09-14'};
-  bad.ctx.__storeRunnerPlanningGenerationActive=true;
-  const rejected=bad.ctx.__storeRunnerBuildRemainingWeekPlan();
-  bad.ctx.__storeRunnerPlanningGenerationActive=false;
-  assert.equal(rejected.ok,false,'des contraintes fixes incompatibles doivent refuser le recalcul');
-  assert.match(rejected.error,/occupent|capacité|replac/i,'le refus doit expliquer la capacité ou le placement');
+  // V179 : 4 crédits fixes avec un maximum explicite à 3 doivent produire une explication
+  // factuelle, sans toucher au planning ni inventer de poids de capacité.
+  const fixedCredits=env();
+  setFixedTuesday(fixedCredits,[fixedCredits.stores.but1,fixedCredits.stores.d1],3);
+  const beforeFixed=JSON.stringify(fixedCredits.state.plan);
+  const rejectedCredits=buildAsPlanning(fixedCredits);
+  assert.equal(rejectedCredits.ok,false,'BUT + Darty fixes doivent dépasser un maximum de 3');
+  assert.equal(JSON.stringify(fixedCredits.state.plan),beforeFixed,'un refus de capacité ne doit jamais modifier le planning existant');
+  assert.match(rejectedCredits.error,/Mardi contient déjà 4 crédits fixes/,'le message doit donner les vrais crédits fixes');
+  assert.match(rejectedCredits.error,/BUT Saint-Priest \(2\)/,'le message doit nommer le BUT réel et son crédit');
+  assert.match(rejectedCredits.error,/Darty Bron \(2\)/,'le message doit nommer le Darty réel et son crédit');
+  assert.match(rejectedCredits.error,/maximum est réglé sur 3/,'le message doit rappeler le réglage utilisateur');
+  assert.match(rejectedCredits.error,/Passe-le à 4 dans Réglages/,'le message doit indiquer la correction la plus petite');
+  assert.match(rejectedCredits.error,/Rien n’a été changé/,'le message doit confirmer la protection du planning');
 
-  console.log('PASS: V177 recalcule seulement le reste de la semaine, conserve visites terrain/rendez-vous/verrous, replace les ratés, respecte Boulanger/BUT et maintient la protection manuelle.');
+  // Boulanger reste à 2 crédits métier mais réserve 3 unités uniquement pendant le calcul.
+  const boulangerLight=env();
+  setFixedTuesday(boulangerLight,[boulangerLight.stores.b1,boulangerLight.stores.f1],4);
+  const allowed=buildAsPlanning(boulangerLight);
+  assert.equal(allowed.ok,true,allowed.error||'Boulanger + magasin à 1 crédit doit être autorisé avec max 4');
+
+  const boulangerHeavy=env();
+  setFixedTuesday(boulangerHeavy,[boulangerHeavy.stores.b1,boulangerHeavy.stores.but1],4);
+  const rejectedHeavy=buildAsPlanning(boulangerHeavy);
+  assert.equal(rejectedHeavy.ok,false,'Boulanger + magasin à 2 crédits doit être refusé');
+  assert.match(rejectedHeavy.error,/Mardi contient déjà 4 crédits fixes/,'les statistiques du message doivent rester en crédits métier réels');
+  assert.match(rejectedHeavy.error,/Boulanger Saint-Priest \(2\)/);
+  assert.match(rejectedHeavy.error,/BUT Saint-Priest \(2\)/);
+  assert.match(rejectedHeavy.error,/règle Boulanger/i,'le refus doit expliquer la règle spéciale sans exposer le poids artificiel');
+
+  const twoBoulanger=env();
+  setFixedTuesday(twoBoulanger,[twoBoulanger.stores.b1,twoBoulanger.stores.b2],4);
+  const rejectedTwo=buildAsPlanning(twoBoulanger);
+  assert.equal(rejectedTwo.ok,false,'deux Boulanger fixes le même jour doivent être refusés');
+  assert.match(rejectedTwo.error,/Mardi contient déjà 4 crédits fixes/);
+  assert.match(rejectedTwo.error,/règle Boulanger/i);
+
+  console.log('PASS: recalcul du reste de semaine conserve visites/rendez-vous/verrous, respecte Boulanger/BUT, explique les vrais crédits fixes et ne modifie jamais le planning en cas de refus.');
 })().catch(e=>{console.error(e);process.exit(1)});
