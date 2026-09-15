@@ -98,7 +98,11 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
   const all=generated.weeks.flat();
   expect(all).toHaveLength(60);
   expect(new Set(all).size).toBe(60);
-  expect(all.slice(0,5)).toEqual(['snail-01','snail-02','snail-03','snail-04','snail-05']);
+  const expectedWeek=(from,to)=>new Set(Array.from({length:to-from+1},(_,i)=>'snail-'+String(from+i).padStart(2,'0')));
+  expect(new Set(generated.weeks[0])).toEqual(expectedWeek(1,20));
+  expect(new Set(generated.weeks[1])).toEqual(expectedWeek(21,40));
+  expect(new Set(generated.weeks[2])).toEqual(expectedWeek(41,60));
+  expect(generated.weeks[0][0]).toBe('snail-01');
 
   await page.locator('[data-planning-settings-close]').tap();
   await expect(settings).not.toBeVisible();
