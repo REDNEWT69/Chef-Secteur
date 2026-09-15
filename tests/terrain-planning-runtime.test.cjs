@@ -8,10 +8,10 @@ const source = fs.readFileSync('terrain-planning-v1.js','utf8');
 
 assert(index.includes("'./range-planner-v2.js','./store-opening-hours.js','./boulanger-default-hours.js','./store-photos.js','./terrain-planning-v1.js','./working-hours-end.js'"), 'les horaires enseigne et les photos doivent charger avant le module terrain');
 assert(sw.includes('"./terrain-planning-v1.js"'), 'le module terrain doit être disponible hors ligne');
-assert.strictEqual(version.displayVersion, '175');
-assert.strictEqual(version.latestBuild, '20260915-storecontacts175');
-assert(index.includes("const BUILD_REV='20260915-storecontacts175'"));
-assert(sw.includes('const BUILD_REV = "20260915-storecontacts175"'));
+assert.strictEqual(version.displayVersion, '176');
+assert.strictEqual(version.latestBuild, '20260915-boulanger176');
+assert(index.includes("const BUILD_REV='20260915-boulanger176'"));
+assert(sw.includes('const BUILD_REV = "20260915-boulanger176"'));
 assert(sw.includes('"./store-opening-hours.js"'), 'horaires disponibles hors ligne');
 assert(sw.includes('"./boulanger-default-hours.js"'), 'défauts Boulanger/Darty disponibles hors ligne');
 assert(sw.includes('"./store-photos.js"'), 'mémoire photo magasin disponible hors ligne');
