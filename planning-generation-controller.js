@@ -1,9 +1,11 @@
 (function(){
   'use strict';
+  const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const ARCHIVE_KEY='chef_sector_plan_archive_v1';
   let attempts=0;
 
-  function emitPlanningUpdated(){
-    try{document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{source:'generateWeek'}}))}catch(e){}
+  function emitPlanningUpdated(source){
+    try{document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{source:source||'generateWeek'}}))}catch(e){}
   }
 
   function countVisits(plan){
@@ -34,7 +36,206 @@
     }
   }
 
+  function isoDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+  function parseDate(value){const d=new Date(String(value||'')+'T12:00:00');return isNaN(d)?null:d}
+  function mondayOf(d){const x=new Date(d),w=x.getDay()||7;x.setDate(x.getDate()-w+1);return x}
+  function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
+  function norm(v){try{return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim()}catch(e){return String(v||'').toLowerCase().trim()}}
+  function clone(value){return JSON.parse(JSON.stringify(value))}
+  function currentWeekMonday(){
+    const input=document.getElementById('weekDate');
+    const raw=(input&&input.value)||(window.state&&state.settings&&state.settings.weekDate)||isoDate(new Date());
+    return mondayOf(parseDate(raw)||new Date());
+  }
+  function selectedWorkDays(){
+    const checked=[];
+    try{document.querySelectorAll('[data-day]').forEach(function(el){if(el.checked&&DAYS.includes(el.value))checked.push(el.value)})}catch(e){}
+    if(checked.length)return checked;
+    const saved=window.state&&state.settings&&Array.isArray(state.settings.days)?state.settings.days.filter(function(day){return DAYS.includes(day)}):[];
+    return saved.length?saved:DAYS.slice(0,5);
+  }
+  function dayDate(mon,day){return isoDate(addDays(mon,DAYS.indexOf(day)))}
+  function visitedOn(storeId,date){
+    const visits=window.state&&state.visits&&state.visits[String(storeId)];
+    if(!visits)return false;
+    if(String(visits.lastVisit||'')===date)return true;
+    return Array.isArray(visits.history)&&visits.history.some(function(d){return String(d||'')===date});
+  }
+  function lockDayForWeek(storeId,weekKey){
+    try{if(typeof window.storeRunnerLockDayForWeek==='function'){const d=window.storeRunnerLockDayForWeek(storeId,weekKey);if(DAYS.includes(d))return d}}catch(e){}
+    const raw=window.state&&state.locks&&state.locks[String(storeId)];
+    if(typeof raw==='string')return DAYS.includes(raw)?raw:'';
+    if(raw&&typeof raw==='object'&&!Array.isArray(raw)&&DAYS.includes(raw.day)&&String(raw.week||'')===weekKey)return raw.day;
+    return'';
+  }
+  function appointmentDayForWeek(storeId,mon){
+    const rows=window.state&&Array.isArray(state.appointments)?state.appointments:[];
+    for(const day of DAYS){
+      const date=dayDate(mon,day);
+      if(rows.some(function(a){return String(a&&a.storeId)===String(storeId)&&String(a&&a.date||'').slice(0,10)===date}))return day;
+    }
+    return'';
+  }
+  function eventBlocksPlanning(e){
+    if(!e)return false;
+    if(e.inferredAway)return true;
+    const text=norm((e.title||'')+' '+(e.location||'')+' '+(e.calendar||''));
+    const hard=['formation','deplacement','seminaire','conge','vacances','salon professionnel','indisponible','indisponibilite','absence','absent','journee bloquee','jour bloque','repos','hors secteur'];
+    for(const word of hard)if(text.includes(word))return true;
+    if(/\bparis\b/.test(text))return true;
+    return !!(e.planningBlock&&!e.allDay);
+  }
+  function dateBlocked(date){
+    try{const rows=typeof window.calendarEventsForDate==='function'?window.calendarEventsForDate(date):[];return rows.some(eventBlocksPlanning)}catch(e){return false}
+  }
+  function planningCredit(store){
+    try{if(typeof window.storeVisitCredit==='function')return Math.max(1,Number(window.storeVisitCredit(store))||1)}catch(e){}
+    return 1;
+  }
+  function routePlanningCredits(route){return (route||[]).reduce(function(n,s){return n+planningCredit(s)},0)}
+  function actualVisitCredit(store){
+    try{if(window.StoreVisitCounting&&typeof window.StoreVisitCounting.credit==='function')return Math.max(1,Number(window.StoreVisitCounting.credit(store))||1)}catch(e){}
+    return 1;
+  }
+  function candidateName(store){return String((store&&store.enseigne)||'Magasin')+' '+String((store&&store.ville)||'').trim()}
+  function storeId(store){return String((store&&store.id)||'')}
+
+  function insertRecalculateButton(){
+    if(document.getElementById('recalculateRemainingWeekBtn'))return true;
+    const generate=document.querySelector('#planPanel button.primary.full[onclick="generateWeek()"]');
+    if(!generate||!generate.parentNode)return false;
+    const button=document.createElement('button');
+    button.type='button';button.id='recalculateRemainingWeekBtn';button.className='secondary full';
+    button.textContent='↻ Recalculer le reste de la semaine';
+    button.style.marginTop='8px';button.style.width='100%';button.style.minHeight='46px';
+    button.addEventListener('click',function(){window.storeRunnerRecalculateRemainingWeek()});
+    generate.insertAdjacentElement('afterend',button);
+    return true;
+  }
+
+  function persistManualWeek(candidate,weekKey){
+    const at=new Date().toISOString();
+    if(!state.manualWeekEdits)state.manualWeekEdits={};
+    state.manualWeekEdits[weekKey]={at:at,plan:clone(candidate)};
+    try{if(typeof window.save==='function')window.save();else if(typeof save==='function')save()}catch(e){console.warn('Sauvegarde du recalcul impossible',e)}
+    try{
+      const storage=window.__chefStorage||window.localStorage;
+      const archive=JSON.parse(storage.getItem(ARCHIVE_KEY)||'{}')||{};
+      const previous=archive[weekKey]||{};
+      archive[weekKey]=Object.assign({},previous,{weekMonday:weekKey,plan:clone(candidate),manualEdited:true,manualEditedAt:at});
+      storage.setItem(ARCHIVE_KEY,JSON.stringify(archive));
+      if(typeof storage.flush==='function'){
+        const out=storage.flush();if(out&&typeof out.catch==='function')out.catch(function(e){console.warn('Archive de semaine non synchronisée',e)});
+      }
+    }catch(e){console.warn('Archive du recalcul impossible',e)}
+  }
+
+  function buildRemainingWeekPlan(){
+    if(!window.state||!state.plan)return{ok:false,error:'Aucun planning à recalculer.'};
+    try{if(typeof window.readPlanningControls==='function')window.readPlanningControls();else if(typeof readPlanningControls==='function')readPlanningControls()}catch(e){return{ok:false,error:e&&e.message?e.message:String(e)}}
+    const mon=currentWeekMonday(),weekKey=isoDate(mon),today=isoDate(new Date()),weekEnd=isoDate(addDays(mon,5));
+    const workDays=selectedWorkDays(),max=Math.max(1,Math.min(8,Number(state.settings&&state.settings.maxVisitsPerDay)||4));
+    const candidate=Object.fromEntries(DAYS.map(function(day){return[day,[]]}));
+    const movable=[],seen=new Set(),fixedIds=new Set();
+    let visitedKept=0,appointmentsKept=0,locksKept=0,pastUnvisited=0;
+
+    for(const day of DAYS){
+      const date=dayDate(mon,day),route=(state.plan&&state.plan[day])||[];
+      for(let index=0;index<route.length;index++){
+        const store=route[index],id=storeId(store);
+        if(!id||seen.has(id))continue;
+        seen.add(id);
+        const visited=visitedOn(id,date),appointmentDay=appointmentDayForWeek(id,mon),lockedDay=lockDayForWeek(id,weekKey);
+        let fixedDay='';
+        if(visited){fixedDay=day;visitedKept++}
+        else if(appointmentDay){fixedDay=appointmentDay;appointmentsKept++}
+        else if(lockedDay){fixedDay=lockedDay;locksKept++}
+        if(fixedDay){candidate[fixedDay].push(store);fixedIds.add(id);continue}
+        if(date<today)pastUnvisited++;
+        movable.push({store:store,originalDay:day,originalIndex:index});
+      }
+    }
+
+    if(!seen.size)return{ok:false,error:'Aucun magasin n’est planifié sur cette semaine.'};
+    if(today>weekEnd&&movable.length)return{ok:false,error:'Cette semaine est terminée. Les visites faites restent dans l’historique, mais il n’y a plus de jour futur où replacer '+movable.length+' visite'+(movable.length>1?'s':'')+' non faite'+(movable.length>1?'s':'')+'.'};
+
+    const eligible=workDays.filter(function(day){const date=dayDate(mon,day);return date>=today&&!dateBlocked(date)});
+    for(const day of DAYS){
+      const hasFixed=candidate[day].length>0,date=dayDate(mon,day);
+      if(hasFixed&&date>=today&&!eligible.includes(day))eligible.push(day);
+    }
+    eligible.sort(function(a,b){return DAYS.indexOf(a)-DAYS.indexOf(b)});
+    if(movable.length&&!eligible.length)return{ok:false,error:'Aucun jour disponible à partir d’aujourd’hui pour replacer les visites restantes.'};
+
+    for(const day of eligible){
+      const used=routePlanningCredits(candidate[day]);
+      if(used>max)return{ok:false,error:'Les rendez-vous, visites déjà faites ou magasins verrouillés de '+day+' occupent '+used+' unités de capacité pour un maximum de '+max+'. Rien n’a été changé.'};
+    }
+
+    movable.sort(function(a,b){
+      const heavy=planningCredit(b.store)-planningCredit(a.store);
+      if(heavy)return heavy;
+      const dayDelta=DAYS.indexOf(a.originalDay)-DAYS.indexOf(b.originalDay);
+      return dayDelta||a.originalIndex-b.originalIndex;
+    });
+
+    const unplaced=[];
+    for(const item of movable){
+      const store=item.store,original=item.originalDay;
+      const order=eligible.slice().sort(function(a,b){
+        if(a===original&&b!==original)return-1;if(b===original&&a!==original)return 1;
+        const ca=routePlanningCredits(candidate[a]),cb=routePlanningCredits(candidate[b]);
+        if(ca!==cb)return ca-cb;
+        return DAYS.indexOf(a)-DAYS.indexOf(b);
+      });
+      let placed=false;
+      for(const day of order){
+        if(routePlanningCredits(candidate[day])+planningCredit(store)>max)continue;
+        candidate[day].push(store);placed=true;break;
+      }
+      if(!placed)unplaced.push(store);
+    }
+
+    if(unplaced.length){
+      const names=unplaced.slice(0,3).map(candidateName).join(', ')+(unplaced.length>3?'…':'');
+      return{ok:false,error:'Le reste de la semaine ne tient pas avec les règles actuelles. '+unplaced.length+' magasin'+(unplaced.length>1?'s':'')+' ne '+(unplaced.length>1?'peuvent':'peut')+' pas être replacé'+(unplaced.length>1?'s':'')+' ('+names+'). Le planning précédent est conservé.'};
+    }
+
+    const beforeIds=Array.from(seen).sort(),afterIds=[];
+    for(const day of DAYS)for(const store of candidate[day]||[])afterIds.push(storeId(store));
+    afterIds.sort();
+    if(JSON.stringify(beforeIds)!==JSON.stringify(afterIds))return{ok:false,error:'Contrôle de sécurité : la liste des magasins a changé pendant le recalcul. Le planning précédent est conservé.'};
+
+    let actualCredits=0;
+    for(const day of DAYS)for(const store of candidate[day]||[])actualCredits+=actualVisitCredit(store);
+    return{ok:true,plan:candidate,weekKey:weekKey,visitedKept:visitedKept,appointmentsKept:appointmentsKept,locksKept:locksKept,pastUnvisited:pastUnvisited,moved:movable.length,actualCredits:actualCredits};
+  }
+
+  async function recalculateRemainingWeek(){
+    if(!window.state||!state.plan){generationStatus('Aucun planning à recalculer.','bad');return{ok:false}}
+    if(!confirm('Recalculer seulement ce qu’il reste à faire cette semaine ?\n\nLes visites déjà effectuées, les rendez-vous et les magasins verrouillés resteront en place. Les magasins non visités, y compris ceux ratés un jour passé, pourront être replacés à partir d’aujourd’hui.'))return{ok:false,cancelled:true};
+    generationStatus('Recalcul du reste de la semaine…','busy');
+    try{
+      if(window.ChefReliability&&typeof window.ChefReliability.checkpoint==='function')window.ChefReliability.checkpoint('Avant recalcul du reste de la semaine');
+      const previousFlag=window.__storeRunnerPlanningGenerationActive;
+      window.__storeRunnerPlanningGenerationActive=true;
+      let result;
+      try{result=buildRemainingWeekPlan()}finally{window.__storeRunnerPlanningGenerationActive=previousFlag}
+      if(!result.ok){generationStatus(result.error||'Recalcul impossible.','bad');return result}
+      const accepted=window.ChefReliability&&typeof window.ChefReliability.propose==='function'?await window.ChefReliability.propose({plan:result.plan,weekDate:result.weekKey}):false;
+      if(!accepted){generationStatus('Planning précédent conservé.','busy');return{ok:false,cancelled:true}}
+      persistManualWeek(result.plan,result.weekKey);
+      try{if(typeof window.renderAll==='function')window.renderAll();else if(typeof renderAll==='function')renderAll()}catch(e){}
+      emitPlanningUpdated('recalculateRemainingWeek');
+      generationStatus('Reste de la semaine recalculé ✓ '+result.moved+' visite'+(result.moved>1?'s':'')+' à organiser'+(result.pastUnvisited?' · '+result.pastUnvisited+' visite'+(result.pastUnvisited>1?'s':'')+' ratée'+(result.pastUnvisited>1?'s':'')+' replacée'+(result.pastUnvisited>1?'s':''):'')+'. Les visites déjà faites sont restées en place.','ok');
+      return result;
+    }catch(e){
+      const message=e&&e.message?e.message:String(e);generationStatus('Recalcul impossible : '+message,'bad');return{ok:false,error:message}
+    }
+  }
+
   function install(){
+    insertRecalculateButton();
     if(window.__storeRunnerPlanningGenerateOwner)return true;
     if(typeof window.generateWeek!=='function')return false;
     const base=window.generateWeek;
@@ -80,12 +281,13 @@
       }else{
         generationStatus('Aucune visite générée. Vérifie le point de départ, les filtres et les horaires.','bad');
       }
-      emitPlanningUpdated();
+      emitPlanningUpdated('generateWeek');
       return out;
     };
     owned.__storeRunnerPlanningGenerateOwner=true;
     window.generateWeek=owned;
     window.__storeRunnerPlanningGenerateOwner=true;
+    insertRecalculateButton();
     return true;
   }
 
@@ -94,6 +296,8 @@
     if(attempts++<40)setTimeout(boot,75);
   }
 
+  window.storeRunnerRecalculateRemainingWeek=recalculateRemainingWeek;
+  window.__storeRunnerBuildRemainingWeekPlan=buildRemainingWeekPlan;
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
   window.addEventListener('load',install,{once:true});
   document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(install,40)});
