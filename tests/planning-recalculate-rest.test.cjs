@@ -12,6 +12,7 @@ function mk(id,enseigne,ville){return{id,enseigne,ville:ville||id,adresse:'1 rue
 function emptyPlan(){return Object.fromEntries(DAYS.map(d=>[d,[]]))}
 function actualCredit(s){return /boulanger|but|darty/i.test(String(s&&s.enseigne||''))?2:1}
 function planningCredit(s,active){if(/boulanger/i.test(String(s&&s.enseigne||''))&&active)return 3;return actualCredit(s)}
+function ids(route){return JSON.stringify(Array.from(route||[],s=>String(s.id)))}
 
 function env(){
   const b0=mk('b0','Boulanger','Lyon'),missed=mk('f0','Fnac','Bron'),b1=mk('b1','Boulanger','Saint-Priest'),b2=mk('b2','Boulanger','Vénissieux'),but1=mk('but1','BUT','Saint-Priest'),f1=mk('f1','Fnac','Villeurbanne');
@@ -67,7 +68,7 @@ function env(){
   assert.equal(built.ok,true,built.error||'le recalcul doit être possible');
 
   // La visite terrain réellement terminée lundi ne bouge pas, même sans marqueur legacy state.visits.
-  assert.deepEqual(built.plan.Lundi.map(s=>s.id),['b0'],'le Boulanger déjà visité lundi doit rester lundi et seul le magasin raté doit partir');
+  assert.equal(ids(built.plan.Lundi),'["b0"]','le Boulanger déjà visité lundi doit rester lundi et seul le magasin raté doit partir');
   assert(!built.plan.Lundi.some(s=>s.id==='f0'),'le magasin non visité lundi doit pouvoir être replanifié après aujourd’hui');
   assert(DAYS.slice(1,5).some(day=>built.plan[day].some(s=>s.id==='f0')),'le magasin raté doit réapparaître sur un jour restant');
 
@@ -91,12 +92,12 @@ function env(){
   assert.equal(result.ok,true,result.error||'le recalcul complet doit être accepté');
   assert.equal(t.proposals.length,1,'le recalcul doit passer par Reliability.propose');
   const afterIds=DAYS.flatMap(day=>(t.state.plan[day]||[]).map(s=>s.id)).sort();
-  assert.deepEqual(afterIds,beforeIds,'aucun magasin ne doit être perdu ou inventé');
-  assert.deepEqual(t.state.plan.Lundi.map(s=>s.id),['b0'],'le passé visité doit rester intact après application');
+  assert.equal(JSON.stringify(afterIds),JSON.stringify(beforeIds),'aucun magasin ne doit être perdu ou inventé');
+  assert.equal(ids(t.state.plan.Lundi),'["b0"]','le passé visité doit rester intact après application');
   assert(t.state.manualWeekEdits['2026-09-14']&&t.state.manualWeekEdits['2026-09-14'].plan,'la semaine doit rester protégée manuellement après recalcul');
   const archive=JSON.parse(t.mem.get(ARCHIVE_KEY));
   assert.equal(archive['2026-09-14'].manualEdited,true,'l’archive doit rester marquée manuelle');
-  assert.deepEqual(archive['2026-09-14'].plan.Lundi.map(s=>s.id),['b0'],'l’archive doit refléter le nouveau planning sans réécrire la visite faite');
+  assert.equal(ids(archive['2026-09-14'].plan.Lundi),'["b0"]','l’archive doit refléter le nouveau planning sans réécrire la visite faite');
 
   // Cas impossible : Boulanger verrouillé + BUT rendez-vous le même jour dépassent la capacité.
   const bad=env();
