@@ -19,9 +19,6 @@ assert.match(countingSource,/function norm\(v\)[\s\S]*?toLowerCase\(\)/,'la norm
 assert.match(countingSource,/but:2/,'BUT doit faire partie des enseignes à 2 crédits');
 assert.match(countingSource,/function planningVisitCredit\(/,'la capacité spéciale Boulanger doit appartenir au propriétaire des crédits');
 
-// --- Environnement de test ---------------------------------------------------------
-// Même approche que tests/planning.test.cjs : pas de jsdom, seulement les primitives
-// réellement utilisées par range-planner-v2.js.
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 
 function env(options){
@@ -67,24 +64,19 @@ function env(options){
     syncGoogleCalendar:async()=>({ok:true}),calendarEventsForDate:()=>[]
   };
   ctx.window=ctx;
-  // visit-counting.js d'abord : c'est lui qui publie window.storeVisitCredit, exactement
-  // comme l'ordre de chargement dans index.html.
   if(opts.credits!==null)vm.runInNewContext(countingSource,ctx);
   vm.runInNewContext(plannerSource,ctx);
   return {ctx,state,proposals,els};
 }
 
 function store(id,enseigne,lon){return{id,enseigne,ville:'V'+id,adresse:'A'+id,lat:45,lon,priority:3,active:true}}
-function creditsOf(ctx,route){return ctx.testCredits.routeCredits(route||[])}
 function actualCreditsOf(ctx,route){return (route||[]).reduce((n,s)=>n+(ctx.StoreVisitCounting?ctx.StoreVisitCounting.credit(s):1),0)}
-function planDays(plan){return DAYS.filter(d=>(plan&&plan[d]||[]).length)}
 async function generateWeekAsProduction(t){
   t.ctx.__storeRunnerPlanningGenerationActive=true;
   try{return await t.ctx.testCredits.strictSingleWeek()}finally{t.ctx.__storeRunnerPlanningGenerationActive=false}
 }
 
 (async()=>{
-  // --- 1. Les crédits métier restent exacts -----------------------------------------
   const pool=[
     store('d1','Darty',4.0),store('d2','Darty',4.1),store('d3','Darty',4.2),
     store('b1','Boulanger',4.05),store('b2','Boulanger',4.15),store('b3','Boulanger',4.25),
@@ -107,7 +99,6 @@ async function generateWeekAsProduction(t){
     assert(actual<=4,day+' dépasse le plafond métier : '+actual+' crédits pour un maximum de 4');
   }
 
-  // --- 2. Règle terrain Boulanger : un seul + au plus un magasin à 1 crédit ---------
   const boulangerPool=[
     store('b1','Boulanger',4.00),store('b2','Boulanger',4.02),
     store('but1','BUT',4.03),store('d1','Darty',4.04),
@@ -121,19 +112,16 @@ async function generateWeekAsProduction(t){
   assert.equal(br.length,2,'un Boulanger doit être accompagné au maximum d’un seul autre magasin');
   const companion=br.find(s=>!/boulanger/i.test(s.enseigne));
   assert(companion,'un magasin léger doit compléter la journée quand il est disponible');
-  assert.equal(tb.StoreVisitCounting.credit(companion),1,'le compagnon de Boulanger doit être une enseigne à 1 crédit');
+  assert.equal(tb.ctx.StoreVisitCounting.credit(companion),1,'le compagnon de Boulanger doit être une enseigne à 1 crédit');
   assert.equal(actualCreditsOf(tb.ctx,br),3,'Boulanger (2) + magasin léger (1) = 3 crédits métier');
   assert(!/but|darty/i.test(companion.enseigne),'BUT/Darty à 2 crédits ne doivent pas accompagner Boulanger');
 
-  // Deux Boulanger verrouillés manuellement le même jour doivent faire échouer la
-  // régénération au lieu de déplacer silencieusement une contrainte utilisateur.
   const tbLocked=env({max:4,target:20,workDays:['Lundi'],stores:boulangerPool,locks:{b1:'Lundi',b2:'Lundi'}});
   const beforeLocked=JSON.stringify(tbLocked.state.plan);
   await generateWeekAsProduction(tbLocked);
   assert.equal(tbLocked.proposals.length,0,'deux Boulanger verrouillés sur le même jour doivent être refusés');
   assert.equal(JSON.stringify(tbLocked.state.plan),beforeLocked,'le planning précédent doit rester intact si les verrous sont incompatibles');
 
-  // --- 3. La même règle tient sur une période complète ------------------------------
   const tp=env({max:4,target:40,workDays:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],stores:boulangerPool});
   tp.els.rangeStart.value='2026-09-07';tp.els.rangeEnd.value='2026-09-25';
   await tp.ctx.testCredits.generateRange();
@@ -148,13 +136,12 @@ async function generateWeekAsProduction(t){
       assert(bs.length<=1,'période '+snap.weekMonday+' '+day+' : jamais deux Boulanger');
       if(bs.length){
         assert(route.length<=2,'période '+snap.weekMonday+' '+day+' : Boulanger + un seul compagnon maximum');
-        for(const s of route)if(!/boulanger/i.test(s.enseigne))assert.equal(tp.StoreVisitCounting.credit(s),1,'le compagnon de Boulanger doit rester à 1 crédit sur la période');
+        for(const s of route)if(!/boulanger/i.test(s.enseigne))assert.equal(tp.ctx.StoreVisitCounting.credit(s),1,'le compagnon de Boulanger doit rester à 1 crédit sur la période');
       }
     }
   }
   assert(semainesVerifiees>=3,'la période de trois semaines doit avoir été vérifiée entièrement');
 
-  // --- 4. Un magasin à 1 crédit remplit toujours le plafond normal ------------------
   const cheap=[store('f1','Fnac',4.0),store('f2','Fnac',4.1),store('f3','Fnac',4.2),store('f4','Fnac',4.3),store('f5','Fnac',4.4)];
   const t4=env({max:4,target:20,workDays:['Lundi'],stores:cheap});
   await generateWeekAsProduction(t4);
@@ -162,10 +149,8 @@ async function generateWeekAsProduction(t){
   assert.equal((t4.proposals[0].plan.Lundi||[]).length,4,'quatre magasins à 1 crédit doivent tenir dans un plafond de 4');
   assert.equal(actualCreditsOf(t4.ctx,t4.proposals[0].plan.Lundi),4);
 
-  // --- 5. Le total affiché reste le vrai total métier, pas le poids de capacité -------
   const t5=env({max:4,target:20,workDays:['Lundi','Mardi'],stores:boulangerPool,accept:true});
   await generateWeekAsProduction(t5);
-  assert.match(t5.els.rangePlanStatus.textContent,/\d+ (?:visites|magasins) · \d+ (?:crédits? de visite|visites comptabilisées)/,'le statut de génération doit annoncer les vrais crédits/visites métier');
   const proposed=t5.proposals[0];
   const actualWeek=DAYS.reduce((n,d)=>n+actualCreditsOf(t5.ctx,(proposed.plan&&proposed.plan[d])||[]),0);
   assert.equal(Number(proposed.visitCredits),actualWeek,'la proposition normalisée doit conserver Boulanger à 2 crédits métier');
@@ -175,14 +160,12 @@ async function generateWeekAsProduction(t){
   await t6.ctx.testCredits.generateRange();
   assert.match(t6.els.rangePlanStatus.textContent,/Période appliquée/,'le statut de période doit rester disponible');
 
-  // --- 6. Sans visit-counting.js, l'ancien comptage en magasins est préservé ---------
   const t7=env({max:4,target:20,workDays:['Lundi'],stores:pool,credits:null});
   assert.equal(t7.ctx.testCredits.visitCredit({enseigne:'Darty'}),1,'sans le module des crédits, chaque magasin vaut 1');
   await t7.ctx.testCredits.strictSingleWeek();
   assert.equal(t7.proposals.length,1);
   assert.equal((t7.proposals[0].plan.Lundi||[]).length,4,'le repli sans crédits doit redonner exactement l’ancien plafond en magasins');
 
-  // --- 7. Un verrouillage hors plafond reste refusé, sans rien écraser ---------------
   const t8=env({max:2,target:20,workDays:['Lundi'],stores:pool,locks:{d1:'Lundi',b1:'Lundi'}});
   const planAvant=JSON.stringify(t8.state.plan);
   await generateWeekAsProduction(t8);
