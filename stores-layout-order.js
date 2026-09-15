@@ -8,6 +8,8 @@
   var observedRegionResults = null;
   var storeListObserver = null;
   var observedStoreList = null;
+  var storeDialogObserver = null;
+  var observedStoreDialog = null;
 
   function ensureStyle() {
     if (document.getElementById('stores-layout-order-style')) return;
@@ -23,13 +25,58 @@
       '#regionStoreChooser .regionChooserRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}',
       '#regionStoreChooser select{min-width:180px;flex:1}',
       '#regionStoreChooser .regionChooserCount{font-size:11px;color:#747981;margin-top:8px}',
-      '@media(max-width:700px){#storesSearchTop{margin-bottom:14px!important;padding:14px!important}#storesPanel>#storeKpis{margin-top:18px!important}#regionStoreChooser .regionChooserRow>*{width:100%}}'
+      '#storeDlg .srStoreTabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:12px 0 14px;padding:4px;border-radius:14px;background:#eef1f5}',
+      '#storeDlg .srStoreTab{min-height:42px;border:0;border-radius:11px;background:transparent;color:#697386;font-weight:850}',
+      '#storeDlg .srStoreTab[aria-selected="true"]{background:#fff;color:#0a6dd9;box-shadow:0 3px 12px rgba(30,55,95,.10)}',
+      '#storeDlg .srStoreContactsPane[hidden],#storeDlg .srStoreDetailsPane[hidden]{display:none!important}',
+      '#storeDlg .srStoreContactsIntro{margin:2px 0 12px;color:#667085;font-size:12px;line-height:1.4}',
+      '#storeDlg .srStoreContactList{display:grid;gap:10px}',
+      '#storeDlg .srStoreContactRow{position:relative;padding:12px;border:1px solid #e2e6ed;border-radius:16px;background:#f8fafc}',
+      '#storeDlg .srStoreContactGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}',
+      '#storeDlg .srStoreContactGrid label{margin:0;font-size:11px}',
+      '#storeDlg .srStoreContactGrid .srStoreContactEmailField{grid-column:1/-1}',
+      '#storeDlg .srStoreContactGrid input{margin-top:5px;min-height:42px}',
+      '#storeDlg .srStoreContactActions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}',
+      '#storeDlg .srStoreContactMail{font-size:12px;font-weight:800;color:#0a6dd9;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}',
+      '#storeDlg .srStoreContactCopy,#storeDlg .srStoreContactRemove{min-height:36px;padding:7px 10px;font-size:11px}',
+      '#storeDlg .srStoreContactRemove{margin-left:auto}',
+      '#storeDlg .srStoreContactBottom{display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-top:12px}',
+      '#storeDlg .srStoreContactStatus{min-height:18px;color:#246544;font-size:11px;font-weight:700}',
+      '@media(max-width:700px){#storesSearchTop{margin-bottom:14px!important;padding:14px!important}#storesPanel>#storeKpis{margin-top:18px!important}#regionStoreChooser .regionChooserRow>*{width:100%}#storeDlg .srStoreContactGrid{grid-template-columns:1fr}#storeDlg .srStoreContactGrid .srStoreContactEmailField{grid-column:auto}}'
     ].join('');
     document.head.appendChild(style);
   }
 
   function normalizeLabel(value) {
     return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  function ensureContactsState() {
+    if (!window.state) return null;
+    if (!window.state.storeContacts || typeof window.state.storeContacts !== 'object' || Array.isArray(window.state.storeContacts)) {
+      window.state.storeContacts = {};
+    }
+    return window.state.storeContacts;
+  }
+
+  function currentStoreId() {
+    return window.currentEditId == null ? '' : String(window.currentEditId);
+  }
+
+  function contactRowsForStore(storeId) {
+    var contacts = ensureContactsState();
+    var rows = contacts && Array.isArray(contacts[storeId]) ? contacts[storeId] : [];
+    return rows.map(function (row) {
+      return {
+        name: String(row && row.name || '').trim(),
+        role: String(row && row.role || '').trim(),
+        email: String(row && row.email || '').trim()
+      };
+    });
+  }
+
+  function validEmail(value) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
   }
 
   function removeRedundantStoreActions(toolbar) {
@@ -169,6 +216,191 @@
     return true;
   }
 
+  function setStoreTab(name) {
+    var details = document.getElementById('srStoreDetailsPane');
+    var contacts = document.getElementById('srStoreContactsPane');
+    var detailsButton = document.querySelector('#storeDlg [data-sr-store-tab="details"]');
+    var contactsButton = document.querySelector('#storeDlg [data-sr-store-tab="contacts"]');
+    var showContacts = name === 'contacts';
+    if (details) details.hidden = showContacts;
+    if (contacts) contacts.hidden = !showContacts;
+    if (detailsButton) detailsButton.setAttribute('aria-selected', showContacts ? 'false' : 'true');
+    if (contactsButton) contactsButton.setAttribute('aria-selected', showContacts ? 'true' : 'false');
+    if (showContacts) renderStoreContacts();
+  }
+
+  function updateContactMailAction(row) {
+    if (!row) return;
+    var emailInput = row.querySelector('[data-sr-contact-email]');
+    var link = row.querySelector('[data-sr-contact-mail]');
+    var copy = row.querySelector('[data-sr-contact-copy]');
+    var email = emailInput ? emailInput.value.trim() : '';
+    var okay = validEmail(email);
+    if (link) {
+      link.hidden = !okay;
+      link.textContent = okay ? '✉ ' + email : '';
+      link.href = okay ? 'mailto:' + email : '#';
+    }
+    if (copy) copy.hidden = !okay;
+  }
+
+  function addContactRow(contact) {
+    var list = document.getElementById('srStoreContactList');
+    if (!list) return null;
+    var row = document.createElement('div');
+    row.className = 'srStoreContactRow';
+    row.innerHTML = '<div class="srStoreContactGrid"><label>Nom<input type="text" data-sr-contact-name placeholder="Ex. Amandine"></label><label>Fonction<input type="text" data-sr-contact-role placeholder="Ex. RU Brun, vendeur TV, SAV"></label><label class="srStoreContactEmailField">Email<input type="email" inputmode="email" autocomplete="email" autocapitalize="none" data-sr-contact-email placeholder="prenom.nom@enseigne.fr"></label></div><div class="srStoreContactActions"><a class="srStoreContactMail" data-sr-contact-mail hidden></a><button type="button" class="secondary srStoreContactCopy" data-sr-contact-copy hidden>Copier</button><button type="button" class="danger srStoreContactRemove" data-sr-contact-remove>Supprimer</button></div>';
+    row.querySelector('[data-sr-contact-name]').value = contact && contact.name || '';
+    row.querySelector('[data-sr-contact-role]').value = contact && contact.role || '';
+    row.querySelector('[data-sr-contact-email]').value = contact && contact.email || '';
+    row.querySelector('[data-sr-contact-email]').addEventListener('input', function () { updateContactMailAction(row); });
+    row.querySelector('[data-sr-contact-remove]').addEventListener('click', function () { row.remove(); });
+    row.querySelector('[data-sr-contact-copy]').addEventListener('click', function () {
+      var value = row.querySelector('[data-sr-contact-email]').value.trim();
+      if (!validEmail(value)) return;
+      var status = document.getElementById('srStoreContactStatus');
+      var done = function () { if (status) status.textContent = 'Email copié.'; };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(value).then(done).catch(function () {});
+      else {
+        var input = row.querySelector('[data-sr-contact-email]');
+        input.focus(); input.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+      }
+    });
+    list.appendChild(row);
+    updateContactMailAction(row);
+    return row;
+  }
+
+  function renderStoreContacts() {
+    var list = document.getElementById('srStoreContactList');
+    var empty = document.getElementById('srStoreContactsEmpty');
+    var addButton = document.getElementById('srStoreContactAdd');
+    var saveButton = document.getElementById('srStoreContactSave');
+    var status = document.getElementById('srStoreContactStatus');
+    if (!list) return;
+    list.replaceChildren();
+    if (status) status.textContent = '';
+    var storeId = currentStoreId();
+    var editable = !!storeId;
+    if (addButton) addButton.disabled = !editable;
+    if (saveButton) saveButton.disabled = !editable;
+    if (!editable) {
+      if (empty) { empty.hidden = false; empty.textContent = 'Enregistre d’abord le magasin pour ajouter ses contacts.'; }
+      return;
+    }
+    var rows = contactRowsForStore(storeId);
+    if (empty) { empty.hidden = rows.length > 0; empty.textContent = 'Aucun contact enregistré pour ce magasin.'; }
+    rows.forEach(addContactRow);
+  }
+
+  function saveStoreContacts() {
+    var storeId = currentStoreId();
+    if (!storeId || !window.state) return false;
+    var contacts = ensureContactsState();
+    var rows = Array.prototype.slice.call(document.querySelectorAll('#srStoreContactList .srStoreContactRow'));
+    var clean = [];
+    for (var i = 0; i < rows.length; i += 1) {
+      var name = rows[i].querySelector('[data-sr-contact-name]').value.trim();
+      var role = rows[i].querySelector('[data-sr-contact-role]').value.trim();
+      var email = rows[i].querySelector('[data-sr-contact-email]').value.trim().toLowerCase();
+      if (!name && !role && !email) continue;
+      if (!validEmail(email)) {
+        var status = document.getElementById('srStoreContactStatus');
+        if (status) status.textContent = 'Vérifie l’adresse email avant d’enregistrer.';
+        rows[i].querySelector('[data-sr-contact-email]').focus();
+        return false;
+      }
+      clean.push({ name: name, role: role, email: email });
+    }
+    contacts[storeId] = clean;
+    try { if (typeof window.save === 'function') window.save(); else if (typeof save === 'function') save(); }
+    catch (e) {
+      var errorStatus = document.getElementById('srStoreContactStatus');
+      if (errorStatus) errorStatus.textContent = 'Sauvegarde impossible : ' + (e && e.message ? e.message : e);
+      return false;
+    }
+    renderStoreContacts();
+    var savedStatus = document.getElementById('srStoreContactStatus');
+    if (savedStatus) savedStatus.textContent = clean.length ? 'Contacts enregistrés.' : 'Carnet de contacts vidé.';
+    return true;
+  }
+
+  function pruneOrphanContacts() {
+    var contacts = ensureContactsState();
+    if (!contacts || !window.state || !Array.isArray(window.state.stores)) return;
+    var ids = new Set(window.state.stores.map(function (store) { return String(store.id); }));
+    var changed = false;
+    Object.keys(contacts).forEach(function (id) {
+      if (!ids.has(String(id))) { delete contacts[id]; changed = true; }
+    });
+    if (changed) {
+      try { if (typeof window.save === 'function') window.save(); else if (typeof save === 'function') save(); } catch (e) {}
+    }
+  }
+
+  function ensureStoreContactsUi() {
+    var dialog = document.getElementById('storeDlg');
+    if (!dialog) return false;
+    ensureStyle();
+    if (!dialog.dataset.srContactsReady) {
+      var title = document.getElementById('storeDlgTitle');
+      var start = document.getElementById('srStoreStart');
+      var details = document.createElement('div');
+      details.id = 'srStoreDetailsPane';
+      details.className = 'srStoreDetailsPane';
+      var nodes = Array.prototype.slice.call(dialog.children).filter(function (node) { return node !== title && node !== start; });
+      nodes.forEach(function (node) { details.appendChild(node); });
+
+      var tabs = document.createElement('div');
+      tabs.className = 'srStoreTabs';
+      tabs.setAttribute('role', 'tablist');
+      tabs.innerHTML = '<button type="button" class="srStoreTab" data-sr-store-tab="details" role="tab" aria-selected="true">Fiche</button><button type="button" class="srStoreTab" data-sr-store-tab="contacts" role="tab" aria-selected="false">Contacts</button>';
+
+      var contactsPane = document.createElement('section');
+      contactsPane.id = 'srStoreContactsPane';
+      contactsPane.className = 'srStoreContactsPane';
+      contactsPane.hidden = true;
+      contactsPane.innerHTML = '<p class="srStoreContactsIntro">Les emails restent dans les données locales de Store Runner et suivent tes sauvegardes.</p><div id="srStoreContactsEmpty" class="tiny">Aucun contact enregistré pour ce magasin.</div><div id="srStoreContactList" class="srStoreContactList"></div><div class="srStoreContactBottom"><button type="button" class="secondary" id="srStoreContactAdd">＋ Ajouter un contact</button><button type="button" class="primary" id="srStoreContactSave">Enregistrer les contacts</button></div><div id="srStoreContactStatus" class="srStoreContactStatus" aria-live="polite"></div>';
+
+      if (start && start.parentNode === dialog) start.insertAdjacentElement('afterend', tabs);
+      else if (title && title.parentNode === dialog) title.insertAdjacentElement('afterend', tabs);
+      else dialog.insertBefore(tabs, dialog.firstChild);
+      tabs.insertAdjacentElement('afterend', details);
+      details.insertAdjacentElement('afterend', contactsPane);
+
+      tabs.querySelector('[data-sr-store-tab="details"]').addEventListener('click', function () { setStoreTab('details'); });
+      tabs.querySelector('[data-sr-store-tab="contacts"]').addEventListener('click', function () { setStoreTab('contacts'); });
+      contactsPane.querySelector('#srStoreContactAdd').addEventListener('click', function () {
+        var row = addContactRow({});
+        var empty = document.getElementById('srStoreContactsEmpty');
+        if (empty) empty.hidden = true;
+        if (row) row.querySelector('[data-sr-contact-name]').focus();
+      });
+      contactsPane.querySelector('#srStoreContactSave').addEventListener('click', saveStoreContacts);
+      dialog.dataset.srContactsReady = '1';
+    }
+
+    if (observedStoreDialog !== dialog) {
+      if (storeDialogObserver) storeDialogObserver.disconnect();
+      storeDialogObserver = new MutationObserver(function (mutations) {
+        mutations.forEach(function (mutation) {
+          if (mutation.type !== 'attributes' || mutation.attributeName !== 'open') return;
+          if (dialog.open) {
+            ensureContactsState();
+            setStoreTab('details');
+            renderStoreContacts();
+          } else {
+            pruneOrphanContacts();
+          }
+        });
+      });
+      storeDialogObserver.observe(dialog, { attributes: true, attributeFilter: ['open'] });
+      observedStoreDialog = dialog;
+    }
+    return true;
+  }
+
   function observeStoreList() {
     var list = document.getElementById('storeList');
     if (!list) return false;
@@ -182,6 +414,7 @@
 
   function apply() {
     ensureRegionStoreChooser();
+    ensureStoreContactsUi();
     var arranged = arrangeStoresPanel();
     observeStoreList();
     return arranged;
@@ -210,6 +443,15 @@
     retryCount = 0;
     retryUntilReady();
   }
+
+  window.StoreRunnerStoreContacts = {
+    ensure: ensureStoreContactsUi,
+    render: renderStoreContacts,
+    save: saveStoreContacts,
+    add: addContactRow,
+    openTab: setStoreTab,
+    rowsForStore: contactRowsForStore
+  };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
   else boot();
