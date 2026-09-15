@@ -138,3 +138,51 @@ test('La fiche magasin mémorise les contacts et leurs emails après rechargemen
   expect(overflow).toBeLessThanOrEqual(1);
   expect(pageErrors,'Le carnet de contacts ne doit produire aucune erreur JavaScript').toEqual([]);
 });
+
+test('L’écran Terrain rappelle la promesse de la visite précédente, famille par famille', async ({ page }) => {
+  const pageErrors=[];
+  page.on('pageerror', e => pageErrors.push(String(e && e.message || e)));
+
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(() => window.StoreRunnerVisits && window.StoreRunnerVisitModel && typeof window.save==='function');
+
+  await page.evaluate(() => {
+    const st=window.state;
+    const M=window.StoreRunnerVisitModel;
+    st.stores=[{id:'promise-1',enseigne:'Darty',ville:'Lyon',adresse:'12 rue Promesse',dept:'69',lat:45.76,lon:4.84,active:true,priority:4}];
+    st.notes={};st.visits={};st.included={};st.excluded={};st.locks={};st.plan={};st.appointments=[];st.calendarEvents=[];
+    st.businessV2=M.empty();
+    const visitId=M.start(st,'promise-1');
+    M.editReport(st,visitId,'brun','training','Revoir le mural TV avec Julien au prochain passage.');
+    M.editVisit(st,visitId,'conclusion',null,'Passage BRUN');
+    M.complete(st,visitId,'2026-09-10');
+    const visit=st.businessV2.visits.find(v=>v.id===visitId);
+    visit.completedAt='2026-09-10T12:00:00.000Z';
+    visit.updatedAt=visit.completedAt;
+    save();
+  });
+
+  // Nouvelle visite sur le MÊME magasin : la promesse doit être lue, jamais celle de la visite en cours.
+  await page.evaluate(() => window.StoreRunnerVisits.start('promise-1'));
+
+  const dialog=page.locator('#srVisitDialog');
+  await expect(dialog).toBeVisible();
+  // Une étape unique ne doit pas laisser une barre d'onglets orpheline en haut de l'écran.
+  await expect(dialog.locator('.sr-steps')).toHaveCount(0);
+
+  const promise=dialog.locator('.sr-lastPromise');
+  await expect(promise).toBeVisible();
+  await expect(promise).toContainText('La dernière fois (10/09), tu notais :');
+  await expect(promise).toContainText('Revoir le mural TV avec Julien au prochain passage.');
+
+  await dialog.locator('.sr-familyBtn[data-family="blanc"]').tap();
+  await expect(dialog.locator('.sr-familyActive')).toContainText('BLANC');
+  await expect(dialog.locator('.sr-lastPromise')).toHaveCount(0);
+
+  await dialog.locator('.sr-familyBtn[data-family="brun"]').tap();
+  await expect(dialog.locator('.sr-lastPromise')).toContainText('Revoir le mural TV avec Julien au prochain passage.');
+
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  expect(pageErrors,'Le rappel de promesse ne doit produire aucune erreur JavaScript').toEqual([]);
+});
