@@ -16,6 +16,18 @@ test('Planning V174 : + déplace un magasin et swipe le retire avec confirmation
   });
   await page.waitForTimeout(250);
   const add=page.locator('#planPanel .pmvAdd');await expect(add).toBeVisible();
+  const polish=await page.evaluate(()=>{
+    const head=document.querySelector('#planPanel .pmvHead');
+    const hint=document.querySelector('#planPanel .pmvHint');
+    const first=document.querySelector('#planPanel .appleTimeline .timelineRow');
+    if(!head||!hint||!first)return null;
+    const hs=getComputedStyle(head),is=getComputedStyle(hint),hr=hint.getBoundingClientRect(),fr=first.getBoundingClientRect();
+    return{headBg:hs.backgroundColor,hintBg:is.backgroundColor,gap:Math.round(fr.top-hr.bottom)};
+  });
+  expect(polish).toBeTruthy();
+  expect(polish.headBg).toBe('rgba(0, 0, 0, 0)');
+  expect(polish.hintBg).toBe('rgba(0, 0, 0, 0)');
+  expect(polish.gap).toBeGreaterThanOrEqual(12);
   await add.click();await expect(page.locator('#pmvDialog')).toBeVisible();
   await page.locator('#pmvSearch').fill('Darty Bron');
   const darty=page.locator('#pmvResults .pmvStore').filter({hasText:'Darty Bron'});await expect(darty).toBeVisible();await expect(darty.locator('em')).toContainText('Déplacer de Mardi');
