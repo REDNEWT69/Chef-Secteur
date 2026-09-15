@@ -5,6 +5,7 @@
     try{
       if(!state.settings)state.settings={};
       if(!Number(state.settings.maxVisitsPerDay))state.settings.maxVisitsPerDay=4;
+      if(!Number(state.settings.target))state.settings.target=20;
       return true;
     }catch(e){return false}
   }
@@ -15,16 +16,40 @@
     try{if(typeof save==='function')save()}catch(e){}
   }
 
+  function persistWeeklyTarget(value){
+    if(!ensure())return;
+    const n=parseInt(value,10);
+    state.settings.target=Number.isFinite(n)&&n>0?n:1;
+    try{if(typeof save==='function')save()}catch(e){}
+  }
+
   function syncField(){
     if(!ensure())return false;
     const input=document.getElementById('maxVisitsPerDay');
-    if(!input)return false;
-    input.value=String(state.settings.maxVisitsPerDay||4);
+    if(input)input.value=String(state.settings.maxVisitsPerDay||4);
+    const target=document.getElementById('target');
+    // Ne jamais écraser la valeur pendant la saisie : l'ancien comportement pouvait
+    // remettre 20 avant que le générateur ne lise la nouvelle valeur.
+    if(target&&document.activeElement!==target)target.value=String(state.settings.target||20);
+    return !!(input||target);
+  }
+
+  function bindWeeklyTarget(){
+    if(!ensure())return false;
+    const target=document.getElementById('target');
+    if(!target)return false;
+    if(!target.__weeklyTargetBound){
+      target.addEventListener('input',function(){persistWeeklyTarget(this.value)});
+      target.addEventListener('change',function(){persistWeeklyTarget(this.value);syncField()});
+      target.__weeklyTargetBound=true;
+    }
+    if(document.activeElement!==target)target.value=String(state.settings.target||20);
     return true;
   }
 
   function installField(){
     if(!ensure())return false;
+    bindWeeklyTarget();
     if(document.getElementById('maxVisitsPerDay'))return syncField();
     const target=document.getElementById('target');
     if(!target)return false;
@@ -52,10 +77,11 @@
     return true;
   }
 
+  function recover(){if(!document.getElementById('maxVisitsPerDay'))installField();else{bindWeeklyTarget();syncField()}}
   function boot(){installField()}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});
   else boot();
 
-  document.addEventListener('store-runner:data-restored',syncField);
-  document.addEventListener('store-runner:planning-updated',function(){if(!document.getElementById('maxVisitsPerDay'))installField()});
+  document.addEventListener('store-runner:data-restored',recover);
+  document.addEventListener('store-runner:planning-updated',recover);
 })();
