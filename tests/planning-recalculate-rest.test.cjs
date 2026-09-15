@@ -22,7 +22,8 @@ function env(){
   const state={
     settings:{weekDate:'2026-09-14',days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],maxVisitsPerDay:4},
     stores:[b0,missed,b1,b2,but1,f1],plan,
-    visits:{b0:{lastVisit:'2026-09-14',history:['2026-09-14']}},
+    visits:{},
+    businessV2:{visits:[{id:'visit-b0',storeId:'b0',status:'completed',completedDate:'2026-09-14'}],actions:[],storeSnapshots:{}},
     locks:{b2:{day:'Vendredi',week:'2026-09-14'}},
     appointments:[{id:'a1',storeId:'but1',date:'2026-09-17'}],manualWeekEdits:{'2026-09-14':'2026-09-15T08:00:00.000Z'},calendarEvents:[]
   };
@@ -65,7 +66,7 @@ function env(){
   t.ctx.__storeRunnerPlanningGenerationActive=false;
   assert.equal(built.ok,true,built.error||'le recalcul doit être possible');
 
-  // La visite réellement faite lundi ne bouge pas.
+  // La visite terrain réellement terminée lundi ne bouge pas, même sans marqueur legacy state.visits.
   assert.deepEqual(built.plan.Lundi.map(s=>s.id),['b0'],'le Boulanger déjà visité lundi doit rester lundi et seul le magasin raté doit partir');
   assert(!built.plan.Lundi.some(s=>s.id==='f0'),'le magasin non visité lundi doit pouvoir être replanifié après aujourd’hui');
   assert(DAYS.slice(1,5).some(day=>built.plan[day].some(s=>s.id==='f0')),'le magasin raté doit réapparaître sur un jour restant');
@@ -106,5 +107,5 @@ function env(){
   assert.equal(rejected.ok,false,'des contraintes fixes incompatibles doivent refuser le recalcul');
   assert.match(rejected.error,/occupent|capacité|replac/i,'le refus doit expliquer la capacité ou le placement');
 
-  console.log('PASS: V177 recalcule seulement le reste de la semaine, conserve visites/rendez-vous/verrous, replace les ratés, respecte Boulanger/BUT et maintient la protection manuelle.');
+  console.log('PASS: V177 recalcule seulement le reste de la semaine, conserve visites terrain/rendez-vous/verrous, replace les ratés, respecte Boulanger/BUT et maintient la protection manuelle.');
 })().catch(e=>{console.error(e);process.exit(1)});
