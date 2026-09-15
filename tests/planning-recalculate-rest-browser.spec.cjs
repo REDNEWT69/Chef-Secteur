@@ -2,10 +2,10 @@ const {test,expect}=require('@playwright/test');
 const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
 test.use({viewport:{width:390,height:844},hasTouch:true,isMobile:true,serviceWorkers:'block'});
 
-test('V177 : bouton de recalcul visible et deux Boulanger sont séparés sans perdre de magasin',async({page})=>{
+test('V177 : recalcul du reste de semaine sépare les Boulanger sans perdre de magasin',async({page})=>{
   page.on('dialog',d=>d.accept());
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>window.state&&typeof window.storeRunnerRecalculateRemainingWeek==='function'&&document.getElementById('recalculateRemainingWeekBtn'));
+  await page.waitForFunction(()=>window.state&&typeof window.storeRunnerRecalculateRemainingWeek==='function'&&document.getElementById('recalculateRemainingWeekBtn')&&document.getElementById('planningSettingsShortcut'));
   await page.evaluate(()=>{
     const mk=(id,enseigne,ville)=>({id,enseigne,ville,adresse:'1 rue test',dept:'69',active:true,lat:45.7,lon:4.9,priority:3});
     const a=mk('b1','Boulanger','Saint-Priest'),b=mk('b2','Boulanger','Vénissieux'),f=mk('f1','Fnac','Bron'),but=mk('but1','BUT','Villeurbanne');
@@ -18,8 +18,12 @@ test('V177 : bouton de recalcul visible et deux Boulanger sont séparés sans pe
     if(window.ChefReliability)ChefReliability.propose=async candidate=>{state.plan=candidate.plan;return true};
     if(typeof renderAll==='function')renderAll();
     if(typeof goTab==='function')goTab('planPanel');
-    const settings=document.querySelector('#planPanel details');if(settings)settings.open=true;
   });
+
+  const settingsShortcut=page.locator('#planningSettingsShortcut');
+  await expect(settingsShortcut).toBeVisible();
+  await settingsShortcut.click();
+  await expect(page.locator('#planningSettings')).toHaveJSProperty('open',true);
 
   const button=page.locator('#recalculateRemainingWeekBtn');
   await expect(button).toBeVisible();
