@@ -8,19 +8,18 @@ const index=fs.readFileSync(path.join(process.cwd(),'index.html'),'utf8');
 const sw=fs.readFileSync(path.join(process.cwd(),'sw.js'),'utf8');
 const version=JSON.parse(fs.readFileSync(path.join(process.cwd(),'version.json'),'utf8'));
 
-assert(index.includes("const BUILD_REV='20260915-overnightguard184'"),'index doit publier le build V184');
-assert(sw.includes('const BUILD_REV = "20260915-overnightguard184"'),'sw doit publier le même build V184');
-assert.equal(version.latestBuild,'20260915-overnightguard184');
-assert.equal(version.displayVersion,'184');
+assert(index.includes("const BUILD_REV='20260915-routeovernight185'"),'index doit publier le build V185');
+assert(sw.includes('const BUILD_REV = "20260915-routeovernight185"'),'sw doit publier le même build V185');
+assert.equal(version.latestBuild,'20260915-routeovernight185');
+assert.equal(version.displayVersion,'185');
 assert(index.includes("'./v182-fixes.js'"),'le runtime de fiabilisation doit rester chargé');
 assert(index.includes('id="srRuntimeBoot"'),'le boot historique doit être masqué pendant le rendu moderne');
-assert(index.includes('<img src="./app-icon.svg?rev=20260915-overnightguard184" alt="S-RUNNER">'),'le loader doit afficher le vrai logo S-RUNNER');
+assert(index.includes('<img src="./app-icon.svg?rev=20260915-routeovernight185" alt="S-RUNNER">'),'le loader doit afficher le vrai logo S-RUNNER');
 assert(sw.includes('"./v182-fixes.js"'),'les correctifs terrain doivent fonctionner hors ligne après installation');
 assert(source.includes('removeHomePilotageShortcut'),'Pilotage doit rester retiré de l’accueil');
 
-/* V184 : le flux 3 semaines doit utiliser exactement la même capacité planning que
-   la génération semaine V181. Boulanger reste à 2 crédits métier mais réserve tout le
-   budget journalier sauf une unité pendant la génération automatique. */
+/* V184 reste en place : le flux 3 semaines utilise la capacité planning Boulanger,
+   l'enregistrement Secteur reste neutre pour le planning et le GPS interne est masqué. */
 assert(index.includes('window.__storeRunnerPlanningGenerationActive=true'),'la génération 3 semaines doit activer la capacité planning Boulanger');
 assert(index.includes('api.generateThreeWeekSnail=wrapped'),'le générateur 3 semaines public doit être enveloppé');
 assert(index.includes('terrainSnailBtn')&&index.includes('api.generateThreeWeekSnail()'),'le bouton 3 semaines doit appeler le générateur enveloppé');
@@ -50,9 +49,9 @@ const document={
 };
 const state={
   profile:{overnightMode:'auto',overnightMinSaving:0},
-  settings:{days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],weekDate:'2026-09-14'},
+  settings:{days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],weekDate:'2026-09-14',maxVisitsPerDay:2},
   plan:{Lundi:[],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]},
-  stores:[],excluded:{},manualWeekEdits:{}
+  stores:[],excluded:{},locks:{},visits:{},appointments:[],manualWeekEdits:{}
 };
 const ctx={
   console,state,document,confirm(){return true},CustomEvent:function(type,opts){this.type=type;this.detail=opts&&opts.detail},
@@ -60,7 +59,8 @@ const ctx={
   localStorage:{getItem(){return null},setItem(){},removeItem(){}},
   StoreRunnerSectorPilotage:{},
   hav(a,b){return Math.abs(Number(a.x||0)-Number(b.x||0))},
-  baseObj(){return{x:0}}
+  baseObj(){return{x:0}},
+  storeVisitCredit(){return 1}
 };
 ctx.window=ctx;
 vm.runInNewContext(source,ctx);
@@ -74,18 +74,64 @@ ctx.storeRunnerRepairMobileRuntime();
 assert.equal(pilotageButtons.length,1,'la réparation Android ne doit pas dupliquer Pilotage');
 
 assert.equal(typeof ctx.StoreRunnerOvernightV182.analyze,'function');
-state.plan.Lundi=[{id:'a',x:100,enseigne:'A',ville:'Loin'}];
-state.plan.Mardi=[{id:'b',x:90,enseigne:'B',ville:'Loin'}];
+state.plan.Lundi=[{id:'a',x:100,enseigne:'A',ville:'Annecy'}];
+state.plan.Mardi=[{id:'b',x:90,enseigne:'B',ville:'Annecy'}];
 let overnight=ctx.StoreRunnerOvernightV182.analyze();
 assert.equal(overnight.threshold,0,'un seuil explicite à 0 km doit rester 0');
-assert.equal(overnight.reason,'candidate','avec seuil 0 une économie positive doit proposer un découché');
+assert.equal(overnight.reason,'candidate','deux journées éloignées et proches entre elles doivent proposer un découché');
 assert.equal(Math.round(overnight.candidate.saving),180);
+assert.equal(Math.round(overnight.candidate.remoteKm),90);
+
+state.profile.overnightMode='mandatory';
+state.plan.Lundi=[{id:'local-a',x:8,enseigne:'A',ville:'Limonest'}];
+state.plan.Mardi=[{id:'local-b',x:12,enseigne:'B',ville:'Lyon'}];
+overnight=ctx.StoreRunnerOvernightV182.analyze();
+assert.equal(overnight.reason,'mandatory-no-useful','le mode obligatoire ne doit pas forcer un hôtel près du domicile');
+assert.equal(overnight.candidate,null);
+
 state.profile.overnightMode='never';
 overnight=ctx.StoreRunnerOvernightV182.analyze();
 assert.equal(overnight.reason,'disabled');
 state.profile.overnightMode='auto';state.profile.overnightMinSaving=200;
+state.plan.Lundi=[{id:'a',x:100,enseigne:'A',ville:'Annecy'}];
+state.plan.Mardi=[{id:'b',x:90,enseigne:'B',ville:'Annecy'}];
 overnight=ctx.StoreRunnerOvernightV182.analyze();
 assert.equal(overnight.reason,'threshold','le diagnostic doit distinguer un seuil non atteint');
+
+/* V185 : les magasins d'une même zone éloignée doivent se regrouper avant de remplir
+   les journées locales. Quand la zone déborde sur deux jours, ces jours sont consécutifs. */
+assert.equal(typeof ctx.StoreRunnerGeographyV185.rebalance,'function');
+state.profile.overnightMode='auto';state.profile.overnightMinSaving=0;state.settings.maxVisitsPerDay=2;
+const geoInput={
+  Lundi:[{id:'f1',x:100,enseigne:'Darty',ville:'Annecy'},{id:'l1',x:10,enseigne:'Darty',ville:'Lyon'}],
+  Mardi:[{id:'f2',x:102,enseigne:'Darty',ville:'Annecy'},{id:'l2',x:12,enseigne:'Darty',ville:'Lyon'}],
+  Mercredi:[{id:'f3',x:104,enseigne:'Darty',ville:'Annecy'},{id:'l3',x:14,enseigne:'Darty',ville:'Lyon'}],
+  Jeudi:[{id:'f4',x:106,enseigne:'Darty',ville:'Annecy'},{id:'l4',x:16,enseigne:'Darty',ville:'Lyon'}],
+  Vendredi:[],Samedi:[]
+};
+let geo=ctx.StoreRunnerGeographyV185.rebalance(geoInput,{weekKey:'2026-09-14'});
+assert.equal(geo.ok,true,'le regroupement géographique doit conserver une solution valide');
+const workDays=['Lundi','Mardi','Mercredi','Jeudi','Vendredi'];
+const farDays=workDays.filter(day=>(geo.plan[day]||[]).some(s=>String(s.id).startsWith('f')));
+assert.equal(farDays.length,2,'quatre magasins Annecy avec capacité 2 doivent tenir sur deux journées');
+assert.equal(Math.abs(workDays.indexOf(farDays[0])-workDays.indexOf(farDays[1])),1,'les deux journées Annecy doivent être consécutives pour rendre le découché exploitable');
+for(const day of farDays)assert.equal((geo.plan[day]||[]).filter(s=>String(s.id).startsWith('f')).length,2,'chaque journée éloignée doit être remplie avec le même cluster');
+
+/* La capacité planning Boulanger reste prioritaire sur l'optimisation géographique. */
+state.settings.maxVisitsPerDay=4;ctx.__storeRunnerPlanningGenerationActive=true;
+ctx.storeVisitCredit=function(store){return store&&store.enseigne==='Boulanger'?3:store&&store.enseigne==='BUT'?2:1};
+const boulInput={
+  Lundi:[{id:'b1',x:100,enseigne:'Boulanger',ville:'Annecy'},{id:'x1',x:101,enseigne:'Darty',ville:'Annecy'}],
+  Mardi:[{id:'b2',x:102,enseigne:'Boulanger',ville:'Annecy'},{id:'x2',x:103,enseigne:'Darty',ville:'Annecy'}],
+  Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]
+};
+geo=ctx.StoreRunnerGeographyV185.rebalance(boulInput,{weekKey:'2026-09-14'});
+assert.equal(geo.ok,true);
+for(const day of workDays){
+  const route=geo.plan[day]||[];
+  assert.ok(route.filter(s=>s.enseigne==='Boulanger').length<=1,'V185 ne doit jamais regrouper deux Boulanger sur la même journée');
+  const credits=route.reduce((n,s)=>n+ctx.storeVisitCredit(s),0);assert.ok(credits<=4,'V185 doit respecter la capacité planning Boulanger');
+}
 
 const oldPlan={
   Lundi:[{id:'old-mon'}],Mardi:[{id:'old-tue'}],Mercredi:[{id:'old-wed'}],Jeudi:[{id:'old-thu'}],Vendredi:[{id:'old-fri'}],Samedi:[{id:'old-sat'}]
@@ -108,5 +154,7 @@ assert.deepEqual(merged.Samedi.map(x=>x.id),['old-sat']);
 
 assert(source.includes('Cette période touche une semaine déjà modifiée ou recalculée'),'une semaine protégée doit demander confirmation avant régénération partielle');
 assert(source.includes("outsideIds.forEach(id=>"),'les magasins hors plage doivent être protégés pendant la génération');
+assert(source.includes('patchSingleWeekGeography')&&source.includes('patchThreeWeekGeography'),'V185 doit optimiser la semaine normale et les 3 semaines escargot');
+assert(source.includes('V185_REMOTE_MIN_KM=55'),'un découché local doit être bloqué par un seuil de distance au domicile');
 
-console.log('V184 guard: OK · Boulanger 3 semaines protégé, GPS masqué, sauvegarde Secteur neutre');
+console.log('V185 guard: OK · zones éloignées regroupées, découché local refusé, Boulanger protégé');
