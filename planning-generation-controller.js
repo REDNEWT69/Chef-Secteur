@@ -121,17 +121,80 @@
     return message+'Rien n’a été changé.';
   }
 
-  function insertRecalculateButton(){
-    if(document.getElementById('recalculateRemainingWeekBtn'))return true;
+  function ensureUnifiedGenerationUi(){
     const generate=document.querySelector('#planPanel button.primary.full[onclick="generateWeek()"]');
     if(!generate||!generate.parentNode)return false;
-    const button=document.createElement('button');
-    button.type='button';button.id='recalculateRemainingWeekBtn';button.className='secondary full';
-    button.textContent='↻ Recalculer le reste de la semaine';
-    button.style.marginTop='8px';button.style.width='100%';button.style.minHeight='46px';
-    button.addEventListener('click',function(){window.storeRunnerRecalculateRemainingWeek()});
-    generate.insertAdjacentElement('afterend',button);
+
+    /* V186 : une seule action visible doit avoir le droit de « générer la semaine ».
+       Le raccourci historique Réorganiser rappelait exactement generateWeek() et donnait
+       l'impression d'un second moteur. On le retire visuellement sans toucher à la carte. */
+    try{
+      document.querySelectorAll('#planPanel .applePlanTools button[onclick="generateWeek()"]').forEach(function(button){
+        button.hidden=true;button.style.display='none';button.setAttribute('aria-hidden','true');button.tabIndex=-1;
+      });
+    }catch(e){}
+
+    let hint=document.getElementById('planningUnifiedHint');
+    if(!hint){
+      hint=document.createElement('div');hint.id='planningUnifiedHint';hint.className='tiny';
+      hint.style.margin='8px 2px 0';hint.style.lineHeight='1.45';
+      hint.textContent='Optimisation géographique et découché sont calculés automatiquement avec ta semaine.';
+      generate.insertAdjacentElement('afterend',hint);
+    }
+
+    /* Le recalcul reste utile quand la semaine est déjà entamée, mais ce n'est pas un
+       deuxième bouton de génération. Il vit donc dans une action corrective repliée. */
+    let repair=document.getElementById('planningRepairDetails');
+    if(!repair){
+      repair=document.createElement('details');repair.id='planningRepairDetails';repair.className='planningChoice';
+      repair.style.marginTop='10px';
+      repair.innerHTML='<summary><span>Ajuster un planning déjà généré</span><small>Après génération</small></summary><div class="planningChoiceBody" id="planningRepairBody"></div>';
+      const anchor=document.getElementById('planningGenerateStatus')||hint;
+      anchor.insertAdjacentElement('afterend',repair);
+    }
+
+    const body=repair.querySelector('#planningRepairBody')||repair;
+    let recalc=document.getElementById('recalculateRemainingWeekBtn');
+    if(!recalc){
+      recalc=document.createElement('button');recalc.type='button';recalc.id='recalculateRemainingWeekBtn';recalc.className='secondary full';
+      recalc.textContent='↻ Recalculer le reste de la semaine';
+      recalc.style.width='100%';recalc.style.minHeight='46px';
+      recalc.addEventListener('click',function(){window.storeRunnerRecalculateRemainingWeek()});
+    }
+    if(recalc.parentNode!==body)body.appendChild(recalc);
+
+    /* « Escargot » reste une capacité avancée 3 semaines, pas une génération concurrente
+       de la semaine courante. Le libellé l'explique dans le panneau multi-semaines. */
+    const snail=document.getElementById('terrainSnailBtn');
+    if(snail){
+      snail.textContent='◎ Préparer 3 semaines en rotation géographique';
+      snail.title='Option avancée sur 3 semaines. Pour la semaine courante, utilise Générer ma semaine.';
+      snail.dataset.advancedPlanning='1';
+    }
     return true;
+  }
+
+  function insertRecalculateButton(){return ensureUnifiedGenerationUi()}
+
+  function refreshOvernightDecision(plan){
+    try{
+      const api=window.StoreRunnerOvernightV182;
+      if(!api)return null;
+      const analysis=typeof api.analyze==='function'?api.analyze(plan||(window.state&&state.plan)):null;
+      if(typeof api.render==='function')api.render();
+      return analysis||null;
+    }catch(e){console.warn('Calcul du découché après génération impossible',e);return null}
+  }
+
+  function overnightStatusSuffix(analysis){
+    if(!analysis)return'';
+    const candidate=analysis.candidate;
+    if(candidate){
+      const saving=Math.max(0,Math.round(Number(candidate.saving)||0));
+      return' · 🌙 découché '+candidate.fromDay+' → '+candidate.toDay+' (~'+saving+' km économisés)';
+    }
+    if(analysis.reason==='disabled')return' · découché désactivé';
+    return' · découché vérifié';
   }
 
   function persistManualWeek(candidate,weekKey){
@@ -247,8 +310,9 @@
       if(!accepted){generationStatus('Planning précédent conservé.','busy');return{ok:false,cancelled:true}}
       persistManualWeek(result.plan,result.weekKey);
       try{if(typeof window.renderAll==='function')window.renderAll();else if(typeof renderAll==='function')renderAll()}catch(e){}
+      const overnight=refreshOvernightDecision(result.plan);
       emitPlanningUpdated('recalculateRemainingWeek');
-      generationStatus('Reste de la semaine recalculé ✓ '+result.moved+' visite'+(result.moved>1?'s':'')+' à organiser'+(result.pastUnvisited?' · '+result.pastUnvisited+' visite'+(result.pastUnvisited>1?'s':'')+' ratée'+(result.pastUnvisited>1?'s':'')+' replacée'+(result.pastUnvisited>1?'s':''):'')+'. Les visites déjà faites sont restées en place.','ok');
+      generationStatus('Reste de la semaine recalculé ✓ '+result.moved+' visite'+(result.moved>1?'s':'')+' à organiser'+(result.pastUnvisited?' · '+result.pastUnvisited+' visite'+(result.pastUnvisited>1?'s':'')+' ratée'+(result.pastUnvisited>1?'s':'')+' replacée'+(result.pastUnvisited>1?'s':''):'')+overnightStatusSuffix(overnight)+'. Les visites déjà faites sont restées en place.','ok');
       return result;
     }catch(e){
       const message=e&&e.message?e.message:String(e);generationStatus('Recalcul impossible : '+message,'bad');return{ok:false,error:message}
@@ -256,7 +320,7 @@
   }
 
   function install(){
-    insertRecalculateButton();
+    ensureUnifiedGenerationUi();
     if(window.__storeRunnerPlanningGenerateOwner)return true;
     if(typeof window.generateWeek!=='function')return false;
     const base=window.generateWeek;
@@ -269,7 +333,7 @@
        * Une reconnexion Google ne doit se produire qu'après une action explicite
        * de l'utilisateur dans l'interface Agenda.
        */
-      generationStatus('Génération du planning…','busy');
+      generationStatus('Génération de la semaine · géographie + découché…','busy');
       if(!hasValidBase()){
         const message='Point de départ incomplet. Dans Mon activité, saisis une ville ou une adresse (ex. Francheville), puis enregistre les réglages.';
         generationStatus(message,'bad');
@@ -295,20 +359,26 @@
       if(beforeCount>0&&afterCount===0&&out&&out.__storeRunnerRejectedEmpty!==true){
         console.warn('Le planning est devenu vide après génération. Le moteur spécialisé doit protéger ce cas.');
       }
+      let overnight=null;
+      if((!out||out.ok!==false)&&afterCount>0){
+        overnight=refreshOvernightDecision(window.state&&state.plan);
+        if(out&&typeof out==='object')out.overnight=overnight;
+      }
       if(out&&out.ok===false){
         generationStatus(out.error||'Le planning n’a pas été généré. Vérifie les réglages affichés.','bad');
       }else if(afterCount>0){
-        generationStatus('Planning généré ✓ '+afterCount+' visite'+(afterCount>1?'s':''),'ok');
+        generationStatus('Semaine générée ✓ '+afterCount+' visite'+(afterCount>1?'s':'')+overnightStatusSuffix(overnight),'ok');
       }else{
         generationStatus('Aucune visite générée. Vérifie le point de départ, les filtres et les horaires.','bad');
       }
       emitPlanningUpdated('generateWeek');
+      ensureUnifiedGenerationUi();
       return out;
     };
     owned.__storeRunnerPlanningGenerateOwner=true;
     window.generateWeek=owned;
     window.__storeRunnerPlanningGenerateOwner=true;
-    insertRecalculateButton();
+    ensureUnifiedGenerationUi();
     return true;
   }
 
@@ -319,7 +389,11 @@
 
   window.storeRunnerRecalculateRemainingWeek=recalculateRemainingWeek;
   window.__storeRunnerBuildRemainingWeekPlan=buildRemainingWeekPlan;
+  window.storeRunnerRefreshOvernightDecision=refreshOvernightDecision;
+  window.storeRunnerEnsureUnifiedPlanningUi=ensureUnifiedGenerationUi;
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
-  window.addEventListener('load',install,{once:true});
-  document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(install,40)});
+  window.addEventListener('load',ensureUnifiedGenerationUi,{once:true});
+  document.addEventListener('store-runner:planning-updated',ensureUnifiedGenerationUi);
+  document.addEventListener('store-runner:data-restored',ensureUnifiedGenerationUi);
+  document.addEventListener('store-runner:home-rendered',ensureUnifiedGenerationUi);
 })();
