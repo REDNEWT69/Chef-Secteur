@@ -7,3 +7,7 @@ __pycache__/
 *.xlsx
 *.xlsm
 *.xls
+*.csv
+# Les fixtures de tests sont fabriquées en mémoire par le code des tests : aucune n'est un
+# fichier de données. Si un jour une fixture inventée doit être versionnée en .csv, elle
+# s'ajoute ici explicitement par une ligne « !tests/fixtures/<nom>.csv ».

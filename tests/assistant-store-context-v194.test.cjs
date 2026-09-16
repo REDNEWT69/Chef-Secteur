@@ -2,7 +2,7 @@ const assert=require('node:assert/strict');
 const path=require('node:path');
 
 const stores=[];
-for(let i=1;i<=56;i++)stores.push({id:'s'+i,enseigne:i===1?'Boulanger':'Darty',ville:i===1?'Saint-Priest':'Ville '+i,dept:'69',freq:'30j',products:['TV','BLANC']});
+for(let i=1;i<=56;i++)stores.push({id:'s'+i,enseigne:i===1?'Boulanger':'Darty',ville:i===1?'Test-Nord':'Ville '+i,dept:'69',freq:'30j',products:['TV','BLANC']});
 
 const visit={
   completedDate:'2026-09-10',
@@ -69,7 +69,7 @@ assert.match(context.instructions,/données internes réelles/i);
 assert.match(context.instructions,/YTD reste le statut performance principal/i);
 assert.ok(!context.plan.Lundi[0].performance,'le planning reste compact et ne duplique pas le contexte riche');
 
-const local=window.storeRunnerLocalStoreIntelligence('Que dois-je travailler chez Boulanger Saint-Priest ?');
+const local=window.storeRunnerLocalStoreIntelligence('Que dois-je travailler chez Boulanger Test-Nord ?');
 assert.match(local,/PDM YTD 31,4 %/);
 assert.match(local,/cible 42,5 %/);
 assert.match(local,/représentation\/PDL 24 %/);

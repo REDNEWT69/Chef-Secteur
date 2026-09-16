@@ -6,22 +6,33 @@ const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 const ARCHIVE_KEY='chef_sector_plan_archive_v1';
 const REMOTE_MIN_KM=55;
 const MIN_USEFUL_OVERNIGHT_KM=20;
+/* Dépôt public : aucune identité de magasin n'est écrite ici. La campagne est vide par
+   défaut ; ses cibles viennent des réglages de l'utilisateur. Depuis la V190, la priorité
+   terrain provient du snapshot performance importé, et ce module ne sert plus qu'à une
+   campagne ponctuelle explicitement configurée. */
 const CAMPAIGN={
   id:'services-p1-2026-09',
   label:'Priorités services',
   reason:'Anomalie / faible part de marché services',
   startDate:'2026-09-14',
   dueDate:'2026-09-22',
-  targets:[
-    {key:'boulanger-aubiere',brand:'Boulanger',label:'Boulanger Aubière / Clermont',aliases:['aubiere','clermont'],order:1},
-    {key:'boulanger-villars',brand:'Boulanger',label:'Boulanger Villars / Saint-Étienne',aliases:['villars','saint etienne','st etienne'],order:2},
-    {key:'boulanger-valence',brand:'Boulanger',label:'Boulanger Valence',aliases:['valence'],order:3},
-    {key:'boulanger-chambery',brand:'Boulanger',label:'Boulanger Chambéry',aliases:['chambery'],order:4},
-    {key:'boulanger-annemasse',brand:'Boulanger',label:'Boulanger Annemasse',aliases:['annemasse'],order:5},
-    {key:'auchan-saint-priest',brand:'Auchan',label:'Auchan Saint-Priest',aliases:['saint priest'],order:6,creditedDate:'2026-09-14'},
-    {key:'but-saint-priest',brand:'BUT',label:'BUT Lyon Saint-Priest',aliases:['saint priest'],order:7,creditedDate:'2026-09-15'}
-  ]
+  targets:[]
 };
+/* Une campagne ponctuelle expire : passée son échéance, elle ne réorganise plus rien et
+   n'affiche plus de retard. Sans cibles configurées, elle est inerte dès le départ. */
+function campaignTargets(){
+  if(Array.isArray(CAMPAIGN.targets)&&CAMPAIGN.targets.length)return CAMPAIGN.targets;
+  try{
+    const configured=root.state&&root.state.settings&&root.state.settings.priorityCampaignTargets;
+    return Array.isArray(configured)?configured:[];
+  }catch(e){return[]}
+}
+function campaignExpired(today){
+  const day=iso(parse(today)||new Date());
+  return day>CAMPAIGN.dueDate;
+}
+function campaignActive(today){return campaignTargets().length>0&&!campaignExpired(today)}
+function setCampaignTargets(list){CAMPAIGN.targets=Array.isArray(list)?list.slice():[];return CAMPAIGN.targets}
 
 let applying=false,lastReport=null,bootAttempts=0;
 
@@ -53,7 +64,7 @@ function targetMatches(target,store){
   const hay=storeHay(store);
   return (target.aliases||[]).some(a=>hay.includes(norm(a)))
 }
-function targetForStore(store){return CAMPAIGN.targets.find(t=>targetMatches(t,store))||null}
+function targetForStore(store){return campaignTargets().find(t=>targetMatches(t,store))||null}
 function isPriorityStore(store){return !!targetForStore(store)}
 function resolveTarget(target){return currentStores().find(s=>targetMatches(target,s))||null}
 
@@ -132,7 +143,7 @@ function scheduledDateForTarget(target,plans,limitDue=true){
   return''
 }
 function statusFromPlans(plans){
-  return CAMPAIGN.targets.map(target=>{
+  return campaignTargets().map(target=>{
     const completed=completionDate(target),store=resolveTarget(target),planned=completed?'':scheduledDateForTarget(target,plans,true);
     return{key:target.key,label:target.label,completedDate:completed,plannedDate:planned,resolved:!!store,storeId:store&&String(store.id)}
   })
@@ -247,7 +258,7 @@ function planningStartDate(now,options){
 }
 
 function removeCompletedDuplicates(plans,fromIso){
-  for(const target of CAMPAIGN.targets){
+  for(const target of campaignTargets()){
     const done=completionDate(target);
     if(!done)continue;
     for(const [key,plan] of Object.entries(plans)){
@@ -460,6 +471,13 @@ function overnightText(o){
 
 function renderSummary(){
   if(!root.document||!root.state)return false;
+  /* Campagne inerte ou échue : on retire le bandeau au lieu d'afficher un retard qui
+     n'a plus de sens. */
+  if(!campaignActive(new Date())){
+    const old=root.document.getElementById('priorityCampaignV187');
+    if(old)old.remove();
+    return false;
+  }
   const now=new Date(),start=planningStartDate(now,{}),data=weekPlansBetween(start),rows=statusFromPlans(data.plans);
   const done=rows.filter(r=>r.completedDate).length,planned=rows.filter(r=>!r.completedDate&&r.plannedDate).length,pending=rows.length-done-planned;
   let box=root.document.getElementById('priorityCampaignV187');
@@ -482,6 +500,9 @@ function renderSummary(){
 function apply(options){
   options=options||{};
   if(applying||!root.state||!Array.isArray(root.state.stores))return{ok:false,reason:'not-ready'};
+  /* Aucune cible configurée, ou campagne échue : on ne touche pas au planning. */
+  if(!campaignTargets().length)return{ok:false,reason:'no-targets'};
+  if(campaignExpired(options.today||new Date()))return{ok:false,reason:'expired'};
   applying=true;
   try{
     const now=parse(options.today)||new Date(),todayIso=iso(now);
@@ -496,7 +517,7 @@ function apply(options){
     removeCompletedDuplicates(plans,todayIso);
 
     const targets=[],preStartPlanned=[];
-    for(const target of CAMPAIGN.targets){
+    for(const target of campaignTargets()){
       if(completionDate(target))continue;
       const existing=existingBeforeStart(target,plans,startIso,todayIso);
       if(existing){preStartPlanned.push({target,date:existing});continue}
@@ -523,7 +544,7 @@ function apply(options){
     const finalRows=statusFromPlans(plans),done=finalRows.filter(r=>r.completedDate).length,planned=finalRows.filter(r=>!r.completedDate&&r.plannedDate).length;
     lastReport={
       ok:true,campaign:CAMPAIGN.id,planner:'v188',startDate:startIso,dueDate:CAMPAIGN.dueDate,
-      done,total:CAMPAIGN.targets.length,planned,pending:CAMPAIGN.targets.length-done-planned,
+      done,total:campaignTargets().length,planned,pending:campaignTargets().length-done-planned,
       unresolved,deferred:evicted.length,deferredUnplaced:deferredUnplaced.map(storeShort),
       overflowDays:candidate?candidate.overflowDays:[],overnight:candidate?candidate.overnight:null,
       nodes:solved.nodes,status:finalRows,preStartPlanned
@@ -569,7 +590,7 @@ if(root.document){
   root.document.addEventListener('store-runner:home-rendered',renderSummary)
 }
 const api={
-  campaign:CAMPAIGN,apply,status(){const data=weekPlansBetween(new Date());return statusFromPlans(data.plans)},
+  campaign:CAMPAIGN,apply,campaignTargets,campaignActive,campaignExpired,setCampaignTargets,status(){const data=weekPlansBetween(new Date());return statusFromPlans(data.plans)},
   render:renderSummary,targetMatches,completionDate,planningStartDate,
   solvePriorities,bestOvernightBetween,getLastReport(){return lastReport}
 };
