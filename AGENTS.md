@@ -56,6 +56,22 @@ Ne pas remplacer une fonction globale métier appartenant à un autre module. Pr
 - Après fusion : vérifier que `main` est vert et que la version déployée est
   bien la nouvelle.
 
+### Le bump de build voyage avec le code
+
+- Le bump `BUILD_REV` se fait dans **la même PR que le code**, partout où la
+  révision est écrite : `version.json` (`latestBuild` **et** `displayVersion`),
+  la constante d'`index.html`, tous les liens `?rev=` d'`index.html`, `sw.js`,
+  et les tests qui figent le littéral — aujourd'hui
+  `tests/terrain-planning-runtime.test.cjs` **et**
+  `tests/v182-field-fixes.test.cjs`, qui en fige cinq à lui seul.
+- Le nombre d'emplacements n'est pas une constante : avant de pousser, vérifier
+  qu'aucune occurrence de l'ancienne révision ne subsiste dans le dépôt plutôt
+  que de se fier à un compte appris par cœur.
+- **Une PR fonctionnelle sans bump ne se fusionne pas.** Séparer le bump laisse
+  `main` publier une version qui ne contient pas le correctif : les appareils
+  déjà installés ne le reçoivent jamais par le gestionnaire de mise à jour.
+  C'est le défaut qui a produit les décalages 188/189 et 193/194.
+
 ## Métier V2
 
 Le plan de référence est `PLAN_METIER_STORE_RUNNER.md`.
