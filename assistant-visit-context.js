@@ -45,3 +45,19 @@ if(typeof root.storeRunnerRegisterAssistantContextTransform==='function')root.st
 const api={answer,compactContext,draftRows,openActions,recentVisits};
 if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
+
+/* V193 est chargé séparément pour garder le moteur cuisinistes indépendant des visites. */
+(function(root){
+  'use strict';
+  if(!root.document)return;
+  function loadCuisinisteV193(){
+    if(root.StoreRunnerCuisinisteV193||root.document.getElementById('sr-cuisiniste-v193-script'))return;
+    const s=root.document.createElement('script');
+    s.id='sr-cuisiniste-v193-script';
+    const rev=String(root.__STORE_RUNNER_BUILD_REV||'v193');
+    s.src='./cuisiniste-contracts-v193.js?rev='+encodeURIComponent(rev);
+    s.async=false;
+    root.document.head.appendChild(s);
+  }
+  if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',loadCuisinisteV193,{once:true});else loadCuisinisteV193();
+})(typeof window!=='undefined'?window:globalThis);
