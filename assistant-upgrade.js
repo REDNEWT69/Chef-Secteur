@@ -97,7 +97,7 @@
         c.daySummaries={};
         for(const d of ((state.settings&&state.settings.days)||DAYS))c.daySummaries[d]=summaryForDay(d);
         c.overnight=typeof window.overnightCandidate==='function'?window.overnightCandidate():null;
-        c.instructions='Respecte les événements Google Agenda, les déplacements hors secteur, les hôtels et les horaires magasins. Ne programme jamais de visite pendant une journée bloquée. Réponds comme un assistant de chef de secteur Samsung, de façon concise et opérationnelle.';
+        c.instructions='Respecte les événements Google Agenda, les déplacements hors secteur, les hôtels et les horaires magasins. Ne programme jamais de visite pendant une journée bloquée. Les données performance utilisent le YTD comme statut principal ; les semaines servent seulement de tendance indicative. Ne prétends jamais qu’une visite a causé une variation de PDM. Réponds comme un assistant de chef de secteur Samsung, de façon concise et opérationnelle.';
         c=applyAssistantContextTransforms(c);
       }catch(e){}
       return c;
@@ -115,8 +115,8 @@
     const status=document.getElementById('assistantAIStatus');if(!status)return;
     const online=window.aiConfig&&aiConfig.mode==='online';
     if(online&&!gatewayConfigured()){status.className='ai-status bad';status.textContent='IA en ligne non configurée · une passerelle serveur sécurisée est nécessaire';}
-    else if(online&&gatewayConfigured()){status.className='ai-status ok';status.textContent='IA en ligne prête · planning transmis · détails Google Agenda conservés localement';}
-    else{status.className='ai-status';status.textContent='Mode local amélioré · comprend maintenant planning, agenda et déplacements';}
+    else if(online&&gatewayConfigured()){status.className='ai-status ok';status.textContent='IA en ligne prête · planning + synthèse performance si disponible · détails Google Agenda conservés localement · fichier Excel brut conservé localement';}
+    else{status.className='ai-status';status.textContent='Mode local amélioré · planning, agenda, visites et performance disponibles sur l’appareil';}
   }
   function installStatusEvents(){
     if(window.__assistantStatusEvents)return;
