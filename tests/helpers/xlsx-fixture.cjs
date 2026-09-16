@@ -135,4 +135,89 @@ function sectorReel(){
   return{bytes:build(rows),expected:{lignes:51,P1:7,P2:25,watch:18,nodata:1,target:42.5}};
 }
 
-module.exports={zip,build,sectorW34,sectorReel,HEADERS,HEADERS_REELS};
+
+/* ------------------------------------------------------------------------------------
+   Structure XML du classeur réel « RHONE ALPES W34.xlsx », reproduite de toutes pièces :
+   toutes les cellules texte en `inlineStr`, aucun `sharedStrings.xml`, cibles de relations
+   ABSOLUES (« /xl/… »), en-tête en ligne 14 et « Target = 42.5% » en A1.
+   Le fichier réel ne doit jamais entrer dans le dépôt : seules sa forme et ses en-têtes
+   sont reproduits, les valeurs sont inventées.
+------------------------------------------------------------------------------------ */
+function buildInline(rows){
+  const xml=rows.map((cells,r)=>{
+    const body=cells.map((cell,c)=>{
+      if(cell===null||cell===undefined||cell==='')return'';
+      const ref=colName(c)+(r+1);
+      if(typeof cell==='object'&&cell.percent!==undefined)return'<c r="'+ref+'" s="1"><v>'+cell.percent+'</v></c>';
+      if(typeof cell==='number')return'<c r="'+ref+'"><v>'+cell+'</v></c>';
+      // Le S majuscule d'inlineStr est exactement ce qui faisait tomber le parseur V190.
+      return'<c r="'+ref+'" s="9" t="inlineStr"><is><t>'+esc(String(cell))+'</t></is></c>';
+    }).join('');
+    return'<row r="'+(r+1)+'">'+body+'</row>';
+  }).join('');
+  const sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+xml+'</sheetData></worksheet>';
+  return zip([
+    {name:'[Content_Types].xml',data:'<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>'},
+    // Cibles absolues, comme dans le classeur livré.
+    {name:'_rels/.rels',data:'<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="/xl/workbook.xml"/></Relationships>'},
+    {name:'xl/_rels/workbook.xml.rels',data:'<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="/xl/worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="/xl/styles.xml"/></Relationships>'},
+    {name:'xl/workbook.xml',data:'<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="RHONE ALPES W34" sheetId="1" r:id="rId1"/></sheets></workbook>'},
+    {name:'xl/styles.xml',data:STYLES},
+    {name:'xl/worksheets/sheet1.xml',data:sheet}
+    // Volontairement : aucun xl/sharedStrings.xml.
+  ]);
+}
+
+/* Reproduit aussi la volumétrie mesurée sur le fichier réel : 51 lignes utiles, 7 P1,
+   25 P2, 18 À surveiller, 1 sans data, 37 magasins avec PDM et les trois semaines,
+   33 avec évolution et sell-out, et 260 cellules texte toutes en inlineStr. */
+function sectorInlineStr(){
+  const rows=[['Target = 42.5%']];
+  // Bloc de titre au-dessus du tableau : lignes 2 à 13, quatre cellules texte chacune.
+  for(let r=2;r<=13;r++)rows.push(['Bloc '+r,'Colonne B','Colonne C','Colonne D']);
+  rows.push(HEADERS_REELS.slice());                      // en-tête en ligne 14
+  const plan=[['Prio 1',7],['Prio 2',25],['À surveiller',18],['Pas de data',1]];
+  const villes=['Villeneuve-Fictive','Bourg-Imaginaire','Sainte-Fable','Val-Chimère','Pont-Récit','Monts-Fictifs','Clair-Songe','Haute-Fable','Roche-Feinte','Bois-Fictif'];
+  const enseignes=['ED','CONFO','BTLEC EST','Darty','Boulanger'];
+  let n=0;
+  for(const [label,count] of plan)for(let i=0;i<count;i++,n++){
+    const avecPdm=n<37,avecEvol=n<33,avecCommentaire=n<41;
+    const ville=villes[n%villes.length]+' '+(Math.floor(n/villes.length)+1);
+    rows.push([label,enseignes[n%enseignes.length],ville,
+      avecPdm?{percent:(0.30+((n*7)%25)/100).toFixed(4)}:null,
+      avecEvol?{percent:'0.0'+(n%9)}:null,
+      avecPdm?{percent:(((n*7)%25)/100-0.125).toFixed(4)}:null,
+      avecPdm?{percent:(0.31+((n*5)%20)/100).toFixed(4)}:null,
+      avecPdm?{percent:(0.32+((n*5)%20)/100).toFixed(4)}:null,
+      avecPdm?{percent:(0.33+((n*5)%20)/100).toFixed(4)}:null,
+      null,null,null,
+      avecEvol?-1200-n*37:null,
+      avecEvol?-85-n*3:null,
+      avecEvol?-90-n*3:null,
+      avecEvol?-95-n*3:null,
+      avecCommentaire?'Remonter la PDM services':null]);
+  }
+  const texte=rows.reduce((total,r)=>total+r.filter(c=>typeof c==='string'&&c!=='').length,0);
+  return{bytes:buildInline(rows),
+    expected:{lignes:51,P1:7,P2:25,watch:18,nodata:1,avecPdm:37,avecEvolEtSellOut:33,cellulesTexte:texte,target:42.5,ligneEntete:14}};
+}
+
+/* Liste les entrées de l'archive en lisant le répertoire central : les noms y sont stockés
+   en clair, ce qui permet de vérifier ce que la fixture contient — et surtout ce qu'elle
+   ne contient pas, comme sharedStrings.xml. */
+function entryNames(bytes){
+  const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),out=[];
+  let eocd=-1;
+  for(let i=bytes.length-22;i>=0;i--)if(view.getUint32(i,true)===0x06054b50){eocd=i;break}
+  if(eocd<0)return out;
+  let p=view.getUint32(eocd+16,true);
+  const count=view.getUint16(eocd+10,true);
+  for(let n=0;n<count;n++){
+    if(view.getUint32(p,true)!==0x02014b50)break;
+    const nameLen=view.getUint16(p+28,true),extraLen=view.getUint16(p+30,true),commentLen=view.getUint16(p+32,true);
+    out.push(Buffer.from(bytes.subarray(p+46,p+46+nameLen)).toString('utf8'));
+    p+=46+nameLen+extraLen+commentLen;
+  }
+  return out;
+}
+module.exports={zip,build,buildInline,sectorW34,sectorReel,sectorInlineStr,entryNames,HEADERS,HEADERS_REELS};

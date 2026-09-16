@@ -9,10 +9,10 @@ const capacity = fs.readFileSync('daily-capacity.js','utf8');
 
 assert(index.includes("'./range-planner-v2.js','./store-opening-hours.js','./boulanger-default-hours.js','./store-photos.js','./terrain-planning-v1.js','./working-hours-end.js'"), 'les horaires enseigne et les photos doivent charger avant le module terrain');
 assert(sw.includes('"./terrain-planning-v1.js"'), 'le module terrain doit être disponible hors ligne');
-assert.strictEqual(version.displayVersion, '190');
-assert.strictEqual(version.latestBuild, '20260916-performance190');
-assert(index.includes("const BUILD_REV='20260916-performance190'"));
-assert(sw.includes('const BUILD_REV = "20260916-performance190"'));
+assert.strictEqual(version.displayVersion, '191');
+assert.strictEqual(version.latestBuild, '20260916-inlinestr191');
+assert(index.includes("const BUILD_REV='20260916-inlinestr191'"));
+assert(sw.includes('const BUILD_REV = "20260916-inlinestr191"'));
 assert(index.includes("'./planning-generation-controller.js','./planning-cascade-v181.js','./calendar-enhancements.js'"), 'la cascade doit prendre la main juste après le contrôleur planning');
 assert(sw.includes('"./planning-cascade-v181.js"'), 'le recalcul en cascade doit rester disponible hors ligne');
 assert(index.includes("'./sector-pilotage.js','./v182-fixes.js','./priority-campaign-v187.js','./auto-planning-fix.js'"), 'le moteur de priorités V188 doit charger après les règles géographiques et avant la finalisation runtime');
