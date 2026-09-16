@@ -7,7 +7,7 @@ const stores=[];
 for(let i=1;i<=15;i++)stores.push({id:'s'+i,enseigne:i===1?'Boulanger':'Darty',ville:i===1?'Lyon Test':'Ville '+i,priority:i===1?'manual':'normal'});
 const row=(i,prio,treated=false)=>({
   storeId:'s'+i,store:stores[i-1],retailer:stores[i-1].enseigne,site:stores[i-1].ville,prio,treated:treated?{at:'2026-09-16'}:null,
-  pdmYtd:i===15?null:30+i,deltaYtd:i===15?null:(30+i-42.5),evolYtd:i%2?-2:3,
+  pdmYtd:i===15?null:30+i,deltaYtd:i===15?null:(30+i-42.5),evolYtd:i%2?-2:3,underTarget:i===15?null:(30+i<42.5),
   weekly:{direction:i%2?'baisse':'hausse',delta:i%2?-3:2,volatile:false,points:[{week:'W33',value:35},{week:'W34',value:32}]},
   status:i===15?{label:'Pas de PDM dans le fichier',underTarget:null,gap:null}:{label:30+i<42.5?'Sous la cible YTD':'Au-dessus de la cible YTD',underTarget:30+i<42.5,gap:30+i-42.5},
   sellOutYtd:-100*i,sellOutWeeks:{W34:-10*i},visits:i===2?{lastVisit:'2026-09-15',count:2}:null,
