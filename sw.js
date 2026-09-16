@@ -1,4 +1,4 @@
-const BUILD_REV = "20260916-unifiedweek186";
+const BUILD_REV = "20260916-priority187";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -54,6 +54,7 @@ const OPTIONAL_SHELL = [
   "./home-refresh-v2.js",
   "./sector-pilotage.js",
   "./v182-fixes.js",
+  "./priority-campaign-v187.js",
   "./auto-planning-fix.js",
   "./connection-ui.js",
   "./update-manager.js",
