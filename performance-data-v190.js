@@ -94,7 +94,11 @@ function sheetRows(xml,strings,percent){
   for(const rowXml of xml.match(/<row\b[\s\S]*?<\/row>/g)||[]){
     const cells=[];
     for(const c of rowXml.match(/<c\b[\s\S]*?<\/c>|<c\b[^>]*\/>/g)||[]){
-      const ref=(c.match(/\sr="([A-Z]+\d+)"/)||[])[1],type=(c.match(/\st="([a-z]+)"/)||[])[1]||'n';
+      /* Le type se lit entre guillemets, sans présumer de la casse : le classeur réel écrit
+         `t="inlineStr"`, avec un S majuscule, et un motif en [a-z]+ le manquait entièrement.
+         Le type retombait alors sur numérique, aucun <v> n'existe pour ces cellules, et
+         tout le texte de la feuille devenait null — y compris la ligne d'en-tête. */
+      const ref=(c.match(/\sr="([A-Z]+\d+)"/)||[])[1],type=(c.match(/\st="([^"]+)"/)||[])[1]||'n';
       const style=Number((c.match(/\ss="(\d+)"/)||[])[1]);
       const i=ref?colIndex(ref):cells.length;
       let value=null;
