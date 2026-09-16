@@ -69,7 +69,9 @@ forbidMany('visit-history-delete.js',[
 requireMatch('visit-history-delete.js','observer historique',/historyObserver/);
 requireMatch('visit-history-delete.js','cible historique observée',/observedHistoryList/);
 
-forbidMany('auto-planning-fix.js',[['sauvegarde profil',/window\.saveProfile\s*=/],['override baseObj',/window\.baseObj\s*=/],['override havBase',/window\.havBase\s*=/],['base Francheville codée en dur',/Francheville/],['départ temporaire session',/chef_departure_override_v1/],['wrapper Google Agenda',/window\.syncGoogleCalendar\s*=(?!=)/],['token Google',/chef_secteur_google_token_v2/]]);
+/* (?!=) distingue une vraie affectation de === / == : le garde-fou protège les
+   propriétaires runtime sans prendre une simple lecture/comparaison pour un override. */
+forbidMany('auto-planning-fix.js',[['sauvegarde profil',/window\.saveProfile\s*=(?!=)/],['override baseObj',/window\.baseObj\s*=(?!=)/],['override havBase',/window\.havBase\s*=(?!=)/],['base Francheville codée en dur',/Francheville/],['départ temporaire session',/chef_departure_override_v1/],['wrapper Google Agenda',/window\.syncGoogleCalendar\s*=(?!=)/],['token Google',/chef_secteur_google_token_v2/]]);
 requireMatch('auto-planning-fix.js','application automatique Reliability',/R\.propose/);
 
 forbid('sector-admin.js','ancienne limite 500 magasins',/\.slice\(\s*0\s*,\s*500\s*\)/);
