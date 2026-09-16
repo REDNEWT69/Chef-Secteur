@@ -1,2 +1,9 @@
 __pycache__/
 *.pyc
+
+# Aucune donnée commerciale réelle dans ce dépôt public. Les classeurs hebdomadaires de
+# performance (« RHONE ALPES W34.xlsx » et suivants) restent sur l'appareil : ils sont lus
+# côté client et ne sont jamais versionnés. Les fixtures de test sont fabriquées en mémoire.
+*.xlsx
+*.xlsm
+*.xls
