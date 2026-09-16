@@ -34,7 +34,7 @@ assert.equal(result.ok,true);
 assert.equal(result.done,2,'deux P1 sont déjà réalisées');
 assert.equal(result.planned,5,'les cinq Boulanger restants doivent être planifiés');
 assert.equal(result.pending,0,'aucun P1 résolu ne doit rester sans date avant le 22/09');
-assert.deepEqual(result.unresolved,[]);
+assert.equal(result.unresolved.length,0,'aucun magasin P1 ne doit rester introuvable ou sans créneau');
 
 const archive=JSON.parse(storage.getItem('chef_sector_plan_archive_v1'));
 const allPlans={'2026-09-14':state.plan,'2026-09-21':archive['2026-09-21'].plan};
