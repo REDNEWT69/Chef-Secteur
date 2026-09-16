@@ -143,25 +143,26 @@
     }
 
     /* Le recalcul reste utile quand la semaine est déjà entamée, mais ce n'est pas un
-       deuxième bouton de génération. Il vit donc dans une action corrective repliée. */
-    let repair=document.getElementById('planningRepairDetails');
-    if(!repair){
-      repair=document.createElement('details');repair.id='planningRepairDetails';repair.className='planningChoice';
-      repair.style.marginTop='10px';
-      repair.innerHTML='<summary><span>Ajuster un planning déjà généré</span><small>Après génération</small></summary><div class="planningChoiceBody" id="planningRepairBody"></div>';
-      const anchor=document.getElementById('planningGenerateStatus')||hint;
-      anchor.insertAdjacentElement('afterend',repair);
+       deuxième bouton de génération. On le range dans la feuille Réglages, où il garde
+       son rôle correctif sans concurrencer l'action principale du planning. */
+    const settings=document.getElementById('planningSettings');
+    if(settings){
+      let repair=document.getElementById('planningRepairSettings');
+      if(!repair){
+        repair=document.createElement('div');repair.id='planningRepairSettings';
+        repair.style.cssText='margin-top:14px;padding-top:14px;border-top:1px solid #e5e7eb';
+        repair.innerHTML='<div style="font-weight:800;font-size:13px;margin-bottom:4px">Ajuster un planning déjà généré</div><div class="tiny" style="margin-bottom:8px">À utiliser seulement si la semaine a déjà commencé ou si une visite doit être replacée.</div>';
+        settings.appendChild(repair);
+      }
+      let recalc=document.getElementById('recalculateRemainingWeekBtn');
+      if(!recalc){
+        recalc=document.createElement('button');recalc.type='button';recalc.id='recalculateRemainingWeekBtn';recalc.className='secondary full';
+        recalc.textContent='↻ Recalculer le reste du planning';
+        recalc.style.width='100%';recalc.style.minHeight='46px';
+        recalc.addEventListener('click',function(){window.storeRunnerRecalculateRemainingWeek()});
+      }
+      if(recalc.parentNode!==repair)repair.appendChild(recalc);
     }
-
-    const body=repair.querySelector('#planningRepairBody')||repair;
-    let recalc=document.getElementById('recalculateRemainingWeekBtn');
-    if(!recalc){
-      recalc=document.createElement('button');recalc.type='button';recalc.id='recalculateRemainingWeekBtn';recalc.className='secondary full';
-      recalc.textContent='↻ Recalculer le reste de la semaine';
-      recalc.style.width='100%';recalc.style.minHeight='46px';
-      recalc.addEventListener('click',function(){window.storeRunnerRecalculateRemainingWeek()});
-    }
-    if(recalc.parentNode!==body)body.appendChild(recalc);
 
     /* « Escargot » reste une capacité avancée 3 semaines, pas une génération concurrente
        de la semaine courante. Le libellé l'explique dans le panneau multi-semaines. */
