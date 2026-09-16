@@ -3,7 +3,9 @@
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 const ARCHIVE_KEY='chef_sector_plan_archive_v1';
 const RANGE_KEY='chef_sector_range_v1';
-const DEFAULT_RULES={darty:2,boulanger:2,carrefour:2,but:2,conforama:2};
+/* Carrefour repasse à 1 par défaut en V189. Un magasin précis peut être passé à 2
+   depuis sa fiche grâce à visitCreditOverride. */
+const DEFAULT_RULES={darty:2,boulanger:2,but:2,conforama:2};
 const OBSERVED_UI_IDS=['summary','smartBrief','premiumHomeV2','proMonthBody','storeQuickSheet'];
 let patchScheduled=false,uiObserver=null;
 
@@ -11,12 +13,16 @@ function norm(v){try{return String(v||'').toLowerCase().normalize('NFD').replace
 function storage(){try{return window.__chefStorage||window.localStorage}catch(e){return null}}
 function rules(){
   const configured=(window.state&&state.settings&&state.settings.visitCreditsByBrand)||{};
-  return Object.assign({},DEFAULT_RULES,configured);
+  const map=Object.assign({},DEFAULT_RULES,configured);
+  /* L'ancienne valeur Carrefour x2 venait du code, pas d'un choix utilisateur. La V189
+     force donc le défaut enseigne à 1 ; le double comptage se décide magasin par magasin. */
+  map.carrefour=1;
+  return map;
 }
 function ensureRules(){
   if(!window.state)return false;
   if(!state.settings)state.settings={};
-  const current=state.settings.visitCreditsByBrand||{},merged=Object.assign({},DEFAULT_RULES,current);
+  const current=state.settings.visitCreditsByBrand||{},merged=Object.assign({},DEFAULT_RULES,current,{carrefour:1});
   if(JSON.stringify(current)===JSON.stringify(merged))return false;
   state.settings.visitCreditsByBrand=merged;
   try{if(typeof window.save==='function')window.save()}catch(e){console.warn('Crédits de visite non persistés',e)}
@@ -24,23 +30,23 @@ function ensureRules(){
 }
 function visitCredit(store){
   if(!store)return 0;
+  const own=Number(store.visitCreditOverride);
+  if(own===1||own===2)return own;
   const brand=norm(store.enseigne),map=rules();
   if(Object.prototype.hasOwnProperty.call(map,brand))return Math.max(1,Number(map[brand])||1);
-  for(const key of Object.keys(map)){const k=norm(key);if(k&&new RegExp('(^| )'+k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'( |$)').test(brand))return Math.max(1,Number(map[key])||1)}
+  for(const key of Object.keys(map)){
+    const k=norm(key);if(!k)continue;
+    const safe=k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    if(new RegExp('(^| )'+safe+'( |$)').test(brand))return Math.max(1,Number(map[key])||1)
+  }
   return 1;
 }
 function routeCredits(route){return (route||[]).reduce((n,s)=>n+visitCredit(s),0)}
 function isBoulanger(store){const brand=norm(store&&store.enseigne);return /(^| )boulanger( |$)/.test(brand)}
 /*
- * Les crédits métier restent inchangés : Boulanger vaut toujours 2 visites comptabilisées.
- * Pour la capacité du générateur uniquement, une journée contenant Boulanger doit réserver
- * tout le budget sauf une unité. Avec un plafond de 4, le moteur raisonne donc comme si le
- * Boulanger occupait 3 unités de capacité : il peut ajouter un seul magasin à 1 crédit,
- * mais jamais un second Boulanger, un BUT ou une autre enseigne à 2 crédits.
- *
- * Le moteur semaine est explicitement signalé par planning-generation-controller.js.
- * Le moteur période désactive son bouton pendant son travail ; ce signal reste local à la
- * génération et évite de modifier les données ou les crédits affichés à l'utilisateur.
+ * Boulanger garde sa réserve de capacité uniquement quand CE magasin compte réellement
+ * double. Si l'utilisateur règle un Boulanger précis à 1 visite, le planificateur respecte
+ * aussi ce choix au lieu de conserver une règle cachée contradictoire.
  */
 function planningCapacityActive(){
   try{
@@ -51,7 +57,7 @@ function planningCapacityActive(){
 }
 function planningVisitCredit(store){
   const actual=visitCredit(store);
-  if(!isBoulanger(store)||!planningCapacityActive())return actual;
+  if(actual<=1||!isBoulanger(store)||!planningCapacityActive())return actual;
   const max=Math.max(1,Math.min(8,Number(window.state&&state.settings&&state.settings.maxVisitsPerDay)||4));
   return Math.max(actual,Math.max(1,max-1));
 }
@@ -135,7 +141,7 @@ function patchProMonth(){
   const month=visibleMonth();if(!month)return;const stats=monthArchiveStats(month.year,month.month),head=document.querySelector('#proMonthBody .proMonthHead span');setText(head,stats.visits+' visites comptabilisées · '+stats.uniqueStores+' magasins distincts');const first=document.querySelector('#proMonthMetrics > div:first-child');if(first){setText(first.querySelector('b'),String(stats.visits));setText(first.querySelector('span'),'visites comptabilisées')}document.querySelectorAll('#proMonthBody .proMore').forEach(e=>{if(/visites?/i.test(e.textContent||''))e.textContent=e.textContent.replace(/visites?/i,'magasins')});
 }
 function patchQuickStore(){
-  const sheet=document.getElementById('storeQuickSheet'),start=document.getElementById('srQuickStart');if(!sheet||!start||!start.dataset)return;const id=start.dataset.srStart;if(!id)return;let store=null;try{store=(state.stores||[]).find(s=>String(s.id)===String(id))}catch(e){}if(!store)return;const address=document.getElementById('sqAddress');if(!address)return;let badge=document.getElementById('sqVisitCredit');if(!badge){badge=document.createElement('div');badge.id='sqVisitCredit';badge.className='tiny';badge.style.marginTop='6px';address.insertAdjacentElement('afterend',badge)}const c=visitCredit(store);setText(badge,c>1?'Ce passage compte pour '+c+' visites (Blanc + Brun).':'Ce passage compte pour 1 visite.');
+  const sheet=document.getElementById('storeQuickSheet'),start=document.getElementById('srQuickStart');if(!sheet||!start||!start.dataset)return;const id=start.dataset.srStart;if(!id)return;let store=null;try{store=(state.stores||[]).find(s=>String(s.id)===String(id))}catch(e){}if(!store)return;const address=document.getElementById('sqAddress');if(!address)return;let badge=document.getElementById('sqVisitCredit');if(!badge){badge=document.createElement('div');badge.id='sqVisitCredit';badge.className='tiny';badge.style.marginTop='6px';address.insertAdjacentElement('afterend',badge)}const c=visitCredit(store),families=(Array.isArray(store.products)?store.products:[]).filter(x=>x&&x!=='À confirmer');setText(badge,'Ce passage compte pour '+c+' visite'+(c>1?'s':'')+(families.length?' · Familles : '+families.join(' + '):''));
 }
 function patchVisibleUi(){if(!window.state)return;patchSummary();patchLegacyBrief();patchPremiumHome();patchProMonth();patchQuickStore()}
 function schedulePatch(){if(patchScheduled)return;patchScheduled=true;const run=()=>{patchScheduled=false;patchVisibleUi()};if(typeof requestAnimationFrame==='function')requestAnimationFrame(run);else setTimeout(run,0)}
