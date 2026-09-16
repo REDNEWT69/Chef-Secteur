@@ -24,19 +24,11 @@ function pct(v){return v==null?'—':(Math.round(v*10)/10).toString().replace('.
 function euro(v){return v==null?'—':(v<0?'−':'')+Math.abs(Math.round(v)).toLocaleString('fr-FR')+' €'}
 function signed(v){return v==null?'—':(v>0?'+':v<0?'−':'')+(Math.round(Math.abs(v)*10)/10).toString().replace('.',',')+' pt'}
 
-/* La dernière visite du magasin, lue chez ses propriétaires : on ne recalcule rien ici. */
+/* « Déjà visité » a une seule définition, tenue par la couche données : une visite au
+   statut `completed`. Un brouillon n'est pas un passage fait. */
 function visitsFor(storeId){
-  if(!storeId)return null;
-  try{
-    const b=(root.state&&root.state.businessV2)||{};
-    const done=(b.visits||[]).filter(v=>String(v.storeId)===String(storeId)&&v.status==='completed');
-    done.sort((a,b2)=>text(b2.completedDate).localeCompare(text(a.completedDate)));
-    const legacy=((root.state&&root.state.visits)||{})[storeId]||{};
-    const history=Array.isArray(legacy.history)?legacy.history.slice().sort():[];
-    const last=text(done[0]&&done[0].completedDate)||text(legacy.lastVisit)||history[history.length-1]||'';
-    const count=done.length||history.length;
-    return last||count?{lastVisit:last,count}:null;
-  }catch(e){return null}
+  const P=D();
+  try{return P?P.completedVisitsFor(root.state,storeId):null}catch(e){return null}
 }
 
 function ensureStyle(){
@@ -106,14 +98,18 @@ function rowCard(r,options){
   head.append(el('b',text(r.retailer)+' · '+text(r.site)));
   box.append(head);
   const bits=[];
-  bits.push('PDM YTD '+pct(r.pdmYtd)+(r.pdmYtd==null?'':' · écart cible '+signed(r.deltaYtd)));
-  const semaines=Object.keys(r.weeks||{}).sort();
-  if(semaines.length)bits.push(semaines.map(w=>w+' '+pct(r.weeks[w])).join(' · '));
-  if(r.evolYtd!=null)bits.push('Évolution vs N-1 : '+signed(r.evolYtd));
+  /* Le statut vient du YTD, seul agrégat stable. */
+  bits.push('Statut YTD : '+(r.status?r.status.label:'—')+' · PDM YTD '+pct(r.pdmYtd)+(r.pdmYtd==null?'':' · écart cible '+signed(r.deltaYtd)));
+  const w=r.weekly;
+  if(w&&w.points&&w.points.length){
+    bits.push('Tendance hebdo (indicative, hors classement) : '+w.points.map(p=>p.week+' '+pct(p.value)).join(' · ')
+      +(w.delta==null?'':' → '+w.direction+' '+signed(w.delta))+(w.volatile?' · amplitude '+w.amplitude+' pts, très volatile':''));
+  }
+  if(r.evolYtd!=null)bits.push('Évolution YTD vs N-1 : '+signed(r.evolYtd));
   if(r.sellOutYtd!=null||r.sellOutWeek!=null)bits.push('Sell-out : '+euro(r.sellOutYtd)+' YTD · '+euro(r.sellOutWeek)+' semaine');
-  if(r.trend!=null&&r.previousWeek)bits.push('Depuis '+r.previousWeek+' : '+signed(r.trend)+' — évolution constatée, sans lien de cause établi');
-  if(r.visits&&r.visits.lastVisit)bits.push('Dernière visite '+r.visits.lastVisit+' · '+r.visits.count+' visite'+(r.visits.count>1?'s':''));
-  else bits.push('Aucune visite enregistrée');
+  if(r.trend!=null&&r.previousWeek)bits.push('PDM YTD depuis '+r.previousWeek+' : '+signed(r.trend)+' — association de dates, sans lien de cause établi');
+  if(r.visits&&r.visits.lastVisit)bits.push('Dernière visite terminée '+r.visits.lastVisit+' · '+r.visits.count+' visite'+(r.visits.count>1?'s':''));
+  else bits.push('Aucune visite terminée enregistrée');
   if(!r.storeId)bits.push('Pas encore rattaché à un magasin du secteur');
   if(r.comment)bits.push('Mission : '+r.comment);
   box.append(el('small',bits.join('\n'),'srPerfMeta'));
@@ -157,24 +153,39 @@ function render(){
   kpi(kpis,board.counts.P1,'Prio 1');kpi(kpis,board.counts.P2,'Prio 2');
   kpi(kpis,board.counts.watch,'À surveiller');kpi(kpis,board.underTarget.length,'sous la cible');
   const notes=[board.counts.nodata+' sans data',board.counts.unmatched+' non rattaché'+(board.counts.unmatched>1?'s':'')];
-  kpis.append(el('p',notes.join(' · ')+' · les magasins sans PDM ne sont comptés ni au-dessus ni en dessous de la cible.','srPerfNote'));
+  if(board.importsThisWeek>1)notes.push(board.importsThisWeek+' imports pour cette semaine, tous conservés — la dernière valeur connue est affichée');
+  kpis.append(el('p',notes.join(' · ')+' · statut et écart calculés sur le YTD ; les magasins sans PDM ne sont comptés ni au-dessus ni en dessous de la cible.','srPerfNote'));
   body.append(kpis);
+  const cmp=board.comparison;
   const sections=[
-    ['À traiter en priorité',board.rows.filter(r=>r.prio==='P1'),{actions:true,week:board.week,resolve:true}],
-    ['Prio 2',board.rows.filter(r=>r.prio==='P2'),{week:board.week,resolve:true}],
-    ['Visités, PDM sous la cible',board.visitedLowPdm,{week:board.week}],
-    ['Non visités, PDM au-dessus de la cible',board.notVisitedGoodPdm,{week:board.week}],
-    ['À surveiller',board.rows.filter(r=>r.prio==='watch'),{week:board.week}],
-    ['Sans data',board.rows.filter(r=>r.prio==='nodata'),{week:board.week}]
+    ['À traiter en priorité',board.rows.filter(r=>r.prio==='P1'),{actions:true,week:board.week,resolve:true},''],
+    ['Prio 2',board.rows.filter(r=>r.prio==='P2'),{week:board.week,resolve:true},''],
+    ['À surveiller',board.rows.filter(r=>r.prio==='watch'),{week:board.week},''],
+    ['Sans data',board.rows.filter(r=>r.prio==='nodata'),{week:board.week},'']
   ];
-  for(const [title,rows,opts] of sections){
+  /* Les deux vues comparatives n'apparaissent qu'à partir de deux semaines : sur un seul
+     snapshot il n'y a pas d'avant, donc rien à comparer. */
+  if(cmp.available){
+    const effectif=' · '+cmp.sample.visited+' visités contre '+cmp.sample.notVisited+' non visités, sur '+cmp.weeksCompared+' semaines';
+    const note=cmp.wording+effectif;
+    sections.splice(2,0,
+      ['Visités, PDM YTD sous la cible',cmp.visitedLowPdm,{week:board.week},note],
+      ['Non visités, PDM YTD au-dessus de la cible',cmp.notVisitedGoodPdm,{week:board.week},note]);
+  }
+  for(const [title,rows,opts,note] of sections){
     if(!rows.length)continue;
     const section=el('section',undefined,'srPerfSection');
     section.append(el('h3',title+' ('+rows.length+')'));
+    if(note)section.append(el('p',note,'srPerfNote'));
     for(const r of rows.slice(0,40))section.append(rowCard(r,opts));
     if(rows.length>40)section.append(el('p','… et '+(rows.length-40)+' autres.','srPerfNote'));
     body.append(section);
   }
+  if(!cmp.available)body.append(el('p','Comparaison visités / non visités : '+cmp.reason+' Elle apparaîtra au deuxième import.','srPerfNote'));
+  else if(cmp.trendVisited&&cmp.trendNotVisited&&cmp.trendVisited.delta!=null&&cmp.trendNotVisited.delta!=null)
+    body.append(el('p','PDM YTD moyenne : '+signed(cmp.trendVisited.delta)+' chez '+cmp.trendVisited.n+' magasins visités, '
+      +signed(cmp.trendNotVisited.delta)+' chez '+cmp.trendNotVisited.n+' non visités. Association observée sur '+cmp.weeksCompared
+      +' semaines, sans lien de cause établi.','srPerfNote'));
 }
 function ensureSheet(){
   if(sheet)return sheet;
@@ -215,18 +226,20 @@ function renderStoreCard(){
   const head=el('div');head.append(tag(r.prio),el('b','Performance '+last.week));
   card.append(head);
   const line=(t)=>card.append(el('span',t,'srPerfCardRow'));
+  const st=P.statusOf(r,last.targetPdm);
+  line('Statut YTD : '+st.label);
   line('PDM YTD '+pct(r.pdmYtd)+' · cible '+pct(last.targetPdm)+(r.pdmYtd==null?' — pas de PDM dans le fichier':' · écart '+signed(r.deltaYtd)));
-  const semaines=Object.keys(r.weeks||{}).sort();
-  if(semaines.length)line(semaines.map(w=>w+' '+pct(r.weeks[w])).join(' · '));
-  if(r.evolYtd!=null)line('Évolution vs N-1 : '+signed(r.evolYtd));
+  const w=P.weeklyTrend(r);
+  if(w.points.length)line('Tendance hebdo (indicative) : '+w.points.map(p=>p.week+' '+pct(p.value)).join(' · ')+(w.delta==null?'':' → '+w.direction));
+  if(r.evolYtd!=null)line('Évolution YTD vs N-1 : '+signed(r.evolYtd));
   if(r.sellOutYtd!=null||r.sellOutWeek!=null)line('Sell-out : '+euro(r.sellOutYtd)+' YTD · '+euro(r.sellOutWeek)+' semaine');
   if(history.length>1){
     line('Historique : '+history.map(h=>h.week+' '+pct(h.row.pdmYtd)).join(' → '));
     const first=history[0].row;
-    if(first.pdmYtd!=null&&r.pdmYtd!=null)line('Écart '+history[0].week+' → '+last.week+' : '+signed(Math.round((r.pdmYtd-first.pdmYtd)*10)/10)+' — évolution constatée, pas un effet attribué à une visite');
+    if(first.pdmYtd!=null&&r.pdmYtd!=null)line('PDM YTD '+history[0].week+' → '+last.week+' : '+signed(Math.round((r.pdmYtd-first.pdmYtd)*10)/10)+' — association de dates, pas un effet attribué à une visite');
   }
   const v=visitsFor(storeId);
-  line(v&&v.lastVisit?'Dernière visite '+v.lastVisit+' · '+v.count+' visite'+(v.count>1?'s':''):'Aucune visite enregistrée');
+  line(v&&v.lastVisit?'Dernière visite terminée '+v.lastVisit+' · '+v.count+' visite'+(v.count>1?'s':''):'Aucune visite terminée enregistrée');
   const treated=P.isTreated(db(),last.week,storeId);
   if(treated)line('Marqué traité pour '+last.week+' le '+treated.at);
   if(r.comment)line('Mission : '+r.comment);

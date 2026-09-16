@@ -129,7 +129,7 @@ const db2=new DB();
 db2.setItem('sector_planner_universal_v1','{"stores":[]}');
 db2.setItem(P.STORE_KEY,'donnée illisible {');
 const recupere=P.readStore(db2);
-assert.deepEqual(recupere,{version:1,snapshots:{},mapping:{},treated:{}},'un stockage illisible repart vide, sans lever');
+assert.deepEqual(recupere,{version:2,imports:[],mapping:{},treated:{}},'un stockage illisible repart vide, sans lever');
 P.saveSnapshot(db2,w34);
 assert.equal(db2.getItem('sector_planner_universal_v1'),'{"stores":[]}','les données utilisateur ne sont pas touchées');
 assert.deepEqual(db2.removed,[],'rien n’est supprimé du stockage');
@@ -141,9 +141,11 @@ assert.equal(P.weeks(db2).length,1);
   const vieux=new DB();
   vieux.setItem(P.STORE_KEY,JSON.stringify({version:1,snapshots:{W34:P.snapshot(db,'W34')},mapping:{'a|b':'s1'}}));
   const relu=P.readStore(vieux);
+  assert.equal(relu.version,2,'la base v1 est relue en v2');
   assert.deepEqual(relu.treated,{},'la clé absente devient un objet vide');
   assert.deepEqual(relu.mapping,{'a|b':'s1'},'et le mapping existant survit');
   assert.equal(P.weeks(vieux).length,1,'les semaines déjà importées survivent');
+  assert.equal(relu.imports[0].rows.length,51,'aucune ligne perdue à la migration');
 
   const avantPlan=JSON.stringify({stores,mapping:P.readStore(db).mapping});
   P.markTreated(db,'W34','s1','2026-09-15');
@@ -211,5 +213,132 @@ for(const reglage of ['visitCreditOverride=','products=','visitCreditsByBrand=']
   assert.ok(!fs.existsSync(path.join(__dirname,'helpers','sector.xlsx')),'la fixture reste générée, jamais déposée');
 })();
 
+// =====================================================================================
+// Compléments V190 validés sur fichier réel et sauvegarde (issue #253)
+// =====================================================================================
+
+// --- « Déjà visité » : completed uniquement, jamais draft ----------------------------
+(function jamaisDraft(){
+  const etat={businessV2:{visits:[
+    {id:'v1',storeId:'s1',status:'draft',completedDate:null,updatedAt:'2026-09-16T09:00:00Z'},
+    {id:'v2',storeId:'s2',status:'completed',completedDate:'2026-09-15',updatedAt:'2026-09-15T18:00:00Z'},
+    {id:'v3',storeId:'s2',status:'draft',completedDate:null,updatedAt:'2026-09-16T09:00:00Z'}
+  ],actions:[]},visits:{}};
+  assert.equal(P.completedVisitsFor(etat,'s1'),null,'un brouillon seul ne compte jamais comme magasin visité');
+  const v2=P.completedVisitsFor(etat,'s2');
+  assert.equal(v2.lastVisit,'2026-09-15','seule la visite terminée est retenue');
+  assert.equal(v2.count,1,'et le brouillon ouvert à côté ne gonfle pas le compteur');
+  // Le repli historique ne compte que des dates de visites terminées.
+  assert.equal(P.completedVisitsFor({visits:{s3:{history:['2026-09-01'],lastVisit:'2026-09-01'}}},'s3').lastVisit,'2026-09-01');
+  // Et le croisement s'appuie sur la même règle.
+  const vue=P.crossVisits(db,{stores,week:'W34',state:etat});
+  const s1=vue.rows.find(r=>String(r.storeId)==='s1');
+  assert.ok(!s1.visits,'dans le pilotage non plus, un brouillon n’est pas une visite');
+  console.error('  Déjà visité : brouillon ignoré, visite terminée retenue');
+})();
+
+// --- Statut et écart sur le YTD ; les semaines ne servent qu'à la tendance -----------
+(function statutYtd(){
+  const target=42.5;
+  const ytdBas={pdmYtd:30,deltaYtd:-12.5,weeks:{W32:70,W33:71,W34:72}};
+  const ytdHaut={pdmYtd:50,deltaYtd:7.5,weeks:{W32:5,W33:6,W34:7}};
+  assert.equal(P.statusOf(ytdBas,target).underTarget,true,'des semaines brillantes ne sauvent pas un YTD sous la cible');
+  assert.equal(P.statusOf(ytdHaut,target).underTarget,false,'des semaines faibles ne condamnent pas un YTD au-dessus');
+  assert.equal(P.statusOf(ytdBas,target).basedOn,'ytd');
+  assert.equal(P.statusOf({pdmYtd:null,deltaYtd:null,weeks:{W34:40}},target).underTarget,null,'sans PDM YTD, le statut reste indéterminé');
+  // Le classement suit le YTD, pas la semaine.
+  const tri=P.sortByPriority([
+    {prio:'P1',deltaYtd:-2,weeks:{W34:10}},
+    {prio:'P1',deltaYtd:-9,weeks:{W34:90}}
+  ]);
+  assert.equal(tri[0].deltaYtd,-9,'le plus mauvais YTD passe devant, quelle que soit sa semaine');
+  // La tendance hebdomadaire est étiquetée comme telle.
+  const t=P.weeklyTrend({weeks:{W32:31,W33:32,W34:33}});
+  assert.equal(t.usage,'tendance');assert.equal(t.direction,'hausse');assert.equal(t.delta,2);
+  const volatile=P.weeklyTrend({weeks:{W32:20,W33:55,W34:45}});
+  assert.equal(volatile.volatile,true,'une amplitude de plus de 20 points est signalée comme volatile');
+  assert.equal(P.weeklyTrend({weeks:{W34:33}}).delta,null,'une seule semaine ne fait pas une tendance');
+  console.error('  Statut YTD : un YTD à 30 % reste sous la cible même avec W32-W34 à 70 %');
+})();
+
+// --- Comparaisons : seulement après plusieurs snapshots, avec effectif ---------------
+(function comparaisons(){
+  const une=new DB();
+  P.saveSnapshot(une,w34);
+  const seul=P.dashboard(une,{stores,visitsFor:id=>id==='s2'?{lastVisit:'2026-09-15',count:1}:null});
+  assert.equal(seul.comparison.available,false,'une seule semaine : pas de comparaison');
+  assert.deepEqual(seul.visitedLowPdm,[],'et rien n’est affiché');
+  assert.deepEqual(seul.notVisitedGoodPdm,[]);
+  assert.ok(/pas encore d’avant/.test(seul.comparison.reason),'la raison est dite à l’utilisateur');
+
+  const deux=P.dashboard(db,{stores,week:'W35',visitsFor:id=>id==='s2'?{lastVisit:'2026-09-15',count:1}:null});
+  assert.equal(deux.comparison.available,true,'deux semaines : la comparaison devient légitime');
+  assert.equal(deux.comparison.weeksCompared,2,'le nombre de semaines comparées est annoncé');
+  assert.ok(Number.isFinite(deux.comparison.sample.visited)&&Number.isFinite(deux.comparison.sample.notVisited),'l’effectif comparé est chiffré');
+  /* Ce qui est interdit, c'est d'affirmer une causalité — pas de la démentir. « sans lien
+     de cause établi » est justement le démenti attendu. */
+  assert.ok(/association/.test(deux.comparison.wording),'la formulation annonce une association');
+  assert.ok(/sans lien de cause/.test(deux.comparison.wording),'et dément explicitement la causalité');
+  assert.ok(!/(grâce à|a fait (monter|baisser)|provoqu|entraîn|à cause de|permet de faire|augmente la pdm)/i.test(deux.comparison.wording),
+    'aucune tournure n’attribue l’évolution à la visite');
+  console.error('  Comparaison : indisponible à 1 semaine, disponible à 2 avec effectif '+JSON.stringify(deux.comparison.sample));
+})();
+
+// --- P1/P2/À surveiller ne touchent jamais store.priority ----------------------------
+(function prioriteStructurelle(){
+  const avec=secteur().map((s,i)=>Object.assign(s,{priority:i+1}));
+  const empreinte=JSON.stringify(avec);
+  P.crossVisits(db,{stores:avec,week:'W34'});
+  P.dashboard(db,{stores:avec,week:'W34'});
+  P.planningBoost(db,'s1',avec);
+  P.historyForStore(db,'s1',avec);
+  assert.equal(JSON.stringify(avec),empreinte,'aucun magasin n’est muté par le pilotage');
+  for(let i=0;i<avec.length;i++)assert.equal(avec[i].priority,i+1,'store.priority reste la priorité structurelle');
+  const src=require('fs').readFileSync(__dirname+'/../performance-data-v190.js','utf8');
+  const ui=require('fs').readFileSync(__dirname+'/../performance-ui-v190.js','utf8');
+  for(const fichier of [src,ui])assert.ok(!/\.priority\s*=[^=]/.test(fichier),'aucun module V190 n’écrit store.priority');
+})();
+
+// --- Influence planning : génération explicite, snapshot le plus récent seulement -----
+(function influencePlanning(){
+  assert.equal(P.planningBoost(new DB(),'s1',stores),0,'sans import, aucun coup de pouce');
+  const boost=P.planningBoost(db,'s1',stores);
+  const ligne=P.crossVisits(db,{stores}).rows.find(r=>String(r.storeId)==='s1');
+  assert.equal(boost,P.PLANNING_BOOST[ligne.prio],'le coup de pouce suit la priorité du snapshot le plus récent');
+  assert.ok(P.PLANNING_BOOST.P1>P.PLANNING_BOOST.P2,'P1 pèse plus que P2');
+  assert.equal(P.PLANNING_BOOST.watch,0,'« à surveiller » reste informatif, sans effet sur le planning');
+  assert.equal(P.PLANNING_BOOST.nodata,0);
+  // Un P1 déjà traité cette semaine ne se fait plus pousser.
+  P.markTreated(db,P.latestSnapshot(db).week,'s1','2026-09-22');
+  assert.equal(P.planningBoost(db,'s1',stores),0,'un magasin déjà traité ne repasse pas devant');
+  P.markTreated(db,P.latestSnapshot(db).week,'s1',null);
+  // Le planificateur ne consulte cette valeur que dans son classement de génération.
+  const planner=require('fs').readFileSync(__dirname+'/../range-planner-v2.js','utf8');
+  assert.ok(/function performanceBoost\(/.test(planner)&&/scoreOf\(s\)\{[^}]*performanceBoost\(s\)/.test(planner),
+    'le planificateur lit la performance dans scoreOf, son seul point de classement');
+  assert.ok(!/performanceBoost/.test(planner.split('function scoreOf')[0].split('function performanceBoost')[0]),
+    'et nulle part avant, donc pas au chargement');
+  console.error('  Planning : coup de pouce '+boost+' pour un P1, 0 une fois traité, 0 sans import');
+})();
+
+// --- Semaines chevauchantes : tout gardé, une seule valeur affichée ------------------
+(async function chevauchement(){
+  const dbl=new DB();
+  const premier=await P.parseWorkbook(F.sectorW34('W34').bytes,{week:'W34',now:'2026-09-16T08:00:00Z'});
+  const corrige=await P.parseWorkbook(F.sectorW34('W34').bytes,{week:'W34',now:'2026-09-16T19:00:00Z'});
+  corrige.targetPdm=43.1;
+  P.saveSnapshot(dbl,premier);P.saveSnapshot(dbl,corrige);
+  assert.deepEqual(P.weeks(dbl),['W34'],'une seule semaine à l’affichage, pas de doublon');
+  assert.equal(P.importCount(dbl,'W34'),2,'les deux imports sont conservés pour l’audit');
+  assert.equal(P.snapshot(dbl,'W34').targetPdm,43.1,'la dernière valeur connue est celle qui s’affiche');
+  assert.equal(P.allImports(dbl,'W34')[0].targetPdm,42.5,'le premier import reste lisible tel quel');
+  assert.deepEqual(dbl.removed,[],'rien n’est supprimé');
+  const board=P.dashboard(dbl,{stores});
+  assert.equal(board.importsThisWeek,2,'le tableau de bord dit qu’il y a eu deux imports');
+  assert.equal(board.counts.total,51,'et ne compte les lignes qu’une fois');
+  console.error('  Chevauchement W34 : 2 imports conservés, 1 semaine affichée, cible retenue 43,1 %');
+})().then(()=>{
+
 console.log('PASS: import .xlsx local, 51 lignes et 7 P1 sur le fichier type, PDM absente jamais fabriquée, W34 et W35 coexistent, mapping conservé, réglages V189 intacts, P1 > P2 > à surveiller, croisement visites sans causalité.');
+});
 })().catch(e=>{console.error(e);process.exit(1)});

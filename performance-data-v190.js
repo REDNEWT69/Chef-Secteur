@@ -230,34 +230,65 @@ async function parseWorkbook(input,options){return parseRows(await readSheet(inp
 function weekFromName(name){const m=norm(name).match(/(?:^|\s)w(\d{1,2})(?:\s|\.|$)/);return m?'W'+m[1]:''}
 
 /* ------------------------------------------------------------- stockage local ------- */
-function emptyStore(){return{version:1,snapshots:{},mapping:{},treated:{}}}
+function emptyStore(){return{version:2,imports:[],mapping:{},treated:{}}}
+/* Migration non destructive v1 → v2. La v1 gardait une seule entrée par semaine, donc un
+   second fichier couvrant la même semaine écrasait le premier. La v2 conserve chaque
+   import tel quel pour l'audit ; l'affichage n'en retient qu'un par semaine. Rien n'est
+   supprimé : une base v1 est relue en v2 sans perdre une ligne. */
+function migrate(data){
+  const out=emptyStore();
+  if(!data||typeof data!=='object')return out;
+  if(data.mapping&&typeof data.mapping==='object')out.mapping=data.mapping;
+  if(data.treated&&typeof data.treated==='object')out.treated=data.treated;
+  if(Array.isArray(data.imports))out.imports=data.imports.filter(x=>x&&x.week);
+  else if(data.snapshots&&typeof data.snapshots==='object')
+    out.imports=Object.keys(data.snapshots).map(w=>Object.assign({},data.snapshots[w],{week:data.snapshots[w].week||w})).filter(x=>x.week);
+  out.imports=out.imports.slice().sort((a,b)=>text(a.importedAt).localeCompare(text(b.importedAt)));
+  return out;
+}
 function readStore(db){
-  try{
-    const raw=db&&db.getItem(STORE_KEY);
-    const data=raw?JSON.parse(raw):null;
-    if(!data||typeof data!=='object')return emptyStore();
-    return{version:1,snapshots:data.snapshots&&typeof data.snapshots==='object'?data.snapshots:{},
-           mapping:data.mapping&&typeof data.mapping==='object'?data.mapping:{},
-           /* Ajouté en cours de route : une base d'avant ce champ se relit sans migration
-              destructive, la clé manquante devient simplement un objet vide. */
-           treated:data.treated&&typeof data.treated==='object'?data.treated:{}};
-  }catch(e){return emptyStore()}
+  try{const raw=db&&db.getItem(STORE_KEY);return migrate(raw?JSON.parse(raw):null)}catch(e){return emptyStore()}
 }
 function writeStore(db,data){try{if(db)db.setItem(STORE_KEY,JSON.stringify(data))}catch(e){}return data}
-/* Un import ajoute une semaine, il n'écrase jamais l'historique ni le mapping acquis. */
+/* Un import s'ajoute à la pile. Il n'écrase ni l'historique, ni un import antérieur de la
+   même semaine, ni le mapping acquis. */
 function saveSnapshot(db,snapshot){
   const data=readStore(db);
   if(!snapshot||!snapshot.week)throw new Error('Semaine introuvable : renomme le fichier en « … W34.xlsx ».');
-  data.snapshots[snapshot.week]=snapshot;
+  data.imports.push(Object.assign({},snapshot,{importedAt:text(snapshot.importedAt)||new Date().toISOString()}));
+  data.imports.sort((a,b)=>text(a.importedAt).localeCompare(text(b.importedAt)));
   writeStore(db,data);
   return data;
 }
-function weeks(db){return Object.keys(readStore(db).snapshots).sort((a,b)=>Number(a.slice(1))-Number(b.slice(1)))}
-function snapshot(db,week){const s=readStore(db).snapshots;return s[week]||null}
+function weeks(db){
+  const seen=new Set();
+  for(const imp of readStore(db).imports)seen.add(imp.week);
+  return[...seen].sort((a,b)=>Number(a.slice(1))-Number(b.slice(1)));
+}
+/* Semaines qui se chevauchent : tous les imports sont gardés, mais une semaine n'a qu'une
+   valeur affichée — la dernière connue. Pas de doublon à l'écran, pas de perte à l'audit. */
+function allImports(db,week){return readStore(db).imports.filter(imp=>!week||imp.week===week)}
+function snapshot(db,week){const rows=allImports(db,week);return rows.length?rows[rows.length-1]:null}
+function importCount(db,week){return allImports(db,week).length}
 function latestSnapshot(db){const w=weeks(db);return w.length?snapshot(db,w[w.length-1]):null}
 
+/* « Déjà visité » ne veut dire qu'une chose : une visite au statut `completed`. Un
+   brouillon ouvert sur le parking n'est pas un passage fait, et ne doit jamais compter
+   comme tel — ni dans le croisement, ni dans les comparaisons de pilotage. */
+function completedVisitsFor(state,storeId){
+  if(!storeId)return null;
+  const b=(state&&state.businessV2)||{};
+  const done=(b.visits||[]).filter(v=>v&&String(v.storeId)===String(storeId)&&v.status==='completed'&&text(v.completedDate));
+  done.sort((a,b2)=>text(b2.completedDate).localeCompare(text(a.completedDate)));
+  const legacy=((state&&state.visits)||{})[storeId]||{};
+  const history=(Array.isArray(legacy.history)?legacy.history:[]).filter(Boolean).slice().sort();
+  const last=text(done[0]&&done[0].completedDate)||text(legacy.lastVisit)||history[history.length-1]||'';
+  const count=done.length||history.length;
+  return last?{lastVisit:last,count,source:done.length?'businessV2':'historique'}:null;
+}
+
 /* « Déjà traité » : une marque posée sur la semaine, pas sur le planning. Marquer un P1
-   comme traité n'crée aucune visite et ne déplace aucune journée — c'est une note de
+   comme traité ne crée aucune visite et ne déplace aucune journée — c'est une note de
    pilotage, réversible, qui n'existe que pour la semaine en cours. */
 function markTreated(db,week,storeId,date){
   const data=readStore(db),w=text(week);
@@ -334,10 +365,32 @@ function rowForStore(db,storeId,week){
 function historyForStore(db,storeId,stores){
   const data=readStore(db),list=stores||((root.state&&root.state.stores)||[]);
   return weeks(db).map(w=>{
-    const snap=data.snapshots[w];
+    const snap=snapshot(db,w);          // la dernière valeur connue pour cette semaine
     const row=matchRows(snap.rows,list,data.mapping).rows.find(r=>String(r.storeId)===String(storeId));
     return row?{week:w,targetPdm:snap.targetPdm,row}:null;
   }).filter(Boolean);
+}
+/* La PDM hebdomadaire est trop volatile pour classer quoi que ce soit : amplitude médiane
+   de 22,7 points sur W32-W34, et 23 magasins sur 37 dépassent 20 points d'écart. Le statut
+   et l'écart à la cible reposent donc sur le YTD, seul agrégat stable. */
+function statusOf(row,targetPdm){
+  if(!row||row.pdmYtd==null)return{key:'sansPdm',label:'Pas de PDM dans le fichier',basedOn:'ytd',underTarget:null,gap:null};
+  const gap=row.deltaYtd!=null?row.deltaYtd:(targetPdm!=null?Math.round((row.pdmYtd-targetPdm)*100)/100:null);
+  if(gap==null)return{key:'sansCible',label:'Cible inconnue',basedOn:'ytd',underTarget:null,gap:null};
+  return gap<0?{key:'sousCible',label:'Sous la cible YTD',basedOn:'ytd',underTarget:true,gap}
+              :{key:'surCible',label:'Au-dessus de la cible YTD',basedOn:'ytd',underTarget:false,gap};
+}
+/* Les colonnes hebdomadaires ne servent qu'à ça : dire dans quel sens la semaine bouge.
+   Elles n'entrent dans aucun classement et ne décident d'aucun statut. */
+function weeklyTrend(row){
+  const names=Object.keys((row&&row.weeks)||{}).sort((a,b)=>Number(a.slice(1))-Number(b.slice(1)));
+  const pts=names.map(w=>({week:w,value:row.weeks[w]})).filter(p=>p.value!=null);
+  if(pts.length<2)return{usage:'tendance',points:pts,delta:null,direction:'indéterminée'};
+  const first=pts[0],last=pts[pts.length-1],delta=Math.round((last.value-first.value)*10)/10;
+  const amplitude=Math.round((Math.max.apply(null,pts.map(p=>p.value))-Math.min.apply(null,pts.map(p=>p.value)))*10)/10;
+  return{usage:'tendance',points:pts,from:first.week,to:last.week,delta,amplitude,
+    direction:delta>0?'hausse':delta<0?'baisse':'stable',
+    volatile:amplitude>20};
 }
 function counts(rows){
   const out={P1:0,P2:0,watch:0,nodata:0,unmatched:0,total:rows.length};
@@ -348,6 +401,8 @@ function sortByPriority(rows){
   return rows.slice().sort((a,b)=>{
     const pa=PRIO_ORDER[a.prio]===undefined?9:PRIO_ORDER[a.prio],pb=PRIO_ORDER[b.prio]===undefined?9:PRIO_ORDER[b.prio];
     if(pa!==pb)return pa-pb;
+    /* Départage sur l'écart YTD uniquement : une semaine isolée ne fait pas monter ni
+       descendre un magasin dans la liste de pilotage. */
     const da=a.deltaYtd==null?0:a.deltaYtd,db2=b.deltaYtd==null?0:b.deltaYtd;
     return da-db2;
   });
@@ -360,30 +415,79 @@ function crossVisits(db,options){
   if(!snap)return{week:'',rows:[],counts:counts([]),targetPdm:null};
   const data=readStore(db),matched=matchRows(snap.rows,list,data.mapping).rows;
   const all=weeks(db),previousWeek=all[all.indexOf(snap.week)-1];
-  const previous=previousWeek?matchRows(data.snapshots[previousWeek].rows,list,data.mapping).rows:[];
+  const previousSnap=previousWeek?snapshot(db,previousWeek):null;
+  const previous=previousSnap?matchRows(previousSnap.rows,list,data.mapping).rows:[];
   const rows=matched.map(row=>{
     const store=list.find(s=>String(s.id)===String(row.storeId))||null;
-    const visits=o.visitsFor?o.visitsFor(row.storeId):null;
+    /* Une visite ne compte que terminée. Le repli lit la même règle côté état métier. */
+    const visits=o.visitsFor?o.visitsFor(row.storeId):completedVisitsFor(o.state||root.state,row.storeId);
     const before=previous.find(p=>p.key===row.key)||null;
     const trend=row.pdmYtd!=null&&before&&before.pdmYtd!=null?Math.round((row.pdmYtd-before.pdmYtd)*100)/100:null;
-    const underTarget=row.pdmYtd!=null&&snap.targetPdm!=null?row.pdmYtd<snap.targetPdm:null;
+    const status=statusOf(row,snap.targetPdm);
     const treated=isTreated(db,snap.week,row.storeId);
-    return Object.assign({},row,{store,visits,trend,previousWeek:before?previousWeek:null,underTarget,
+    return Object.assign({},row,{store,visits,trend,previousWeek:before?previousWeek:null,
+      status,underTarget:status.underTarget,weekly:weeklyTrend(row),
       treated,qualifying:treated?null:qualifyingVisit(visits,snap)});
   });
   return{week:snap.week,targetPdm:snap.targetPdm,targetSource:snap.targetSource,rows:sortByPriority(rows),counts:counts(rows)};
 }
+/* Comparer « visités » et « non visités » sur une seule semaine ne compare rien : il n'y a
+   pas d'avant. Ces deux vues n'apparaissent qu'à partir de deux snapshots, elles annoncent
+   l'effectif comparé, et elles se lisent comme une association de dates — pas comme un
+   effet de la visite sur la part de marché. */
+function comparison(db,view,options){
+  const o=options||{},history=weeks(db);
+  const ready=history.length>=2;
+  const seen=r=>!!(r.visits&&r.visits.lastVisit);
+  const visited=view.rows.filter(r=>r.storeId&&seen(r)&&r.pdmYtd!=null);
+  const notVisited=view.rows.filter(r=>r.storeId&&!seen(r)&&r.pdmYtd!=null);
+  const base={
+    available:ready,
+    reason:ready?'':'Une seule semaine importée : il n’y a pas encore d’avant à comparer.',
+    weeksCompared:history.length,
+    wording:'association temporelle observée, sans lien de cause établi',
+    sample:{visited:visited.length,notVisited:notVisited.length},
+    visitedLowPdm:[],notVisitedGoodPdm:[]
+  };
+  if(!ready)return base;
+  base.visitedLowPdm=visited.filter(r=>r.underTarget===true);
+  base.notVisitedGoodPdm=notVisited.filter(r=>r.underTarget===false);
+  const moyenne=rows=>{const v=rows.map(r=>r.trend).filter(x=>x!=null);return v.length?{n:v.length,delta:Math.round(v.reduce((a,b)=>a+b,0)/v.length*10)/10}:{n:0,delta:null}};
+  base.trendVisited=moyenne(visited);
+  base.trendNotVisited=moyenne(notVisited);
+  return base;
+}
 function dashboard(db,options){
   const view=crossVisits(db,options);
-  const seen=r=>r.visits&&r.visits.lastVisit?r.visits:null;
+  const compare=comparison(db,view,options);
   return{
     week:view.week,targetPdm:view.targetPdm,targetSource:view.targetSource,counts:view.counts,
+    weeksImported:weeks(db).length,
+    importsThisWeek:importCount(db,view.week),
     underTarget:view.rows.filter(r=>r.underTarget===true),
-    /* Deux angles morts que le fichier seul ne montre pas. */
-    notVisitedGoodPdm:view.rows.filter(r=>!seen(r)&&r.underTarget===false),
-    visitedLowPdm:view.rows.filter(r=>seen(r)&&r.underTarget===true),
+    comparison:compare,
+    /* Conservés pour compatibilité de lecture, mais vides tant que la comparaison
+       n'est pas légitime : on n'affiche pas un classement qu'on ne peut pas défendre. */
+    notVisitedGoodPdm:compare.notVisitedGoodPdm,
+    visitedLowPdm:compare.visitedLowPdm,
     rows:view.rows
   };
+}
+/* ---- 6. Influence sur le planning ---------------------------------------------------
+   Lecture seule, depuis le snapshot le plus récent seulement, et sans jamais toucher
+   `store.priority`, qui reste la priorité structurelle décidée par l'utilisateur. Le
+   planificateur consulte cette valeur au moment où il construit une semaine : rien ne
+   bouge tant qu'aucune génération ni recalcul explicite n'a été demandé. */
+const PLANNING_BOOST={P1:60,P2:25,watch:0,nodata:0};
+function planningBoost(db,storeId,stores){
+  if(!storeId)return 0;
+  const snap=latestSnapshot(db);
+  if(!snap)return 0;
+  const data=readStore(db),list=stores||((root.state&&root.state.stores)||[]);
+  const row=matchRows(snap.rows,list,data.mapping).rows.find(r=>String(r.storeId)===String(storeId));
+  if(!row||!row.prio)return 0;
+  if(isTreated(db,snap.week,storeId))return 0;   // déjà traité cette semaine : plus de coup de pouce
+  return PLANNING_BOOST[row.prio]||0;
 }
 
 const api={STORE_KEY,PRIO,PRIO_LABEL,PRIO_ORDER,
@@ -391,7 +495,8 @@ const api={STORE_KEY,PRIO,PRIO_LABEL,PRIO_ORDER,
   unzip,readSheet,parseRows,parseWorkbook,
   emptyStore,readStore,writeStore,saveSnapshot,weeks,snapshot,latestSnapshot,
   matchScore,matchRows,rememberMatch,rowForStore,historyForStore,markTreated,isTreated,qualifyingVisit,
-  counts,sortByPriority,crossVisits,dashboard};
+  counts,sortByPriority,crossVisits,dashboard,comparison,
+  allImports,importCount,migrate,completedVisitsFor,statusOf,weeklyTrend,planningBoost,PLANNING_BOOST};
 root.StoreRunnerPerformanceV190=api;
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

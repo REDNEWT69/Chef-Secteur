@@ -47,7 +47,18 @@ function eligible(){
   }
   return out;
 }
-function scoreOf(s){try{return typeof score==='function'?Number(score(s))||0:Number(s.priority)||0}catch(e){return Number(s.priority)||0}}
+/* V190 : les priorités du fichier de performance pèsent sur le classement, mais seulement
+   ici — c'est-à-dire pendant une génération ou un recalcul explicite, jamais à l'ouverture
+   de l'application. La lecture porte sur le snapshot le plus récent et ne modifie pas
+   `s.priority`, qui reste la priorité structurelle décidée par l'utilisateur. */
+function performanceBoost(s){
+  try{
+    const api=window.StoreRunnerPerformanceV190;
+    if(!api||typeof api.planningBoost!=='function')return 0;
+    return Number(api.planningBoost(storage(),s&&s.id,state.stores))||0;
+  }catch(e){return 0}
+}
+function scoreOf(s){try{const base=typeof score==='function'?Number(score(s))||0:Number(s.priority)||0;return base+performanceBoost(s)}catch(e){return Number(s.priority)||0}}
 /* Les crédits de visite appartiennent à visit-counting.js : on consomme son API
    publique plutôt que de redéfinir les règles ou la normalisation de casse ici.
    Une enseigne à 2 crédits occupe deux unités du plafond journalier, parce qu'une
