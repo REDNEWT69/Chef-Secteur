@@ -10,6 +10,9 @@
     max=Number(max)||MAX_DETAIL_TEXT;
     return s.length>max?s.slice(0,max-1)+'…':s;
   }
+  function norm(value){return String(value==null?'':value).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim()}
+  function pct(value){if(value==null||!Number.isFinite(Number(value)))return'—';return String(Math.round(Number(value)*10)/10).replace('.',',')+' %'}
+  function signed(value,unit){if(value==null||!Number.isFinite(Number(value)))return'—';const n=Math.round(Math.abs(Number(value))*10)/10;return(Number(value)>0?'+':Number(value)<0?'−':'')+String(n).replace('.',',')+(unit||' pt')}
 
   function basicStore(s){
     if(!s||typeof s!=='object')return null;
@@ -140,7 +143,6 @@
     const visit=terrain&&terrain.visit?terrain.visit:null;
     if(perf){
       base.performance={
-        week:perf.week||null,
         priority:perf.priority||null,
         priorityLabel:perf.priorityLabel||'',
         treated:!!perf.treated,
@@ -179,6 +181,66 @@
     return base;
   }
 
+  function findStoreInQuestion(message){
+    const n=norm(message);if(!n)return null;
+    const rows=(window.state&&Array.isArray(window.state.stores))?window.state.stores:[];
+    let best=null,bestScore=0;
+    for(const s of rows){
+      if(!s||s.id==null)continue;
+      const labels=[s.ville,(s.enseigne||'')+' '+(s.ville||'')].map(norm).filter(Boolean);
+      let score=0;
+      for(const label of labels){
+        if(label.length>=4&&n.includes(label))score=Math.max(score,label.length+30);
+        else{
+          const tokens=label.split(' ').filter(function(x){return x.length>3});
+          const hits=tokens.filter(function(x){return n.includes(x)}).length;
+          if(hits)score=Math.max(score,hits*8);
+        }
+      }
+      if(score>bestScore){best=s;bestScore=score}
+    }
+    return bestScore>=8?best:null;
+  }
+
+  function localStoreAnswer(message){
+    const n=norm(message);
+    if(!/(pdm|pdl|6p|performance|priorit|travaill|prepar|conseil|piste|representation|action|anomal|quoi faire|faire dans)/.test(n))return null;
+    const store=findStoreInQuestion(message);if(!store)return null;
+    const x=richStore(store,terrainRows());if(!x)return null;
+    const title=(x.enseigne||'Magasin')+(x.ville?' '+x.ville:'');
+    const lines=['Brief magasin · '+title];
+    const p=x.performance;
+    if(p){
+      const perf=[];
+      if(p.pdmYtd!=null)perf.push('PDM YTD '+pct(p.pdmYtd));
+      if(p.targetPdm!=null)perf.push('cible '+pct(p.targetPdm));
+      if(p.gapYtd!=null)perf.push('écart '+signed(p.gapYtd));
+      if(p.evolutionYtd!=null)perf.push('vs N-1 '+signed(p.evolutionYtd,' %'));
+      if(p.priorityLabel)perf.push(p.priorityLabel+(p.treated?' traité':' non traité'));
+      if(perf.length)lines.push('Performance : '+perf.join(' · ')+'.');
+      if(p.weekly&&p.weekly.delta!=null)lines.push('Tendance hebdo : '+(p.weekly.direction||'indéterminée')+' '+signed(p.weekly.delta)+' (signal indicatif seulement).');
+      if(p.mission)lines.push('Mission : '+p.mission+'.');
+    }
+    const t=x.terrain;
+    if(t){
+      const terrain=[];
+      if(t.pdl!=null)terrain.push('représentation/PDL '+pct(t.pdl));
+      if(t.compliance6P!=null)terrain.push('conformité 6P '+pct(t.compliance6P));
+      if(t.alerts)terrain.push(t.alerts+' alerte'+(t.alerts>1?'s':''));
+      if(t.openActions)terrain.push(t.openActions+' action'+(t.openActions>1?'s':'')+' ouverte'+(t.openActions>1?'s':''));
+      if(terrain.length)lines.push('Terrain : '+terrain.join(' · ')+'.');
+      if(t.reasons&&t.reasons.length)lines.push('Pourquoi le travailler : '+t.reasons.join(' · ')+'.');
+      const work=[];
+      for(const s of (t.sixPToWork||[]).slice(0,3))work.push([s.category,s.comment,s.action].filter(Boolean).join(' : '));
+      for(const a of (t.anomalies||[]).slice(0,2))work.push(a.text);
+      for(const a of (t.actions||[]).slice(0,3))if(a.description)work.push(a.description);
+      if(work.length)lines.push('À travailler :\n'+work.map(function(v){return'• '+v}).join('\n'));
+      if(t.conclusion)lines.push('Dernier compte rendu : '+t.conclusion);
+    }
+    if(!p&&!t)return null;
+    return lines.join('\n');
+  }
+
   function limitContext(c){
     c=c||{};
     const privacyInstruction='Les détails Google Agenda restent locaux à Store Runner et ne sont pas fournis à l’IA en ligne. Ne prétends pas connaître un événement, un hôtel ou un déplacement provenant de Google Agenda si le résolveur local ne l’a pas déjà traité.';
@@ -202,5 +264,7 @@
   }
 
   window.storeRunnerLimitAssistantContext=limitContext;
+  window.storeRunnerLocalStoreIntelligence=localStoreAnswer;
+  if(typeof window.storeRunnerRegisterAssistantResolver==='function')window.storeRunnerRegisterAssistantResolver(localStoreAnswer,10);
   if(typeof window.storeRunnerRegisterAssistantContextTransform==='function')window.storeRunnerRegisterAssistantContextTransform(limitContext,100);
 })();
