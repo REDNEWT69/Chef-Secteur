@@ -8,16 +8,16 @@ const index=fs.readFileSync(path.join(process.cwd(),'index.html'),'utf8');
 const sw=fs.readFileSync(path.join(process.cwd(),'sw.js'),'utf8');
 const version=JSON.parse(fs.readFileSync(path.join(process.cwd(),'version.json'),'utf8'));
 
-assert(index.includes("const BUILD_REV='20260916-priority187'"),'index doit publier le build V187');
-assert(sw.includes('const BUILD_REV = "20260916-priority187"'),'sw doit publier le même build V187');
-assert.equal(version.latestBuild,'20260916-priority187');
-assert.equal(version.displayVersion,'187');
+assert(index.includes("const BUILD_REV='20260916-routeintel188'"),'index doit publier le build V188');
+assert(sw.includes('const BUILD_REV = "20260916-routeintel188"'),'sw doit publier le même build V188');
+assert.equal(version.latestBuild,'20260916-routeintel188');
+assert.equal(version.displayVersion,'188');
 assert(index.includes("'./v182-fixes.js'"),'le runtime de fiabilisation doit rester chargé');
-assert(index.includes("'./priority-campaign-v187.js'"),'la campagne priorités V187 doit être chargée');
+assert(index.includes("'./priority-campaign-v187.js'"),'le moteur de priorités V188 doit être chargé');
 assert(index.includes('id="srRuntimeBoot"'),'le boot historique doit être masqué pendant le rendu moderne');
-assert(index.includes('<img src="./app-icon.svg?rev=20260916-priority187" alt="S-RUNNER">'),'le loader doit afficher le vrai logo S-RUNNER');
+assert(index.includes('<img src="./app-icon.svg?rev=20260916-routeintel188" alt="S-RUNNER">'),'le loader doit afficher le vrai logo S-RUNNER');
 assert(sw.includes('"./v182-fixes.js"'),'les correctifs terrain doivent fonctionner hors ligne après installation');
-assert(sw.includes('"./priority-campaign-v187.js"'),'la campagne priorités V187 doit fonctionner hors ligne');
+assert(sw.includes('"./priority-campaign-v187.js"'),'le moteur de priorités V188 doit fonctionner hors ligne');
 assert(source.includes('removeHomePilotageShortcut'),'Pilotage doit rester retiré de l’accueil');
 
 /* V184 reste en place : le flux 3 semaines utilise la capacité planning Boulanger,
