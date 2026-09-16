@@ -4,6 +4,7 @@ const vm=require('vm');
 const assert=require('assert/strict');
 
 const source=fs.readFileSync(path.join(process.cwd(),'ui-polish.js'),'utf8');
+const controls=fs.readFileSync(path.join(process.cwd(),'auto-planning-fix.js'),'utf8');
 
 const ctx={
   state:{profile:{}},
@@ -44,4 +45,13 @@ assert(source.includes("'🌙 Nuit d’hôtel conseillée'"),'Le bandeau doit no
 assert(source.includes("'🚗 Déplacement professionnel'"),'Un vrai déplacement doit utiliser une voiture, pas un avion');
 assert(source.includes("overnightMode==='never'"),'Le rendu doit respecter explicitement le mode sans découcher');
 
-console.log('Overnight intent/UI guards: OK · online prompt respects no-overnight and mobility badges are explicit');
+assert.match(controls,/fromDate<today/,'V189 doit exclure toute nuit déjà passée');
+assert.match(controls,/Math\.round\(\(parse\(toDate\)-parse\(fromDate\)\)\/86400000\)!==1/,'un découché doit relier deux dates réellement consécutives, pas vendredi à lundi');
+assert.match(controls,/★ Nuit sur place/,'le jour où l’utilisateur dort doit porter une étoile visible');
+assert.match(controls,/Zone hôtel conseillée/,'le bandeau doit indiquer clairement la zone où dormir');
+assert.match(controls,/Voir les hôtels à proximité/,'un accès direct aux hôtels autour de la fin de tournée doit être proposé');
+assert.match(controls,/data-fproduct value="Blanc"/,'la fiche magasin doit permettre de gérer Blanc');
+assert.match(controls,/data-fproduct value="Brun"/,'la fiche magasin doit permettre de gérer Brun indépendamment');
+assert.match(controls,/fVisitCreditOverride/,'la fiche magasin doit permettre de choisir 1 ou 2 visites');
+
+console.log('Overnight intent/UI guards: OK · V189 ignore le passé, marque la nuit et donne accès aux hôtels proches.');
