@@ -200,6 +200,65 @@ assert.ok(/srPerfSheet/.test(ui)&&/sqPerformance/.test(ui),'le module possède s
 for(const reglage of ['visitCreditOverride=','products=','visitCreditsByBrand='])
   assert.ok(!ui.includes(reglage),'l’interface ne réécrit jamais le réglage V189 '+reglage);
 
+// =====================================================================================
+// Revue sur le vrai « RHONE ALPES W34.xlsx » (issue #253) : quatre écarts constatés.
+// Les EN-TÊTES sont recopiés à l'identique du fichier réel ; les valeurs restent inventées.
+// =====================================================================================
+await (async function fichierReel(){
+  const {expected}=F.sectorReel();
+  const snap=await P.parseWorkbook(F.sectorReel().bytes,{week:'W34',now:'2026-09-16T10:00:00Z'});
+
+  // Le fichier réel confirme la volumétrie annoncée.
+  assert.equal(snap.rows.length,expected.lignes,'51 lignes utiles sur les en-têtes réels');
+  const c=P.counts(snap.rows);
+  assert.equal(c.P1,7);assert.equal(c.P2,25);assert.equal(c.watch,18);assert.equal(c.nodata,1);
+
+  // --- Écart 1 : les colonnes sell-out ne contiennent pas « sell out » ---------------
+  assert.deepEqual(P.classify('Ecart SO€  2026-2025 YTD'),{kind:'sellOutYtd'},'le cumul SO€ est reconnu');
+  for(const [entete,semaine] of [['Ecart W32 2026-W32 2025','W32'],['Ecart W33 2026-W33 2025','W33'],['Ecart W34 2026-W34 2028','W34']])
+    assert.deepEqual(P.classify(entete),{kind:'sellOutWeek',week:semaine},entete+' → '+semaine);
+  // La coquille d'année du fichier livré (W34 2028) ne doit rien changer.
+  assert.deepEqual(P.classify('Ecart W34 2026-W34 2028').week,'W34','l’année erronée n’influence pas la lecture');
+  const ligne=snap.rows.find(r=>r.sellOutYtd!=null);
+  assert.ok(Number.isFinite(ligne.sellOutYtd),'l’écart SO€ YTD est lu');
+  assert.deepEqual(Object.keys(ligne.sellOutWeeks).sort(),['W32','W33','W34'],'les trois semaines sont conservées séparément');
+  const valeurs=['W32','W33','W34'].map(w=>ligne.sellOutWeeks[w]);
+  assert.equal(new Set(valeurs).size,3,'et gardent trois valeurs distinctes, sans agrégation');
+  assert.equal(ligne.sellOutWeek,ligne.sellOutWeeks.W34,'le champ hérité pointe la dernière semaine connue');
+  console.error('  Sell-out réel : '+ligne.sellOutYtd+' YTD · W32 '+valeurs[0]+' · W33 '+valeurs[1]+' · W34 '+valeurs[2]);
+
+  // --- Écart 2 : « Target = 42.5% » est écrit en A1, au-dessus de l'en-tête ----------
+  assert.equal(snap.targetPdm,42.5,'la cible réelle est lue');
+  assert.equal(snap.targetSource,'explicite','elle est lue, pas déduite');
+  assert.equal(P.explicitTarget([['Target = 42.5%'],[],['Prios','Retailer']],2),42.5);
+  assert.equal(P.explicitTarget([['Target = 42,5 %']],1),42.5,'la virgule décimale est acceptée');
+  assert.equal(P.explicitTarget([['Autre chose']],1),null,'aucune cible inventée quand la cellule n’en porte pas');
+  // La déduction reste le dernier recours, et se déclare comme telle.
+  const sansCible=await P.parseWorkbook(F.sectorW34('W34').bytes,{week:'W34'});
+  assert.equal(sansCible.targetSource,'déduit','sans cible écrite, on déduit et on le dit');
+  console.error('  Cible : ' + snap.targetPdm + ' % lue en A1 (' + snap.targetSource + ')');
+
+  // --- Écart 3 : l'alias ED, et ce qui doit rester manuel ---------------------------
+  assert.equal(P.brandKey('ED'),'electro depot','ED est l’abréviation d’Electro Dépôt');
+  assert.equal(P.matchScore({retailer:'ED',site:'Villeurbanne'},{enseigne:'Electro Dépôt',ville:'Villeurbanne'}),100,'ED s’apparie sans intervention');
+  assert.equal(P.matchScore({retailer:'CONFO',site:'Chambéry'},{enseigne:'Conforama',ville:'Chambéry'}),100,'CONFO passait déjà par l’inclusion');
+  assert.equal(P.matchScore({retailer:'BTLEC EST',site:'Chambéry'},{enseigne:'Conforama',ville:'Chambéry'}),0,
+    'BTLEC EST reste manuel : sans règle sûre, mieux vaut demander que se tromper');
+  const magasins=[{id:'e1',enseigne:'Electro Dépôt',ville:'Villeneuve-Fictive 1',adresse:''}];
+  const apparie=P.matchRows(snap.rows,magasins,{}).rows.find(r=>String(r.storeId)==='e1');
+  assert.ok(apparie&&apparie.retailer==='ED','la ligne ED du classeur trouve son magasin toute seule');
+
+  // --- Écart 4 : « % evol YTD vs LY » s'affiche en %, pas en points -----------------
+  const ui=require('fs').readFileSync(__dirname+'/../performance-ui-v190.js','utf8');
+  assert.ok(/function signedPct\(/.test(ui),'un formateur distinct existe pour les pourcentages');
+  assert.ok(/'Évolution YTD vs N-1 : '\+signedPct\(r\.evolYtd\)/.test(ui),'la carte de pilotage affiche l’évolution en %');
+  assert.ok(/line\('Évolution YTD vs N-1 : '\+signedPct\(r\.evolYtd\)\)/.test(ui),'la fiche magasin aussi');
+  assert.ok(!/Évolution YTD vs N-1 : '\+signed\(/.test(ui),'plus aucune évolution affichée en points');
+  // Les points restent réservés aux écarts de PDM.
+  assert.ok(/écart cible '\+signed\(r\.deltaYtd\)/.test(ui),'l’écart de PDM reste en points');
+  console.error('  Unités : évolution vs N-1 en %, écart de PDM en points');
+})();
+
 // --- Aucune donnée commerciale dans le dépôt ------------------------------------------
 (function depotPropre(){
   const fs=require('fs'),path=require('path'),root=path.join(__dirname,'..');

@@ -22,7 +22,11 @@ function el(tag,txt,cls){const n=root.document.createElement(tag);if(txt!==undef
 function btn(txt,fn,cls){const b=el('button',txt,cls||'secondary');b.type='button';b.addEventListener('click',fn);return b}
 function pct(v){return v==null?'—':(Math.round(v*10)/10).toString().replace('.',',')+' %'}
 function euro(v){return v==null?'—':(v<0?'−':'')+Math.abs(Math.round(v)).toLocaleString('fr-FR')+' €'}
+/* Les points sont réservés aux écarts de part de marché. Une évolution vs N-1 est un
+   pourcentage : l'afficher en « pt » ferait lire une variation de PDM là où il n'y en a
+   pas. Deux formateurs distincts, donc, et pas un seul qui mentirait sur l'unité. */
 function signed(v){return v==null?'—':(v>0?'+':v<0?'−':'')+(Math.round(Math.abs(v)*10)/10).toString().replace('.',',')+' pt'}
+function signedPct(v){return v==null?'—':(v>0?'+':v<0?'−':'')+(Math.round(Math.abs(v)*10)/10).toString().replace('.',',')+' %'}
 
 /* « Déjà visité » a une seule définition, tenue par la couche données : une visite au
    statut `completed`. Un brouillon n'est pas un passage fait. */
@@ -31,6 +35,17 @@ function visitsFor(storeId){
   try{return P?P.completedVisitsFor(root.state,storeId):null}catch(e){return null}
 }
 
+/* Le classeur porte un écart de sell-out par semaine. On les rend tels quels, chacun
+   nommé par sa semaine, plutôt que d'en afficher un seul qui masquerait les autres. */
+function sellOutLine(r){
+  const parts=[];
+  if(r.sellOutYtd!=null)parts.push(euro(r.sellOutYtd)+' YTD');
+  const weeks=r.sellOutWeeks||{};
+  for(const w of Object.keys(weeks).sort((a,b)=>Number(a.slice(1))-Number(b.slice(1))))
+    if(weeks[w]!=null)parts.push(euro(weeks[w])+' '+w);
+  if(!parts.length&&r.sellOutWeek!=null)parts.push(euro(r.sellOutWeek)+' semaine');
+  return parts.length?'Sell-out : '+parts.join(' · '):'';
+}
 function ensureStyle(){
   if(!root.document||root.document.getElementById('sr-perf-style'))return;
   const s=el('style');s.id='sr-perf-style';
@@ -105,8 +120,9 @@ function rowCard(r,options){
     bits.push('Tendance hebdo (indicative, hors classement) : '+w.points.map(p=>p.week+' '+pct(p.value)).join(' · ')
       +(w.delta==null?'':' → '+w.direction+' '+signed(w.delta))+(w.volatile?' · amplitude '+w.amplitude+' pts, très volatile':''));
   }
-  if(r.evolYtd!=null)bits.push('Évolution YTD vs N-1 : '+signed(r.evolYtd));
-  if(r.sellOutYtd!=null||r.sellOutWeek!=null)bits.push('Sell-out : '+euro(r.sellOutYtd)+' YTD · '+euro(r.sellOutWeek)+' semaine');
+  if(r.evolYtd!=null)bits.push('Évolution YTD vs N-1 : '+signedPct(r.evolYtd));
+  const so=sellOutLine(r);
+  if(so)bits.push(so);
   if(r.trend!=null&&r.previousWeek)bits.push('PDM YTD depuis '+r.previousWeek+' : '+signed(r.trend)+' — association de dates, sans lien de cause établi');
   if(r.visits&&r.visits.lastVisit)bits.push('Dernière visite terminée '+r.visits.lastVisit+' · '+r.visits.count+' visite'+(r.visits.count>1?'s':''));
   else bits.push('Aucune visite terminée enregistrée');
@@ -231,8 +247,9 @@ function renderStoreCard(){
   line('PDM YTD '+pct(r.pdmYtd)+' · cible '+pct(last.targetPdm)+(r.pdmYtd==null?' — pas de PDM dans le fichier':' · écart '+signed(r.deltaYtd)));
   const w=P.weeklyTrend(r);
   if(w.points.length)line('Tendance hebdo (indicative) : '+w.points.map(p=>p.week+' '+pct(p.value)).join(' · ')+(w.delta==null?'':' → '+w.direction));
-  if(r.evolYtd!=null)line('Évolution YTD vs N-1 : '+signed(r.evolYtd));
-  if(r.sellOutYtd!=null||r.sellOutWeek!=null)line('Sell-out : '+euro(r.sellOutYtd)+' YTD · '+euro(r.sellOutWeek)+' semaine');
+  if(r.evolYtd!=null)line('Évolution YTD vs N-1 : '+signedPct(r.evolYtd));
+  const so=sellOutLine(r);
+  if(so)line(so);
   if(history.length>1){
     line('Historique : '+history.map(h=>h.week+' '+pct(h.row.pdmYtd)).join(' → '));
     const first=history[0].row;

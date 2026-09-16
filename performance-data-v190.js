@@ -159,6 +159,14 @@ function classify(header){
     if(/ytd/.test(n))return{kind:'sellOutYtd'};
     return{kind:'sellOutWeek'};
   }
+  /* Le classeur réel n'écrit jamais « sell out » : il écrit « Ecart SO€ 2026-2025 YTD »
+     pour le cumul et « Ecart W32 2026-W32 2025 » pour chaque semaine. Les années sont
+     volontairement ignorées — le fichier livré porte même une coquille (W34 2028). */
+  if(/^ecart/.test(n)){
+    if(/\bso\b/.test(n)&&/ytd/.test(n))return{kind:'sellOutYtd'};
+    if(/ytd/.test(n))return{kind:'sellOutYtd'};
+    if(week)return{kind:'sellOutWeek',week:'W'+week};
+  }
   if(/evol/.test(n)&&/ly|n 1|n1/.test(n))return{kind:'evolYtd'};
   if(/^ytd/.test(n)||/ytd ihs/.test(n))return{kind:'ytd'};
   if(/^prio/.test(n))return{kind:'prio'};
@@ -167,6 +175,18 @@ function classify(header){
   if(/commentaire|mission|action terrain/.test(n))return{kind:'comment'};
   if(/^target/.test(n)||/target pdm/.test(n))return{kind:'target'};
   if(week&&n.replace(/\s/g,'')==='w'+week)return{kind:'week',week:'W'+week};
+  return null;
+}
+/* « Target = 42.5% » posé dans un coin de la feuille, au-dessus du tableau. On lit le
+   texte brut et pas la forme normalisée : la normalisation écrase le point décimal. */
+function explicitTarget(rows,head){
+  const limite=head>=0?head:Math.min(rows.length,25);
+  for(let r=0;r<limite;r++)for(const cell of rows[r]||[]){
+    const brut=text(cell);
+    if(!brut||!/target/i.test(brut))continue;
+    const m=brut.match(/([0-9]+(?:[.,][0-9]+)?)\s*%/)||brut.match(/=\s*([0-9]+(?:[.,][0-9]+)?)/);
+    if(m){const n=Number(String(m[1]).replace(',','.'));if(Number.isFinite(n))return n}
+  }
   return null;
 }
 function findHeader(rows){
@@ -182,11 +202,12 @@ function parseRows(rows,options){
   const opts=options||{};
   const head=findHeader(rows);
   if(head<0)throw new Error('Colonnes Prios / Site name introuvables dans ce fichier.');
-  const map={weeks:{},deltaWeeks:{}};
+  const map={weeks:{},deltaWeeks:{},sellOutWeeks:{}};
   (rows[head]||[]).forEach((cell,i)=>{
     const k=classify(cell);if(!k)return;
     if(k.kind==='week')map.weeks[k.week]=i;
     else if(k.kind==='deltaWeek')map.deltaWeeks[k.week]=i;
+    else if(k.kind==='sellOutWeek'&&k.week)map.sellOutWeeks[k.week]=i;
     else if(map[k.kind]===undefined)map[k.kind]=i;
   });
   const weekNames=Object.keys(map.weeks).sort((a,b)=>Number(a.slice(1))-Number(b.slice(1)));
@@ -196,26 +217,33 @@ function parseRows(rows,options){
     const row=rows[r]||[];
     const retailer=text(at(row,map.retailer)),site=text(at(row,map.site));
     if(!retailer&&!site)continue;
-    const weeks={},deltaWeeks={};
+    const weeks={},deltaWeeks={},sellOutWeeks={};
     for(const w of weekNames)weeks[w]=num(at(row,map.weeks[w]));
     for(const w of Object.keys(map.deltaWeeks))deltaWeeks[w]=num(at(row,map.deltaWeeks[w]));
+    /* Les trois semaines de sell-out sont conservées séparément : les agréger ferait
+       perdre l'information que le fichier porte semaine par semaine. */
+    for(const w of Object.keys(map.sellOutWeeks))sellOutWeeks[w]=num(at(row,map.sellOutWeeks[w]));
+    const sellOutWeekNames=Object.keys(sellOutWeeks).sort((a,b)=>Number(a.slice(1))-Number(b.slice(1)));
+    const dernierSellOut=sellOutWeekNames.length?sellOutWeeks[sellOutWeekNames[sellOutWeekNames.length-1]]:num(at(row,map.sellOutWeek));
     out.push({
       key:sourceKey(retailer,site),retailer,site,
       prio:prioOf(at(row,map.prio)),
       pdmYtd:num(at(row,map.ytd)),
       evolYtd:num(at(row,map.evolYtd)),
       deltaYtd:num(at(row,map.deltaYtd)),
-      weeks,deltaWeeks,
+      weeks,deltaWeeks,sellOutWeeks,
       sellOutYtd:num(at(row,map.sellOutYtd)),
-      sellOutWeek:num(at(row,map.sellOutWeek)),
+      /* Conservé pour les lecteurs existants : la dernière semaine connue. */
+      sellOutWeek:dernierSellOut,
       comment:text(at(row,map.comment)),
       storeId:null
     });
   }
-  /* La cible est lue si le fichier la porte. Sinon elle est déduite de deux nombres
-     présents (PDM − écart), ce qui reste de l'arithmétique, et la source est dite. */
-  let target=null,targetSource=null;
-  if(map.target!==undefined){
+  /* La cible est lue si le fichier la porte. Le classeur réel l'écrit en clair en A1 —
+     « Target = 42.5% » — donc on scanne d'abord la zone au-dessus de l'en-tête. On ne
+     déduit qu'en dernier recours, et la source est dite à l'utilisateur. */
+  let target=explicitTarget(rows,head),targetSource=target==null?null:'explicite';
+  if(target==null&&map.target!==undefined){
     for(let r=head+1;r<rows.length&&target==null;r++)target=num(at(rows[r]||[],map.target));
     if(target!=null)targetSource='explicite';
   }
@@ -315,7 +343,11 @@ function qualifyingVisit(visits,snapshot){
 }
 
 /* ------------------------------------------------------------------ appariement ----- */
-const ALIASES={'pro&cie':'pro cie','procie':'pro cie','pro et cie':'pro cie','e leclerc':'leclerc','electro depot':'electro depot'};
+/* Abréviations telles qu'elles apparaissent dans le classeur réel. « CONFO » n'a pas
+   besoin d'entrée : l'inclusion conforama/confo le rattrape déjà. « BTLEC EST » reste
+   volontairement absent — sans règle sûre, il vaut mieux un rattachement manuel qu'un
+   mauvais rattachement automatique. */
+const ALIASES={'pro&cie':'pro cie','procie':'pro cie','pro et cie':'pro cie','e leclerc':'leclerc','ed':'electro depot'};
 function brandKey(v){const n=norm(v);return ALIASES[n]||n}
 function tokens(v){return norm(v).split(' ').filter(t=>t.length>2)}
 function matchScore(row,store){
@@ -491,7 +523,7 @@ function planningBoost(db,storeId,stores){
 }
 
 const api={STORE_KEY,PRIO,PRIO_LABEL,PRIO_ORDER,
-  norm,num,prioOf,classify,sourceKey,weekFromName,
+  norm,num,prioOf,classify,sourceKey,weekFromName,explicitTarget,ALIASES,brandKey,
   unzip,readSheet,parseRows,parseWorkbook,
   emptyStore,readStore,writeStore,saveSnapshot,weeks,snapshot,latestSnapshot,
   matchScore,matchRows,rememberMatch,rowForStore,historyForStore,markTreated,isTreated,qualifyingVisit,

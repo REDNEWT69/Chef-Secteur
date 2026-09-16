@@ -96,4 +96,43 @@ function sectorW34(week){
   }
   return{bytes:build(rows),expected:{lignes:51,P1:7,P2:25,watch:18,nodata:1,sansPdm:3,target:42.5}};
 }
-module.exports={zip,build,sectorW34,HEADERS};
+
+/* En-têtes RECOPIÉS À L'IDENTIQUE du classeur réel « RHONE ALPES W34.xlsx », y compris
+   la double espace de « SO€  2026 » et la coquille d'année « W34 2028 ». Les valeurs,
+   elles, restent inventées : seuls les noms de colonnes viennent du fichier. */
+const HEADERS_REELS=['Prios','Retailer','Site name','YTD IHS W34','% evol YTD vs LY','Δ YTD W34 vs target',
+  'W32','W33','W34','Δ vs target W32','Δ vs target W33','Δ vs target W34',
+  'Ecart SO€  2026-2025 YTD','Ecart W32 2026-W32 2025','Ecart W33 2026-W33 2025','Ecart W34 2026-W34 2028',
+  'Commentaires'];
+
+/* Reproduit la disposition réelle : la cible est écrite en clair en A1, au-dessus du
+   tableau, et les enseignes sont abrégées comme dans le fichier livré. */
+function sectorReel(){
+  const rows=[['Target = 42.5%'],[],HEADERS_REELS];
+  const plan=[['Prio 1',7],['Prio 2',25],['À surveiller',18],['Pas de data',1]];
+  const villes=['Villeneuve-Fictive','Bourg-Imaginaire','Sainte-Fable','Val-Chimère','Pont-Récit','Monts-Fictifs','Clair-Songe','Haute-Fable','Roche-Feinte','Bois-Fictif'];
+  const enseignes=['ED','CONFO','BTLEC EST','Darty','Boulanger'];
+  let n=0;
+  for(const [label,count] of plan)for(let i=0;i<count;i++,n++){
+    const ville=villes[n%villes.length]+' '+(Math.floor(n/villes.length)+1);
+    const sansPdm=label==='Pas de data'||n===0;
+    const retailer=enseignes[n%enseignes.length];
+    const pdm=sansPdm?null:{percent:(0.30+((n*7)%25)/100).toFixed(4)};
+    rows.push([label,retailer,ville,
+      pdm,
+      sansPdm?null:{percent:'0.0'+(n%9)},                       // % evol YTD vs LY
+      sansPdm?null:{percent:(((n*7)%25)/100-0.125).toFixed(4)}, // Δ YTD vs target
+      sansPdm?null:{percent:(0.31+((n*5)%20)/100).toFixed(4)},
+      sansPdm?null:{percent:(0.32+((n*5)%20)/100).toFixed(4)},
+      sansPdm?null:{percent:(0.33+((n*5)%20)/100).toFixed(4)},
+      null,null,null,
+      -1200-n*37,          // Ecart SO€ YTD
+      -85-n*3,             // Ecart W32
+      -90-n*3,             // Ecart W33
+      -95-n*3,             // Ecart W34
+      label==='Prio 1'?'Remonter la PDM services':'']);
+  }
+  return{bytes:build(rows),expected:{lignes:51,P1:7,P2:25,watch:18,nodata:1,target:42.5}};
+}
+
+module.exports={zip,build,sectorW34,sectorReel,HEADERS,HEADERS_REELS};
