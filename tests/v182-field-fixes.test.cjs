@@ -8,13 +8,13 @@ const index=fs.readFileSync(path.join(process.cwd(),'index.html'),'utf8');
 const sw=fs.readFileSync(path.join(process.cwd(),'sw.js'),'utf8');
 const version=JSON.parse(fs.readFileSync(path.join(process.cwd(),'version.json'),'utf8'));
 
-assert(index.includes("const BUILD_REV='20260915-routeovernight185'"),'index doit publier le build V185');
-assert(sw.includes('const BUILD_REV = "20260915-routeovernight185"'),'sw doit publier le même build V185');
-assert.equal(version.latestBuild,'20260915-routeovernight185');
-assert.equal(version.displayVersion,'185');
+assert(index.includes("const BUILD_REV='20260916-unifiedweek186'"),'index doit publier le build V186');
+assert(sw.includes('const BUILD_REV = "20260916-unifiedweek186"'),'sw doit publier le même build V186');
+assert.equal(version.latestBuild,'20260916-unifiedweek186');
+assert.equal(version.displayVersion,'186');
 assert(index.includes("'./v182-fixes.js'"),'le runtime de fiabilisation doit rester chargé');
 assert(index.includes('id="srRuntimeBoot"'),'le boot historique doit être masqué pendant le rendu moderne');
-assert(index.includes('<img src="./app-icon.svg?rev=20260915-routeovernight185" alt="S-RUNNER">'),'le loader doit afficher le vrai logo S-RUNNER');
+assert(index.includes('<img src="./app-icon.svg?rev=20260916-unifiedweek186" alt="S-RUNNER">'),'le loader doit afficher le vrai logo S-RUNNER');
 assert(sw.includes('"./v182-fixes.js"'),'les correctifs terrain doivent fonctionner hors ligne après installation');
 assert(source.includes('removeHomePilotageShortcut'),'Pilotage doit rester retiré de l’accueil');
 
