@@ -26,6 +26,7 @@ jobs:
       - run: node tests/visit-storage.test.cjs
       - run: node tests/assistant-visit-context.test.cjs
       - run: node tests/assistant-performance-v192.test.cjs
+      - run: node tests/assistant-store-context-v194.test.cjs
       - run: node tests/cuisiniste-contracts-v193.test.cjs
       - run: node tests/calendar.test.cjs
       - run: node tests/google-oauth-production.test.cjs
