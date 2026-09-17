@@ -5,6 +5,9 @@ const source=fs.readFileSync(__dirname+'/../range-planner-v2.js','utf8')
   .replace('window.generatePlanningRange=generateRange;',
     'window.testPilotV211={planningNeedV211,compareNeedV211,rotationWindowWeeksV211,rotationMemoryV211,repeatReadinessV211,chooseStores,storeKey};window.generatePlanningRange=generateRange;');
 
+const reliabilityUi=fs.readFileSync(__dirname+'/../reliability-ui.js','utf8');
+assert(source.includes('archive:nextArchive'),'une semaine générée doit enregistrer son snapshot de rotation avec le planning');
+assert(reliabilityUi.includes('candidate.archive&&candidate.range')&&reliabilityUi.includes('else if(candidate.archive)'),'Reliability doit accepter une archive single-week sans faux range');
 function store(id,opts={}){
   return Object.assign({id,enseigne:'Fnac',ville:'Ville '+id,adresse:'Adresse '+id,lat:45,lon:4,priority:3,intervalDays:30,active:true},opts);
 }
