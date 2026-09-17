@@ -1,3 +1,4 @@
+// V210 : cette garde valide aussi le build final routequality210 après le bump de version.
 const fs=require('fs');
 const vm=require('vm');
 const assert=require('assert');
