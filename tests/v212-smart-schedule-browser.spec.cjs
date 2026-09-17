@@ -40,7 +40,7 @@ test('V212 : escargot futur, durée magasin et hôtel réservé à 390 px',async
   await expect(page.locator('#storeDlg')).toBeVisible();
   await expect(page.locator('#fVisitMinutes')).toHaveValue('120');
   await page.locator('#fVisitMinutes').fill('135');
-  await page.locator('#storeDlg button.primary').last().click();
+  await page.locator('#storeDlg button[onclick*="saveStore"]').click();
   await expect(page.locator('#storeDlg')).not.toBeVisible();
   expect(await page.evaluate(()=>state.stores.find(s=>s.id==='b').visitMinutes)).toBe(135);
 
