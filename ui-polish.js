@@ -119,6 +119,14 @@
          pastille concurrente la déplaçait sur l'onglet de la semaine affichée et lui
          faisait perdre son libellé accessible. On lui rend la main. */
       if(window.StoreRunnerPeriodDaySlider&&typeof window.StoreRunnerPeriodDaySlider.syncOvernight==='function')window.StoreRunnerPeriodDaySlider.syncOvernight();
+      /* Un hôtel réellement réservé prime sur un découché seulement conseillé : sur un
+         jour qui porte les deux, on ne garde que la réservation, comme avant que la
+         bande ne devienne propriétaire de la lune. */
+      document.querySelectorAll('#dayTabs .dayTab').forEach(btn=>{
+        const badges=[...btn.querySelectorAll('.hotelDayBadge')];
+        if(!badges.some(x=>!(x.dataset&&x.dataset.overnight)))return;
+        badges.forEach(x=>{if(x.dataset&&x.dataset.overnight)x.remove()});
+      });
     }catch(e){}
   }
 

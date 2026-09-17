@@ -23,6 +23,14 @@ const ROOT=__dirname+'/..';
 const RANGE='chef_sector_range_v1',ARCHIVE='chef_sector_plan_archive_v1';
 const EMPTY_PLAN=()=>({Lundi:[],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]});
 
+/* La bande ne retient qu'un découché encore à venir : le test se place donc au premier
+   jour de la période affichée, sinon son résultat dépendrait du jour où il est joué. */
+const TODAY=Date.parse('2026-09-14T09:00:00');
+class FrozenDate extends Date{
+  constructor(...args){super(...(args.length?args:[TODAY]))}
+  static now(){return TODAY}
+}
+
 /* Les modules sont des IIFE sans export : on leur ajoute une porte de sortie, comme le
    fait déjà tests/period-day-slider.test.cjs, plutôt que de recopier leurs fonctions. */
 function expose(file,exportsLine){
@@ -51,7 +59,7 @@ function makeWorld(){
 
   const frames=[];
   const ctx={
-    state,console,Date,JSON,Object,Array,String,Number,Math,Map,Set,Intl,RegExp,Boolean,
+    state,console,Date:FrozenDate,JSON,Object,Array,String,Number,Math,Map,Set,Intl,RegExp,Boolean,
     setTimeout(){return 0},clearTimeout(){},requestAnimationFrame(fn){frames.push(fn);return frames.length},
     localStorage:storage(data),__chefStorage:storage(data),sessionStorage:storage({}),
     save(){},renderAll(){},renderWeek(){},selectPlanningDay(){},
@@ -178,6 +186,19 @@ assert.deepEqual(box.children.filter(t=>t.querySelector('.hotelDayBadge')).map(t
 assert.equal(slider.renderTabs(),true);
 assert.deepEqual(box.children.filter(t=>t.querySelector('.hotelDayBadge')).map(t=>t.dataset.date+' '+t.querySelector('.hotelDayBadge').textContent),
   ['2026-09-14 🌙 découché','2026-09-30 🌙 hôtel'],'un rendu de la bande ne doit pas supprimer la pastille posée par ui-polish');
+
+// Un hôtel réellement réservé le jour même du découché : une seule pastille sur l'onglet,
+// et c'est la réservation qui gagne - un découché n'est qu'une suggestion.
+state.settings.weekDate='2026-09-14';
+state.calendarEvents=[{title:'Hôtel Ibis',location:'Ville-Test',date:'2026-09-14',allDay:true}];
+assert.equal(slider.renderTabs(),true);
+uiPolish.markHotelDayTab();
+assert.deepEqual(box.children.filter(t=>t.querySelector('.hotelDayBadge')).map(t=>t.dataset.date+' '+t.querySelector('.hotelDayBadge').textContent+' x'+t.querySelectorAll('.hotelDayBadge').length),
+  ['2026-09-14 🌙 hôtel x1'],'un hôtel réservé le jour du découché doit laisser une seule pastille, la réservation');
+state.calendarEvents=[{title:'Hôtel Ibis',location:'Ville-Test',date:'2026-09-30',allDay:true}];
+state.settings.weekDate='2026-09-28';
+assert.equal(slider.renderTabs(),true);
+uiPolish.markHotelDayTab();
 
 // Découché désactivé : la lune disparaît, l'hôtel réservé reste.
 state.profile.overnightMode='never';

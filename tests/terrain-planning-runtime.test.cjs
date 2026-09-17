@@ -9,10 +9,10 @@ const capacity = fs.readFileSync('daily-capacity.js','utf8');
 
 assert(index.includes("'./range-planner-v2.js','./store-opening-hours.js','./boulanger-default-hours.js','./store-photos.js','./terrain-planning-v1.js','./working-hours-end.js'"), 'les horaires enseigne et les photos doivent charger avant le module terrain');
 assert(sw.includes('"./terrain-planning-v1.js"'), 'le module terrain doit être disponible hors ligne');
-assert.strictEqual(version.displayVersion, '207');
-assert.strictEqual(version.latestBuild, '20260917-daytabs207');
-assert(index.includes("const BUILD_REV='20260917-daytabs207'"));
-assert(sw.includes('const BUILD_REV = "20260917-daytabs207"'));
+assert.strictEqual(version.displayVersion, '208');
+assert.strictEqual(version.latestBuild, '20260917-daytabs208');
+assert(index.includes("const BUILD_REV='20260917-daytabs208'"));
+assert(sw.includes('const BUILD_REV = "20260917-daytabs208"'));
 assert(index.includes("scriptTag('./store-runner-visits.js')+scriptTag('./store-runner-opportunities.js')"),'Opportunity doit charger après le propriétaire Visit');
 assert(sw.includes('"./store-runner-opportunities.js"'),'Opportunity doit fonctionner hors ligne');
 assert(index.includes("'./planning-generation-controller.js','./planning-cascade-v181.js','./calendar-enhancements.js'"), 'la cascade doit prendre la main juste après le contrôleur planning');
