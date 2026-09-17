@@ -380,7 +380,8 @@ async function strictSingleWeek(){
     const memory=rotationMemoryV211(pool,weekKey,limits.targetCount),chosen=chooseStores(pool,memory.usedKeys,memory.useCount,memory.lastUsedWeek,limits.targetCount,limits.capacityCredits,weekKey,0),built=buildWeekUnique(chosen,usable,weekKey);ensureForcedPlaced(built,weekKey);const visits=countPlan(built.plan,usable);
     const credits=usable.reduce((n,d)=>n+routeCredits(built.plan[d]),0);
     if(!visits)throw new Error('0 visite possible avec les réglages actuels. Vérifie l’heure de fin, la durée par magasin et ton point de départ. Le planning précédent est conservé.');
-    const nextArchive=loadArchive();nextArchive[weekKey]=snapshot(mon,mon,addDays(mon,6),built.plan,days);\n    if(!await ChefReliability.propose({plan:built.plan,weekDate:iso(mon),archive:nextArchive})){showStatus('Planning précédent conservé.');return{ok:false,cancelled:true}}
+    const nextArchive=loadArchive();nextArchive[weekKey]=snapshot(mon,mon,addDays(mon,6),built.plan,days);
+    if(!await ChefReliability.propose({plan:built.plan,weekDate:iso(mon),archive:nextArchive})){showStatus('Planning précédent conservé.');return{ok:false,cancelled:true}}
     showStatus('Semaine générée : '+visits+' visites · '+credits+' crédit'+(credits>1?'s':'')+' de visite'+(built.unplaced.length?' · '+built.unplaced.length+' non placée'+(built.unplaced.length>1?'s':'')+' faute de créneau':'')+'.');
     return{ok:true,visits,credits,unplaced:built.unplaced.length};
   }catch(e){
