@@ -142,15 +142,25 @@ test('V207 : depuis le 17, le découché du 21 est déjà signalé sans charger 
   expect(await page.evaluate(()=>window.state.settings.weekDate)).toBe('2026-09-14');
   expect(await page.evaluate(()=>window.overnightCandidate())).toBeNull();
   expect(await page.locator('#dayTabs .dayTab.active').getAttribute('data-date')).toBe('2026-09-17');
+  /* La lune doit être visible sur le 21, peu importe qui la dessine : la vraie pastille
+     posée par la bande, ou le repli CSS ::before de l'onglet si un autre module l'avait
+     effacée. Depuis que chaque module ne nettoie plus que ses propres pastilles, c'est la
+     vraie qui survit - et elle porte en plus son libellé accessible, ce qu'un
+     pseudo-élément ne peut pas faire. */
   const futureMoon=await page.evaluate(()=>{
     const tab=document.querySelector('#dayTabs .dayTab[data-date="2026-09-21"]');if(!tab)return null;
-    const before=getComputedStyle(tab,'::before');
-    return{className:tab.className,content:before.content,display:before.display,width:before.width};
+    const badge=tab.querySelector('.hotelDayBadge'),tabBefore=getComputedStyle(tab,'::before');
+    const drawn=badge
+      ?{source:'badge',content:getComputedStyle(badge,'::before').content+badge.textContent,display:getComputedStyle(badge).display,label:badge.getAttribute('aria-label')}
+      :{source:'fallback',content:tabBefore.content,display:tabBefore.display,label:null};
+    return{className:tab.className,...drawn};
   });
   expect(futureMoon).not.toBeNull();
   expect(futureMoon.className).toContain('srOvernightDayV207');
   expect(futureMoon.content).toContain('🌙');
   expect(futureMoon.display).not.toBe('none');
+  expect(futureMoon.source).toBe('badge');
+  expect(futureMoon.label).toBe('Découché Lundi → Mardi · 21/09 → 22/09');
 
   const cue=page.locator('#planningOvernightCueV206');
   await expect(cue).toBeVisible();

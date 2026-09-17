@@ -51,6 +51,7 @@ jobs:
       - run: node tests/planning-nearby-suggestions.test.cjs
       - run: node tests/planning-recalculate-rest.test.cjs
       - run: node tests/period-day-slider.test.cjs
+      - run: node tests/period-day-tabs-contract.test.cjs
       - run: node tests/planning-auto-today-v205.test.cjs
       - run: node tests/planning-period-date.test.cjs
       - run: node tests/mobile-compatibility.test.cjs

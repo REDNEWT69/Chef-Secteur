@@ -39,7 +39,14 @@ ctx.state.profile.overnightMode='auto';
 assert.equal(ctx.storeRunnerApplyAssistantOvernightIntent('Fais-moi une semaine équilibrée'),null);
 assert.equal(ctx.state.profile.overnightMode,'auto','Une demande sans rapport ne doit pas modifier le réglage');
 
-assert(source.includes("hasHotel?'🌙 hôtel':away?'🚗 déplacement':overnight?'🌙 découché':''"),'Les badges doivent distinguer hôtel, déplacement et découché');
+// La pastille de découché appartient à la bande de période depuis V206 : elle seule
+// connaît la date de départ du candidat, là où la semaine affichée se trompe de lundi dès
+// qu'une période couvre plusieurs semaines. ui-polish.js garde l'hôtel réservé et le
+// déplacement professionnel, et lui redonne la main pour la lune.
+// Voir tests/period-day-tabs-contract.test.cjs pour le comportement des deux réunis.
+assert(source.includes("hasHotel?'🌙 hôtel':away?'🚗 déplacement':''"),'Les badges doivent distinguer l’hôtel réservé du déplacement professionnel');
+assert(source.includes('StoreRunnerPeriodDaySlider.syncOvernight()'),'le découché doit être délégué à la bande de période, pas recalculé en parallèle');
+assert(!/overnight?'🌙 découché'/.test(source),'ui-polish ne doit plus poser de pastille de découché concurrente');
 assert(!source.includes("'✈ déplacement'"),'L’icône avion générique est interdite');
 assert(source.includes("'🌙 Nuit d’hôtel conseillée'"),'Le bandeau doit nommer clairement une suggestion de découché');
 assert(source.includes("'🚗 Déplacement professionnel'"),'Un vrai déplacement doit utiliser une voiture, pas un avion');

@@ -19,10 +19,21 @@
   function eventCovers(e,date){if(typeof window.chefSecteurEventCoversDate==='function')try{return window.chefSecteurEventCoversDate(e,date)}catch(err){}const s=dateOnly(e&&(e.date||e.start));if(!s)return false;let end=dateOnly(e&&e.end)||s;if(e&&e.allDay&&end>s){const d=new Date(end+'T12:00:00');d.setDate(d.getDate()-1);end=d.toISOString().slice(0,10)}return date>=s&&date<=end}
   function hasHotel(date){try{return (state.calendarEvents||[]).some(e=>eventCovers(e,date)&&/(hotel|hôtel|hebergement|hébergement|b&b|b\s*&\s*b)/i.test((e.title||'')+' '+(e.location||'')))}catch(e){return false}}
 
+  /* Deux règles, apprises sur la bande de période :
+     1. la bande peut couvrir plusieurs semaines, donc la position de l'onglet ne vaut
+        plus sa date - l'étoile tombait deux jours à côté dès le deuxième lundi affiché.
+        L'onglet porte sa vraie date : c'est elle qui fait foi, comme pour l'en-tête du
+        jour et la pastille de découché.
+     2. cette fonction s'exécute sous l'observateur de #dayTabs (childList + subtree) :
+        retirer puis reposer une étoile identique relance un rendu au frame suivant, donc
+        indéfiniment. On ne touche au DOM que si l'état affiché doit réellement changer. */
   function restoreHotelStars(){
     document.querySelectorAll('#dayTabs .dayTab').forEach((btn,i)=>{
-      btn.querySelectorAll('.hotelStarBadge').forEach(x=>x.remove());
-      if(!hasHotel(isoForIndex(i)))return;
+      const date=(btn.dataset&&btn.dataset.date)||isoForIndex(i);
+      const existing=[...btn.querySelectorAll('.hotelStarBadge')];
+      if(!hasHotel(date)){existing.forEach(x=>x.remove());return}
+      existing.slice(1).forEach(x=>x.remove());
+      if(existing.length)return;
       const s=document.createElement('span');s.className='hotelStarBadge';s.textContent='✦ hôtel';s.style.cssText='display:block;margin-top:4px;font-size:9px;font-weight:850;color:#9a6200';btn.appendChild(s);
     });
     const banner=document.getElementById('planningHotelBanner');
@@ -88,11 +99,15 @@
     const plan=document.querySelector('#planPanel .applePlan'),title=plan&&plan.querySelector('.applePlanTitle'),tabs=document.getElementById('dayTabs'),timeline=plan&&plan.querySelector('.timelineShell'),metrics=document.getElementById('planMetrics'),saturday=document.getElementById('saturdayRecommendation'),departure=plan&&plan.querySelector('.departureCard'),settings=document.getElementById('planningSettings');
     if(!plan||!tabs||!timeline)return;
     const editing=isEditingLocked(),hero=ensurePlanningHero(plan,title);moveAfter(hero,tabs);
+    /* La bande de période pose son message « semaine non générée » juste après #dayTabs.
+       Réordonner le panneau sans l'emmener laissait ce message seul en haut du planning,
+       détaché de la bande qu'il explique. */
+    const notice=document.getElementById('periodDayNotice');if(notice)moveAfter(tabs,notice);
     let tools=document.getElementById('planningToolsV2');
     if(!tools){tools=document.createElement('div');tools.id='planningToolsV2';tools.className='planningToolsV2';tools.innerHTML='<button class="secondary" type="button" onclick="showPlanMap()">⌖ Ouvrir la tournée</button><button class="primary" type="button" onclick="generateWeek()">✦ Générer ma semaine</button>'}
     const generation=tools.querySelector('button[onclick*="generateWeek"]');if(generation){generation.className='primary';generation.textContent='✦ Générer ma semaine'}
     ensureSettingsShortcut(tools);
-    moveAfter(tabs,tools);moveAfter(tools,timeline);
+    moveAfter(notice||tabs,tools);moveAfter(tools,timeline);
     const monthly=document.querySelector('#planPanel #managerPlanningMonth, #planPanel .managerPlanningMonth, #planPanel .monthPlanning, #planPanel [data-planning-month]');let anchor=timeline;
     if(monthly){moveAfter(anchor,monthly);anchor=monthly}if(metrics){moveAfter(anchor,metrics);anchor=metrics}if(saturday){moveAfter(anchor,saturday);anchor=saturday}if(departure){moveAfter(anchor,departure);anchor=departure}
     if(settings&&!editing&&(settings.parentNode!==plan||settings.nextElementSibling))plan.appendChild(settings);
