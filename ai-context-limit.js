@@ -1,8 +1,9 @@
 (function(){
   'use strict';
 
-  const MAX_ONLINE_STORES=80;
-  const MAX_DETAIL_TEXT=260;
+  const MAX_ONLINE_STORES=12;
+  const MAX_CONTEXT_CHARS=7200;
+  const MAX_DETAIL_TEXT=220;
 
   function clip(value,max){
     const s=String(value==null?'':value).trim();
@@ -21,10 +22,8 @@
       enseigne:s.enseigne||'',
       ville:s.ville||'',
       dept:s.dept||'',
-      freq:s.freq||'',
       priority:s.priority||null,
-      lastVisit:s.lastVisit||null,
-      products:Array.isArray(s.products)?s.products.slice(0,3):[]
+      lastVisit:s.lastVisit||null
     };
   }
 
@@ -32,7 +31,10 @@
     const out={};
     if(!plan||typeof plan!=='object')return out;
     Object.keys(plan).forEach(function(day){
-      out[day]=(plan[day]||[]).slice(0,8).map(basicStore).filter(Boolean);
+      out[day]=(plan[day]||[]).slice(0,8).map(function(s){
+        if(!s||typeof s!=='object')return null;
+        return{id:s.id||null,enseigne:s.enseigne||'',ville:s.ville||''};
+      }).filter(Boolean);
     });
     return out;
   }
@@ -43,29 +45,32 @@
       weekDate:s.weekDate||null,
       days:Array.isArray(s.days)?s.days.slice(0,6):[],
       target:s.target||null,
-      products:Array.isArray(s.products)?s.products.slice(0,6):[],
       startTime:s.startTime||null,
-      visitMinutes:s.visitMinutes||null,
-      saturdayStart:s.saturdayStart||null,
-      saturdayEnd:s.saturdayEnd||null
+      visitMinutes:s.visitMinutes||null
     };
   }
 
   function slimProfile(p){
     p=p||{};
-    return {
-      repName:p.repName||'',
-      sectorName:p.sectorName||'',
-      overnightMode:p.overnightMode||''
-    };
+    return {repName:p.repName||'',sectorName:p.sectorName||'',overnightMode:p.overnightMode||''};
   }
 
   function slimBusinessV2(b){
     b=b||{};
     return {
-      activeDrafts:(Array.isArray(b.activeDrafts)?b.activeDrafts:[]).slice(0,8).map(function(v){return{id:v.id||null,storeId:v.storeId||null,store:v.store||'',step:Number.isInteger(v.step)?v.step:null,updatedAt:v.updatedAt||null}}),
-      openActions:(Array.isArray(b.openActions)?b.openActions:[]).slice(0,20).map(function(a){return{id:a.id||null,storeId:a.storeId||null,store:a.store||'',category:a.category||'',description:clip(a.description,180),owner:a.owner||'',dueDate:a.dueDate||'',status:a.status||'',overdue:!!a.overdue}}),
-      recentVisits:(Array.isArray(b.recentVisits)?b.recentVisits:[]).slice(0,8).map(function(v){return{id:v.id||null,storeId:v.storeId||null,store:v.store||'',completedDate:v.completedDate||null,conclusion:clip(v.conclusion,220)}})
+      activeDrafts:(Array.isArray(b.activeDrafts)?b.activeDrafts:[]).slice(0,4).map(function(v){return{storeId:v.storeId||null,store:v.store||'',step:Number.isInteger(v.step)?v.step:null}}),
+      openActions:(Array.isArray(b.openActions)?b.openActions:[]).slice(0,8).map(function(a){return{storeId:a.storeId||null,store:a.store||'',category:a.category||'',description:clip(a.description,120),dueDate:a.dueDate||'',status:a.status||'',overdue:!!a.overdue}}),
+      recentVisits:(Array.isArray(b.recentVisits)?b.recentVisits:[]).slice(0,4).map(function(v){return{storeId:v.storeId||null,store:v.store||'',completedDate:v.completedDate||null,conclusion:clip(v.conclusion,120)}})
+    };
+  }
+
+  function slimPerformance(p){
+    if(!p||typeof p!=='object')return null;
+    return {
+      week:p.week||null,
+      targetPdm:p.targetPdm==null?null:p.targetPdm,
+      counts:p.counts||{},
+      rules:p.rules||{}
     };
   }
 
@@ -95,8 +100,8 @@
     try{
       return (((visit||{}).arrival||{}).anomalies||[])
         .filter(function(a){return a&&a.text})
-        .slice(0,5)
-        .map(function(a){return{family:a.family||'',text:clip(a.text,220)}});
+        .slice(0,3)
+        .map(function(a){return{family:a.family||'',text:clip(a.text,150)}});
     }catch(e){return[]}
   }
 
@@ -107,8 +112,8 @@
       for(const category of Object.keys(six)){
         for(const row of (Array.isArray(six[category])?six[category]:[])){
           if(!row||!row.status||row.status==='ok')continue;
-          out.push({category:category,family:row.family||'',status:row.status||'',comment:clip(row.comment,220),action:clip(row.action,220)});
-          if(out.length>=6)return out;
+          out.push({category:category,family:row.family||'',status:row.status||'',comment:clip(row.comment,140),action:clip(row.action,140)});
+          if(out.length>=4)return out;
         }
       }
     }catch(e){}
@@ -120,23 +125,19 @@
       const rows=((((window.state||{}).businessV2||{}).actions)||[]);
       return rows
         .filter(function(a){return a&&String(a.storeId)===String(storeId)&&a.status!=='done'&&a.status!=='cancelled'})
-        .slice(0,5)
-        .map(function(a){return{category:a.category||'',description:clip(a.description||a.text||a.action,220),owner:a.owner||'',dueDate:a.dueDate||'',status:a.status||'',overdue:!!a.overdue}});
+        .slice(0,4)
+        .map(function(a){return{category:a.category||'',description:clip(a.description||a.text||a.action,150),dueDate:a.dueDate||'',status:a.status||''}});
     }catch(e){return[]}
   }
 
   function latestReport(visit){
     if(!visit)return null;
     const r=visit.report&&typeof visit.report==='object'?visit.report:{};
-    const scope=function(x){x=x||{};return{team:clip(x.team,180),actions:clip(x.actions,220),massification:clip(x.massification,180),omni:clip(x.omni,180),training:clip(x.training,180)}};
-    return {
-      sharedContext:clip(r.shared&&r.shared.context,240),
-      blanc:scope(r.blanc),
-      brun:scope(r.brun)
-    };
+    const scope=function(x){x=x||{};return{team:clip(x.team,100),actions:clip(x.actions,130),massification:clip(x.massification,100),omni:clip(x.omni,100),training:clip(x.training,100)}};
+    return {sharedContext:clip(r.shared&&r.shared.context,140),blanc:scope(r.blanc),brun:scope(r.brun)};
   }
 
-  function richStore(s,terrainMap){
+  function richStore(s,terrainMap,fullDetail){
     const base=basicStore(s);if(!base)return null;
     const perf=performanceFor(base.id);
     const terrain=terrainMap.get(String(base.id))||null;
@@ -146,45 +147,42 @@
         priority:perf.priority||null,
         priorityLabel:perf.priorityLabel||'',
         treated:!!perf.treated,
-        statusYtd:perf.statusYtd||null,
         pdmYtd:perf.pdmYtd==null?null:perf.pdmYtd,
         targetPdm:perf.targetPdm==null?null:perf.targetPdm,
         gapYtd:perf.gapYtd==null?null:perf.gapYtd,
         underTarget:perf.underTarget==null?null:!!perf.underTarget,
         evolutionYtd:perf.evolutionYtd==null?null:perf.evolutionYtd,
-        weekly:perf.weekly||null,
+        weekly:perf.weekly?{direction:perf.weekly.direction||'',delta:perf.weekly.delta==null?null:perf.weekly.delta,volatile:!!perf.weekly.volatile}:null,
         sellOutYtd:perf.sellOutYtd==null?null:perf.sellOutYtd,
-        visitCount:Number(perf.visitCount)||0,
-        mission:clip(perf.mission,240)
+        mission:clip(perf.mission,fullDetail?180:90)
       };
     }
     if(terrain){
       base.terrain={
         pdl:terrain.pdl==null?null:terrain.pdl,
         compliance6P:terrain.compliance==null?null:terrain.compliance,
-        rated6P:Number(terrain.rated6P)||0,
         alerts:Number(terrain.alerts)||0,
         openActions:Number(terrain.openActions)||0,
         pilotagePriority:terrain.priority==null?null:terrain.priority,
         pilotageLevel:terrain.level||null,
-        reasons:(terrain.reasons||[]).slice(0,6).map(function(x){return clip(x,180)}),
-        visitAgeDays:terrain.age==null?null:terrain.age,
-        visitLateDays:terrain.late==null?null:terrain.late,
-        lastVisit:terrain.lastVisit||null,
-        conclusion:clip(visit&&visit.conclusion,300),
-        anomalies:compactAnomalies(visit),
-        sixPToWork:compactSixP(visit),
-        actions:openActionDetails(base.id),
-        lastReport:latestReport(visit)
+        reasons:(terrain.reasons||[]).slice(0,fullDetail?4:2).map(function(x){return clip(x,100)}),
+        lastVisit:terrain.lastVisit||null
       };
+      if(fullDetail){
+        base.terrain.conclusion=clip(visit&&visit.conclusion,220);
+        base.terrain.anomalies=compactAnomalies(visit);
+        base.terrain.sixPToWork=compactSixP(visit);
+        base.terrain.actions=openActionDetails(base.id);
+        base.terrain.lastReport=latestReport(visit);
+      }
     }
     return base;
   }
 
+  function allStores(){return(window.state&&Array.isArray(window.state.stores))?window.state.stores:[]}
   function findStoreInQuestion(message){
     const n=norm(message);if(!n)return null;
-    const rows=(window.state&&Array.isArray(window.state.stores))?window.state.stores:[];
-    let best=null,bestScore=0;
+    const rows=allStores();let best=null,bestScore=0;
     for(const s of rows){
       if(!s||s.id==null)continue;
       const labels=[s.ville,(s.enseigne||'')+' '+(s.ville||'')].map(norm).filter(Boolean);
@@ -202,11 +200,46 @@
     return bestScore>=8?best:null;
   }
 
+  function lastUserQuestion(){
+    try{
+      const nodes=window.document&&window.document.querySelectorAll?window.document.querySelectorAll('#assistantMsgs .amsg.user'):[];
+      return nodes&&nodes.length?String(nodes[nodes.length-1].textContent||'').trim():'';
+    }catch(e){return''}
+  }
+
+  function dayInQuestion(message){
+    const n=norm(message),days=['lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+    for(const d of days)if(n.includes(d))return d.charAt(0).toUpperCase()+d.slice(1);
+    return null;
+  }
+
+  function selectedStoresForContext(c,message){
+    const rows=Array.isArray(c&&c.stores)?c.stores:[],byId=new Map();
+    rows.forEach(function(s){if(s&&s.id!=null)byId.set(String(s.id),s)});
+    const picked=[],seen=new Set();
+    function add(store){if(!store||store.id==null||seen.has(String(store.id))||picked.length>=MAX_ONLINE_STORES)return;seen.add(String(store.id));picked.push(store)}
+    function addId(id){if(id!=null)add(byId.get(String(id)))}
+
+    const specific=findStoreInQuestion(message),day=dayInQuestion(message);
+    if(specific)addId(specific.id);
+    if(day&&c&&c.plan&&Array.isArray(c.plan[day]))c.plan[day].forEach(function(s){addId(s&&s.id)});
+
+    const perfStores=c&&c.performanceV192&&Array.isArray(c.performanceV192.stores)?c.performanceV192.stores:[];
+    perfStores.forEach(function(s){addId(s&&s.storeId)});
+
+    const actions=c&&c.businessV2&&Array.isArray(c.businessV2.openActions)?c.businessV2.openActions:[];
+    actions.forEach(function(a){addId(a&&a.storeId)});
+
+    if(c&&c.plan&&typeof c.plan==='object')Object.keys(c.plan).forEach(function(k){(c.plan[k]||[]).forEach(function(s){addId(s&&s.id)})});
+    if(!picked.length)rows.slice(0,MAX_ONLINE_STORES).forEach(add);
+    return{stores:picked,specificId:specific&&specific.id!=null?String(specific.id):null};
+  }
+
   function localStoreAnswer(message){
     const n=norm(message);
     if(!/(pdm|pdl|6p|performance|priorit|travaill|prepar|conseil|piste|representation|action|anomal|quoi faire|faire dans)/.test(n))return null;
     const store=findStoreInQuestion(message);if(!store)return null;
-    const x=richStore(store,terrainRows());if(!x)return null;
+    const x=richStore(store,terrainRows(),true);if(!x)return null;
     const title=(x.enseigne||'Magasin')+(x.ville?' '+x.ville:'');
     const lines=['Brief magasin · '+title];
     const p=x.performance;
@@ -241,12 +274,27 @@
     return lines.join('\n');
   }
 
-  function limitContext(c){
+  function serializedSize(value){try{return JSON.stringify(value).length}catch(e){return Number.MAX_SAFE_INTEGER}}
+  function enforceBudget(out,specificId){
+    while(serializedSize(out)>MAX_CONTEXT_CHARS&&out.stores.length>(specificId?1:3))out.stores.pop();
+    while(serializedSize(out)>MAX_CONTEXT_CHARS&&out.businessV2.openActions.length>3)out.businessV2.openActions.pop();
+    while(serializedSize(out)>MAX_CONTEXT_CHARS&&out.businessV2.recentVisits.length>2)out.businessV2.recentVisits.pop();
+    while(serializedSize(out)>MAX_CONTEXT_CHARS&&out.businessV2.activeDrafts.length>2)out.businessV2.activeDrafts.pop();
+    if(serializedSize(out)>MAX_CONTEXT_CHARS&&specificId){
+      const s=out.stores.find(function(x){return String(x.id)===String(specificId)});
+      if(s&&s.terrain){delete s.terrain.lastReport;if(Array.isArray(s.terrain.sixPToWork))s.terrain.sixPToWork=s.terrain.sixPToWork.slice(0,2);if(Array.isArray(s.terrain.anomalies))s.terrain.anomalies=s.terrain.anomalies.slice(0,2);if(Array.isArray(s.terrain.actions))s.terrain.actions=s.terrain.actions.slice(0,2)}
+    }
+    return out;
+  }
+
+  function limitContext(c,questionOverride){
     c=c||{};
-    const privacyInstruction='Les détails Google Agenda restent locaux à Store Runner et ne sont pas fournis à l’IA en ligne. Ne prétends pas connaître un événement, un hôtel ou un déplacement provenant de Google Agenda si le résolveur local ne l’a pas déjà traité.';
-    const storeInstruction='Les objets stores sont les données internes réelles de Store Runner. Quand un magasin contient performance, utilise PDM YTD, cible, écart, évolution, sell-out et priorité comme chiffres de référence. Quand il contient terrain, croise PDL/représentation, conformité 6P, anomalies, actions ouvertes, dernière visite et compte rendu pour proposer des actions concrètes. Le YTD reste le statut performance principal ; la tendance hebdomadaire est seulement indicative. N’invente jamais une cause et ne prétends jamais qu’une visite a causé une variation de PDM. Si une donnée manque, dis-le au lieu de répondre par une généralité présentée comme un fait.';
-    const terrainMap=terrainRows();
-    return {
+    const question=String(questionOverride||lastUserQuestion()||'').trim();
+    const privacyInstruction='Les détails Google Agenda restent locaux à Store Runner et ne sont pas fournis à l’IA en ligne.';
+    const storeInstruction='Les magasins fournis sont un sous-ensemble ciblé des données internes Store Runner, choisi pour la question afin de respecter la limite du modèle. Utilise leurs chiffres comme source de vérité. Performance : YTD principal, tendance hebdomadaire indicative. Terrain : croise PDL/représentation, 6P, alertes, actions et dernière visite. N’invente aucune donnée ni causalité ; si un magasin ou un champ utile manque du contexte, dis-le.';
+    const terrainMap=terrainRows(),selection=selectedStoresForContext(c,question);
+    const stores=selection.stores.map(function(s){return richStore(s,terrainMap,selection.specificId!=null&&String(s.id)===selection.specificId)}).filter(Boolean);
+    const out={
       today:c.today||null,
       profile:slimProfile(c.profile),
       settings:slimSettings(c.settings),
@@ -257,10 +305,12 @@
       daySummaries:{},
       overnight:null,
       businessV2:slimBusinessV2(c.businessV2),
-      performanceV192:c.performanceV192||null,
+      performanceV192:slimPerformance(c.performanceV192),
+      contextMeta:{mode:'targeted',totalStores:Array.isArray(c.stores)?c.stores.length:0,selectedStores:stores.length,specificStore:selection.specificId||null},
       instructions:[c.instructions||'',privacyInstruction,storeInstruction].filter(Boolean).join(' '),
-      stores:(c.stores||[]).slice(0,MAX_ONLINE_STORES).map(function(s){return richStore(s,terrainMap)}).filter(Boolean)
+      stores:stores
     };
+    return enforceBudget(out,selection.specificId);
   }
 
   window.storeRunnerLimitAssistantContext=limitContext;
