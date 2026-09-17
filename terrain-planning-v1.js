@@ -29,10 +29,10 @@ function visitCredit(store){
   return 1;
 }
 function canonicalStore(id,state=root.state){return (state.stores||[]).find(s=>String(s.id)===String(id))||null}
-function cloneStore(s){return{id:s.id,enseigne:s.enseigne||'',ville:s.ville||'',adresse:s.adresse||'',dept:s.dept||'',lat:s.lat,lon:s.lon,freq:s.freq||'',priority:s.priority,lastVisit:s.lastVisit||'',intervalDays:s.intervalDays}}
+function cloneStore(s){return{id:s.id,enseigne:s.enseigne||'',ville:s.ville||'',adresse:s.adresse||'',dept:s.dept||'',lat:s.lat,lon:s.lon,freq:s.freq||'',priority:s.priority,lastVisit:s.lastVisit||'',intervalDays:s.intervalDays,visitMinutes:s.visitMinutes}}
 function routeMinutes(route,state=root.state){
   if(!route||!route.length)return 0;
-  const settings=state.settings||{},visit=Math.max(15,Number(settings.visitMinutes)||60);
+  const settings=state.settings||{};
   let km=0;
   try{
     const base=root.baseObj();
@@ -41,7 +41,7 @@ function routeMinutes(route,state=root.state){
     for(let i=1;i<route.length;i++)km+=Number(root.hav(route[i-1],route[i]))||0;
     km+=Number(root.hav(route[route.length-1],base))||0;
   }catch(e){return null}
-  return km*1.22/55*60+route.length*visit;
+  const visits=(route||[]).reduce((n,s)=>{try{return n+(typeof root.storeVisitDuration==='function'?root.storeVisitDuration(s,state):Math.max(15,Number(settings.visitMinutes)||60))}catch(e){return n+Math.max(15,Number(settings.visitMinutes)||60)}},0);return km*1.22/55*60+visits;
 }
 function dayFits(route,day,state=root.state,weekMonday){
   try{
@@ -215,7 +215,9 @@ async function syncCalendar(first,state=root.state){
 function currentDays(state=root.state){return ((state.settings&&state.settings.days)||DAYS.slice(0,5)).filter(d=>DAYS.includes(d))}
 function upcomingWorkMonday(now=new Date()){
   const d=new Date(now),base=monday(d),day=d.getDay();
-  return day===0||day===6?addDays(base,7):base;
+  /* Le mode escargot prépare les semaines à venir. Le lundi courant n'est retenu que
+     si on lance la génération le lundi ; du mardi au dimanche, on part au lundi suivant. */
+  return day===1?base:addDays(base,7);
 }
 function resolveSnailStart(state=root.state,doc=root.document,now=new Date()){
   const get=id=>doc&&typeof doc.getElementById==='function'?doc.getElementById(id):null;
