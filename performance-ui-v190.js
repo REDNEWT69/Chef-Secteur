@@ -66,6 +66,7 @@ function ensureStyle(){
     +'.srPerfSection{margin-top:16px}.srPerfSection h3{font-size:14px;margin:0 0 6px}'
     +'.srPerfEmpty{padding:18px 10px;text-align:center;color:#667085;font-size:12px;border:1px dashed #d8dee8;border-radius:14px}'
     +'.srPerfStatus{min-height:18px;font-size:12px;color:#315b9d;margin:8px 0}.srPerfStatus.srPerfError{color:#b42318}'
+    +'.srPerfCreateV209{margin-top:8px;padding:10px;border:1px solid #cfd9ea;border-radius:14px;background:#f8fbff}.srPerfCreateV209 h4{margin:0 0 8px;font-size:12px}.srPerfCreateGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.srPerfCreateGrid label{font-size:10.5px;color:#667085}.srPerfCreateGrid input{box-sizing:border-box;width:100%;min-height:42px;margin-top:4px;border:1px solid #d8dee8;border-radius:10px;padding:8px;background:#fff}.srPerfCreateWide{grid-column:1/-1}.srPerfCreateV209 small{display:block;margin-top:7px;color:#667085;line-height:1.35}@media(max-width:520px){.srPerfCreateGrid{grid-template-columns:1fr}}'
     +'#'+CARD_ID+'{margin-top:8px;padding:10px;border:1px solid #e2e6ed;border-radius:14px;background:#fbfcff;font-size:11.5px;line-height:1.5}'
     +'#'+CARD_ID+' b{font-size:12px}#'+CARD_ID+' .srPerfCardRow{display:block;color:#454b56;margin-top:3px}'
     +'#'+CARD_ID+' button{min-height:44px;width:100%;margin-top:8px;border-radius:12px;border:1px solid #d3d9e3;background:#fff;font-weight:800;font-size:11.5px}'
@@ -137,15 +138,55 @@ function rowCard(r,options){
   if(o.resolve&&!r.storeId)box.append(resolver(r,o));
   return box;
 }
+function suggestedStoreFields(r){
+  const raw=text(r&&r.retailer),upper=raw.toUpperCase(),labels={ED:'Electro Depot',CONFO:'Conforama',BOULANGER:'Boulanger',DARTY:'Darty',FNAC:'Fnac',BUT:'BUT',CARREFOUR:'Carrefour',AUCHAN:'Auchan'};
+  const enseigne=labels[upper]||raw,original=text(r&&r.site);let site=original;
+  if(raw&&site.toLowerCase().indexOf(raw.toLowerCase())===0)site=site.slice(raw.length).trim();
+  const ville=text((site.split('/')[0]||site)).replace(/^[-–—]+|[-–—]+$/g,'').trim();
+  return{enseigne:enseigne,ville:ville,sourceName:original||[enseigne,ville].filter(Boolean).join(' ')};
+}
+function createStoreEditor(r){
+  const P=D(),defaults=suggestedStoreFields(r),box=el('div',undefined,'srPerfCreateV209'),grid=el('div',undefined,'srPerfCreateGrid'),fields={};
+  box.append(el('h4','Ajouter ce magasin à mon secteur'));
+  function field(label,key,value,type,wide){const l=el('label',label,wide?'srPerfCreateWide':'');const i=el('input');i.type=type||'text';i.value=value||'';i.dataset.v209Field=key;if(type==='number')i.step='any';l.append(i);grid.append(l);fields[key]=i;return i}
+  field('Enseigne','enseigne',defaults.enseigne);field('Ville','ville',defaults.ville);
+  field('Adresse','adresse','',null,true);field('Code postal','codePostal','');
+  field('Latitude','lat','', 'number');field('Longitude','lon','', 'number');
+  box.append(grid);
+  const lookup=btn('⌕ Rechercher l’adresse',async()=>{
+    const G=root.StoreRunnerGeocode;if(!G||typeof G.forward!=='function'){say('Recherche d’adresse indisponible. Tu peux compléter les champs manuellement.',true);return}
+    lookup.disabled=true;lookup.textContent='⌕ Recherche…';
+    try{
+      const q=[text(fields.enseigne.value),text(r.site),text(fields.ville.value)].filter(Boolean).join(' '),found=await G.forward(q);
+      fields.adresse.value=found.address||fields.adresse.value;fields.ville.value=found.city||fields.ville.value;fields.codePostal.value=found.postcode||fields.codePostal.value;
+      fields.lat.value=Number(found.lat).toFixed(6);fields.lon.value=Number(found.lon).toFixed(6);say('Adresse trouvée ✓ Vérifie puis ajoute le magasin.');
+    }catch(e){say(text(e&&e.message)||'Adresse introuvable.',true)}finally{lookup.disabled=false;lookup.textContent='⌕ Rechercher l’adresse'}
+  });
+  const add=btn('＋ Ajouter au secteur',()=>{
+    try{
+      const R=root.RegionStores;if(!R||typeof R.commit!=='function')throw new Error('Ajout magasin indisponible. Recharge Store Runner.');
+      const enseigne=text(fields.enseigne.value),ville=text(fields.ville.value),adresse=text(fields.adresse.value),codePostal=text(fields.codePostal.value),lat=Number(fields.lat.value),lon=Number(fields.lon.value);
+      if(!enseigne||!ville||!adresse||!Number.isFinite(lat)||!Number.isFinite(lon))throw new Error('Enseigne, ville, adresse et coordonnées sont obligatoires. Utilise « Rechercher l’adresse » ou complète-les manuellement.');
+      const slug=(P&&P.norm?P.norm(enseigne+' '+ville):String(enseigne+' '+ville).toLowerCase()).replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'').slice(0,46)||'magasin';
+      const store={id:'perf-'+slug+'-'+Date.now().toString(36),enseigne:enseigne,ville:ville,adresse:adresse,codePostal:codePostal,dept:codePostal.slice(0,2),lat:lat,lon:lon,freq:'Mensuel',intervalDays:30,priority:3,active:true,products:['À confirmer'],source:'Fichier performance '+text(oWeek()),sourceName:defaults.sourceName,sourceFetchedAt:new Date().toISOString()};
+      if(R.duplicate(store,stores()))throw new Error('Doublon probable : rattache plutôt cette ligne à un magasin déjà présent.');
+      if(R.commit([store])!==1)throw new Error('Ce magasin existe déjà ou n’a pas pu être ajouté.');
+      P.rememberMatch(db(),r.key,store.id);say('Magasin ajouté et rattaché ✓ '+enseigne+' · '+ville);render();
+    }catch(e){say(text(e&&e.message)||'Ajout impossible.',true)}
+  },'primary');
+  box.append(lookup,add,el('small','Aucun ajout automatique : vérifie toujours l’adresse avant validation. Recherche d’adresse : © OpenStreetMap contributors.'));
+  return box;
+}
+function oWeek(){return activeWeek||''}
 /* Appariement manuel : une liste de candidats, jamais un choix fait à la place de
    l'utilisateur. Le choix est retenu pour les semaines suivantes. */
 function resolver(r,o){
-  const P=D(),wrap=el('div'),select=el('select');
+  const P=D(),wrap=el('div'),select=el('select'),create=btn('＋ Ajouter ce magasin à mon secteur',()=>{const old=wrap.querySelector('.srPerfCreateV209');if(old){old.remove();create.textContent='＋ Ajouter ce magasin à mon secteur';return}wrap.append(createStoreEditor(r));create.textContent='Masquer le formulaire'});
   select.append(Object.assign(el('option','Rattacher à un magasin…'),{value:''}));
   for(const s of stores())select.append(Object.assign(el('option',text(s.enseigne)+' · '+text(s.ville)),{value:String(s.id)}));
   select.style.minHeight='44px';select.style.width='100%';select.style.marginTop='8px';
   select.onchange=()=>{if(!select.value)return;P.rememberMatch(db(),r.key,select.value);say('Rattachement enregistré : il sera réutilisé les semaines suivantes.');render()};
-  wrap.append(select);return wrap;
+  wrap.append(select,create);return wrap;
 }
 function kpi(host,value,label){const box=el('div',undefined,'srPerfKpi');box.append(el('b',String(value)),el('span',label));host.append(box)}
 
@@ -168,7 +209,7 @@ function render(){
   const kpis=el('div',undefined,'srPerfKpis');
   kpi(kpis,board.counts.P1,'Prio 1');kpi(kpis,board.counts.P2,'Prio 2');
   kpi(kpis,board.counts.watch,'À surveiller');kpi(kpis,board.underTarget.length,'sous la cible');
-  const notes=[board.counts.nodata+' sans data',board.counts.unmatched+' non rattaché'+(board.counts.unmatched>1?'s':'')];
+  const matched=board.counts.total-board.counts.unmatched,notes=[matched+' rattaché'+(matched>1?'s':'')+' sur '+board.counts.total,board.counts.nodata+' sans data',board.counts.unmatched+' non rattaché'+(board.counts.unmatched>1?'s':'')];
   if(board.importsThisWeek>1)notes.push(board.importsThisWeek+' imports pour cette semaine, tous conservés — la dernière valeur connue est affichée');
   kpis.append(el('p',notes.join(' · ')+' · statut et écart calculés sur le YTD ; les magasins sans PDM ne sont comptés ni au-dessus ni en dessous de la cible.','srPerfNote'));
   body.append(kpis);
@@ -176,8 +217,8 @@ function render(){
   const sections=[
     ['À traiter en priorité',board.rows.filter(r=>r.prio==='P1'),{actions:true,week:board.week,resolve:true},''],
     ['Prio 2',board.rows.filter(r=>r.prio==='P2'),{week:board.week,resolve:true},''],
-    ['À surveiller',board.rows.filter(r=>r.prio==='watch'),{week:board.week},''],
-    ['Sans data',board.rows.filter(r=>r.prio==='nodata'),{week:board.week},'']
+    ['À surveiller',board.rows.filter(r=>r.prio==='watch'),{week:board.week,resolve:true},''],
+    ['Sans data',board.rows.filter(r=>r.prio==='nodata'),{week:board.week,resolve:true},'']
   ];
   /* Les deux vues comparatives n'apparaissent qu'à partir de deux semaines : sur un seul
      snapshot il n'y a pas d'avant, donc rien à comparer. */
@@ -283,7 +324,7 @@ function ensureMenuEntry(){
    aucune d'elles ne touche au planning. */
 function install(){ensureStyle();ensureMenuEntry();renderStoreCard();return true}
 
-const api={open,install,importFile,renderStoreCard,visitsFor};
+const api={open,install,importFile,renderStoreCard,visitsFor,suggestedStoreFields};
 root.StoreRunnerPerformanceUIV190=api;
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){
