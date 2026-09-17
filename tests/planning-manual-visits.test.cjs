@@ -3,7 +3,7 @@ const Manual=require('../planning-manual-visits.js');
 const source=fs.readFileSync(__dirname+'/../planning-manual-visits.js','utf8');
 
 function store(id,enseigne,ville){return{id,enseigne,ville,active:true}}
-const a=store('a','Auchan','Saint-Priest'),b=store('b','Boulanger','Saint-Priest'),c=store('c','Darty','Bron');
+const a=store('a','Auchan','Ville-Test C'),b=store('b','Boulanger','Ville-Test C'),c=store('c','Darty','Ville-Test B');
 const state={stores:[a,b,c],excluded:{},plan:{Lundi:[a,b],Mardi:[c],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]},settings:{weekDate:'2026-09-15'}};
 
 assert.equal(Manual.currentWeekKey(state),'2026-09-14');

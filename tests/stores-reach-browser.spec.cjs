@@ -24,10 +24,10 @@ test('Magasins distingue exclu/désactivé et actualise le vrai vivier à 390 px
     if (!st) throw new Error('État Store Runner introuvable');
     window.state = st;
     st.stores = [
-      { id:'reach-ok', enseigne:'Darty', ville:'Lyon', adresse:'1 rue Test', dept:'69', active:true, priority:3, products:[] },
-      { id:'reach-excluded', enseigne:'Darty', ville:'Bron', adresse:'2 rue Test', dept:'69', active:true, priority:3, products:[] },
-      { id:'reach-off', enseigne:'Darty', ville:'Villeurbanne', adresse:'3 rue Test', dept:'69', active:false, priority:3, products:[] },
-      { id:'reach-filtered', enseigne:'Boulanger', ville:'Vénissieux', adresse:'4 rue Test', dept:'69', active:true, priority:3, products:[] }
+      { id:'reach-ok', enseigne:'Darty', ville:'Ville-Test A', adresse:'1 rue Test', dept: '99', active:true, priority:3, products:[] },
+      { id:'reach-excluded', enseigne:'Darty', ville:'Ville-Test B', adresse:'2 rue Test', dept: '99', active:true, priority:3, products:[] },
+      { id:'reach-off', enseigne:'Darty', ville:'Ville-Test E', adresse:'3 rue Test', dept: '99', active:false, priority:3, products:[] },
+      { id:'reach-filtered', enseigne:'Boulanger', ville:'Ville-Test H', adresse:'4 rue Test', dept: '99', active:true, priority:3, products:[] }
     ];
     st.excluded = { 'reach-excluded': true };
     st.included = {};
@@ -56,8 +56,8 @@ test('Magasins distingue exclu/désactivé et actualise le vrai vivier à 390 px
   await expect(kpis).toContainText('1 écarté par le filtre Enseignes');
   await expect(kpis).toContainText('1 désactivé du secteur');
 
-  const excludedLine = panel.locator('.storeline').filter({ hasText: 'Darty · Bron' }).first();
-  const disabledLine = panel.locator('.storeline').filter({ hasText: 'Darty · Villeurbanne' }).first();
+  const excludedLine = panel.locator('.storeline').filter({ hasText: 'Darty · Ville-Test B' }).first();
+  const disabledLine = panel.locator('.storeline').filter({ hasText: 'Darty · Ville-Test E' }).first();
   await expect(excludedLine).toHaveClass(/excluded/);
   await expect(excludedLine.locator('.storeTagExcluded')).toHaveText('⊘ Exclu du planning');
   await expect(disabledLine).toHaveClass(/inactive/);
@@ -75,7 +75,7 @@ test('Magasins distingue exclu/désactivé et actualise le vrai vivier à 390 px
   await page.waitForTimeout(160);
 
   expect(await page.evaluate(() => Boolean((window.state || state).excluded['reach-excluded']))).toBe(false);
-  const refreshedLine = panel.locator('.storeline').filter({ hasText: 'Darty · Bron' }).first();
+  const refreshedLine = panel.locator('.storeline').filter({ hasText: 'Darty · Ville-Test B' }).first();
   await expect(refreshedLine.locator('.storeTagExcluded')).toHaveCount(0);
   await expect(refreshedLine).not.toHaveClass(/excluded/);
   await expect(kpis).toContainText('2planifiables');

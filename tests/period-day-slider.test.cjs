@@ -157,11 +157,11 @@ const localData={
 const activeData={
   [RANGE]:JSON.stringify({start:'2026-09-14',end:'2026-09-18',workDays:['Lundi','Mardi','Mercredi','Jeudi','Vendredi']}),
   [ARCHIVE]:JSON.stringify({
-    '2026-09-14':{weekMonday:'2026-09-14',plan:{Lundi:[{id:'new',enseigne:'Darty',ville:'Lyon'}],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}}
+    '2026-09-14':{weekMonday:'2026-09-14',plan:{Lundi:[{id:'new',enseigne:'Darty',ville:'Ville-Test A'}],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}}
   })
 };
 const makeStorage=data=>({getItem:key=>Object.prototype.hasOwnProperty.call(data,key)?data[key]:null,setItem(key,value){data[key]=String(value)},removeItem(key){delete data[key]}});
-const state={settings:{days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],weekDate:'2026-09-07'},stores:[{id:'new',enseigne:'Darty',ville:'Lyon'}],plan:{Lundi:[{id:'old'}],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}};
+const state={settings:{days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],weekDate:'2026-09-07'},stores:[{id:'new',enseigne:'Darty',ville:'Ville-Test A'}],plan:{Lundi:[{id:'old'}],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}};
 let scheduled=null;
 const weekInput={value:'2026-09-07'};
 const dom=createFakeDom();

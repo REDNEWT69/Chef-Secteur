@@ -30,12 +30,12 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA F
 
   await page.evaluate(()=>{
     const st=window.state;
-    st.profile=Object.assign({},st.profile||{},{baseName:'Domicile test',baseAddress:'Lyon',baseLat:45.75,baseLon:4.84});
+    st.profile=Object.assign({},st.profile||{},{baseName:'Domicile test',baseAddress:'Villetest',baseLat:43.65,baseLon:-0.66});
     st.settings=Object.assign({},st.settings||{},{weekDate:'2026-09-14',days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],startTime:'08:30',endTime:'18:00',visitMinutes:60});
     st.stores=[
-      {id:'photo-store',enseigne:'Boulanger',ville:'Lyon',adresse:'1 rue Photo',dept:'69',lat:45.76,lon:4.84,active:true,priority:3},
-      {id:'darty-default',enseigne:'Darty',ville:'Villeurbanne',adresse:'2 rue Photo',dept:'69',lat:45.77,lon:4.85,active:true,priority:3},
-      {id:'darty-manual',enseigne:'Darty',ville:'Bron',adresse:'3 rue Photo',dept:'69',lat:45.73,lon:4.91,active:true,priority:3,openingHoursSource:'manual'}
+      {id:'photo-store',enseigne:'Boulanger',ville:'Villetest',adresse:'1 rue Photo',dept: '99',lat:43.66,lon:-0.66,active:true,priority:3},
+      {id:'darty-default',enseigne:'Darty',ville:'Ville-Test E',adresse:'2 rue Photo',dept: '99',lat:43.67,lon:-0.65,active:true,priority:3},
+      {id:'darty-manual',enseigne:'Darty',ville:'Ville-Test B',adresse:'3 rue Photo',dept: '99',lat:43.63,lon:-0.59,active:true,priority:3,openingHoursSource:'manual'}
     ];
     st.plan={Lundi:[JSON.parse(JSON.stringify(st.stores[0])),JSON.parse(JSON.stringify(st.stores[1]))],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
     st.appointments=[];st.calendarEvents=[];
@@ -156,8 +156,8 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA F
   await shareFamily.tap();
   await expect.poll(()=>page.evaluate(()=>window.__sharedStorePhotos&&window.__sharedStorePhotos.count)).toBe(2);
   const sharedFromReport=await page.evaluate(()=>window.__sharedStorePhotos);
-  expect(sharedFromReport.title).toBe('Photos terrain · Boulanger · Lyon');
-  expect(sharedFromReport.names.every(n=>n.startsWith('Boulanger-Lyon_brun_'))).toBe(true);
+  expect(sharedFromReport.title).toBe('Photos terrain · Boulanger · Villetest');
+  expect(sharedFromReport.names.every(n=>n.startsWith('Boulanger-Villetest_brun_'))).toBe(true);
   expect(sharedFromReport.names.some(n=>n.includes('_avant_'))).toBe(true);
   expect(sharedFromReport.names.some(n=>n.includes('_apres_'))).toBe(true);
   await expect(report.locator('#srReportStatus')).toContainText('2 photos BRUN partagées');

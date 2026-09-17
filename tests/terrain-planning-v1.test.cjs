@@ -141,7 +141,7 @@ function flat(week){
   const previous=global.StoreOpeningHoursV1;
   let called=0;
   global.StoreOpeningHoursV1={routeFits(route,day,state,options){called++;assert.strictEqual(day,'Lundi');assert.ok(options.weekMonday instanceof Date);return false}};
-  const state={settings:{startTime:'08:30',endTime:'18:00'},profile:{baseLat:45,baseLon:4}};
+  const state={settings:{startTime:'08:30',endTime:'18:00'},profile:{baseLat:42.9,baseLon:-1.5}};
   assert.strictEqual(terrain.dayFits([{id:'a',lat:45,lon:4.1}],'Lundi',state,monday()),false,'un horaire magasin impossible doit refuser ce jour');
   assert.strictEqual(called,1);
   if(previous===undefined)delete global.StoreOpeningHoursV1;else global.StoreOpeningHoursV1=previous;
@@ -149,7 +149,7 @@ function flat(week){
 
 (function overnightReportExplainsTheThreeWeeks(){
   const a={id:'a'},b={id:'b'};
-  const state={profile:{baseLat:45,baseLon:4,overnightMode:'auto',overnightMinSaving:80},settings:{days:['Lundi','Mardi']}};
+  const state={profile:{baseLat:42.9,baseLon:-1.5,overnightMode:'auto',overnightMinSaving:80},settings:{days:['Lundi','Mardi']}};
   const distance=(x,y)=>({
     'a-base':100,'base-a':100,'base-b':100,'b-base':100,'a-b':20,'b-a':20
   })[(x.id||'base')+'-'+(y.id||'base')] ?? 0;

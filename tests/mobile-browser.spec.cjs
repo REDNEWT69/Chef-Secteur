@@ -21,15 +21,15 @@ async function installFixture(page) {
     const stores = Array.from({ length: 10 }, (_, i) => ({
       id: 'e2e-' + (i + 1),
       enseigne: i % 2 ? 'Darty' : 'Boulanger',
-      ville: ['Lyon','Bron','Villeurbanne','Saint-Priest','Vénissieux'][i % 5],
+      ville: ['Ville-Test A','Ville-Test B','Ville-Test E','Ville-Test C','Ville-Test H'][i % 5],
       adresse: (10 + i) + ' rue Test Mobile',
-      lat: 45.72 + i * 0.004,
-      lon: 4.80 + i * 0.006,
+      lat: 43.62 + i * 0.004,
+      lon: -0.7 + i * 0.006,
       active: true,
       priority: 5 - (i % 5)
     }));
     st.profile = Object.assign({}, st.profile || {}, {
-      baseName: 'Départ E2E', baseAddress: '1 place Bellecour Lyon', baseLat: 45.7578, baseLon: 4.8320
+      baseName: 'Départ E2E', baseAddress: '1 place Bellecour Ville-Test A', baseLat:43.6578, baseLon:-0.668
     });
     st.settings = Object.assign({}, st.settings || {}, {
       weekDate: '2026-09-14', days, target: 10, maxVisitsPerDay: 4,
@@ -283,7 +283,7 @@ test('Pose datée et verrou récurrent restent explicites dans Magasins à 390 p
 
   const storesPanel = page.locator('#storesPanel');
   await expect(storesPanel).toBeVisible();
-  const line = storesPanel.locator('.storeline').filter({ hasText: 'Boulanger · Lyon' }).first();
+  const line = storesPanel.locator('.storeline').filter({ hasText: 'Boulanger · Ville-Test A' }).first();
   await expect(line).toBeVisible();
   let select = line.locator('select');
   await expect(select).toBeVisible();
@@ -305,14 +305,14 @@ test('Pose datée et verrou récurrent restent explicites dans Magasins à 390 p
   await select.selectOption('Mardi');
   await page.waitForTimeout(120);
   expect(await page.evaluate(() => (window.state || state).locks['e2e-1'])).toBe('Mardi');
-  select = storesPanel.locator('.storeline').filter({ hasText: 'Boulanger · Lyon' }).first().locator('select');
+  select = storesPanel.locator('.storeline').filter({ hasText: 'Boulanger · Ville-Test A' }).first().locator('select');
   selectedText = await select.locator('option:checked').textContent();
   expect(selectedText).toBe('Tous les mardis');
 
   await select.selectOption('');
   await page.waitForTimeout(120);
   expect(await page.evaluate(() => Object.prototype.hasOwnProperty.call((window.state || state).locks, 'e2e-1'))).toBe(false);
-  select = storesPanel.locator('.storeline').filter({ hasText: 'Boulanger · Lyon' }).first().locator('select');
+  select = storesPanel.locator('.storeline').filter({ hasText: 'Boulanger · Ville-Test A' }).first().locator('select');
   expect(await select.locator('option:checked').textContent()).toBe('Jour libre');
 
   overflow = await page.evaluate(() => ({
@@ -340,14 +340,14 @@ test('Le filtre Enseignes affiche le vrai vivier et Tout sélectionner à 390 px
         enseigne: 'Brand ' + brand,
         ville: 'Ville ' + stores.length,
         adresse: (100 + stores.length) + ' rue Filtre',
-        lat: 45.70 + stores.length * 0.001,
-        lon: 4.80 + stores.length * 0.001,
+        lat: 43.6 + stores.length * 0.001,
+        lon: -0.7 + stores.length * 0.001,
         active: true,
         priority: 3
       });
     });
-    stores.push({id:'filter-disabled',enseigne:'Brand 0',ville:'Inactive',adresse:'1 rue Inactive',lat:45.7,lon:4.8,active:false,priority:3});
-    stores.push({id:'filter-excluded',enseigne:'Brand 0',ville:'Exclue',adresse:'2 rue Exclue',lat:45.71,lon:4.81,active:true,priority:3});
+    stores.push({id:'filter-disabled',enseigne:'Brand 0',ville:'Inactive',adresse:'1 rue Inactive',lat:43.6,lon:-0.7,active:false,priority:3});
+    stores.push({id:'filter-excluded',enseigne:'Brand 0',ville:'Exclue',adresse:'2 rue Exclue',lat:43.61,lon:-0.69,active:true,priority:3});
     st.stores = stores;
     st.excluded = {'filter-excluded':true};
     st.included = {};

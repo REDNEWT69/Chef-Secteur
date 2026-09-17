@@ -2,7 +2,7 @@ const assert=require('node:assert/strict');
 const path=require('node:path');
 
 const stores=[];
-for(let i=1;i<=56;i++)stores.push({id:'s'+i,enseigne:i===1?'Boulanger':'Darty',ville:i===1?'Test-Nord':'Ville '+i,dept:'69',freq:'30j',products:['TV','BLANC']});
+for(let i=1;i<=56;i++)stores.push({id:'s'+i,enseigne:i===1?'Boulanger':'Darty',ville:i===1?'Test-Nord':'Ville '+i,dept: '99',freq:'30j',products:['TV','BLANC']});
 
 const visit={
   completedDate:'2026-09-10',

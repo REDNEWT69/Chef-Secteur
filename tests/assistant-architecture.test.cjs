@@ -56,11 +56,11 @@ class FixedDate extends Date{
   static now(){return new Date('2026-09-11T08:00:00Z').getTime()}
 }
 const archivedPlan={
-  '2026-09-07':{weekMonday:'2026-09-07',plan:{Samedi:[{id:'archive',enseigne:'Darty',ville:'Bron'}]}}
+  '2026-09-07':{weekMonday:'2026-09-07',plan:{Samedi:[{id:'archive',enseigne:'Darty',ville:'Ville-Test B'}]}}
 };
 const temporalState={
   settings:{weekDate:'2026-09-14',days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi']},
-  plan:{Samedi:[{id:'displayed',enseigne:'Boulanger',ville:'Grenoble'}]},
+  plan:{Samedi:[{id:'displayed',enseigne:'Boulanger',ville:'Ville-Test F'}]},
   calendarEvents:[{date:'2026-09-12',title:'Formation terrain'}]
 };
 const ctx={
@@ -75,11 +75,11 @@ ctx.window=ctx;
 vm.runInNewContext(assistant,ctx);
 const tomorrow=ctx.chefSecteurSmartLocalAnswer('planning demain');
 assert.match(tomorrow,/Samedi 2026-09-12\./,'demain doit conserver la vraie date et non le samedi de la semaine affichée');
-assert.match(tomorrow,/Darty Bron/,'demain doit lire la tournée de la vraie semaine dans l’archive');
+assert.match(tomorrow,/Darty Ville-Test B/,'demain doit lire la tournée de la vraie semaine dans l’archive');
 assert.match(tomorrow,/Formation terrain/,'demain doit lire l’Agenda de la vraie date');
-assert.doesNotMatch(tomorrow,/Boulanger Grenoble/,'demain ne doit pas reprendre la tournée de la semaine affichée');
+assert.doesNotMatch(tomorrow,/Boulanger Ville-Test F/,'demain ne doit pas reprendre la tournée de la semaine affichée');
 const namedDay=ctx.chefSecteurSmartLocalAnswer('planning samedi');
 assert.match(namedDay,/Samedi 2026-09-19\./,'un jour nommé explicitement doit rester lié à la semaine affichée');
-assert.match(namedDay,/Boulanger Grenoble/,'un jour nommé explicitement doit continuer à utiliser le planning affiché');
+assert.match(namedDay,/Boulanger Ville-Test F/,'un jour nommé explicitement doit continuer à utiliser le planning affiché');
 
 console.log('Assistant architecture guards: OK · relative dates use the real calendar date and store archive refresh stays event-driven');

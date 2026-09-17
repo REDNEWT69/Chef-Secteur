@@ -32,11 +32,11 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
     const st=window.state;
     const stores=Array.from({length:65},(_,i)=>({
       id:'snail-'+String(i+1).padStart(2,'0'), enseigne:'Magasin Test', ville:'Ville '+(i+1),
-      adresse:(i+1)+' rue Escargot', dept:'69', lat:i===64?null:45.758+(i+1)*0.002, lon:i===64?null:4.832,
+      adresse:(i+1)+' rue Escargot', dept: '99', lat:i===64?null:43.658+(i+1)*0.002, lon:i===64?null:-0.668,
       active:true, priority:3, intervalDays:30, products:[]
     }));
     stores[0].openingHours={Lundi:[{open:'09:30',close:'19:30'}],Mardi:[{open:'09:30',close:'19:30'}],Mercredi:[{open:'09:30',close:'19:30'}],Jeudi:[{open:'09:30',close:'19:30'}],Vendredi:[{open:'09:30',close:'19:30'}]};
-    st.profile=Object.assign({},st.profile||{},{baseName:'Domicile test',baseAddress:'Lyon',baseLat:45.758,baseLon:4.832,overnightMode:'auto',overnightMinSaving:80});
+    st.profile=Object.assign({},st.profile||{},{baseName:'Domicile test',baseAddress:'Ville-Test A',baseLat:43.658,baseLon:-0.668,overnightMode:'auto',overnightMinSaving:80});
     st.settings=Object.assign({},st.settings||{},{weekDate:'2026-09-21',days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],target:20,maxVisitsPerDay:4,startTime:'08:30',endTime:'18:00',visitMinutes:45,brands:[],products:[]});
     st.stores=stores;st.plan={Lundi:[],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};st.locks={};st.included={};st.excluded={};st.appointments=[];st.calendarEvents=[];st.manualWeekEdits={};
     window.syncGoogleCalendar=async()=>({ok:true});

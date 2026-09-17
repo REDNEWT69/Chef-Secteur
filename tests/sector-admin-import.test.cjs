@@ -20,7 +20,7 @@ class Element {
 }
 function fixture() {
   const old = {id: 'old', enseigne: 'Darty', sourceName: 'Fiche synthétique ancienne',
-    adresse: '1 rue Fictive', codePostal: '69001', ville: 'Lyon', dept: '69', lat: 45, lon: 4,
+    adresse: '1 rue Fictive', codePostal: '99001', ville: 'Ville-Test A', dept: '99', lat: 42.9, lon: -1.5,
     freq: 3, intervalDays: 21, priority: 4, active: false, products: ['Produit synthétique']};
   const state = {schemaVersion: 5, stores: [old], profile: {}, settings: {},
     visits: {old: {history: ['2026-09-01']}}, notes: {old: 'Note synthétique'},
@@ -59,14 +59,14 @@ function assertBusiness(f, id, before) {
 async function scenario(byFingerprint) {
   const f = fixture(), before = copy(f.root.state), original = f.root.state;
   const storedBefore = [...f.data];
-  const imported = {...f.old, id: byFingerprint ? 'imported' : 'old', lat: 46.5, lon: 5.5,
+  const imported = {...f.old, id: byFingerprint ? 'imported' : 'old', lat: 44.4, lon: 0,
     sourceName: 'Fiche synthétique corrigée', freq: 1, intervalDays: 7, priority: 1,
     active: true, products: ['Autre produit']};
   if (byFingerprint) {
     // Accents, case and punctuation normalize to the same current fp().
-    imported.adresse = '1 RUE Fictive!'; imported.ville = 'LYON';
+    imported.adresse = '1 RUE Fictive!'; imported.ville = 'VILLE-TEST A';
   } else {
-    imported.adresse = '2 rue Corrigée'; imported.codePostal = '38000'; imported.ville = 'Grenoble';
+    imported.adresse = '2 rue Corrigée'; imported.codePostal = '38000'; imported.ville = 'Ville-Test F';
   }
   await f.open();
   const payload = JSON.stringify({format: 'ChefSecteurSector', version: 1, stores: [imported]});

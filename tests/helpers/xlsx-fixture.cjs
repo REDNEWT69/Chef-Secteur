@@ -97,7 +97,7 @@ function sectorW34(week){
   return{bytes:build(rows),expected:{lignes:51,P1:7,P2:25,watch:18,nodata:1,sansPdm:3,target:42.5}};
 }
 
-/* En-têtes RECOPIÉS À L'IDENTIQUE du classeur réel « RHONE ALPES W34.xlsx », y compris
+/* En-têtes RECOPIÉS À L'IDENTIQUE du classeur réel « PILOTAGE SECTEUR W34.xlsx » (nom inventé ; le vrai classeur reste local), y compris
    la double espace de « SO€  2026 » et la coquille d'année « W34 2028 ». Les valeurs,
    elles, restent inventées : seuls les noms de colonnes viennent du fichier. */
 const HEADERS_REELS=['Prios','Retailer','Site name','YTD IHS W34','% evol YTD vs LY','Δ YTD W34 vs target',
@@ -137,7 +137,7 @@ function sectorReel(){
 
 
 /* ------------------------------------------------------------------------------------
-   Structure XML du classeur réel « RHONE ALPES W34.xlsx », reproduite de toutes pièces :
+   Structure XML du classeur réel « PILOTAGE SECTEUR W34.xlsx » (nom inventé ; le vrai classeur reste local), reproduite de toutes pièces :
    toutes les cellules texte en `inlineStr`, aucun `sharedStrings.xml`, cibles de relations
    ABSOLUES (« /xl/… »), en-tête en ligne 14 et « Target = 42.5% » en A1.
    Le fichier réel ne doit jamais entrer dans le dépôt : seules sa forme et ses en-têtes
@@ -161,7 +161,7 @@ function buildInline(rows){
     // Cibles absolues, comme dans le classeur livré.
     {name:'_rels/.rels',data:'<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="/xl/workbook.xml"/></Relationships>'},
     {name:'xl/_rels/workbook.xml.rels',data:'<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="/xl/worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="/xl/styles.xml"/></Relationships>'},
-    {name:'xl/workbook.xml',data:'<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="RHONE ALPES W34" sheetId="1" r:id="rId1"/></sheets></workbook>'},
+    {name:'xl/workbook.xml',data:'<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="PILOTAGE SECTEUR W34" sheetId="1" r:id="rId1"/></sheets></workbook>'},
     {name:'xl/styles.xml',data:STYLES},
     {name:'xl/worksheets/sheet1.xml',data:sheet}
     // Volontairement : aucun xl/sharedStrings.xml.

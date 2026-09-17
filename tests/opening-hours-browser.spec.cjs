@@ -26,11 +26,11 @@ test('V1 horaires : saisie, défauts Boulanger/Darty, planning et hors ligne à 
   await page.evaluate(() => {
     const st=window.state;
     const stores=[
-      {id:'hours-1',enseigne:'Fnac',ville:'Premier',adresse:'1 rue Ouverture',dept:'69',lat:45.760,lon:4.832,active:true,priority:3},
-      {id:'hours-2',enseigne:'Boulanger',ville:'Deuxième',adresse:'2 rue Ouverture',dept:'69',lat:45.770,lon:4.832,active:true,priority:3},
-      {id:'hours-3',enseigne:'Darty',ville:'Troisième',adresse:'3 rue Ouverture',dept:'69',lat:45.780,lon:4.842,active:true,priority:3}
+      {id:'hours-1',enseigne:'Fnac',ville:'Premier',adresse:'1 rue Ouverture',dept: '99',lat:43.66,lon:-0.668,active:true,priority:3},
+      {id:'hours-2',enseigne:'Boulanger',ville:'Deuxième',adresse:'2 rue Ouverture',dept: '99',lat:43.67,lon:-0.668,active:true,priority:3},
+      {id:'hours-3',enseigne:'Darty',ville:'Troisième',adresse:'3 rue Ouverture',dept: '99',lat:43.68,lon:-0.658,active:true,priority:3}
     ];
-    st.profile=Object.assign({},st.profile||{},{baseName:'Domicile test',baseAddress:'Lyon',baseLat:45.758,baseLon:4.832});
+    st.profile=Object.assign({},st.profile||{},{baseName:'Domicile test',baseAddress:'Ville-Test A',baseLat:43.658,baseLon:-0.668});
     st.settings=Object.assign({},st.settings||{},{weekDate:'2026-09-14',days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],startTime:'08:30',endTime:'18:00',visitMinutes:60});
     st.stores=stores;st.plan={Lundi:JSON.parse(JSON.stringify(stores)),Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};st.appointments=[];st.calendarEvents=[];
     try{if(typeof save==='function')save()}catch(_){}
