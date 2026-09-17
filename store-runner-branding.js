@@ -7,8 +7,8 @@
 
   function text(v){return String(v==null?'':v).trim()}
   function cleanSector(v){
-    const sector=text(v||'Rhône-Alpes').replace(/^samsung\s*[·:–—-]?\s*/i,'').trim();
-    return sector||'Rhône-Alpes';
+    const sector=text(v||'Mon secteur').replace(/^samsung\s*[·:–—-]?\s*/i,'').trim();
+    return sector||'Mon secteur';
   }
   function profileContext(){
     let profile={};

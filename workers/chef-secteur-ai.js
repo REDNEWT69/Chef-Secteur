@@ -90,7 +90,7 @@ async function callGroq(env, system, user, maxTokens) {
   return { text: String(text || '').trim(), model, provider: 'groq' };
 }
 
-const ASSISTANT_SYSTEM = `Tu es l'assistant opérationnel d'un chef de secteur Samsung Rhône-Alpes.
+const ASSISTANT_SYSTEM = `Tu es l'assistant opérationnel d'un chef de secteur.
 Tu reçois le planning réel de la semaine et les données internes Store Runner sur les magasins.
 Les objets magasins peuvent inclure performance (PDM YTD, cible, écart, évolution, sell-out, tendance, priorité) et terrain (PDL/représentation, conformité 6P, anomalies, actions ouvertes, dernière visite, compte rendu et motifs de priorité).
 Règles impératives :
