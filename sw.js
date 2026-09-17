@@ -1,4 +1,4 @@
-const BUILD_REV = "20260917-nearbysuggest199";
+const BUILD_REV = "20260917-opportunity200";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -12,6 +12,7 @@ const CORE_SHELL = [
 ];
 const OPTIONAL_SHELL = [
   "./visit-report-slack.js",
+  "./store-runner-opportunities.js",
   "./performance-data-v190.js", "./performance-ui-v190.js", "./assistant-performance-context-v192.js", "./cuisiniste-contracts-v193.js",
   "./region-stores.js", "./region-stores.css",
   "./region-fetch-resilience.js",
