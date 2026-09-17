@@ -118,14 +118,54 @@ function futureOvernightAnalysis(plan,weekDate){
   if(!best)return{mode,threshold,candidate:null,reason:'no-future-pair',best:null,bestRemote:null};if(mode==='mandatory')return bestUseful?{mode,threshold,candidate:bestUseful,reason:'candidate',best,bestRemote}:{mode,threshold,candidate:null,reason:'mandatory-no-useful',best,bestRemote};if(!bestRemote)return{mode,threshold,candidate:null,reason:'too-close',best,bestRemote:null};if(bestRemote.saving<threshold)return{mode,threshold,candidate:null,reason:'threshold',best,bestRemote};return{mode,threshold,candidate:bestRemote,reason:'candidate',best,bestRemote}
 }
 function hotelUrl(store){const q='hôtel près de '+String(store&&store.adresse||'')+' '+String(store&&store.ville||'');return'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q)}
-function ensureOvernightStyle(){if(document.getElementById('srOvernightV189Style'))return;const style=document.createElement('style');style.id='srOvernightV189Style';style.textContent='.srOvernightDayV189{border-color:#f2c94c!important;box-shadow:0 0 0 3px rgba(242,201,76,.12)!important}.srOvernightStarV189{display:inline-flex;align-items:center;gap:4px;margin-left:7px;padding:4px 7px;border-radius:999px;background:#fff4c2;color:#7a5600;font-size:10px;font-weight:900;white-space:nowrap}.srHotelZoneV189{margin-top:7px;padding:8px 10px;border-radius:12px;background:#fffdf5;border:1px solid #f5e2a7;color:#6b5311;font-size:11px}';document.head.appendChild(style)}
+function hotelReservations(){
+  if(!window.state)return{};
+  if(!state.hotelReservations||typeof state.hotelReservations!=='object'||Array.isArray(state.hotelReservations))state.hotelReservations={};
+  return state.hotelReservations
+}
+function hotelReservationFor(date){return hotelReservations()[String(date||'')]||null}
+function currentWeekHotelReservations(){
+  const mon=selectedWeekMonday(),end=addDays(mon,6);
+  return Object.values(hotelReservations()).filter(r=>r&&parse(r.fromDate)>=mon&&parse(r.fromDate)<=end).sort((a,b)=>String(a.fromDate).localeCompare(String(b.fromDate)))
+}
+function hotelReservationSummaryHtml(){
+  const rows=currentWeekHotelReservations();if(!rows.length)return'';
+  return '<div class="srHotelSavedListV212">'+rows.map(r=>'<div class="srHotelSavedV212">✅ <b>Hôtel réservé · '+esc(dateLabel(r.fromDate))+'</b><div>'+esc(r.hotelName||'Hôtel')+(r.reference?' · Réf. '+esc(r.reference):'')+'</div></div>').join('')+'</div>'
+}
+function hotelReservationEditorHtml(o){
+  const saved=hotelReservationFor(o&&o.fromDate)||{},name=esc(saved.hotelName||''),reference=esc(saved.reference||'');
+  return '<div class="srHotelReservationV212" data-night="'+esc(o.fromDate)+'"><b>'+(saved.hotelName?'✅ Hôtel réservé':'🛏 Enregistrer mon hôtel')+'</b>'+
+    (saved.hotelName?'<div class="srHotelSavedLineV212">'+esc(saved.hotelName)+(saved.reference?' · Réf. '+reference:'')+'</div>':'')+
+    '<div class="srHotelReservationGridV212"><label>Nom de l’hôtel<input id="srHotelNameV212" type="text" value="'+name+'" placeholder="Ex. Hôtel du Parc"></label>'+
+    '<label>N° / référence de réservation<input id="srHotelRefV212" type="text" value="'+reference+'" placeholder="Ex. ABC123"></label></div>'+
+    '<div class="srHotelReservationActionsV212"><button type="button" class="secondary" onclick="storeRunnerSaveHotelReservation(\''+esc(o.fromDate)+'\')">Enregistrer la réservation</button>'+
+    (saved.hotelName?'<button type="button" class="linkBtn" onclick="storeRunnerClearHotelReservation(\''+esc(o.fromDate)+'\')">Effacer</button>':'')+'</div></div>'
+}
+function saveHotelReservation(date){
+  const name=document.getElementById('srHotelNameV212'),ref=document.getElementById('srHotelRefV212'),hotelName=String(name&&name.value||'').trim(),reference=String(ref&&ref.value||'').trim();
+  if(!hotelName){if(typeof window.showError==='function')window.showError('Indique le nom de l’hôtel réservé.');return false}
+  const candidate=futureOvernightAnalysis().candidate,key=String(date||''),previous=hotelReservationFor(key)||{};
+  hotelReservations()[key]={fromDate:key,toDate:candidate&&candidate.fromDate===key?candidate.toDate:(previous.toDate||iso(addDays(parse(key)||new Date(),1))),hotelName,reference,zone:candidate&&candidate.fromDate===key?String(candidate.last&&candidate.last.ville||''):(previous.zone||''),updatedAt:new Date().toISOString()};
+  try{if(typeof window.save==='function')window.save()}catch(e){if(typeof window.showError==='function')window.showError('Réservation non enregistrée : '+(e.message||e));return false}
+  renderOvernightV189();document.dispatchEvent(new CustomEvent('store-runner:hotel-reservation-updated',{detail:{date:key}}));return true
+}
+function clearHotelReservation(date){
+  const key=String(date||'');if(!hotelReservationFor(key))return false;delete hotelReservations()[key];
+  try{if(typeof window.save==='function')window.save()}catch(e){return false}
+  renderOvernightV189();document.dispatchEvent(new CustomEvent('store-runner:hotel-reservation-updated',{detail:{date:key}}));return true
+}
+function ensureOvernightStyle(){if(document.getElementById('srOvernightV189Style'))return;const style=document.createElement('style');style.id='srOvernightV189Style';style.textContent='.srOvernightDayV189{border-color:#f2c94c!important;box-shadow:0 0 0 3px rgba(242,201,76,.12)!important}.srOvernightStarV189{display:inline-flex;align-items:center;gap:4px;margin-left:7px;padding:4px 7px;border-radius:999px;background:#fff4c2;color:#7a5600;font-size:10px;font-weight:900;white-space:nowrap}.srHotelZoneV189{margin-top:7px;padding:8px 10px;border-radius:12px;background:#fffdf5;border:1px solid #f5e2a7;color:#6b5311;font-size:11px}.srHotelReservationV212,.srHotelSavedV212{margin-top:10px;padding:10px;border:1px solid #e2e8f0;border-radius:13px;background:#fff}.srHotelReservationGridV212{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:8px}.srHotelReservationGridV212 label{font-size:10.5px;font-weight:750;color:#475467}.srHotelReservationGridV212 input{width:100%;box-sizing:border-box;margin-top:4px}.srHotelReservationActionsV212{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:9px}.srHotelSavedLineV212{margin-top:4px;color:#344054}.srHotelSavedListV212{margin-bottom:10px}@media(max-width:520px){.srHotelReservationGridV212{grid-template-columns:1fr}}';document.head.appendChild(style)}
 function decorateOvernightDay(candidate){
   ensureOvernightStyle();document.querySelectorAll('.srOvernightStarV189').forEach(e=>e.remove());document.querySelectorAll('.srOvernightDayV189').forEach(e=>e.classList.remove('srOvernightDayV189'));if(!candidate)return false;
   for(const card of document.querySelectorAll('#week .day')){const title=card.querySelector('.dayhead b');if(!title||norm(title.textContent)!==norm(candidate.fromDay))continue;card.classList.add('srOvernightDayV189');const head=card.querySelector('.dayhead>div')||card.querySelector('.dayhead');if(head){const badge=document.createElement('span');badge.className='srOvernightStarV189';badge.textContent='★ Nuit sur place';head.appendChild(badge)}return true}return false
 }
 function renderOvernightV189(){
-  const box=document.getElementById('overnightBox');if(!box||!window.state)return false;const a=futureOvernightAnalysis(),o=a.candidate;decorateOvernightDay(o);if(a.reason==='disabled'){box.innerHTML='<div class="notice">🌙 Découché désactivé dans Secteur.</div>';return true}if(!o){box.innerHTML='<div class="notice">🌙 Aucun découché futur utile retenu avec le planning actuel. Les nuits déjà passées sont ignorées.</div>';return true}
-  const zone=String(o.last&&o.last.ville||'la fin de tournée'),next=String(o.first&&o.first.ville||'la tournée suivante');box.innerHTML='<div class="overnight"><b>★ Nuit sur place · '+esc(dateLabel(o.fromDate))+' → '+esc(dateLabel(o.toDate))+'</b><div class="meta">Fin près de '+esc((o.last.enseigne||'Magasin')+' '+zone)+' · reprise vers '+esc(next)+' · économie estimée ~'+Math.max(0,Math.round(o.saving))+' km.</div><div class="srHotelZoneV189">🏨 <b>Zone hôtel conseillée : '+esc(zone)+'</b>, idéalement sur l’axe vers '+esc(next)+'.</div><a target="_blank" rel="noopener" href="'+hotelUrl(o.last)+'">Voir les hôtels à proximité ↗</a></div>';return true
+  const box=document.getElementById('overnightBox');if(!box||!window.state)return false;const a=futureOvernightAnalysis(),o=a.candidate;decorateOvernightDay(o);
+  const saved=hotelReservationSummaryHtml();
+  if(a.reason==='disabled'){box.innerHTML=saved+'<div class="notice">🌙 Découché désactivé dans Secteur.</div>';return true}
+  if(!o){box.innerHTML=saved+'<div class="notice">🌙 Aucun découché futur utile retenu avec le planning actuel. Les nuits déjà passées sont ignorées.</div>';return true}
+  const zone=String(o.last&&o.last.ville||'la fin de tournée'),next=String(o.first&&o.first.ville||'la tournée suivante');
+  box.innerHTML='<div class="overnight"><b>★ Nuit sur place · '+esc(dateLabel(o.fromDate))+' → '+esc(dateLabel(o.toDate))+'</b><div class="meta">Fin près de '+esc((o.last.enseigne||'Magasin')+' '+zone)+' · reprise vers '+esc(next)+' · économie estimée ~'+Math.max(0,Math.round(o.saving))+' km.</div><div class="srHotelZoneV189">🏨 <b>Zone hôtel conseillée : '+esc(zone)+'</b>, idéalement sur l’axe vers '+esc(next)+'.</div><a target="_blank" rel="noopener" href="'+hotelUrl(o.last)+'">Voir les hôtels à proximité ↗</a>'+hotelReservationEditorHtml(o)+'</div>';return true
 }
 function patchOvernight(){
   ensureOvernightStyle();const candidate=function(){return futureOvernightAnalysis().candidate};candidate.__v182Wrapped=true;candidate.__v189FutureOnly=true;window.overnightCandidate=candidate;const render=function(){return renderOvernightV189()};render.__v182Wrapped=true;render.__v189FutureOnly=true;window.renderOvernight=render;if(window.StoreRunnerOvernightV182)window.StoreRunnerOvernightV182.analyze=futureOvernightAnalysis;renderOvernightV189();return true
@@ -145,5 +185,7 @@ document.addEventListener('store-runner:reliability-propose-ready',()=>{installA
 document.addEventListener('store-runner:data-restored',()=>{repair();refreshCountingUi();renderOvernightV189()});
 document.addEventListener('store-runner:planning-updated',()=>{repair();refreshCountingUi();renderOvernightV189()});
 document.addEventListener('store-runner:home-rendered',()=>{restoreCreditOverrides();refreshCountingUi();decorateOvernightDay(futureOvernightAnalysis().candidate)});
-window.StoreRunnerStoreControlsV189={visitCredit,planningCredit,saveCreditOverride,restoreCreditOverrides,futureOvernightAnalysis,renderOvernight:renderOvernightV189,repair};
+window.storeRunnerSaveHotelReservation=saveHotelReservation;
+window.storeRunnerClearHotelReservation=clearHotelReservation;
+window.StoreRunnerStoreControlsV189={visitCredit,planningCredit,saveCreditOverride,restoreCreditOverrides,futureOvernightAnalysis,renderOvernight:renderOvernightV189,saveHotelReservation,clearHotelReservation,hotelReservationFor,repair};
 })();
