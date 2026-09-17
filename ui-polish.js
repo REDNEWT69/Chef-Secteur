@@ -84,11 +84,31 @@
     box.innerHTML=html;
   }
 
+  /* La bande de jours affiche « Lun14sept » : le libellé ne contient plus le nom
+     complet du jour, et la reconnaissance par texte échouait donc toujours. Le
+     repli par position se trompait alors d'un cran dès qu'une semaine ne
+     commence pas un lundi, et ne donnait rien du tout au-delà du sixième onglet
+     d'une période de trois semaines. L'onglet porte sa vraie date : c'est elle
+     qui fait foi. */
+  function dayOfTab(btn,i){
+    const iso=btn&&btn.dataset&&btn.dataset.date;
+    if(iso){
+      const d=new Date(String(iso)+'T12:00:00');
+      if(!isNaN(d)){const x=d.getDay();return x===0?'':DAYS[x-1]||''}
+    }
+    const found=DAYS.find(d=>norm(btn.textContent||'').includes(norm(d)));
+    return found||DAYS[i]||'';
+  }
   function markHotelDayTab(){
     try{
       document.querySelectorAll('#dayTabs .dayTab').forEach(btn=>btn.querySelectorAll('.hotelDayBadge').forEach(x=>x.remove()));
       document.querySelectorAll('#dayTabs .dayTab').forEach((btn,i)=>{
-        const day=DAYS.find(d=>norm(btn.textContent||'').includes(norm(d)))||DAYS[i];if(!day)return;
+        const day=dayOfTab(btn,i);if(!day)return;
+        /* Une période de trois semaines affiche trois lundis. Le découché, les
+           hôtels et les déplacements ne valent que pour la semaine affichée :
+           seul l'onglet de cette semaine-là reçoit la pastille. */
+        const iso=btn&&btn.dataset&&btn.dataset.date;
+        if(iso&&iso!==dateForDay(day))return;
         const hasHotel=hotelEventsForDay(day).length>0,away=awayRangeForDay(day);let overnight=false;
         if(!hasHotel&&!away&&!overnightDisabled()&&typeof window.overnightCandidate==='function')try{const o=window.overnightCandidate();overnight=!!(o&&String(o.night||'').includes('Nuit '+day+' →'))}catch(e){}
         const label=hasHotel?'🌙 hôtel':away?'🚗 déplacement':overnight?'🌙 découché':'';
