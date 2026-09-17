@@ -60,3 +60,64 @@
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
   window.addEventListener('load',refresh,{once:true});
 })();
+
+/* V210 : le moteur de répartition géographique et l'ordonnanceur intra-journée doivent
+   mesurer la même chose. Le vieux routeCost s'arrêtait au dernier magasin alors que les
+   couches V185, horaires et découché comptent déjà le retour à la base. On garde les
+   helpers historiques (range-planner-v2 les utilise encore), mais on corrige leur métrique
+   et on expose un banc de mesure sans modifier les priorités ni la sélection métier. */
+(function(){
+'use strict';
+const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+function finiteDistance(a,b){try{const n=Number(window.hav(a,b));return Number.isFinite(n)&&n>=0?n:Infinity}catch(e){return Infinity}}
+function basePoint(){try{return typeof window.baseObj==='function'?window.baseObj():null}catch(e){return null}}
+function roundTripRouteKm(route,start){
+  const rows=Array.isArray(route)?route:[];if(!rows.length)return 0;
+  const origin=start||basePoint();if(!origin)return Infinity;
+  let km=0,previous=origin;
+  for(const store of rows){const d=finiteDistance(previous,store);if(!Number.isFinite(d))return Infinity;km+=d;previous=store}
+  const back=finiteDistance(previous,origin);return Number.isFinite(back)?km+back:Infinity
+}
+function patchRouteCost(){
+  const current=window.routeCost;
+  if(current&&current.__v210RoundTrip){window.storeRunnerRoundTripRouteKm=roundTripRouteKm;return false}
+  const wrapped=function(route,start){return roundTripRouteKm(route,start)};
+  wrapped.__v210RoundTrip=true;wrapped.__v210Original=current;window.routeCost=wrapped;window.storeRunnerRoundTripRouteKm=roundTripRouteKm;return true
+}
+function clock(value){const p=String(value||'').split(':');return(+p[0]||0)*60+(+p[1]||0)}
+function settings(){try{return(window.state&&state.settings)||{}}catch(e){return{}}}
+function routeWorkMinutes(route){const s=settings(),km=roundTripRouteKm(route);if(!Number.isFinite(km))return Infinity;return km*1.22/55*60+(route||[]).length*Math.max(0,Number(s.visitMinutes)||60)}
+function dayStart(day){const s=settings();return clock(day==='Samedi'?(s.saturdayStart||'08:00'):(s.startTime||'08:30'))}
+function dayEnd(day){const s=settings();return clock(day==='Samedi'?(s.saturdayEnd||'12:00'):(s.endTime||'18:00'))}
+function parseDate(value){const d=new Date(String(value||'')+'T12:00:00');return isNaN(d)?null:d}
+function isoDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function lastVisit(store){
+  try{const id=String(store&&store.id||''),v=state.visits&&state.visits[id];if(v){if(v.lastVisit)return String(v.lastVisit).slice(0,10);if(Array.isArray(v.history)&&v.history.length)return String(v.history[v.history.length-1]).slice(0,10)}}catch(e){}
+  return store&&store.lastVisit?String(store.lastVisit).slice(0,10):''
+}
+function overdue(store,today){
+  const interval=Math.max(1,Number(store&&store.intervalDays)||30),last=parseDate(lastVisit(store));if(!last)return{known:false,days:null};
+  const now=parseDate(today)||new Date(),age=Math.max(0,Math.floor((now-last)/86400000));return{known:true,days:Math.max(0,age-interval)}
+}
+function lateness(stores,today){let never=0,sum=0,max=0,known=0,late=0;for(const store of stores||[]){const row=overdue(store,today);if(!row.known){never++;continue}known++;sum+=row.days;max=Math.max(max,row.days);if(row.days>0)late++}return{known,neverVisited:never,late,averageDays:known?Math.round(sum/known*10)/10:0,maxDays:max}}
+function performanceCoverage(planned){
+  const out={P1:{total:0,served:0},P2:{total:0,served:0}};
+  try{
+    const api=window.StoreRunnerPerformanceV190,db=window.__chefStorage||window.localStorage;if(!api||typeof api.rowForStore!=='function'||!db)return out;
+    const plannedIds=new Set((planned||[]).map(s=>String(s&&s.id||'')));
+    for(const store of (state.stores||[])){if(!store||store.active===false)continue;const row=api.rowForStore(db,store.id);const p=String(row&&row.prio||'');if(p!=='P1'&&p!=='P2')continue;out[p].total++;if(plannedIds.has(String(store.id)))out[p].served++}
+  }catch(e){}
+  return out
+}
+function measure(plan,options){
+  options=options||{};const s=settings(),source=plan||(window.state&&state.plan)||{},days=(options.days||(Array.isArray(s.days)&&s.days.length?s.days:DAYS.slice(0,5))).filter(d=>DAYS.includes(d)),today=String(options.today||isoDate(new Date())).slice(0,10);
+  let totalKm=0,driveMinutes=0,workMinutes=0,plannedStores=0;const infeasibleDays=[],details={},planned=[];
+  for(const day of days){const route=Array.isArray(source[day])?source[day]:[],km=roundTripRouteKm(route),drive=Number.isFinite(km)?km*1.22/55*60:Infinity,work=routeWorkMinutes(route),fits=Number.isFinite(work)&&dayStart(day)+work<=dayEnd(day)+0.001;plannedStores+=route.length;planned.push(...route);if(Number.isFinite(km))totalKm+=km;else totalKm=Infinity;if(Number.isFinite(driveMinutes)&&Number.isFinite(drive))driveMinutes+=drive;else driveMinutes=Infinity;if(Number.isFinite(workMinutes)&&Number.isFinite(work))workMinutes+=work;else workMinutes=Infinity;if(!fits)infeasibleDays.push(day);details[day]={stores:route.length,km:Number.isFinite(km)?Math.round(km*10)/10:null,driveMinutes:Number.isFinite(drive)?Math.round(drive):null,workMinutes:Number.isFinite(work)?Math.round(work):null,fits}}
+  const sector=(window.state&&Array.isArray(state.stores)?state.stores.filter(x=>x&&x.active!==false):[]);
+  return{days:days.slice(),plannedStores,totalKm:Number.isFinite(totalKm)?Math.round(totalKm*10)/10:null,driveMinutes:Number.isFinite(driveMinutes)?Math.round(driveMinutes):null,workMinutes:Number.isFinite(workMinutes)?Math.round(workMinutes):null,infeasibleDays,infeasibleDayCount:infeasibleDays.length,plannedLateness:lateness(planned,today),sectorLateness:lateness(sector,today),performance:performanceCoverage(planned),details}
+}
+function compare(before,after,options){const a=measure(before,options),b=measure(after,options);return{before:a,after:b,delta:{km:a.totalKm==null||b.totalKm==null?null:Math.round((b.totalKm-a.totalKm)*10)/10,driveMinutes:a.driveMinutes==null||b.driveMinutes==null?null:b.driveMinutes-a.driveMinutes,workMinutes:a.workMinutes==null||b.workMinutes==null?null:b.workMinutes-a.workMinutes,infeasibleDays:b.infeasibleDayCount-a.infeasibleDayCount}}}
+function benchmark(plan,options){const result=measure(plan,options);try{console.table(result.details);console.info('[Store Runner V210] qualité planning',result)}catch(e){}return result}
+const api={roundTripRouteKm,measure,compare,benchmark,patchRouteCost};window.StoreRunnerPlanningQualityV210=api;patchRouteCost();
+try{document.addEventListener('store-runner:data-restored',patchRouteCost);window.addEventListener('load',patchRouteCost,{once:true})}catch(e){}
+})();
