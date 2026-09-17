@@ -44,10 +44,15 @@ test('V212 : escargot futur, durée magasin et hôtel réservé à 390 px',async
   await expect(page.locator('#storeDlg')).not.toBeVisible();
   expect(await page.evaluate(()=>state.stores.find(s=>s.id==='b').visitMinutes)).toBe(135);
 
-  await page.evaluate(()=>{try{renderOvernight()}catch(e){throw e}});
+  await page.evaluate(()=>{
+    try{renderOvernight()}catch(e){throw e}
+    if(window.StoreRunnerPeriodDaySlider)window.StoreRunnerPeriodDaySlider.syncOvernight();
+  });
+  const cue=page.locator('#planningOvernightCueV206');
+  await expect(cue).toBeVisible();
+  await cue.tap();
   const settings=page.locator('#planningSettings');
-  if(!(await settings.getAttribute('open')))await page.locator('#planningSettingsShortcut').tap();
-  await expect(settings).toHaveAttribute('open','');
+  await expect(settings).toHaveClass(/planningSettingsSheetOpen/);
   const box=page.locator('#overnightBox');
   await expect(box).toContainText('Zone hôtel conseillée');
   await expect(page.locator('#srHotelNameV212')).toBeVisible();
