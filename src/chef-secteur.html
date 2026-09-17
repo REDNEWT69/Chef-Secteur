@@ -289,7 +289,7 @@ var PRODUCTS=['Blanc','Brun','Encastrable','Mobile','TV / Audio','À confirmer']
 var KEY='sector_planner_universal_v1';
 var storage=null,currentEditId=null;
 function clone(o){return JSON.parse(JSON.stringify(o))}
-function defaultState(){return{schemaVersion:5,profile:{sectorName:'Mon secteur',repName:'',baseName:'',baseAddress:'',baseLat:null,baseLon:null,overnightMode:'auto',overnightMinSaving:80},stores:clone(DEFAULT_STORES),visits:{},notes:{},included:{},excluded:{},locks:{},plan:{},settings:{target:20,days:DEFAULT_WORK_DAYS.slice(),brands:[],products:[],strategy:'balanced',weekDate:todayISO()},ui:{firstRun:false}}}
+function defaultState(){return{schemaVersion:5,profile:{sectorName:'Mon secteur',repName:'',baseName:'',baseAddress:'',baseLat:null,baseLon:null,overnightMode:'auto',overnightMinSaving:80},stores:clone(DEFAULT_STORES),visits:{},notes:{},hotelReservations:{},included:{},excluded:{},locks:{},plan:{},settings:{target:20,days:DEFAULT_WORK_DAYS.slice(),brands:[],products:[],strategy:'balanced',weekDate:todayISO()},ui:{firstRun:false}}}
 var state=defaultState();
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function norm(s){s=String(s||'').toLowerCase();try{return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'')}catch(e){return s}}
