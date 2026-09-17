@@ -142,7 +142,15 @@ test('V207 : depuis le 17, le découché du 21 est déjà signalé sans charger 
   expect(await page.evaluate(()=>window.state.settings.weekDate)).toBe('2026-09-14');
   expect(await page.evaluate(()=>window.overnightCandidate())).toBeNull();
   expect(await page.locator('#dayTabs .dayTab.active').getAttribute('data-date')).toBe('2026-09-17');
-  expect(await badges(page)).toEqual(['2026-09-21 → 🌙 découché']);
+  const futureMoon=await page.evaluate(()=>{
+    const tab=document.querySelector('#dayTabs .dayTab[data-date="2026-09-21"]');if(!tab)return null;
+    const before=getComputedStyle(tab,'::before');
+    return{className:tab.className,content:before.content,display:before.display,width:before.width};
+  });
+  expect(futureMoon).not.toBeNull();
+  expect(futureMoon.className).toContain('srOvernightDayV207');
+  expect(futureMoon.content).toContain('🌙');
+  expect(futureMoon.display).not.toBe('none');
 
   const cue=page.locator('#planningOvernightCueV206');
   await expect(cue).toBeVisible();
