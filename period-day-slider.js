@@ -128,9 +128,8 @@
   function currentOvernightCandidate(){try{return typeof window.overnightCandidate==='function'?window.overnightCandidate():null}catch(e){return null}}
   function analyzeArchivedWeek(plan,weekDate){
     const api=window.StoreRunnerStoreControlsV189;
-    if(!api||typeof api.futureOvernightAnalysis!=='function'||!window.state)return null;
-    const original=window.state,clone=Object.assign({},original,{settings:Object.assign({},original.settings||{},{weekDate:String(weekDate||'').slice(0,10)}),plan:plan||{}});
-    try{window.state=clone;const analysis=api.futureOvernightAnalysis(plan||{});return analysis&&analysis.candidate||null}catch(e){return null}finally{window.state=original}
+    if(!api||typeof api.futureOvernightAnalysis!=='function')return null;
+    try{const analysis=api.futureOvernightAnalysis(plan||{},String(weekDate||'').slice(0,10));return analysis&&analysis.candidate||null}catch(e){return null}
   }
   function periodOvernightCandidate(){
     const r=range(),today=iso(new Date()),start=iso(r.start),end=iso(r.end),currentWeek=String(window.state&&state.settings&&state.settings.weekDate||'').slice(0,10),out=[];
