@@ -1,94 +1,41 @@
 name: V207 patch
-on:
+"on":
   push:
-    branches: [chatgpt/v207-future-overnight-cue]
+    branches:
+      - chatgpt/v207-future-overnight-cue
 permissions:
   contents: write
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: chatgpt/v207-future-overnight-cue
-      - name: Appliquer V207
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import json
-
-          slider=Path('period-day-slider.js')
-          s=slider.read_text()
-          old="  function overnightCandidateSafe(){try{return typeof window.overnightCandidate==='function'?window.overnightCandidate():null}catch(e){return null}}\n"
-          new="""  function currentOvernightCandidate(){try{return typeof window.overnightCandidate==='function'?window.overnightCandidate():null}catch(e){return null}}
-  function analyzeArchivedWeek(plan,weekDate){
-    const api=window.StoreRunnerStoreControlsV189;
-    if(!api||typeof api.futureOvernightAnalysis!=='function'||!window.state)return null;
-    const original=window.state,clone=Object.assign({},original,{settings:Object.assign({},original.settings||{},{weekDate:String(weekDate||'').slice(0,10)}),plan:plan||{}});
-    try{window.state=clone;const analysis=api.futureOvernightAnalysis(plan||{});return analysis&&analysis.candidate||null}catch(e){return null}finally{window.state=original}
-  }
-  function periodOvernightCandidate(){
-    const r=range(),today=iso(new Date()),start=iso(r.start),end=iso(r.end),currentWeek=String(window.state&&state.settings&&state.settings.weekDate||'').slice(0,10),out=[];
-    const current=currentOvernightCandidate();
-    if(current&&current.fromDate>=today&&current.fromDate>=start&&current.fromDate<=end)out.push(current);
-    const archive=load(ARCHIVE_KEY);
-    for(const [key,snap] of Object.entries(archive||{})){
-      const weekDate=String(snap&&snap.weekMonday||key||'').slice(0,10);if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(weekDate)||weekDate===currentWeek||!snap||!snap.plan)continue;
-      const mon=parse(weekDate);if(!mon)continue;const weekEnd=iso(addDays(mon,6));if(weekEnd<today||weekDate>end||weekEnd<start)continue;
-      const candidate=analyzeArchivedWeek(snap.plan,weekDate);if(candidate&&candidate.fromDate>=today&&candidate.fromDate>=start&&candidate.fromDate<=end)out.push(candidate)
-    }
-    out.sort((a,b)=>String(a.fromDate||'').localeCompare(String(b.fromDate||''))||Number(b.saving||0)-Number(a.saving||0));return out[0]||null
-  }
-  function overnightCandidateSafe(){try{return periodOvernightCandidate()}catch(e){return currentOvernightCandidate()}}
-"""
-          assert old in s, 'overnightCandidateSafe anchor missing'
-          s=s.replace(old,new,1)
-
-          start=s.index('  function syncOvernightVisibility(){')
-          end=s.index('  function tabsSignature(entries){',start)
-          sync="""  function syncOvernightVisibility(){
-    const box=document.getElementById('dayTabs');if(!box)return false;
-    const candidate=overnightCandidateSafe(),animate=overnightCuePulseRequested;
-    box.querySelectorAll('.hotelDayBadge').forEach(b=>{const tab=b.closest('.dayTab');if(!candidate||!tab||tab.dataset.date!==String(candidate.fromDate||''))b.remove()});
-    box.querySelectorAll('.srOvernightRingV207').forEach(tab=>tab.classList.remove('srOvernightRingV207'));
-    if(candidate&&candidate.fromDate){
-      const tab=box.querySelector('.dayTab[data-date="'+String(candidate.fromDate).replace(/"/g,'')+'"]');
-      if(tab){
-        let badge=tab.querySelector('.hotelDayBadge');if(!badge){badge=document.createElement('span');badge.className='hotelDayBadge';tab.appendChild(badge)}
-        badge.textContent='🌙 découché';badge.setAttribute('aria-label','Découché '+overnightLabel(candidate));badge.title='Découché '+overnightLabel(candidate);
-        if(animate){void tab.offsetWidth;tab.classList.add('srOvernightRingV207')}
-      }
-    }
-    let cue=document.getElementById('planningOvernightCueV206');
-    if(!candidate){if(cue)cue.remove();overnightCuePulseRequested=false;return true}
-    const host=cueHost();if(!host)return false;
-    if(!cue){
-      cue=document.createElement('button');cue.id='planningOvernightCueV206';cue.type='button';cue.className='planningOvernightCueV206';
-      cue.innerHTML='<span class="planningOvernightCueIcon">🌙</span><span class="planningOvernightCueCopy"><b data-overnight-title></b><small>Hôtel conseillé · toucher pour afficher</small></span><span class="planningOvernightCueArrow" aria-hidden="true">›</span>';
+    env:
+      PATCH_B64: >-
+        ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCmltcG9ydCBqc29uCgpzbGlkZXIgPSBQYXRoKCJwZXJpb2QtZGF5LXNsaWRlci5qcyIpCnMgPSBzbGlkZXIucmVhZF90ZXh0KCkKCm9sZCA9ICIgIGZ1bmN0aW9uIG92ZXJuaWdodENhbmRpZGF0ZVNhZmUoKXt0cnl7cmV0dXJuIHR5cGVvZiB3aW5kb3cub3Zlcm5pZ2h0Q2FuZGlkYXRlPT09J2Z1bmN0aW9uJz93aW5kb3cub3Zlcm5pZ2h0Q2FuZGlkYXRlKCk6bnVsbH1jYXRjaChlKXtyZXR1cm4gbnVsbH19XG4iCm5ldyA9ICIiIiAgZnVuY3Rpb24gY3VycmVudE92ZXJuaWdodENhbmRpZGF0ZSgpe3RyeXtyZXR1cm4gdHlwZW9mIHdpbmRvdy5vdmVybmlnaHRDYW5kaWRhdGU9PT0nZnVuY3Rpb24nP3dpbmRvdy5vdmVybmlnaHRDYW5kaWRhdGUoKTpudWxsfWNhdGNoKGUpe3JldHVybiBudWxsfX0KICBmdW5jdGlvbiBhbmFseXplQXJjaGl2ZWRXZWVrKHBsYW4sd2Vla0RhdGUpewogICAgY29uc3QgYXBpPXdpbmRvdy5TdG9yZVJ1bm5lclN0b3JlQ29udHJvbHNWMTg5OwogICAgaWYoIWFwaXx8dHlwZW9mIGFwaS5mdXR1cmVPdmVybmlnaHRBbmFseXNpcyE9PSdmdW5jdGlvbid8fCF3aW5kb3cuc3RhdGUpcmV0dXJuIG51bGw7CiAgICBjb25zdCBvcmlnaW5hbD13aW5kb3cuc3RhdGUsY2xvbmU9T2JqZWN0LmFzc2lnbih7fSxvcmlnaW5hbCx7c2V0dGluZ3M6T2JqZWN0LmFzc2lnbih7fSxvcmlnaW5hbC5zZXR0aW5nc3x8e30se3dlZWtEYXRlOlN0cmluZyh3ZWVrRGF0ZXx8JycpLnNsaWNlKDAsMTApfSkscGxhbjpwbGFufHx7fX0pOwogICAgdHJ5e3dpbmRvdy5zdGF0ZT1jbG9uZTtjb25zdCBhbmFseXNpcz1hcGkuZnV0dXJlT3Zlcm5pZ2h0QW5hbHlzaXMocGxhbnx8e30pO3JldHVybiBhbmFseXNpcysmYW5hbHlzaXMuY2FuZGlkYXRlfHxudWxsfWNhdGNoKGUpe3JldHVybiBudWxsfWZpbmFsbHl7d2luZG93LnN0YXRlPW9yaWdpbmFsfQogIH0KICBmdW5jdGlvbiBwZXJpb2RPdmVybmlnaHRDYW5kaWRhdGUoKXsKICAgIGNvbnN0IHI9cmFuZ2UoKSx0b2RheT1pc28obmV3IERhdGUoKSksc3RhcnQ9aXNvKHIuc3RhcnQpLGVuZD1pc28oci5lbmQpLGN1cnJlbnRXZWVrPVN0cmluZyh3aW5kb3cuc3RhdGUmJnN0YXRlLnNldHRpbmdzJiZzdGF0ZS5zZXR0aW5ncy53ZWVrRGF0ZXx8JycpLnNsaWNlKDAsMTApLG91dD1bXTsKICAgIGNvbnN0IGN1cnJlbnQ9Y3VycmVudE92ZXJuaWdodENhbmRpZGF0ZSgpOwogICAgaWYoY3VycmVudCYmY3VycmVudC5mcm9tRGF0ZT49dG9kYXkmJmN1cnJlbnQuZnJvbURhdGU+PXN0YXJ0JiZjdXJyZW50LmZyb21EYXRlPD1lbmQpb3V0LnB1c2goY3VycmVudCk7CiAgICBjb25zdCBhcmNoaXZlPWxvYWQoQVJDSElWRV9LRVkpOwogICAgZm9yKGNvbnN0IFtrZXksc25hcF0gb2YgT2JqZWN0LmVudHJpZXMoYXJjaGl2ZXx8e30pKXsKICAgICAgY29uc3Qgd2Vla0RhdGU9U3RyaW5nKHNuYXAmJnNuYXAud2Vla01vbmRheXx8a2V5fHwnJykuc2xpY2UoMCwxMCk7CiAgICAgIGlmKCEvXlxkLTRB0XGQyezJ9LVxkezJ9JC8udGVzdCh3ZWVrRGF0ZSl8fHdlZWtEYXRlPT09Y3VycmVudFdlZWt8fCFzbmFwfHwhc25hcC5wbGFuKWNvbnRpbnVlOwogICAgICBjb25zdCBtb249cGFyc2Uod2Vla0RhdGUpO2lmKCFtb24pY29udGludWU7CiAgICAgIGNvbnN0IHdlZWtFbmQ9aXNvKGFkZERheXMobW9uLDYpKTsKICAgICAgaWYod2Vla0VuZDx0b2RheXx8d2Vla0RhdGU+ZW5kfHx3ZWVrRW5kPHN0YXJ0KWNvbnRpbnVlOwogICAgICBjb25zdCBjYW5kaWRhdGU9YW5hbHl6ZUFyY2hpdmVkV2VlayhzbmFwLnBsYW4sd2Vla0RhdGUpOwogICAgICBpZihjYW5kaWRhdGUmJmNhbmRpZGF0ZS5mcm9tRGF0ZT49dG9kYXkmJmNhbmRpZGF0ZS5mcm9tRGF0ZT49c3RhcnQmJmNhbmRpZGF0ZS5mcm9tRGF0ZTw9ZW5kKW91dC5wdXNoKGNhbmRpZGF0ZSkKICAgIH0KICAgIG91dC5zb3J0KChhLGIpPT5TdHJpbmcoYS5mcm9tRGF0ZXx8JycpLmxvY2FsZUNvbXBhcmUoU3RyaW5nKGIuZnJvbURhdGV8fCcnKSl8fE51bWJlcihiLnNhdmluZ3x8MCktTnVtYmVyKGEuc2F2aW5nfHwwKSk7CiAgICByZXR1cm4gb3V0WzBdfHxudWxsCiAgfQogIGZ1bmN0aW9uIG92ZXJuaWdodENhbmRpZGF0ZVNhZmUoKXt0cnl7cmV0dXJuIHBlcmlvZE92ZXJuaWdodENhbmRpZGF0ZSgpfWNhdGNoKGUpe3JldHVybiBjdXJyZW50T3Zlcm5pZ2h0Q2FuZGlkYXRlKCl9fQoiIiIKYXNzZXJ0IG9sZCBpbiBzLCAib3Zlcm5pZ2h0Q2FuZGlkYXRlU2FmZSBhbmNob3IgbWlzc2luZyIKcyA9IHMucmVwbGFjZShvbGQsIG5ldywgMSkKCnN0YXJ0ID0gcy5pbmRleCgiICBmdW5jdGlvbiBzeW5jT3Zlcm5pZ2h0VmlzaWJpbGl0eSgpeyIpCmVuZCA9IHMuaW5kZXgoIiAgZnVuY3Rpb24gdGFic1NpZ25hdHVyZShlbnRyaWVzKXsiLCBzdGFydCkKc3luYyA9ICIiIiAgZnVuY3Rpb24gc3luY092ZXJuaWdodFZpc2liaWxpdHkoKXsKICAgIGNvbnN0IGJveD1kb2N1bWVudC5nZXRFbGVtZW50QnlJZCgnZGF5VGFicycpO2lmKCFiY2hhaXIpcmV0dXJuIGZhbHNlOwogICAgY29uc3QgY2FuZGlkYXRlPW92ZXJuaWdodENhbmRpZGF0ZVNhZmUoKSxhbmltYXRlPW92ZXJuaWdodEN1ZVB1bHNlUmVxdWVzdGVkLGNhbmRpZGF0ZURhdGU9U3RyaW5nKGNhbmRpZGF0ZSYmY2FuZGlkYXRlLmZyb21EYXRlfHwnJyk7CiAgICBib3gucXVlcnlTZWxlY3RvckFsbCgnLmhvdGVsRGF5QmFkZ2UnKS5mb3JFYWNoKGI9Pntjb25zdCB0YWI9Yi5jbG9zZXN0KCcuZGF5VGFiJyk7aWYoIWNhbmRpZGF0ZXx8IXRhYnx8dGFiLmRhdGFzZXQuZGF0ZSE9PWNhbmRpZGF0ZURhdGUpYi5yZW1vdmUoKX0pOwogICAgYm94LnF1ZXJ5U2VsZWN0b3JBbGwoJy5zck92ZXJuaWdodFJpbmdWMjA3JykuZm9yRWFjaCh0YWI9PntpZighY2FuZGlkYXRlfHx0YWIuZGF0YXNldC5kYXRlIT09Y2FuZGlkYXRlRGF0ZXx8YW5pbWF0ZSl0YWIuY2xhc3NMaXN0LnJlbW92ZSgnc3JPdmVybmlnaHRSaW5nVjIwNycpfSk7CiAgICBpZihjYW5kaWRhdGUmJmNhbmRpZGF0ZS5mcm9tRGF0ZSl7CiAgICAgIGNvbnN0IHRhYj1ib3gucXVlcnlTZWxlY3RvcignLmRheVRhYltkYXRhLWRhdGU9IicrY2FuZGlkYXRlRGF0ZS5yZXBsYWNlKC8iL2csJycpKyciXScpOwogICAgICBpZih0YWIpewogICAgICAgIGxldCBiYWRnZT10YWIucXVlcnlTZWxlY3RvcignLmhvdGVsRGF5QmFkZ2UnKTsKICAgICAgICBpZighYmFkZ2Upe2JhZGdlPWRvY3VtZW50LmNyZWF0ZUVsZW1lbnQoJ3NwYW4nKTtiYWRnZS5jbGFzc05hbWU9J2hvdGVsRGF5QmFkZ2UnO3RhYi5hcHBlbmRDaGlsZChiYWRnZSl9CiAgICAgICAgYmFkZ2UudGV4dENvbnRlbnQ9J/CfjJkgZMOpY291Y2jDqSc7CiAgICAgICAgYmFkZ2Uuc2V0QXR0cmlidXRlKCdhcmlhLWxhYmVsJywnRMOoY291Y2jDqSAnK292ZXJuaWdodExhYmVsKGNhbmRpZGF0ZSkpOwogICAgICAgIGJhZGdlLnRpdGxlPSdEw6ljb3VjaMOpICcrb3Zlcm5pZ2h0TGFiZWwoY2FuZGlkYXRlKTsKICAgICAgICBpZihhbmltYXRlKXt2b2lkIHRhYi5vZmZzZXRXaWR0aDt0YWIuY2xhc3NMaXN0LmFkZCgnc3JPdmVybmlnaHRSaW5nVjIwNycpfQogICAgICB9CiAgICB9CiAgICBsZXQgY3VlPWRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdwbGFubmluZ092ZXJuaWdodEN1ZVYyMDYnKTsKICAgIGlmKCFjYW5kaWRhdGUpe2lmKGN1ZSljdWUucmVtb3ZlKCk7b3Zlcm5pZ2h0Q3VlUHVsc2VSZXF1ZXN0ZWQ9ZmFsc2U7cmV0dXJuIHRydWV9CiAgICBjb25zdCBob3N0PWN1ZUhvc3QoKTtpZighaG9zdClyZXR1cm4gZmFsc2U7CiAgICBpZighY3VlKXsKICAgICAgY3VlPWRvY3VtZW50LmNyZWF0ZUVsZW1lbnQoJ2J1dHRvbicpO2N1ZS5pZD0ncGxhbm5pbmdPdmVybmlnaHRDdWVWMjA2JztjdWUudHlwZT0nYnV0dG9uJztjdWUuY2xhc3NOYW1lPSdwbGFubmluZ092ZXJuaWdodEN1ZVYyMDYnOwogICAgICBjdWUuaW5uZXJIVE1MPSd<span class="planningOvernightCueIcon">🌙</span><span class="planningOvernightCueCopy"><b data-overnight-title></b><small>Hôtel conseillé · toucher pour afficher</small></span><span class="planningOvernightCueArrow" aria-hidden="true">›</span>';
       cue.addEventListener('click',function(){focusHotel(overnightCandidateSafe()||candidate)});
     }
     if(cue.parentNode!==host)host.appendChild(cue);
     const title=cue.querySelector('[data-overnight-title]');if(title)title.textContent='Découché '+overnightLabel(candidate);
-    cue.dataset.date=String(candidate.fromDate||'');
+    cue.dataset.date=candidateDate;
     cue.setAttribute('aria-label','Découché '+overnightLabel(candidate)+'. Afficher l’hôtel conseillé.');
     if(animate){cue.classList.remove('is-pulsing');void cue.offsetWidth;cue.classList.add('is-pulsing');cue.addEventListener('animationend',()=>cue.classList.remove('is-pulsing'),{once:true})}
     overnightCuePulseRequested=false;
     return true;
   }
 """
-          s=s[:start]+sync+s[end:]
+s = s[:start] + sync + s[end:]
 
-          old_css='@media(prefers-reduced-motion:reduce){.planningOvernightCueV206.is-pulsing,.srHotelFocusV206{animation:none!important}}'
-          new_css='.periodDayTab.srOvernightRingV207::after{content:"";position:absolute;inset:-4px;border-radius:20px;padding:2px;background:conic-gradient(from 0deg,rgba(255,205,64,0) 0 15%,rgba(255,205,64,.98) 28%,rgba(255,244,174,.35) 42%,rgba(255,205,64,0) 58% 100%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;z-index:4;opacity:0;animation:srOvernightRingV207 1.05s linear 2}.periodDayTab.srOvernightRingV207{box-shadow:0 0 0 1px rgba(242,201,76,.24),0 0 18px rgba(242,201,76,.18)}@keyframes srOvernightRingV207{0%{transform:rotate(0deg);opacity:0}12%{opacity:1}88%{opacity:1}100%{transform:rotate(360deg);opacity:0}}@media(prefers-reduced-motion:reduce){.planningOvernightCueV206.is-pulsing,.srHotelFocusV206,.periodDayTab.srOvernightRingV207::after{animation:none!important}.periodDayTab.srOvernightRingV207::after{opacity:0!important}}'
-          assert old_css in s, 'V206 motion CSS anchor missing'
-          s=s.replace(old_css,new_css,1)
-          slider.write_text(s)
+old_css = "@media(prefers-reduced-motion:reduce){.planningOvernightCueV206.is-pulsing,.srHotelFocusV206{animation:none!important}}"
+new_css = """.periodDayTab.srOvernightRingV207::after{content:"";position:absolute;inset:-4px;border-radius:20px;padding:2px;background:conic-gradient(from 0deg,rgba(255,205,64,0) 0 15%,rgba(255,205,64,.98) 28%,rgba(255,244,174,.42) 42%,rgba(255,205,64,0) 58% 100%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;z-index:4;opacity:0;animation:srOvernightRingV207 1.05s linear 2}.periodDayTab.srOvernightRingV207{box-shadow:0 0 0 1px rgba(242,201,76,.28),0 0 20px rgba(242,201,76,.22)}@keyframes srOvernightRingV207{0%{transform:rotate(0deg);opacity:0}12%{opacity:1}88%{opacity:1}100%{transform:rotate(360deg);opacity:0}}@media(prefers-reduced-motion:reduce){.planningOvernightCueV206.is-pulsing,.srHotelFocusV206,.periodDayTab.srOvernightRingV207::after{animation:none!important}.periodDayTab.srOvernightRingV207::after{opacity:0!important}}"""
+assert old_css in s, "V206 motion CSS anchor missing"
+s = s.replace(old_css, new_css, 1)
+slider.write_text(s)
 
-          test=Path('tests/overnight-day-badge-browser.spec.cjs')
-          t=test.read_text()
-          if "V207 : depuis le 17" not in t:
-            t += r'''
+test = Path("tests/overnight-day-badge-browser.spec.cjs")
+t = test.read_text()
+marker = "V207 : depuis le 17, le découché du 21 est déjà signalé sans charger sa semaine"
+if marker not in t:
+    t += r"""
 
 test('V207 : depuis le 17, le découché du 21 est déjà signalé sans charger sa semaine',async({page})=>{
   const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
@@ -115,7 +62,7 @@ test('V207 : depuis le 17, le découché du 21 est déjà signalé sans charger 
     document.dispatchEvent(new CustomEvent('store-runner:planning-updated'));
     document.dispatchEvent(new CustomEvent('store-runner:planning-user-opened'));
   });
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(700);
 
   expect(await page.evaluate(()=>window.state.settings.weekDate)).toBe('2026-09-14');
   expect(await page.evaluate(()=>window.overnightCandidate())).toBeNull();
@@ -129,53 +76,53 @@ test('V207 : depuis le 17, le découché du 21 est déjà signalé sans charger 
 
   const ring=await page.evaluate(()=>{
     const tab=document.querySelector('#dayTabs .dayTab[data-date="2026-09-21"]');if(!tab)return null;
-    const pseudo=getComputedStyle(tab,'::after');return{className:tab.className,animationName:pseudo.animationName,animationDuration:pseudo.animationDuration};
+    const pseudo=getComputedStyle(tab,'::after');
+    return{className:tab.className,animationName:pseudo.animationName,animationDuration:pseudo.animationDuration};
   });
   expect(ring).not.toBeNull();
   expect(ring.className).toContain('srOvernightRingV207');
   expect(ring.animationName).toContain('srOvernightRingV207');
+  expect(ring.animationDuration).not.toBe('0s');
 
   await cue.click();
-  await page.waitForTimeout(220);
+  await page.waitForTimeout(260);
   expect(await page.locator('#dayTabs .dayTab.active').getAttribute('data-date')).toBe('2026-09-21');
   expect(await page.evaluate(()=>window.state.settings.weekDate)).toBe('2026-09-21');
   await expect(page.locator('#overnightBox')).toContainText('Zone hôtel conseillée');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth)).toBeLessThanOrEqual(1);
   expect(errors).toEqual([]);
 });
-'''
-          test.write_text(t)
+"""
+test.write_text(t)
 
-          old_build='20260917-nightcue206'
-          new_build='20260917-futurecue207'
-          for path in Path('.').rglob('*'):
-            if not path.is_file() or '.git' in path.parts or path.as_posix()=='.github/workflows/v207-patch.yml':
-              continue
-            try:text=path.read_text()
-            except UnicodeDecodeError:continue
-            if old_build in text:path.write_text(text.replace(old_build,new_build))
+old_build = "20260917-nightcue206"
+new_build = "20260917-futurecue207"
+for path in Path(".").rglob("*"):
+    if not path.is_file() or ".git" in path.parts or path.as_posix() == ".github/workflows/v207-patch.yml":
+        continue
+    try:
+        text = path.read_text()
+    except UnicodeDecodeError:
+        continue
+    if old_build in text:
+        path.write_text(text.replace(old_build, new_build))
 
-          version=Path('version.json')
-          data=json.loads(version.read_text())
-          data['latestBuild']=new_build
-          data['displayVersion']='207'
-          data['channel']='stable'
-          data['releasedAt']='2026-09-17'
-          version.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
+version = Path("version.json")
+data = json.loads(version.read_text())
+data["latestBuild"] = new_build
+data["displayVersion"] = "207"
+data["channel"] = "stable"
+data["releasedAt"] = "2026-09-17"
+version.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 
-          Path('.github/workflows/v207-patch.yml').unlink()
-          leftovers=[]
-          for path in Path('.').rglob('*'):
-            if not path.is_file() or '.git' in path.parts:continue
-            try:text=path.read_text()
-            except UnicodeDecodeError:continue
-            if old_build in text:leftovers.append(str(path))
-          assert not leftovers, f'ancienne révision encore présente: {leftovers}'
-          PY
-      - name: Commit V207
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "V207 : signaler les découchés des semaines futures"
-          git push origin HEAD:chatgpt/v207-future-overnight-cue
+leftovers=[]
+for path in Path(".").rglob("*"):
+    if not path.is_file() or ".git" in path.parts or path.as_posix() == ".github/workflows/v207-patch.yml":
+        continue
+    try:
+        text = path.read_text()
+    except UnicodeDecodeError:
+        continue
+    if old_build in text:
+        leftovers.append(str(path))
+assert not leftovers, f"ancienne révision encore présente: {leftovers}"
