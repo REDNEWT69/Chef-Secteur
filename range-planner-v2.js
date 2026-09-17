@@ -10,7 +10,7 @@ function monday(d){const x=new Date(d),w=x.getDay()||7;x.setDate(x.getDate()-w+1
 function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
 function storage(){try{return window.__chefStorage||localStorage}catch(e){return localStorage}}
 function loadArchive(){try{return JSON.parse(storage().getItem(ARCHIVE_KEY)||'{}')||{}}catch(e){return{}}}
-function cloneStore(s){return{id:s.id||'',enseigne:s.enseigne||'',ville:s.ville||'',adresse:s.adresse||'',dept:s.dept||'',lat:s.lat,lon:s.lon,freq:s.freq||'',priority:s.priority,lastVisit:s.lastVisit||'',intervalDays:s.intervalDays}}
+function cloneStore(s){return{id:s.id||'',enseigne:s.enseigne||'',ville:s.ville||'',adresse:s.adresse||'',dept:s.dept||'',lat:s.lat,lon:s.lon,freq:s.freq||'',priority:s.priority,lastVisit:s.lastVisit||'',intervalDays:s.intervalDays,visitMinutes:s.visitMinutes}}
 function showStatus(t,bad){const e=document.getElementById('rangePlanStatus');if(e){e.textContent=t;e.style.color=bad?'#b42318':'#667085'}const global=document.getElementById('statusText');if(global&&bad)global.textContent=t}
 function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim()}
 function storeKey(s){const b=norm((s&&s.enseigne)||''),v=norm((s&&s.ville)||''),a=norm((s&&s.adresse)||'');return (b||v||a)?b+'|'+v+'|'+a:'id|'+String((s&&s.id)||'')}
@@ -261,12 +261,14 @@ function chooseStores(pool,usedKeys,useCount,lastUsedWeek,targetCount,creditBudg
   return chosen
 }
 function tm(t){const p=String(t||'').split(':');return (+p[0]||0)*60+(+p[1]||0)}
+function visitMinutesForStore(s){try{if(typeof window.storeVisitDuration==='function')return window.storeVisitDuration(s,state)}catch(e){}return Math.max(15,Number(state.settings&&state.settings.visitMinutes)||60)}
+function routeVisitMinutes(route){return (route||[]).reduce((n,s)=>n+visitMinutesForStore(s),0)}
 function finish(route,day){
   if(!route||!route.length)return 0;
   let km=0;
   try{km+=havBase(route[0]);for(let i=1;i<route.length;i++)km+=hav(route[i-1],route[i]);km+=hav(route[route.length-1],baseObj())}catch(e){}
   const start=tm(day==='Samedi'?(state.settings.saturdayStart||'08:00'):(state.settings.startTime||'08:30'));
-  return start+km*1.22/55*60+route.length*Number(state.settings.visitMinutes||60);
+  return start+km*1.22/55*60+routeVisitMinutes(route);
 }
 function limitFor(day){return tm(day==='Samedi'?(state.settings.saturdayEnd||'12:00'):(state.settings.endTime||'18:00'))}
 function optimizeRoute(route){try{if(typeof nearestRoute==='function'&&typeof twoOpt==='function')return twoOpt(nearestRoute(route));if(typeof nearestRoute==='function')return nearestRoute(route)}catch(e){}return route.slice()}
