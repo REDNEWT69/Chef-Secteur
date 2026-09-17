@@ -81,10 +81,10 @@ function blocksForDate(date){try{return typeof root.calendarEventsForDate==='fun
 function dayStart(day,state=root.state){const s=state&&state.settings||{},raw=day==='Samedi'?(s.saturdayStart||'08:00'):(s.startTime||'08:30');return minute(raw)??510}
 function dayEnd(day,state=root.state){const s=state&&state.settings||{},raw=day==='Samedi'?(s.saturdayEnd||'12:00'):(s.endTime||'18:00');return minute(raw)??1080}
 function scheduleRoute(route,day,state=root.state,options={}){
-  const rows=[],date=options.date||dateForDay(day,state,options.weekMonday),base=options.base||baseOf(),blocks=options.blocks||blocksForDate(date),visit=Math.max(15,Number(state&&state.settings&&state.settings.visitMinutes)||60),start=dayStart(day,state);
+  const rows=[],date=options.date||dateForDay(day,state,options.weekMonday),base=options.base||baseOf(),blocks=options.blocks||blocksForDate(date),fallbackVisit=Math.max(15,Number(state&&state.settings&&state.settings.visitMinutes)||60),start=dayStart(day,state);
   const travel=options.travelMinutes||travelMinutes,appt=options.appointmentFor||((id,d)=>appointmentFor(id,d,state));let current=start,prev=base,unknownCount=0,closedCount=0,appointmentConflicts=0;
   for(let i=0;i<(route||[]).length;i++){
-    const store=(state&&state.stores||[]).find(s=>String(s.id)===String(route[i].id))||route[i],drive=Math.max(0,Number(travel(prev,store))||0),nominal=current+drive,a=appt(store.id,date),duration=a?Math.max(15,Number(a.duration)||visit):visit;let requested=nominal,fixed=null;
+    const store=(state&&state.stores||[]).find(s=>String(s.id)===String(route[i].id))||route[i],drive=Math.max(0,Number(travel(prev,store))||0),nominal=current+drive,a=appt(store.id,date),storeVisit=(()=>{try{return typeof root.storeVisitDuration==='function'?root.storeVisitDuration(store,state):fallbackVisit}catch(e){return fallbackVisit}})(),duration=a?Math.max(15,Number(a.duration)||storeVisit):storeVisit;let requested=nominal,fixed=null;
     if(a&&a.time){fixed=minute(a.time);if(fixed!=null&&fixed>requested)requested=fixed}
     let fitted=fitWithBlocks(store,day,requested,duration,blocks),arrival=fitted.arrival,status='ok';
     if(a&&fixed!=null){

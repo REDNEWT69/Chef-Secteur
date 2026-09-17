@@ -86,7 +86,7 @@ function patchRouteCost(){
 }
 function clock(value){const p=String(value||'').split(':');return(+p[0]||0)*60+(+p[1]||0)}
 function settings(){try{return(window.state&&state.settings)||{}}catch(e){return{}}}
-function routeWorkMinutes(route){const s=settings(),km=roundTripRouteKm(route);if(!Number.isFinite(km))return Infinity;return km*1.22/55*60+(route||[]).length*Math.max(0,Number(s.visitMinutes)||60)}
+function routeWorkMinutes(route){const s=settings(),km=roundTripRouteKm(route);if(!Number.isFinite(km))return Infinity;const visits=(route||[]).reduce((n,store)=>{try{return n+(typeof window.storeVisitDuration==='function'?window.storeVisitDuration(store,state):Math.max(15,Number(s.visitMinutes)||60))}catch(e){return n+Math.max(15,Number(s.visitMinutes)||60)}},0);return km*1.22/55*60+visits}
 function dayStart(day){const s=settings();return clock(day==='Samedi'?(s.saturdayStart||'08:00'):(s.startTime||'08:30'))}
 function dayEnd(day){const s=settings();return clock(day==='Samedi'?(s.saturdayEnd||'12:00'):(s.endTime||'18:00'))}
 function parseDate(value){const d=new Date(String(value||'')+'T12:00:00');return isNaN(d)?null:d}

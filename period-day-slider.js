@@ -158,7 +158,15 @@
   function cueHost(){return document.getElementById('planningHeroV2')||document.getElementById('planningToolsV2')}
   function focusHotel(candidate){
     const date=parse(candidate&&candidate.fromDate);if(date)loadDate(date);
-    try{if(typeof window.renderOvernight==='function')window.renderOvernight()}catch(e){}
+    /* Le conseil hôtel vit dans la feuille Réglages. Depuis que cette feuille est
+       volontairement cachée hors ouverture utilisateur, un simple scroll ne suffit plus :
+       le bouton Hôtel conseillé doit ouvrir la feuille puis demander au propriétaire V212
+       de rendre la réservation de la bonne nuit. */
+    try{if(window.StoreRunnerNavigation&&typeof window.StoreRunnerNavigation.openPlanningSettings==='function')window.StoreRunnerNavigation.openPlanningSettings()}catch(e){}
+    try{
+      if(window.StoreRunnerStoreControlsV189&&typeof window.StoreRunnerStoreControlsV189.renderOvernight==='function')window.StoreRunnerStoreControlsV189.renderOvernight();
+      else if(typeof window.renderOvernight==='function')window.renderOvernight()
+    }catch(e){}
     const reveal=()=>{
       const box=document.getElementById('overnightBox');if(!box)return;
       box.classList.remove('srHotelFocusV206');void box.offsetWidth;box.classList.add('srHotelFocusV206');

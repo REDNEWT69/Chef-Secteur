@@ -68,7 +68,7 @@ function planIssues(plan,s,date){
   for(let i=0;i<rows.length;i++){const x=rows[i],id=String(x.id);if(seen.has(id))issues.push('Magasin en double : '+x.enseigne+' '+x.ville);seen.add(id);
    if(x.lat==null||x.lon==null||x.lat===''||x.lon===''||!Number.isFinite(Number(x.lat))||!Number.isFinite(Number(x.lon)))issues.push('Coordonnées manquantes : '+x.ville);
    if(typeof root.hav==='function'&&typeof root.baseObj==='function')minutes+=root.hav(i?rows[i-1]:root.baseObj(),x)*1.22/55*60;
-   const finish=minutes+Number(s.settings.visitMinutes||60);
+   let visitMinutes=Math.max(15,Number(s.settings.visitMinutes)||60);try{if(typeof root.storeVisitDuration==='function')visitMinutes=root.storeVisitDuration(x,s)}catch(e){}const finish=minutes+visitMinutes;
    for(const e of events){const from=e.allDay?0:eventMinute(e.start),to=e.allDay?1440:eventMinute(e.end);if(e.allDay||(minutes<to&&finish>from))issues.push(day+' : conflit avec '+(e.title||'Google Agenda'));}
    for(const a of appointments){const from=clock(a.time),to=from+Number(a.duration||60);if(String(a.storeId)!==id&&minutes<to&&finish>from)issues.push(day+' : chevauchement avec un rendez-vous enregistré.');if(String(a.storeId)===id&&(minutes>from+5||finish<from))issues.push(day+' : horaire de visite incompatible avec le rendez-vous enregistré.')}
    minutes=finish;

@@ -42,6 +42,14 @@ function visitCredit(store){
   return 1;
 }
 function routeCredits(route){return (route||[]).reduce((n,s)=>n+visitCredit(s),0)}
+function visitDuration(store,stateArg){
+  const own=Number(store&&store.visitMinutes);
+  if(Number.isFinite(own)&&own>=15&&own<=480)return Math.round(own);
+  let fallback=60;
+  try{const s=(stateArg&&stateArg.settings)||(window.state&&state.settings)||{};fallback=Number(s.visitMinutes)||60}catch(e){}
+  return Math.max(15,Math.min(480,Math.round(fallback)))
+}
+function routeVisitMinutes(route,stateArg){return (route||[]).reduce((n,s)=>n+visitDuration(s,stateArg),0)}
 function isBoulanger(store){const brand=norm(store&&store.enseigne);return /(^| )boulanger( |$)/.test(brand)}
 /*
  * Boulanger garde sa réserve de capacité uniquement quand CE magasin compte réellement
@@ -141,7 +149,7 @@ function patchProMonth(){
   const month=visibleMonth();if(!month)return;const stats=monthArchiveStats(month.year,month.month),head=document.querySelector('#proMonthBody .proMonthHead span');setText(head,stats.visits+' visites comptabilisées · '+stats.uniqueStores+' magasins distincts');const first=document.querySelector('#proMonthMetrics > div:first-child');if(first){setText(first.querySelector('b'),String(stats.visits));setText(first.querySelector('span'),'visites comptabilisées')}document.querySelectorAll('#proMonthBody .proMore').forEach(e=>{if(/visites?/i.test(e.textContent||''))e.textContent=e.textContent.replace(/visites?/i,'magasins')});
 }
 function patchQuickStore(){
-  const sheet=document.getElementById('storeQuickSheet'),start=document.getElementById('srQuickStart');if(!sheet||!start||!start.dataset)return;const id=start.dataset.srStart;if(!id)return;let store=null;try{store=(state.stores||[]).find(s=>String(s.id)===String(id))}catch(e){}if(!store)return;const address=document.getElementById('sqAddress');if(!address)return;let badge=document.getElementById('sqVisitCredit');if(!badge){badge=document.createElement('div');badge.id='sqVisitCredit';badge.className='tiny';badge.style.marginTop='6px';address.insertAdjacentElement('afterend',badge)}const c=visitCredit(store),families=(Array.isArray(store.products)?store.products:[]).filter(x=>x&&x!=='À confirmer');setText(badge,'Ce passage compte pour '+c+' visite'+(c>1?'s':'')+(families.length?' · Familles : '+families.join(' + '):''));
+  const sheet=document.getElementById('storeQuickSheet'),start=document.getElementById('srQuickStart');if(!sheet||!start||!start.dataset)return;const id=start.dataset.srStart;if(!id)return;let store=null;try{store=(state.stores||[]).find(s=>String(s.id)===String(id))}catch(e){}if(!store)return;const address=document.getElementById('sqAddress');if(!address)return;let badge=document.getElementById('sqVisitCredit');if(!badge){badge=document.createElement('div');badge.id='sqVisitCredit';badge.className='tiny';badge.style.marginTop='6px';address.insertAdjacentElement('afterend',badge)}const c=visitCredit(store),families=(Array.isArray(store.products)?store.products:[]).filter(x=>x&&x!=='À confirmer');const duration=visitDuration(store);setText(badge,'Ce passage compte pour '+c+' visite'+(c>1?'s':'')+' · '+duration+' min prévues'+(families.length?' · Familles : '+families.join(' + '):''));
 }
 function patchVisibleUi(){if(!window.state)return;patchSummary();patchLegacyBrief();patchPremiumHome();patchProMonth();patchQuickStore()}
 function schedulePatch(){if(patchScheduled)return;patchScheduled=true;const run=()=>{patchScheduled=false;patchVisibleUi()};if(typeof requestAnimationFrame==='function')requestAnimationFrame(run);else setTimeout(run,0)}
@@ -174,9 +182,11 @@ function boot(){ensureRules();window.assistantSummary=formatAssistantSummary;hoo
 
 window.storeVisitCredit=planningVisitCredit;
 window.storeVisitCreditsForRoute=routeCredits;
+window.storeVisitDuration=visitDuration;
+window.storeVisitMinutesForRoute=routeVisitMinutes;
 window.storeVisitCreditsForPlan=planCredits;
 window.storeVisitStoresForPlan=planStores;
-window.StoreVisitCounting={credit:visitCredit,planningCredit:planningVisitCredit,routeCredits,planCredits,planStores,archiveStats,normalizeCandidate,reconcileStoredRangeStats,monthArchiveStats,rules};
+window.StoreVisitCounting={credit:visitCredit,planningCredit:planningVisitCredit,duration:visitDuration,routeVisitMinutes,routeCredits,planCredits,planStores,archiveStats,normalizeCandidate,reconcileStoredRangeStats,monthArchiveStats,rules};
 document.addEventListener('store-runner:reliability-propose-ready',hookReliability);
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
