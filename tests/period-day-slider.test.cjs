@@ -52,101 +52,10 @@ assert.match(source,/else delete box\.dataset\.periodSliderOwner/,'un rendu qui 
 
 source=source.replace(/\}\)\(\);\s*$/,'window.__periodTest={loadDate,range,load,renderTabs,getActiveDate:()=>activeDate};})();');
 
-// --- Faux DOM minimal, écrit à la main (pas de jsdom) --------------------------------
-// Seulement les primitives réellement utilisées par period-day-slider.js :
-// createElement/createDocumentFragment, appendChild, classList, dataset, innerHTML,
-// scrollLeft, getBoundingClientRect/scrollIntoView, et un querySelector limité aux
-// sélecteurs effectivement employés dans ce fichier (classes, présence d'attribut,
-// et un unique niveau de descendance préfixé par un id, ex. "#dayTabs .foo.bar[baz]").
-function parseCompound(token){
-  const compound={id:null,classes:[],attrs:[]};
-  const re=/#([\w-]+)|\.([\w-]+)|\[([\w-]+)(?:="([^"]*)")?\]/g;
-  let m;
-  while((m=re.exec(token))){
-    if(m[1])compound.id=m[1];
-    else if(m[2])compound.classes.push(m[2]);
-    else if(m[3])compound.attrs.push({name:m[3],value:m[4]!==undefined?m[4]:null});
-  }
-  return compound;
-}
-function matchesCompound(el,compound){
-  for(const c of compound.classes)if(!el.classList.contains(c))return false;
-  for(const a of compound.attrs){
-    const val=el.getAttribute(a.name);
-    if(a.value!==null){if(val!==a.value)return false}
-    else if(val===null)return false;
-  }
-  return true;
-}
-function subtreeElements(root){
-  const out=[];
-  (function walk(node){for(const child of (node.children||[])){out.push(child);walk(child)}})(root);
-  return out;
-}
-function createFakeDom(){
-  const registry=new Map();
-  function makeFragment(){
-    const frag={_isFragment:true,children:[]};
-    frag.appendChild=function(child){child.parentNode=frag;frag.children.push(child);return child};
-    return frag;
-  }
-  function makeElement(tag){
-    const classes=new Set();
-    let id='';
-    const el={tagName:String(tag).toUpperCase(),children:[],parentNode:null,dataset:{},style:{},_attrs:{},_listeners:{},_text:'',_html:'',scrollLeft:0,onclick:null,type:''};
-    Object.defineProperty(el,'className',{get:()=>Array.from(classes).join(' '),set(v){classes.clear();String(v||'').split(/\s+/).filter(Boolean).forEach(c=>classes.add(c))}});
-    Object.defineProperty(el,'innerHTML',{get:()=>el._html,set(v){el._html=v;if(v==='')el.children=[]}});
-    Object.defineProperty(el,'textContent',{get:()=>el._text,set(v){el._text=String(v)}});
-    Object.defineProperty(el,'firstElementChild',{get:()=>el.children[0]||null});
-    Object.defineProperty(el,'id',{get:()=>id,set(v){if(id)registry.delete(id);id=String(v);if(id)registry.set(id,el)}});
-    el.classList={add:(...n)=>n.forEach(x=>classes.add(x)),remove:(...n)=>n.forEach(x=>classes.delete(x)),contains:n=>classes.has(n),toggle(n,force){const has=classes.has(n);const next=force===undefined?!has:Boolean(force);if(next)classes.add(n);else classes.delete(n);return next}};
-    el.appendChild=function(child){
-      if(child&&child._isFragment){for(const c of child.children){c.parentNode=el;el.children.push(c)}child.children=[];return child}
-      child.parentNode=el;el.children.push(child);return child;
-    };
-    el.setAttribute=function(name,value){el._attrs[name]=String(value)};
-    el.getAttribute=function(name){
-      if(name.indexOf('data-')===0){const key=name.slice(5).replace(/-([a-z])/g,(_,c)=>c.toUpperCase());return Object.prototype.hasOwnProperty.call(el.dataset,key)?el.dataset[key]:null}
-      return Object.prototype.hasOwnProperty.call(el._attrs,name)?el._attrs[name]:null;
-    };
-    el.addEventListener=function(type,fn){(el._listeners[type]=el._listeners[type]||[]).push(fn)};
-    el.removeEventListener=function(type,fn){const l=el._listeners[type]||[];const i=l.indexOf(fn);if(i!==-1)l.splice(i,1)};
-    el.querySelector=function(sel){return runSelector(el,sel)[0]||null};
-    el.querySelectorAll=function(sel){return runSelector(el,sel)};
-    el.getBoundingClientRect=function(){return el._rect||{left:0,right:0,top:0,bottom:0,width:0,height:0}};
-    return el;
-  }
-  function runSelector(scopeEl,selectorStr){
-    const tokens=selectorStr.trim().split(/\s+/);
-    const first=parseCompound(tokens[0]);
-    let pool,startIdx;
-    if(first.id){const resolved=registry.get(first.id);if(!resolved)return[];pool=[resolved];startIdx=1}
-    else{pool=subtreeElements(scopeEl);startIdx=0}
-    for(let i=startIdx;i<tokens.length;i++){
-      const compound=parseCompound(tokens[i]);
-      const searchSpace=(i===startIdx&&first.id)?subtreeElements(pool[0]):pool;
-      pool=searchSpace.filter(el=>matchesCompound(el,compound));
-    }
-    return pool;
-  }
-  const documentListeners={};
-  const document={
-    createElement:makeElement,
-    createDocumentFragment:makeFragment,
-    getElementById:id=>registry.get(id)||null,
-    head:makeElement('head'),
-    readyState:'loading',
-    addEventListener(type,fn){(documentListeners[type]=documentListeners[type]||[]).push(fn)},
-    removeEventListener(){},
-    querySelector(sel){return runSelector(null,sel)[0]||null},
-    querySelectorAll(sel){return runSelector(null,sel)},
-  };
-  return {
-    document,
-    registry,
-    dispatchDocumentEvent(type){(documentListeners[type]||[]).slice().forEach(fn=>fn({}))},
-  };
-}
+// --- Faux DOM minimal, partagé avec les autres tests de la bande de jours ------------
+// (tests/helpers/fake-dom.cjs : pas de jsdom, seulement les primitives réellement
+// utilisées par les modules qui écrivent dans #dayTabs).
+const {createFakeDom}=require('./helpers/fake-dom.cjs');
 
 // --- Scénario de test --------------------------------------------------------------
 const RANGE='chef_sector_range_v1',ARCHIVE='chef_sector_plan_archive_v1';

@@ -147,10 +147,14 @@
   function syncOvernightVisibility(){
     const box=document.getElementById('dayTabs');if(!box)return false;
     const candidate=overnightCandidateSafe();
-    box.querySelectorAll('.hotelDayBadge').forEach(b=>{const tab=b.closest('.dayTab');if(!candidate||!tab||tab.dataset.date!==String(candidate.fromDate||''))b.remove()});
+    /* Le nettoyage ne porte que sur la pastille posée par la bande. D'autres modules
+       écrivent la même classe sur les mêmes onglets (ui-polish.js pour l'hôtel réservé et
+       le déplacement professionnel) : les effacer revenait à supprimer leur marqueur à
+       chaque rendu de la bande. */
+    box.querySelectorAll('.hotelDayBadge').forEach(b=>{if(!b.dataset.overnight)return;const tab=b.closest('.dayTab');if(!candidate||!tab||tab.dataset.date!==String(candidate.fromDate||''))b.remove()});
     if(candidate&&candidate.fromDate){
       const tab=box.querySelector('.dayTab[data-date="'+String(candidate.fromDate).replace(/"/g,'')+'"]');
-      if(tab){let badge=tab.querySelector('.hotelDayBadge');if(!badge){badge=document.createElement('span');badge.className='hotelDayBadge';tab.appendChild(badge)}badge.textContent='🌙 découché';badge.setAttribute('aria-label','Découché '+overnightLabel(candidate));badge.title='Découché '+overnightLabel(candidate)}
+      if(tab){let badge=tab.querySelector('.hotelDayBadge[data-overnight]');if(!badge){badge=document.createElement('span');badge.className='hotelDayBadge';badge.dataset.overnight='1';tab.appendChild(badge)}badge.textContent='🌙 découché';badge.setAttribute('aria-label','Découché '+overnightLabel(candidate));badge.title='Découché '+overnightLabel(candidate)}
     }
     let cue=document.getElementById('planningOvernightCueV206');
     if(!candidate){if(cue)cue.remove();overnightCuePulseRequested=false;return true}

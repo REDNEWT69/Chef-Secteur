@@ -101,19 +101,24 @@
   }
   function markHotelDayTab(){
     try{
-      document.querySelectorAll('#dayTabs .dayTab').forEach(btn=>btn.querySelectorAll('.hotelDayBadge').forEach(x=>x.remove()));
+      document.querySelectorAll('#dayTabs .dayTab').forEach(btn=>btn.querySelectorAll('.hotelDayBadge').forEach(x=>{if(!(x.dataset&&x.dataset.overnight))x.remove()}));
       document.querySelectorAll('#dayTabs .dayTab').forEach((btn,i)=>{
         const day=dayOfTab(btn,i);if(!day)return;
-        /* Une période de trois semaines affiche trois lundis. Le découché, les
-           hôtels et les déplacements ne valent que pour la semaine affichée :
-           seul l'onglet de cette semaine-là reçoit la pastille. */
+        /* Une période de trois semaines affiche trois lundis. Les hôtels réservés et
+           les déplacements ne valent que pour la semaine affichée : seul l'onglet de
+           cette semaine-là reçoit la pastille. */
         const iso=btn&&btn.dataset&&btn.dataset.date;
         if(iso&&iso!==dateForDay(day))return;
-        const hasHotel=hotelEventsForDay(day).length>0,away=awayRangeForDay(day);let overnight=false;
-        if(!hasHotel&&!away&&!overnightDisabled()&&typeof window.overnightCandidate==='function')try{const o=window.overnightCandidate();overnight=!!(o&&String(o.night||'').includes('Nuit '+day+' →'))}catch(e){}
-        const label=hasHotel?'🌙 hôtel':away?'🚗 déplacement':overnight?'🌙 découché':'';
+        const hasHotel=hotelEventsForDay(day).length>0,away=awayRangeForDay(day);
+        const label=hasHotel?'🌙 hôtel':away?'🚗 déplacement':'';
         if(label){const s=document.createElement('span');s.className='hotelDayBadge';s.textContent=label;s.style.cssText='display:block;margin-top:4px;font-size:9px;color:#9a6200;font-weight:800';btn.appendChild(s)}
-      })
+      });
+      /* Le découché appartient à la bande de période (period-day-slider.js) depuis V206 :
+         elle seule tient la vraie date de départ du candidat, là où la semaine affichée se
+         trompe de lundi dès qu'une période couvre plusieurs semaines. Recalculer ici une
+         pastille concurrente la déplaçait sur l'onglet de la semaine affichée et lui
+         faisait perdre son libellé accessible. On lui rend la main. */
+      if(window.StoreRunnerPeriodDaySlider&&typeof window.StoreRunnerPeriodDaySlider.syncOvernight==='function')window.StoreRunnerPeriodDaySlider.syncOvernight();
     }catch(e){}
   }
 
