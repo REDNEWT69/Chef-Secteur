@@ -16,7 +16,22 @@ jobs:
         with:
           node-version: '22'
       - name: Appliquer V209
-        run: python3 .github/scripts/apply-v209.py
+        run: |
+          python3 .github/scripts/apply-v209.py
+          git restore .github/workflows/reliability-checks.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('tests/performance-v190.test.cjs')
+          s=p.read_text(encoding='utf-8')
+          line="\nrequire('./performance-store-reconcile-v209.test.cjs');\n"
+          if line.strip() not in s:s+=line
+          p.write_text(s,encoding='utf-8')
+          p=Path('tests/performance-assistant-browser.spec.cjs')
+          s=p.read_text(encoding='utf-8')
+          line="\nrequire('./performance-store-reconcile-v209-browser.spec.cjs');\n"
+          if line.strip() not in s:s+=line
+          p.write_text(s,encoding='utf-8')
+          PY
       - name: Gardes ciblés V209
         run: |
           node tests/syntax.test.cjs
@@ -30,7 +45,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add performance-ui-v190.js profile-controller.js tests/performance-store-reconcile-v209.test.cjs tests/performance-store-reconcile-v209-browser.spec.cjs .github/workflows/reliability-checks.yml index.html sw.js version.json tests/terrain-planning-runtime.test.cjs tests/v182-field-fixes.test.cjs
+          git add performance-ui-v190.js profile-controller.js tests/performance-v190.test.cjs tests/performance-assistant-browser.spec.cjs tests/performance-store-reconcile-v209.test.cjs tests/performance-store-reconcile-v209-browser.spec.cjs index.html sw.js version.json tests/terrain-planning-runtime.test.cjs tests/v182-field-fixes.test.cjs
           git diff --cached --quiet && exit 1
           git commit -m 'V209 : réconcilier les magasins performance avec le secteur'
           git push origin HEAD:chatgpt/v209-performance-store-reconcile
