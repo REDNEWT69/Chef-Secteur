@@ -3,7 +3,7 @@
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   const ARCHIVE_KEY='chef_sector_plan_archive_v1';
   const RANGE_KEY='chef_sector_range_v1';
-  let activeDate='',tabObserver=null,renderScheduled=false,lastTabsSignature=null;
+  let activeDate='',tabObserver=null,panelObserver=null,renderScheduled=false,lastTabsSignature=null;
   function parse(v){const d=new Date(String(v||'')+'T12:00:00');return isNaN(d)?null:d}
   function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
   function monday(d){const x=new Date(d),w=x.getDay()||7;x.setDate(x.getDate()-w+1);return x}
@@ -134,6 +134,14 @@
     while(d<=r.end&&count<100){const name=dayName(d);if(name!=='Dimanche'&&r.workDays.includes(name))entries.push(new Date(d));d=addDays(d,1);count++}
     return entries;
   }
+  function focusTodayIfVisible(now){
+    const panel=document.getElementById('planPanel');
+    if(!panel||!panel.classList.contains('active'))return false;
+    const today=now instanceof Date?new Date(now):new Date();today.setHours(12,0,0,0);
+    const key=iso(today),entries=buildEntries(range());
+    if(!entries.some(d=>iso(d)===key))return false;
+    return loadDate(today);
+  }
   function tabsSignature(entries){return entries.map(iso).join(',')}
   function boxMatchesEntries(box,entries){
     /* La signature seule ne suffit pas : le noyau historique peut reconstruire
@@ -202,9 +210,19 @@
      Le changement de jour reste au tap sur un onglet et au balayage franc de la liste. */
   function css(){if(document.getElementById('periodDaySliderCss'))return;const s=document.createElement('style');s.id='periodDaySliderCss';s.textContent='.periodDayTabs{display:flex!important;gap:8px!important;overflow-x:auto!important;overflow-y:hidden!important;grid-template-columns:none!important;-webkit-overflow-scrolling:touch;touch-action:auto!important;overscroll-behavior-x:contain;padding:4px 1px 8px!important;scrollbar-width:none}.periodDayTabs::-webkit-scrollbar{display:none}.periodDayTab{flex:1 1 0!important;min-width:56px!important;max-width:96px!important;touch-action:auto!important;border:1px solid #e1e5ed;background:#fff;border-radius:16px;padding:8px 6px!important;text-align:center;color:#667085;min-height:66px}.periodDayTab span,.periodDayTab small{display:block;font-size:10px;line-height:1.1}.periodDayTab b{display:block;font-size:18px;line-height:1.2;color:#1d2939;margin:2px 0}.periodDayTab.active{background:#111318!important;color:#fff!important;border-color:#111318!important}.periodDayTab.active b{color:#fff!important}';document.head.appendChild(s)}
   function observeTabs(){if(tabObserver||typeof MutationObserver==='undefined')return;const box=document.getElementById('dayTabs');if(!box)return;tabObserver=new MutationObserver(()=>{if(!box.querySelector('.periodDayTab'))scheduleRender()});tabObserver.observe(box,{childList:true})}
-  function boot(){css();observeTabs();renderTabs();bindListSwipe(document.getElementById('planPanel'))}
+  function observePlanningPanel(){
+    if(panelObserver||typeof MutationObserver==='undefined')return false;
+    const panel=document.getElementById('planPanel');if(!panel)return false;
+    let wasActive=panel.classList.contains('active');
+    panelObserver=new MutationObserver(()=>{const isActive=panel.classList.contains('active');if(isActive&&!wasActive)focusTodayIfVisible();wasActive=isActive});
+    panelObserver.observe(panel,{attributes:true,attributeFilter:['class']});
+    if(wasActive)focusTodayIfVisible();
+    return true;
+  }
+  function boot(){css();observeTabs();renderTabs();bindListSwipe(document.getElementById('planPanel'));observePlanningPanel()}
   window.addEventListener('chef-range-generated',function(){activeDate='';scheduleRender()});
   document.addEventListener('store-runner:planning-updated',scheduleRender);
   document.addEventListener('store-runner:data-restored',function(){activeDate='';scheduleRender()});
+  window.StoreRunnerPeriodDaySlider={focusToday:focusTodayIfVisible};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
