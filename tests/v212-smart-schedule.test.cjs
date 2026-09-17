@@ -34,7 +34,8 @@ const files={
   hours:fs.readFileSync(__dirname+'/../store-opening-hours.js','utf8'),
   quality:fs.readFileSync(__dirname+'/../route-polish.js','utf8'),
   reliability:fs.readFileSync(__dirname+'/../reliability-core.js','utf8'),
-  hotel:fs.readFileSync(__dirname+'/../auto-planning-fix.js','utf8')
+  hotel:fs.readFileSync(__dirname+'/../auto-planning-fix.js','utf8'),
+  period:fs.readFileSync(__dirname+'/../period-day-slider.js','utf8')
 };
 assert(files.core.includes('id="fVisitMinutes"'),'la fiche magasin doit exposer la durée personnalisée');
 assert(files.core.includes('s.visitMinutes=visitMin'),'la durée personnalisée doit être persistée');
@@ -43,5 +44,6 @@ for(const [name,src] of Object.entries({range:files.range,terrain:files.terrain,
 assert(files.hotel.includes('storeRunnerSaveHotelReservation'),'la réservation hôtel doit être enregistrable');
 assert(files.hotel.includes('N° / référence de réservation'),'la référence de réservation doit être visible');
 assert(files.hotel.includes('hotelReservations()[key]'),'la réservation doit être rattachée à la date de nuit');
+assert(files.period.includes('StoreRunnerNavigation.openPlanningSettings')&&files.period.includes('StoreRunnerStoreControlsV189.renderOvernight'),'le bouton Hôtel conseillé doit ouvrir la feuille et rendre la réservation V212');
 
 console.log('v212 smart schedule ok · prochain lundi · durée magasin · hôtel réservé');
