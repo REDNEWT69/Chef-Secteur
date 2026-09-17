@@ -1,4 +1,4 @@
-const BUILD_REV = "20260917-anonfixtures195";
+const BUILD_REV = "20260917-aicontext196";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
