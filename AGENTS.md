@@ -78,7 +78,7 @@ Le plan de référence est `PLAN_METIER_STORE_RUNNER.md`.
 
 État actuel : **Visit + Action + workflow 6P sont intégrés dans `main`** avec sauvegarde/reprise, historique et protections Reliability. L’assistant peut également lire un contexte Visit/Action sans mutation métier.
 
-Priorité métier suivante : **Appointment**, en prolongeant l’existant au lieu de créer un second registre concurrent. Une fois Appointment stabilisé, le prochain domaine prévu est **Opportunity**.
+Priorité métier décidée le 17/09/2026 : **Opportunity avant Appointment**. Opportunity doit suivre les opportunités commerciales magasin sans modifier automatiquement le planning, `store.priority` ou les performances. Une fois Opportunity stabilisé, reprendre **Appointment** en prolongeant `state.appointments` au lieu de créer un second registre concurrent.
 
 Ne pas redévelopper Visit/Action/6P depuis une ancienne branche ou un ancien résumé Codex. Ne pas développer KitchenCRM, ServiceCase ou des workflows spécialisés tant qu’ils ne sont pas explicitement demandés.
 
