@@ -8,10 +8,10 @@ const index=fs.readFileSync(path.join(process.cwd(),'index.html'),'utf8');
 const sw=fs.readFileSync(path.join(process.cwd(),'sw.js'),'utf8');
 const version=JSON.parse(fs.readFileSync(path.join(process.cwd(),'version.json'),'utf8'));
 
-assert(index.includes("const BUILD_REV='20260917-futurecue207'"),'index doit publier le build V206');
-assert(sw.includes('const BUILD_REV = "20260917-futurecue207"'),'sw doit publier le même build V206');
+assert(index.includes("const BUILD_REV='20260917-futurecue207'"),'index doit publier le build V207');
+assert(sw.includes('const BUILD_REV = "20260917-futurecue207"'),'sw doit publier le même build V207');
 assert.equal(version.latestBuild,'20260917-futurecue207');
-assert.equal(version.displayVersion,'206');
+assert.equal(version.displayVersion,'207');
 assert(index.includes("'./v182-fixes.js'"),'le runtime de fiabilisation doit rester chargé');
 assert(index.includes("'./priority-campaign-v187.js'"),'le moteur de priorités V188 doit être chargé');
 assert(index.includes('id="srRuntimeBoot"'),'le boot historique doit être masqué pendant le rendu moderne');
