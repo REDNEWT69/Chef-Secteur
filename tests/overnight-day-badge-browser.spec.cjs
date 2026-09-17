@@ -44,6 +44,39 @@ test('La lune du découché se pose sur le jour du découché, une seule fois',a
   expect(await page.evaluate(()=>window.overnightCandidate().night)).toBe('Nuit Lundi → Mardi');
   expect(await badges(page)).toEqual(['2026-09-14 → 🌙 découché']);
 
+  /* V206 : même si un autre jour est sélectionné, la lune reste visible sans agrandir
+     la tuile du découché et un raccourci permet de rejoindre directement l'hôtel. */
+  await page.locator('#dayTabs .dayTab[data-date="2026-09-16"]').click();
+  await page.waitForTimeout(120);
+  const inactiveBadge=await page.evaluate(()=>{
+    const tab=document.querySelector('#dayTabs .dayTab[data-date="2026-09-14"]'),badge=tab&&tab.querySelector('.hotelDayBadge');
+    if(!tab||!badge)return null;
+    const cs=getComputedStyle(badge),before=getComputedStyle(badge,'::before');
+    return{active:tab.classList.contains('active'),display:cs.display,position:cs.position,width:badge.getBoundingClientRect().width,before:before.content};
+  });
+  expect(inactiveBadge).not.toBeNull();
+  expect(inactiveBadge.active).toBe(false);
+  expect(inactiveBadge.display).not.toBe('none');
+  expect(inactiveBadge.position).toBe('absolute');
+  expect(inactiveBadge.width).toBeLessThanOrEqual(20);
+  expect(inactiveBadge.before).toContain('🌙');
+
+  const cue=page.locator('#planningOvernightCueV206');
+  await expect(cue).toBeVisible();
+  await expect(cue).toContainText('Découché Lundi → Mardi');
+  await expect(cue).toContainText('Hôtel conseillé');
+
+  await page.evaluate(()=>document.dispatchEvent(new CustomEvent('store-runner:planning-user-opened')));
+  await page.waitForTimeout(80);
+  await expect(cue).toHaveClass(/is-pulsing/);
+
+  await cue.click();
+  await page.waitForTimeout(180);
+  expect(await page.locator('#dayTabs .dayTab.active').getAttribute('data-date')).toBe('2026-09-14');
+  await expect(page.locator('#overnightBox')).toContainText('Zone hôtel conseillée');
+  await expect(page.locator('#overnightBox')).toHaveClass(/srHotelFocusV206/);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth)).toBeLessThanOrEqual(1);
+
   /* 2. Semaine sans lundi : la position de l'onglet ne vaut plus le jour.
         C'est le cas qui décalait la pastille d'un cran. */
   await seed(page,['Mardi','Mercredi','Jeudi','Vendredi'],['Mardi','Mercredi']);
@@ -65,7 +98,7 @@ test('La lune du découché se pose sur le jour du découché, une seule fois',a
   expect(lundis).toEqual(['2026-09-14','2026-09-21','2026-09-28']);
   expect(await badges(page)).toEqual(['2026-09-14 → 🌙 découché']);
 
-  /* 4. Découché désactivé : plus aucune pastille. */
+  /* 4. Découché désactivé : plus aucune pastille ni raccourci. */
   await page.evaluate(()=>{
     window.state.profile.overnightMode='never';
     try{save()}catch(e){}
@@ -73,6 +106,7 @@ test('La lune du découché se pose sur le jour du découché, une seule fois',a
   });
   await page.waitForTimeout(1200);
   expect(await badges(page)).toEqual([]);
+  await expect(page.locator('#planningOvernightCueV206')).toHaveCount(0);
 
   expect(errors).toEqual([]);
 });
