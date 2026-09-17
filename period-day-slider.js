@@ -140,7 +140,7 @@
       const box=document.getElementById('overnightBox');if(!box)return;
       box.classList.remove('srHotelFocusV206');void box.offsetWidth;box.classList.add('srHotelFocusV206');
       box.addEventListener('animationend',()=>box.classList.remove('srHotelFocusV206'),{once:true});
-      if(typeof box.scrollIntoView==='function')box.scrollIntoView({block:'center',behavior:'smooth'});
+      if(typeof box.scrollIntoView==='function')box.scrollIntoView({block:'center'});
     };
     if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>requestAnimationFrame(reveal));else reveal();
   }
