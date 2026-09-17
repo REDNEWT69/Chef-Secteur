@@ -9,7 +9,7 @@ const capacity = fs.readFileSync('daily-capacity.js','utf8');
 
 assert(index.includes("'./range-planner-v2.js','./store-opening-hours.js','./boulanger-default-hours.js','./store-photos.js','./terrain-planning-v1.js','./working-hours-end.js'"), 'les horaires enseigne et les photos doivent charger avant le module terrain');
 assert(sw.includes('"./terrain-planning-v1.js"'), 'le module terrain doit être disponible hors ligne');
-assert.strictEqual(version.displayVersion, '206');
+assert.strictEqual(version.displayVersion, '207');
 assert.strictEqual(version.latestBuild, '20260917-futurecue207');
 assert(index.includes("const BUILD_REV='20260917-futurecue207'"));
 assert(sw.includes('const BUILD_REV = "20260917-futurecue207"'));
