@@ -23,11 +23,17 @@
     window.scrollTo({top:0,behavior:'smooth'});
   }
 
-  /* Le remplacement manuel d'un magasin émet store-runner:planning-updated puis l'ancien
-     flux tente encore de rouvrir la fiche du nouveau magasin. La navigation absorbe
-     uniquement cette prochaine ouverture automatique : les ouvertures suivantes restent
-     normales. On évite ainsi le flash de la fiche et on conserve exactement le jour et
-     la position de planning que l'utilisateur était en train de modifier. */
+  function isDirectPlanningEntry(btn){
+    if(!btn)return false;
+    try{if(btn.matches&&btn.matches('.bottomNavBtn[data-panel="planPanel"]'))return true}catch(e){}
+    let inline='';try{inline=String(btn.getAttribute&&btn.getAttribute('onclick')||'')}catch(e){}
+    return /(?:goTab|switchTab)\(\s*['"]planPanel['"]/.test(inline);
+  }
+
+  function signalPlanningUserOpened(){
+    try{document.dispatchEvent(new CustomEvent('store-runner:planning-user-opened'))}catch(e){}
+  }
+
   function installStoreQuickReturnGuard(){
     const current=window.openStoreQuick;
     if(typeof current!=='function')return false;
@@ -145,6 +151,14 @@
       if(!btn)return;
       if(btn.closest('#planPanel .departureCard'))returnToPlanning=true;
     },true);
+
+    /* Cette écoute est volontairement en phase de propagation normale : l'onclick du
+       bouton a déjà activé planPanel quand le signal est émis. Les ouvertures techniques
+       via goTab(), utilisées par d'autres modules, n'émettent jamais ce signal. */
+    document.addEventListener('click',function(e){
+      const btn=e.target&&e.target.closest?e.target.closest('button'):null;
+      if(isDirectPlanningEntry(btn))signalPlanningUserOpened();
+    });
 
     document.addEventListener('keydown',function(e){
       if(e&&e.key==='Escape')closePlanningSettingsSheet();
