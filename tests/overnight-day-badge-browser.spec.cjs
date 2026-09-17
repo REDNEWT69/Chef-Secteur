@@ -110,3 +110,60 @@ test('La lune du découché se pose sur le jour du découché, une seule fois',a
 
   expect(errors).toEqual([]);
 });
+
+
+test('V207 : depuis le 17, le découché du 21 est déjà signalé sans charger sa semaine',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+  await page.addInitScript(()=>{
+    const R=Date,at=R.parse('2026-09-17T09:00:00');
+    class F extends R{constructor(...a){super(...(a.length?a:[at]))}static now(){return at}}
+    window.Date=F;
+  });
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.state&&document.getElementById('planPanel')&&window.StoreRunnerStoreControlsV189&&typeof window.overnightCandidate==='function');
+  await page.evaluate(()=>{
+    const st=window.state;
+    const mk=(id,lat,lon,v)=>({id,enseigne:'Enseigne '+id,ville:v,adresse:'1 rue Test',dept:'99',lat,lon,active:true,priority:3,intervalDays:30,freq:'Mensuel',products:['Blanc']});
+    st.profile=Object.assign({},st.profile,{baseName:'Base test',baseAddress:'Base',baseLat:47,baseLon:1,overnightMode:'auto',overnightMinSaving:40});
+    st.stores=[mk('a',48.6,1,'Ville-Test 01'),mk('b',48.62,1.02,'Ville-Test 02'),mk('c',48.64,1.04,'Ville-Test 03'),mk('d',48.66,1.06,'Ville-Test 04')];
+    st.settings=Object.assign({},st.settings,{days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],weekDate:'2026-09-14',maxVisitsPerDay:4});
+    st.plan={Lundi:[],Mardi:[],Mercredi:[],Jeudi:[st.stores[0]],Vendredi:[],Samedi:[]};
+    st.excluded={};st.included={};st.locks={};st.calendarEvents=[];st.appointments=[];
+    const next={Lundi:[st.stores[0],st.stores[1]],Mardi:[st.stores[2],st.stores[3]],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
+    const db=window.__chefStorage||localStorage;
+    db.setItem('chef_sector_range_v1',JSON.stringify({start:'2026-09-14',end:'2026-09-25',workDays:['Lundi','Mardi','Mercredi','Jeudi','Vendredi']}));
+    db.setItem('chef_sector_plan_archive_v1',JSON.stringify({'2026-09-21':{weekMonday:'2026-09-21',plan:next}}));
+    try{save()}catch(e){}try{renderAll()}catch(e){}try{goTab('planPanel')}catch(e){}
+    document.dispatchEvent(new CustomEvent('store-runner:planning-updated'));
+    document.dispatchEvent(new CustomEvent('store-runner:planning-user-opened'));
+  });
+  await page.waitForTimeout(700);
+
+  expect(await page.evaluate(()=>window.state.settings.weekDate)).toBe('2026-09-14');
+  expect(await page.evaluate(()=>window.overnightCandidate())).toBeNull();
+  expect(await page.locator('#dayTabs .dayTab.active').getAttribute('data-date')).toBe('2026-09-17');
+  expect(await badges(page)).toEqual(['2026-09-21 → 🌙 découché']);
+
+  const cue=page.locator('#planningOvernightCueV206');
+  await expect(cue).toBeVisible();
+  await expect(cue).toContainText('Découché Lundi → Mardi · 21/09 → 22/09');
+  expect(await cue.getAttribute('data-date')).toBe('2026-09-21');
+
+  const ring=await page.evaluate(()=>{
+    const tab=document.querySelector('#dayTabs .dayTab[data-date="2026-09-21"]');if(!tab)return null;
+    const pseudo=getComputedStyle(tab,'::after');
+    return{className:tab.className,animationName:pseudo.animationName,animationDuration:pseudo.animationDuration};
+  });
+  expect(ring).not.toBeNull();
+  expect(ring.className).toContain('srOvernightRingV207');
+  expect(ring.animationName).toContain('srOvernightRingV207');
+  expect(ring.animationDuration).not.toBe('0s');
+
+  await cue.click();
+  await page.waitForTimeout(260);
+  expect(await page.locator('#dayTabs .dayTab.active').getAttribute('data-date')).toBe('2026-09-21');
+  expect(await page.evaluate(()=>window.state.settings.weekDate)).toBe('2026-09-21');
+  await expect(page.locator('#overnightBox')).toContainText('Zone hôtel conseillée');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth)).toBeLessThanOrEqual(1);
+  expect(errors).toEqual([]);
+});
