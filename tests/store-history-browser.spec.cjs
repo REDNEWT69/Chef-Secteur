@@ -22,7 +22,7 @@ test('La fiche magasin retrouve notes, visites et actions à 390 px', async ({ p
   await page.evaluate(() => {
     const st=window.state;
     const M=window.StoreRunnerVisitModel;
-    const store={id:'memory-1',enseigne:'Darty',ville:'Lyon',adresse:'10 rue Mémoire',dept:'69',lat:45.76,lon:4.84,active:true,priority:4};
+    const store={id:'memory-1',enseigne:'Darty',ville:'Ville-Test A',adresse:'10 rue Mémoire',dept: '99',lat:43.66,lon:-0.66,active:true,priority:4};
     st.stores=[store];
     st.notes=Object.assign({},st.notes||{},{'memory-1':'Responsable Julien · PLV à revoir'});
     st.visits={};
@@ -83,7 +83,7 @@ test('La fiche magasin retrouve notes, visites et actions à 390 px', async ({ p
 
   await rows.first().tap();
   await expect(page.locator('#srVisitDialog')).toBeVisible();
-  await expect(page.locator('#srVisitTitle')).toContainText('Darty · Lyon');
+  await expect(page.locator('#srVisitTitle')).toContainText('Darty · Ville-Test A');
   await expect(page.locator('#srVisitTitle')).toContainText('Visite terminée');
   expect(pageErrors,'La mémoire magasin ne doit produire aucune erreur JavaScript').toEqual([]);
 });
@@ -97,7 +97,7 @@ test('La fiche magasin mémorise les contacts et leurs emails après rechargemen
 
   await page.evaluate(() => {
     const st=window.state;
-    st.stores=[{id:'contact-1',enseigne:'Boulanger',ville:'Saint-Priest',adresse:'6 boulevard Test',dept:'69',lat:45.70,lon:4.94,active:true,priority:5,freq:'Hebdo',intervalDays:7,products:['Blanc','Brun']}];
+    st.stores=[{id:'contact-1',enseigne:'Boulanger',ville:'Ville-Test C',adresse:'6 boulevard Test',dept: '99',lat:43.6,lon:-0.56,active:true,priority:5,freq:'Hebdo',intervalDays:7,products:['Blanc','Brun']}];
     st.notes={};st.visits={};st.included={};st.excluded={};st.locks={};st.plan={};st.appointments=[];st.calendarEvents=[];
     st.businessV2=window.StoreRunnerVisitModel.empty();
     st.storeContacts={};
@@ -149,7 +149,7 @@ test('L’écran Terrain rappelle la promesse de la visite précédente, famille
   await page.evaluate(() => {
     const st=window.state;
     const M=window.StoreRunnerVisitModel;
-    st.stores=[{id:'promise-1',enseigne:'Darty',ville:'Lyon',adresse:'12 rue Promesse',dept:'69',lat:45.76,lon:4.84,active:true,priority:4}];
+    st.stores=[{id:'promise-1',enseigne:'Darty',ville:'Ville-Test A',adresse:'12 rue Promesse',dept: '99',lat:43.66,lon:-0.66,active:true,priority:4}];
     st.notes={};st.visits={};st.included={};st.excluded={};st.locks={};st.plan={};st.appointments=[];st.calendarEvents=[];
     st.businessV2=M.empty();
     const visitId=M.start(st,'promise-1');

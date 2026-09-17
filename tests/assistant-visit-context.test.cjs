@@ -4,7 +4,7 @@ const resolvers=[],transforms=[];
 global.storeRunnerRegisterAssistantResolver=(fn,priority)=>resolvers.push({fn,priority});
 global.storeRunnerRegisterAssistantContextTransform=(fn,priority)=>transforms.push({fn,priority});
 global.state={
-  stores:[{id:'s1',enseigne:'Darty',ville:'Lyon'},{id:'s2',enseigne:'Boulanger',ville:'Bron'}],
+  stores:[{id:'s1',enseigne:'Darty',ville:'Ville-Test A'},{id:'s2',enseigne:'Boulanger',ville:'Ville-Test B'}],
   businessV2:{version:2,revision:4,storeSnapshots:{},visits:[
     {id:'v1',storeId:'s1',status:'draft',step:2,updatedAt:'2026-09-10T12:00:00Z'},
     {id:'v2',storeId:'s2',status:'completed',completedDate:'2026-09-09',completedAt:'2026-09-09T15:00:00Z',updatedAt:'2026-09-09T15:00:00Z',conclusion:'Formation réalisée'}
@@ -17,10 +17,10 @@ global.state={
 const A=require('../assistant-visit-context.js');
 assert.equal(resolvers.length,1);assert.equal(resolvers[0].priority,10);
 assert.equal(transforms.length,1);assert.equal(transforms[0].priority,60);
-assert.match(A.answer('Quelles sont mes actions en retard ?'),/Darty Lyon/);
+assert.match(A.answer('Quelles sont mes actions en retard ?'),/Darty Ville-Test A/);
 assert.match(A.answer('Quelles visites sont en cours ?'),/étape 3\/5/);
-assert.match(A.answer('Quelle est ma dernière visite détaillée ?'),/Boulanger Bron/);
-assert.equal(A.answer('Quand je passe chez Darty Lyon ?'),null);
+assert.match(A.answer('Quelle est ma dernière visite détaillée ?'),/Boulanger Ville-Test B/);
+assert.equal(A.answer('Quand je passe chez Darty Ville-Test A ?'),null);
 const context=A.compactContext({today:'2026-09-10'});
 assert.equal(context.businessV2.activeDrafts.length,1);
 assert.equal(context.businessV2.openActions.length,1);

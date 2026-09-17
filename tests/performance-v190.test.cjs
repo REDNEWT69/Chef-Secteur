@@ -173,7 +173,7 @@ assert.deepEqual(P.dashboard(vide,{stores}).counts,{P1:0,P2:0,watch:0,nodata:0,u
 assert.equal(P.rowForStore(vide,'s1'),null,'une fiche magasin sans import n’affiche rien plutôt que des zéros');
 
 // --- Semaine lue depuis le nom du fichier ---------------------------------------------
-assert.equal(P.weekFromName('RHONE ALPES W34.xlsx'),'W34');
+assert.equal(P.weekFromName('PILOTAGE SECTEUR W34.xlsx'),'W34');
 assert.equal(P.weekFromName('export w7.xlsx'),'W7');
 assert.equal(P.weekFromName('sans semaine.xlsx'),'');
 
@@ -201,7 +201,7 @@ for(const reglage of ['visitCreditOverride=','products=','visitCreditsByBrand=']
   assert.ok(!ui.includes(reglage),'l’interface ne réécrit jamais le réglage V189 '+reglage);
 
 // =====================================================================================
-// Revue sur le vrai « RHONE ALPES W34.xlsx » (issue #253) : quatre écarts constatés.
+// Revue sur le classeur réel (issue #253) : quatre écarts constatés.
 // Les EN-TÊTES sont recopiés à l'identique du fichier réel ; les valeurs restent inventées.
 // =====================================================================================
 await (async function fichierReel(){
@@ -240,9 +240,9 @@ await (async function fichierReel(){
 
   // --- Écart 3 : l'alias ED, et ce qui doit rester manuel ---------------------------
   assert.equal(P.brandKey('ED'),'electro depot','ED est l’abréviation d’Electro Dépôt');
-  assert.equal(P.matchScore({retailer:'ED',site:'Villeurbanne'},{enseigne:'Electro Dépôt',ville:'Villeurbanne'}),100,'ED s’apparie sans intervention');
-  assert.equal(P.matchScore({retailer:'CONFO',site:'Chambéry'},{enseigne:'Conforama',ville:'Chambéry'}),100,'CONFO passait déjà par l’inclusion');
-  assert.equal(P.matchScore({retailer:'BTLEC EST',site:'Chambéry'},{enseigne:'Conforama',ville:'Chambéry'}),0,
+  assert.equal(P.matchScore({retailer:'ED',site:'Ville-Test E'},{enseigne:'Electro Dépôt',ville:'Ville-Test E'}),100,'ED s’apparie sans intervention');
+  assert.equal(P.matchScore({retailer:'CONFO',site:'Ville-Test G'},{enseigne:'Conforama',ville:'Ville-Test G'}),100,'CONFO passait déjà par l’inclusion');
+  assert.equal(P.matchScore({retailer:'BTLEC EST',site:'Ville-Test G'},{enseigne:'Conforama',ville:'Ville-Test G'}),0,
     'BTLEC EST reste manuel : sans règle sûre, mieux vaut demander que se tromper');
   const magasins=[{id:'e1',enseigne:'Electro Dépôt',ville:'Villeneuve-Fictive 1',adresse:''}];
   const apparie=P.matchRows(snap.rows,magasins,{}).rows.find(r=>String(r.storeId)==='e1');

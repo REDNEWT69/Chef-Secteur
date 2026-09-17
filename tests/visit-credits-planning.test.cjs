@@ -82,8 +82,8 @@ async function generateWeekAsProduction(t){
   let t=env({max:4,target:20,workDays:['Lundi'],stores:pool});
   assert.equal(t.ctx.testCredits.visitCredit({enseigne:'Darty'}),2,'Darty capitalisé doit valoir 2 crédits malgré la clé minuscule');
   assert.equal(t.ctx.testCredits.visitCredit({enseigne:'BOULANGER'}),2,'hors génération, Boulanger reste exactement à 2 crédits métier');
-  assert.equal(t.ctx.testCredits.visitCredit({enseigne:'Boulanger Bourg-en-Bresse'}),2,'une enseigne suffixée doit rester reconnue');
-  assert.equal(t.ctx.StoreVisitCounting.credit({enseigne:'BUT Saint-Priest'}),2,'BUT doit compter 2 crédits métier');
+  assert.equal(t.ctx.testCredits.visitCredit({enseigne:'Boulanger Ville-Test K'}),2,'une enseigne suffixée doit rester reconnue');
+  assert.equal(t.ctx.StoreVisitCounting.credit({enseigne:'BUT Ville-Test C'}),2,'BUT doit compter 2 crédits métier');
   assert.equal(t.ctx.testCredits.visitCredit({enseigne:'Fnac'}),1,'une enseigne non listée vaut 1 crédit');
 
   await generateWeekAsProduction(t);

@@ -7,8 +7,8 @@ const M=require('../store-runner-visit-model.js');
 // Ce test fige le contrat, et surtout la règle qui le rend applicable en production :
 // aucune de ces clés n'est obligatoire.
 
-const base={schemaVersion:5,profile:{baseName:'Lyon'},settings:{days:['Lundi']},
-  stores:[{id:'x',enseigne:'Darty',ville:'Lyon'}],notes:{},visits:{},plan:{Lundi:[]},
+const base={schemaVersion:5,profile:{baseName:'Ville-Test A'},settings:{days:['Lundi']},
+  stores:[{id:'x',enseigne:'Darty',ville:'Ville-Test A'}],notes:{},visits:{},plan:{Lundi:[]},
   appointments:[],calendarEvents:[]};
 
 // --- 1. Une visite d'avant ce ticket passe validate() SANS être modifiée --------------

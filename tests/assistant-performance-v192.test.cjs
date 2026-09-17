@@ -4,7 +4,7 @@ const fs=require('fs');
 class DB{getItem(){return null}setItem(){}}
 const db=new DB();
 const stores=[];
-for(let i=1;i<=15;i++)stores.push({id:'s'+i,enseigne:i===1?'Boulanger':'Darty',ville:i===1?'Lyon Test':'Ville '+i,priority:i===1?'manual':'normal'});
+for(let i=1;i<=15;i++)stores.push({id:'s'+i,enseigne:i===1?'Boulanger':'Darty',ville:i===1?'Ville-Test A Test':'Ville '+i,priority:i===1?'manual':'normal'});
 const row=(i,prio,treated=false)=>({
   storeId:'s'+i,store:stores[i-1],retailer:stores[i-1].enseigne,site:stores[i-1].ville,prio,treated:treated?{at:'2026-09-16'}:null,
   pdmYtd:i===15?null:30+i,deltaYtd:i===15?null:(30+i-42.5),evolYtd:i%2?-2:3,underTarget:i===15?null:(30+i<42.5),
@@ -39,7 +39,7 @@ assert.ok(!JSON.stringify(ctx).match(/PK\u0003\u0004|sharedStrings\.xml|workbook
 
 // 3-4. P1 non traité avant P2 ; traité exclu du top.
 const top=A.answer('Quels sont les 5 magasins à travailler en priorité ?');
-assert.match(top,/Darty Ville 2/);assert.match(top,/Darty Ville 3/);assert.doesNotMatch(top,/Boulanger Lyon Test/,'le P1 traité ne doit pas revenir dans le top');
+assert.match(top,/Darty Ville 2/);assert.match(top,/Darty Ville 3/);assert.doesNotMatch(top,/Boulanger Ville-Test A Test/,'le P1 traité ne doit pas revenir dans le top');
 assert.ok(top.indexOf('Darty Ville 2')<top.indexOf('Darty Ville 4'),'un P1 non traité précède un P2');
 
 // 5-7. YTD principal, hebdo indicative, aucune causalité.
@@ -48,7 +48,7 @@ assert.match(detail,/PDM YTD 32/);assert.match(detail,/tendance hebdo/i);assert.
 assert.doesNotMatch(detail,/a fait (monter|baisser)|grâce à la visite|à cause de la visite/i);
 
 // 8. Mission/commentaire transmis et tips prudents.
-const treatedDetail=A.answer('donne moi des tips pour Boulanger Lyon Test');
+const treatedDetail=A.answer('donne moi des tips pour Boulanger Ville-Test A Test');
 assert.match(treatedDetail,/Mission : Revoir la visibilité OLED/);assert.match(treatedDetail,/Pistes à vérifier/);
 assert.match(treatedDetail,/Vérifier sur place|Mission du fichier/);
 
@@ -69,7 +69,7 @@ const noData=A.answer('Pourquoi Darty Ville 15 est prioritaire ?');
 assert.match(noData,/PDM YTD indisponible/);
 
 // 13. P1 restants et sous cible.
-const p1=A.answer('Quels P1 restent non traités ?');assert.doesNotMatch(p1,/Lyon Test/);assert.match(p1,/Ville 2/);
+const p1=A.answer('Quels P1 restent non traités ?');assert.doesNotMatch(p1,/Ville-Test A Test/);assert.match(p1,/Ville 2/);
 const under=A.answer('Quels magasins sont sous la cible ?');assert.match(under,/cible YTD 42,5 %/);
 
 console.log('assistant-performance-v192: OK · contexte compact · YTD principal · top local · lecture seule');

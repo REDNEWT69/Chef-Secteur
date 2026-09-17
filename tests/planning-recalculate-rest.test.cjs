@@ -9,7 +9,7 @@ class FakeDate extends RealDate{
   constructor(...args){super(...(args.length?args:['2026-09-15T12:00:00']))}
   static now(){return new RealDate('2026-09-15T12:00:00').getTime()}
 }
-function mk(id,enseigne,ville){return{id,enseigne,ville:ville||id,adresse:'1 rue test',dept:'69',active:true,lat:45.7,lon:4.9,priority:3}}
+function mk(id,enseigne,ville){return{id,enseigne,ville:ville||id,adresse:'1 rue test',dept: '99',active:true,lat:43.6,lon:-0.6,priority:3}}
 function emptyPlan(){return Object.fromEntries(DAYS.map(d=>[d,[]]))}
 function actualCredit(s){return /boulanger|but|darty|carrefour|conforama/i.test(String(s&&s.enseigne||''))?2:1}
 function planningCredit(s,active,max=4){if(/boulanger/i.test(String(s&&s.enseigne||''))&&active)return Math.max(actualCredit(s),max-1);return actualCredit(s)}
@@ -17,7 +17,7 @@ function ids(route){return JSON.stringify(Array.from(route||[],s=>String(s.id)))
 function allOccurrences(plan){return DAYS.flatMap(day=>(plan&&plan[day]||[]).map(s=>String(s.id)))}
 
 function env(){
-  const b0=mk('b0','Boulanger','Lyon'),missed=mk('f0','Fnac','Bron'),b1=mk('b1','Boulanger','Saint-Priest'),b2=mk('b2','Boulanger','Vénissieux'),but1=mk('but1','BUT','Saint-Priest'),d1=mk('d1','Darty','Bron'),f1=mk('f1','Fnac','Villeurbanne');
+  const b0=mk('b0','Boulanger','Ville-Test A'),missed=mk('f0','Fnac','Ville-Test B'),b1=mk('b1','Boulanger','Ville-Test C'),b2=mk('b2','Boulanger','Ville-Test H'),but1=mk('but1','BUT','Ville-Test C'),d1=mk('d1','Darty','Ville-Test B'),f1=mk('f1','Fnac','Ville-Test E');
   const plan=emptyPlan();plan.Lundi=[b0,missed];plan.Mardi=[b1,b2];plan.Mercredi=[but1,f1];
   const state={
     settings:{weekDate:'2026-09-14',days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],maxVisitsPerDay:4},
@@ -122,7 +122,7 @@ function assertRoutesRespectRules(t,weeks){
 
   // V179 : contraintes fixes restent explicites et ne sont jamais déplacées silencieusement.
   const fixedCredits=env();setFixedTuesday(fixedCredits,[fixedCredits.stores.but1,fixedCredits.stores.d1],3);const beforeFixed=JSON.stringify(fixedCredits.state.plan);const rejectedCredits=buildAsPlanning(fixedCredits);
-  assert.equal(rejectedCredits.ok,false);assert.equal(JSON.stringify(fixedCredits.state.plan),beforeFixed);assert.match(rejectedCredits.error,/Mardi contient déjà 4 crédits fixes/);assert.match(rejectedCredits.error,/BUT Saint-Priest \(2\)/);assert.match(rejectedCredits.error,/Darty Bron \(2\)/);assert.match(rejectedCredits.error,/maximum est réglé sur 3/);assert.match(rejectedCredits.error,/Passe-le à 4 dans Réglages/);assert.match(rejectedCredits.error,/Rien n’a été changé/);
+  assert.equal(rejectedCredits.ok,false);assert.equal(JSON.stringify(fixedCredits.state.plan),beforeFixed);assert.match(rejectedCredits.error,/Mardi contient déjà 4 crédits fixes/);assert.match(rejectedCredits.error,/BUT Ville-Test C \(2\)/);assert.match(rejectedCredits.error,/Darty Ville-Test B \(2\)/);assert.match(rejectedCredits.error,/maximum est réglé sur 3/);assert.match(rejectedCredits.error,/Passe-le à 4 dans Réglages/);assert.match(rejectedCredits.error,/Rien n’a été changé/);
   const boulangerLight=env();setFixedTuesday(boulangerLight,[boulangerLight.stores.b1,boulangerLight.stores.f1],4);assert.equal(buildAsPlanning(boulangerLight).ok,true);
   const boulangerHeavy=env();setFixedTuesday(boulangerHeavy,[boulangerHeavy.stores.b1,boulangerHeavy.stores.but1],4);const rejectedHeavy=buildAsPlanning(boulangerHeavy);assert.equal(rejectedHeavy.ok,false);assert.match(rejectedHeavy.error,/règle Boulanger/i);
   const twoBoulanger=env();setFixedTuesday(twoBoulanger,[twoBoulanger.stores.b1,twoBoulanger.stores.b2],4);const rejectedTwo=buildAsPlanning(twoBoulanger);assert.equal(rejectedTwo.ok,false);assert.match(rejectedTwo.error,/règle Boulanger/i);

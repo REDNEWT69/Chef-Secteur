@@ -1,8 +1,8 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 const source=fs.readFileSync(__dirname+'/../visit-counting.js','utf8');
 const archive={
-  '2026-09-07':{weekMonday:'2026-09-07',plan:{Lundi:[{id:'d1',enseigne:'Darty',ville:'Lyon'}],Mardi:[{id:'c1',enseigne:'Carrefour',ville:'Bron'}],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}},
-  '2026-09-14':{weekMonday:'2026-09-14',plan:{Lundi:[{id:'b1',enseigne:'Boulanger',ville:'Saint-Priest'}],Mardi:[{id:'d2',enseigne:'Darty',ville:'Lyon'}],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}}
+  '2026-09-07':{weekMonday:'2026-09-07',plan:{Lundi:[{id:'d1',enseigne:'Darty',ville:'Ville-Test A'}],Mardi:[{id:'c1',enseigne:'Carrefour',ville:'Ville-Test B'}],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}},
+  '2026-09-14':{weekMonday:'2026-09-14',plan:{Lundi:[{id:'b1',enseigne:'Boulanger',ville:'Ville-Test C'}],Mardi:[{id:'d2',enseigne:'Darty',ville:'Ville-Test A'}],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}}
 };
 const range={start:'2026-09-07',end:'2026-09-20',weeks:2,totalStores:999,totalVisits:999,uniqueStores:999};
 const storageData={chef_sector_plan_archive_v1:JSON.stringify(archive),chef_sector_range_v1:JSON.stringify(range)};
@@ -36,7 +36,7 @@ const reconciled=V.reconcileStoredRangeStats();
 assert(reconciled,'le recalcul de période doit retourner les statistiques persistées');
 assert.equal(reconciled.totalStores,4,'les quatre passages physiques doivent rester comptés');
 assert.equal(reconciled.totalVisits,7,'Darty + Carrefour + Boulanger + Darty doivent valoir sept visites métier');
-assert.equal(reconciled.uniqueStores,3,'deux IDs du même Darty Lyon doivent compter pour un seul magasin physique distinct');
+assert.equal(reconciled.uniqueStores,3,'deux IDs du même Darty Ville-Test A doivent compter pour un seul magasin physique distinct');
 const persistedRange=JSON.parse(storageData.chef_sector_range_v1);
 assert.equal(persistedRange.totalStores,4);
 assert.equal(persistedRange.totalVisits,7);

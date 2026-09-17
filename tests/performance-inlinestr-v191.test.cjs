@@ -2,7 +2,7 @@ const assert=require('node:assert/strict');
 const P=require('../performance-data-v190.js');
 const F=require('./helpers/xlsx-fixture.cjs');
 
-// V191 — le vrai « RHONE ALPES W34.xlsx » encode toutes ses cellules texte en
+// V191 — le classeur réel encode toutes ses cellules texte en
 // `t="inlineStr"`. Le parseur V190 lisait le type avec /\st="([a-z]+)"/ : le S majuscule
 // faisait échouer le motif, le type retombait sur numérique, aucun <v> n'existe pour ces
 // cellules, et tout le texte devenait null — y compris la ligne d'en-tête. L'écran

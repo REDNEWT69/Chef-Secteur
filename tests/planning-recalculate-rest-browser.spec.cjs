@@ -8,8 +8,8 @@ test('V181 : recalcul du planning sépare les Boulanger sans perdre de magasin',
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.state&&typeof window.storeRunnerRecalculateRemainingWeek==='function'&&document.getElementById('recalculateRemainingWeekBtn')&&document.getElementById('planningSettingsShortcut'));
   await page.evaluate(()=>{
-    const mk=(id,enseigne,ville)=>({id,enseigne,ville,adresse:'1 rue test',dept:'69',active:true,lat:45.7,lon:4.9,priority:3});
-    const a=mk('b1','Boulanger','Saint-Priest'),b=mk('b2','Boulanger','Vénissieux'),f=mk('f1','Fnac','Bron'),but=mk('but1','BUT','Villeurbanne');
+    const mk=(id,enseigne,ville)=>({id,enseigne,ville,adresse:'1 rue test',dept: '99',active:true,lat:43.6,lon:-0.6,priority:3});
+    const a=mk('b1','Boulanger','Ville-Test C'),b=mk('b2','Boulanger','Ville-Test H'),f=mk('f1','Fnac','Ville-Test B'),but=mk('but1','BUT','Ville-Test E');
     const now=new Date(),nextMonday=new Date(now),weekday=now.getDay()||7,delta=(8-weekday)%7||7;nextMonday.setDate(now.getDate()+delta);
     const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
     state.stores=[a,b,f,but];state.visits={};
@@ -53,8 +53,8 @@ test('V179 : un dépassement fixe explique les vrais crédits sans casser le pla
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.state&&typeof window.storeRunnerRecalculateRemainingWeek==='function'&&document.getElementById('recalculateRemainingWeekBtn'));
   const seeded=await page.evaluate(()=>{
-    const mk=(id,enseigne,ville)=>({id,enseigne,ville,adresse:'1 rue test',dept:'69',active:true,lat:45.7,lon:4.9,priority:3});
-    const but=mk('but-fixed','BUT','Saint-Priest'),darty=mk('darty-fixed','Darty','Bron');
+    const mk=(id,enseigne,ville)=>({id,enseigne,ville,adresse:'1 rue test',dept: '99',active:true,lat:43.6,lon:-0.6,priority:3});
+    const but=mk('but-fixed','BUT','Ville-Test C'),darty=mk('darty-fixed','Darty','Ville-Test B');
     const now=new Date(),nextMonday=new Date(now),weekday=now.getDay()||7,delta=(8-weekday)%7||7;nextMonday.setDate(now.getDate()+delta);
     const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
     const week=iso(nextMonday);
@@ -76,8 +76,8 @@ test('V179 : un dépassement fixe explique les vrais crédits sans casser le pla
   const recalc=await page.evaluate(async()=>await window.storeRunnerRecalculateRemainingWeek());
   expect(recalc&&recalc.ok).toBeFalsy();
   expect(recalc.error).toContain('Mardi contient déjà 4 crédits fixes');
-  expect(recalc.error).toContain('BUT Saint-Priest (2)');
-  expect(recalc.error).toContain('Darty Bron (2)');
+  expect(recalc.error).toContain('BUT Ville-Test C (2)');
+  expect(recalc.error).toContain('Darty Ville-Test B (2)');
   expect(recalc.error).toContain('maximum est réglé sur 3');
   expect(recalc.error).toContain('Passe-le à 4 dans Réglages');
   expect(recalc.error).toContain('Rien n’a été changé');

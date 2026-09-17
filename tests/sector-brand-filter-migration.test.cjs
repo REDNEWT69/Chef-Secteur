@@ -9,7 +9,7 @@ const clone=v=>JSON.parse(JSON.stringify(v));
 function rows(brands,prefix='old'){
   return brands.map((enseigne,i)=>({
     id:prefix+'-'+i,enseigne,ville:'Ville '+i,adresse:(i+1)+' rue Test',
-    codePostal:'6900'+(i%10),dept:'69',active:true,priority:3,products:[]
+    codePostal:'6900'+(i%10),dept: '99',active:true,priority:3,products:[]
   }));
 }
 

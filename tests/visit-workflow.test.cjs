@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const M=require('../store-runner-visit-model.js'),R=require('../reliability-core.js');
-const original={schemaVersion:5,profile:{baseName:'Lyon'},settings:{days:['Lundi']},stores:[{id:'x',enseigne:'Darty',ville:'Lyon'},{id:'y',enseigne:'Fnac',ville:'Lyon'}],notes:{x:'Conserver'},visits:{x:{history:['2026-09-01'],lastVisit:'2026-09-01'}},plan:{Lundi:[{id:'x'}]},appointments:[{id:'rdv',storeId:'x',date:'2026-09-14',time:'10:00'}],calendarEvents:[]};
+const original={schemaVersion:5,profile:{baseName:'Ville-Test A'},settings:{days:['Lundi']},stores:[{id:'x',enseigne:'Darty',ville:'Ville-Test A'},{id:'y',enseigne:'Fnac',ville:'Ville-Test A'}],notes:{x:'Conserver'},visits:{x:{history:['2026-09-01'],lastVisit:'2026-09-01'}},plan:{Lundi:[{id:'x'}]},appointments:[{id:'rdv',storeId:'x',date:'2026-09-14',time:'10:00'}],calendarEvents:[]};
 const s=M.clone(original),id=M.start(s,'x');assert.equal(M.start(s,'x'),id);assert.notEqual(M.start(s,'y'),id);
 M.editVisit(s,id,'preparation','mainGoal','Revoir les ruptures');M.editVisit(s,id,'check',0,true);M.editVisit(s,id,'step',null,2);
 for(const p of Object.keys(M.SIX_P)){M.edit6P(s,id,p,0,'status','correct');M.edit6P(s,id,p,0,'comment','À vérifier')}

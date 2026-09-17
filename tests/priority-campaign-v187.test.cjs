@@ -69,7 +69,7 @@ assert.equal(result.pending,0);
 assert.equal(result.unresolved.length,0);
 assert.equal(result.overflowDays.length,1,'5 Boulanger sur 4 jours imposent exactement une journée double');
 assert.ok(result.overnight,'un découché utile doit être trouvé');
-assert.deepEqual(new Set([result.overnight.fromStore.id,result.overnight.toStore.id]),new Set(['m3','m2']),'Chambéry et Annemasse doivent former le bloc de découché');
+assert.deepEqual(new Set([result.overnight.fromStore.id,result.overnight.toStore.id]),new Set(['m3','m2']),'Ville-Test G et Annemasse doivent former le bloc de découché');
 
 const archive=JSON.parse(storage.getItem('chef_sector_plan_archive_v1'));
 const plans={'2026-09-14':state.plan,'2026-09-21':archive['2026-09-21'].plan};

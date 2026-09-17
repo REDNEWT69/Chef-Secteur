@@ -20,9 +20,9 @@ const source=fs.readFileSync('store-photos.js','utf8');
 })();
 
 (function safeNames(){
-  assert.equal(photos.safePart('Darty Lyon Part-Dieu'),'Darty-Lyon-Part-Dieu');
-  const name=photos.shareFileName({createdAt:'2026-09-13T12:34:56.000Z',type:'image/jpeg'},{enseigne:'Boulanger',ville:'Lyon'});
-  assert.match(name,/^Boulanger-Lyon_2026-09-13_12-34-56-000\.jpg$/);
+  assert.equal(photos.safePart('Darty Villetest Quartier-Test'),'Darty-Villetest-Quartier-Test');
+  const name=photos.shareFileName({createdAt:'2026-09-13T12:34:56.000Z',type:'image/jpeg'},{enseigne:'Boulanger',ville:'Villetest'});
+  assert.match(name,/^Boulanger-Villetest_2026-09-13_12-34-56-000\.jpg$/);
 })();
 
 (function storageAndCameraGuards(){
@@ -35,12 +35,12 @@ const source=fs.readFileSync('store-photos.js','utf8');
 
 (function nomDeFichierEtiquete(){
   // 12. Non-régression : sans famille ni moment, le nom est celui d'avant ce ticket.
-  const nu=photos.shareFileName({createdAt:'2026-09-13T12:34:56.000Z',type:'image/jpeg'},{enseigne:'Boulanger',ville:'Lyon'});
-  assert.equal(nu,'Boulanger-Lyon_2026-09-13_12-34-56-000.jpg','un enregistrement sans étiquette garde son nom historique');
-  const etiquete=photos.shareFileName({createdAt:'2026-09-13T12:34:56.000Z',type:'image/jpeg',family:'brun',moment:'avant'},{enseigne:'Darty',ville:'Lyon'});
-  assert.equal(etiquete,'Darty-Lyon_brun_avant_2026-09-13_12-34-56-000.jpg','famille et moment s’insèrent avant l’horodatage');
-  const partiel=photos.shareFileName({createdAt:'2026-09-13T12:34:56.000Z',type:'image/jpeg',moment:'apres'},{enseigne:'Darty',ville:'Lyon'});
-  assert.equal(partiel,'Darty-Lyon_apres_2026-09-13_12-34-56-000.jpg','une seule étiquette suffit');
+  const nu=photos.shareFileName({createdAt:'2026-09-13T12:34:56.000Z',type:'image/jpeg'},{enseigne:'Boulanger',ville:'Villetest'});
+  assert.equal(nu,'Boulanger-Villetest_2026-09-13_12-34-56-000.jpg','un enregistrement sans étiquette garde son nom historique');
+  const etiquete=photos.shareFileName({createdAt:'2026-09-13T12:34:56.000Z',type:'image/jpeg',family:'brun',moment:'avant'},{enseigne:'Darty',ville:'Villetest'});
+  assert.equal(etiquete,'Darty-Villetest_brun_avant_2026-09-13_12-34-56-000.jpg','famille et moment s’insèrent avant l’horodatage');
+  const partiel=photos.shareFileName({createdAt:'2026-09-13T12:34:56.000Z',type:'image/jpeg',moment:'apres'},{enseigne:'Darty',ville:'Villetest'});
+  assert.equal(partiel,'Darty-Villetest_apres_2026-09-13_12-34-56-000.jpg','une seule étiquette suffit');
   assert(!/redne|responsable/i.test(etiquete),'aucun nom de personne dans le nom de fichier');
 })();
 
@@ -110,15 +110,15 @@ function fakeIndexedDB(rows){
   // porté par chaque enregistrement, jamais activeStoreId d'une ancienne galerie.
   const oldState=globalThis.state,oldNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator'),oldFile=Object.getOwnPropertyDescriptor(globalThis,'File');
   try{
-    globalThis.state={stores:[{id:'s-direct',enseigne:'Boulanger',ville:'Lyon'}]};
+    globalThis.state={stores:[{id:'s-direct',enseigne:'Boulanger',ville:'Villetest'}]};
     class FakeFile{constructor(parts,name,opts){this.parts=parts;this.name=name;this.type=opts&&opts.type;this.lastModified=opts&&opts.lastModified}}
     Object.defineProperty(globalThis,'File',{configurable:true,writable:true,value:FakeFile});
     let shared=null;
     Object.defineProperty(globalThis,'navigator',{configurable:true,value:{canShare:()=>true,share:async payload=>{shared=payload}}});
     const result=await photos.shareRecords([{id:'direct',storeId:'s-direct',createdAt:'2026-09-14T14:00:00Z',family:'brun',moment:'avant',type:'image/jpeg',blob:{type:'image/jpeg'}}]);
     assert.equal(result,'shared','shareRecords partage directement sans ouvrir la galerie');
-    assert.equal(shared.files[0].name,'Boulanger-Lyon_brun_avant_2026-09-14_14-00-00.jpg','le nom vient du storeId de l’enregistrement');
-    assert.equal(shared.title,'Photos terrain · Boulanger · Lyon','le titre vient du même magasin');
+    assert.equal(shared.files[0].name,'Boulanger-Villetest_brun_avant_2026-09-14_14-00-00.jpg','le nom vient du storeId de l’enregistrement');
+    assert.equal(shared.title,'Photos terrain · Boulanger · Villetest','le titre vient du même magasin');
     assert(!shared.files[0].name.startsWith('magasin_'),'aucun nom générique quand le magasin est connu');
   }finally{
     globalThis.state=oldState;
