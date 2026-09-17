@@ -15,13 +15,14 @@ async function seed(page){
  });
 }
 
-test('Opportunity V200 : création magasin, suivi et rappel visite à 390 px',async({page})=>{
+test('Opportunity V200 : création magasin, suivi, vue secteur et rappel visite à 390 px',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>window.state&&window.StoreRunnerOpportunities&&window.StoreRunnerVisits&&document.getElementById('storeQuickSheet'));
  await seed(page);
 
  const quick=page.locator('#srOpportunityQuickBtn');await expect(quick).toHaveCount(1);await expect(quick).toContainText('Opportunités');
+ const sector=page.locator('#srOpportunitySectorBtn');await expect(sector).toHaveCount(1);await expect(sector).toContainText('Opportunités');
  await page.evaluate(()=>window.StoreRunnerOpportunities.open('s1',''));
  const dlg=page.locator('#srOpportunityDialog');await expect(dlg).toBeVisible();
  await dlg.locator('select[name="category"]').selectOption('pdl');
@@ -41,12 +42,22 @@ test('Opportunity V200 : création magasin, suivi et rappel visite à 390 px',as
 
  await dlg.locator('.sr-oppClose').click();
  await page.waitForTimeout(100);
- await expect(quick).toContainText('· 1');
+ await expect(quick).toContainText('· 1');await expect(sector).toContainText('· 1');
+
+ await page.evaluate(()=>window.StoreRunnerOpportunities.open('',''));
+ await expect(dlg).toBeVisible();await expect(dlg.locator('.sr-oppCard')).toHaveCount(1);await expect(dlg.locator('#srOppSubtitle')).toContainText('secteur');
+ await dlg.locator('.sr-oppClose').click();
 
  await page.evaluate(()=>window.StoreRunnerVisits.start('s1'));
  await expect(page.locator('#srVisitDialog')).toBeVisible();
  await page.waitForTimeout(200);
  const visitBtn=page.locator('#srOpportunityVisitBtn');await expect(visitBtn).toHaveCount(1);await expect(visitBtn).toContainText('· 1');
+
+ const stableMutations=await page.evaluate(()=>new Promise(resolve=>{
+  const head=document.querySelector('#srVisitDialog .sr-head');let count=0;const observer=new MutationObserver(rows=>{count+=rows.length});observer.observe(head,{childList:true,subtree:true,attributes:true});
+  window.StoreRunnerOpportunities.refreshButtons();setTimeout(()=>{observer.disconnect();resolve(count)},500);
+ }));
+ expect(stableMutations).toBe(0);
 
  const overflow=await page.evaluate(()=>{
   if(document.documentElement.scrollWidth>document.documentElement.clientWidth)return'page';
