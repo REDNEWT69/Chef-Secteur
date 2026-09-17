@@ -7,7 +7,11 @@
 'use strict';
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 const ARCHIVE_KEY='chef_sector_plan_archive_v1';
-let installed=false,observer=null;
+const DEFAULT_RADIUS_KM=10;      /* rayon par défaut, réglable dans les Réglages du planning */
+const MAX_SUGGESTIONS=3;         /* plafond normal */
+const MAX_WITH_PRIORITY=4;       /* plafond quand un P1 du rayon doit rester visible */
+const PRIO_BADGE={P1:'P1',P2:'P2',watch:'À surveiller'};
+let installed=false,observer=null,lastSuggestSignature=null;
 function text(v){return String(v==null?'':v).trim()}
 function norm(v){return text(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim()}
 function parse(v){const d=new Date(String(v||'')+'T12:00:00');return isNaN(d)?null:d}
@@ -32,20 +36,304 @@ async function persist(win,reason,detail){const week=currentWeekKey(win.state),n
  try{if(typeof win.save==='function')win.save()}catch(e){}try{if(db&&typeof db.flush==='function')await db.flush()}catch(e){}try{if(typeof win.renderAll==='function')win.renderAll();else if(typeof win.renderWeek==='function')win.renderWeek()}catch(e){}try{win.document.dispatchEvent(new win.CustomEvent('store-runner:planning-updated',{detail:Object.assign({reason,weekDate:week},detail||{})}))}catch(e){}return true}
 async function addStore(win,id,day){day=day||currentDay(win);const store=findStore(win.state,id);if(!store)return{ok:false,error:'Magasin introuvable'};const result=addToPlan(win.state,id,day);if(!result.ok||result.already)return result;syncDatedLock(win,id,day);await persist(win,result.sourceDay?'manual-store-moved':'manual-store-added',{day,sourceDay:result.sourceDay||null,storeId:String(id)});return result}
 async function removeStore(win,id,day){day=day||currentDay(win);const result=removeFromPlan(win.state,id,day);if(!result.ok)return result;clearDatedLock(win,id,day);await persist(win,'manual-store-removed',{day,storeId:String(id)});return result}
+/* ---------------------------------------------------------------------------
+   Suggestions de magasins proches.
+
+   Tout est local et hors ligne : on mesure la distance de chaque magasin du
+   carnet au magasin DÉJÀ PLANIFIÉ le plus proche de la journée affichée. Rien
+   n'est écrit : la zone propose, l'utilisateur décide. Aucun magasin n'entre
+   dans le planning sans un clic sur « Ajouter », qui emprunte exactement le
+   chemin du bouton « ＋ Ajouter ».
+   --------------------------------------------------------------------------- */
+
+function radiusKm(state){
+  const raw=Number(state&&state.settings&&state.settings.suggestionRadiusKm);
+  return Number.isFinite(raw)&&raw>0?Math.min(100,raw):DEFAULT_RADIUS_KM;
+}
+function coords(s){
+  const lat=Number(s&&s.lat),lon=Number(s&&s.lon);
+  /* lat/lon absents ou illisibles : le magasin est ignoré, jamais placé à 0,0. */
+  return Number.isFinite(lat)&&Number.isFinite(lon)&&(lat!==0||lon!==0)?{lat,lon}:null;
+}
+function todayISO(now){return iso(now instanceof Date?now:new Date())}
+function dateOfDay(win,day){
+  /* La bande de jours porte la vraie date : c'est elle qui fait foi quand elle
+     est là, parce qu'une période de trois semaines affiche plusieurs lundis. */
+  try{
+    const active=win.document&&win.document.querySelector('#dayTabs .periodDayTab.active[data-date]');
+    if(active&&active.dataset&&active.dataset.date&&parse(active.dataset.date))return active.dataset.date;
+  }catch(e){}
+  const index=DAYS.indexOf(day);
+  if(index<0)return '';
+  const mon=monday(parse(win&&win.state&&win.state.settings&&win.state.settings.weekDate)||new Date());
+  const d=new Date(mon);d.setDate(d.getDate()+index);
+  return iso(d);
+}
+function haversine(a,b){
+  const R=6371,rad=x=>x*Math.PI/180;
+  const dla=rad(b.lat-a.lat),dlo=rad(b.lon-a.lon);
+  const x=Math.sin(dla/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dlo/2)**2;
+  return 2*R*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+function distanceVia(win){
+  /* window.hav() rend des kilomètres (R = 6371). On garde un repli identique
+     pour que le calcul reste possible hors du runtime, dans les tests. */
+  return (a,b)=>{
+    try{if(win&&typeof win.hav==='function'){const n=Number(win.hav(a,b));if(Number.isFinite(n))return n}}catch(e){}
+    return haversine(a,b);
+  };
+}
+function prioLookup(win){
+  const map=new Map();
+  try{
+    const api=win&&win.StoreRunnerPerformanceV190;
+    if(!api||typeof api.latestSnapshot!=='function'||typeof api.matchRows!=='function'||typeof api.readStore!=='function')return id=>null;
+    const db=storage(win),snap=api.latestSnapshot(db);
+    if(!snap)return id=>null;
+    const data=api.readStore(db)||{};
+    const rows=(api.matchRows(snap.rows,(win.state&&win.state.stores)||[],data.mapping)||{}).rows||[];
+    for(const r of rows)if(r&&r.storeId!=null&&r.prio)map.set(String(r.storeId),r.prio);
+  }catch(e){return id=>null}
+  return id=>map.get(String(id))||null;
+}
+function closedLookup(win){
+  /* Horaire inconnu = on garde le magasin. On n'écarte que ce qui est
+     explicitement fermé ce jour-là. */
+  return (store,day)=>{
+    try{
+      const api=win&&win.StoreOpeningHoursV1;
+      if(!api||typeof api.intervalsFor!=='function')return false;
+      const rows=api.intervalsFor(store,day);
+      return Array.isArray(rows)&&rows.length===0;
+    }catch(e){return false}
+  };
+}
+function lastVisitLookup(win){
+  /* Seules les visites terminées comptent : un brouillon en cours n'est pas
+     une visite faite. */
+  return storeId=>{
+    try{
+      const api=win&&win.StoreRunnerPerformanceV190;
+      if(api&&typeof api.completedVisitsFor==='function'){
+        const info=api.completedVisitsFor(win.state,storeId);
+        return info&&info.lastVisit?String(info.lastVisit):'';
+      }
+    }catch(e){}
+    return '';
+  };
+}
+function daysBetween(fromISO,toISO){
+  const a=parse(fromISO),b=parse(toISO);
+  if(!a||!b)return null;
+  return Math.max(0,Math.round((b-a)/86400000));
+}
+
+function computeSuggestions(state,day,date,deps){
+  deps=deps||{};
+  const today=deps.today||todayISO();
+  const distance=typeof deps.distance==='function'?deps.distance:haversine;
+  const prio=typeof deps.prio==='function'?deps.prio:(()=>null);
+  const closedOn=typeof deps.closedOn==='function'?deps.closedOn:(()=>false);
+  const lastVisit=typeof deps.lastVisit==='function'?deps.lastVisit:(()=>'');
+  const radius=Number.isFinite(Number(deps.radiusKm))&&Number(deps.radiusKm)>0?Number(deps.radiusKm):radiusKm(state);
+
+  if(!state||!DAYS.includes(day))return[];
+  /* Une journée passée ne se prépare plus : on n'y propose rien. */
+  if(!date||String(date)<String(today))return[];
+
+  const planned=((state.plan&&state.plan[day])||[]).map(s=>{
+    const full=findStore(state,s&&s.id)||s;
+    return {id:full&&full.id,pos:coords(full)};
+  }).filter(x=>x.id!=null);
+  if(!planned.length)return[];                       /* journée vide : rien à quoi se rattacher */
+  const anchors=planned.filter(x=>x.pos);
+  if(!anchors.length)return[];                       /* planifiés sans GPS : distance indéfinissable */
+
+  const rows=[];
+  for(const store of (state.stores||[])){
+    if(!store||store.id==null)continue;
+    if(store.active===false)continue;
+    if(state.excluded&&state.excluded[store.id])continue;
+    if(plannedDay(state,store.id))continue;          /* déjà quelque part dans la semaine affichée */
+    const pos=coords(store);
+    if(!pos)continue;
+    if(closedOn(store,day))continue;
+    let km=Infinity;
+    for(const a of anchors){const d=Number(distance(pos,a.pos));if(Number.isFinite(d)&&d<km)km=d}
+    if(!Number.isFinite(km)||km>radius)continue;
+    const last=lastVisit(store.id);
+    rows.push({
+      id:String(store.id),
+      enseigne:text(store.enseigne)||'Magasin',
+      ville:text(store.ville),
+      km,
+      prio:prio(store.id)||null,
+      lastVisit:last||'',
+      daysSince:last?daysBetween(last,today):null
+    });
+  }
+  rows.sort((a,b)=>a.km-b.km||a.enseigne.localeCompare(b.enseigne,'fr'));
+  const out=rows.slice(0,MAX_SUGGESTIONS);
+  /* Un P1 du rayon reste visible même s'il n'est pas dans les trois plus
+     proches : c'est le seul cas qui justifie une quatrième ligne. */
+  if(out.length>=MAX_SUGGESTIONS&&!out.some(r=>r.prio==='P1')){
+    const p1=rows.find(r=>r.prio==='P1'&&!out.some(x=>x.id===r.id));
+    if(p1)out.push(p1);
+  }
+  return out.slice(0,MAX_WITH_PRIORITY);
+}
+
+function suggestionsFor(win,day,date){
+  const state=win&&win.state;
+  day=day||currentDay(win);
+  date=date===undefined?dateOfDay(win,day):date;
+  return computeSuggestions(state,day,date,{
+    today:todayISO(),
+    radiusKm:radiusKm(state),
+    distance:distanceVia(win),
+    prio:prioLookup(win),
+    closedOn:closedLookup(win),
+    lastVisit:lastVisitLookup(win)
+  });
+}
+function suggestionLabel(row){
+  const km=Math.round(Number(row.km)*10)/10;
+  return '≈ '+String(km).replace('.',',')+' km';
+}
+function visitLabel(row){
+  if(row.daysSince==null)return 'jamais visité';
+  if(row.daysSince===0)return 'vu aujourd’hui';
+  return 'vu il y a '+row.daysSince+' j';
+}
+
 function ensureCss(doc){if(doc.getElementById('manual-planning-css'))return;const s=doc.createElement('style');s.id='manual-planning-css';s.textContent=`
-.pmvHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 13px 7px;background:#fff}.pmvHead span{font-size:12px;color:#6f7783;font-weight:750}.pmvAdd{border:1px solid #cfe0fb;background:#f5f9ff;color:#0b6bdc;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:850;min-height:36px}.timelineRow.pmvSwipeReady{touch-action:pan-y;overflow:hidden}.timelineRow.pmvSwipeReady:before{content:'Retirer';position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-end;padding:0 18px;background:#fff0ef;color:#b42318;font-size:12px;font-weight:850;opacity:0;transition:opacity .12s}.timelineRow.pmvSwipeReady.pmvSwiping:before{opacity:1}.timelineRow.pmvSwipeReady .tlMain{position:relative;z-index:1;background:#fff;transition:transform .16s ease}.timelineRow.pmvSwipeReady.pmvDragging .tlMain{transition:none}.pmvHint{padding:0 13px 9px;color:#99a0aa;font-size:10px;background:#fff}.pmvDialog{width:min(620px,calc(100% - 18px));max-height:86dvh;border:0;border-radius:26px;padding:0;overflow:hidden}.pmvDialog::backdrop{background:rgba(15,23,42,.32);backdrop-filter:blur(4px)}.pmvDlgHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:18px 18px 10px;background:#fff;position:sticky;top:0;z-index:2}.pmvDlgHead h2{font-size:21px;margin:0}.pmvDlgHead p{font-size:12px;color:#737b86;margin:4px 0 0}.pmvClose{border:0;background:#f1f3f6;width:36px;height:36px;border-radius:999px;font-size:22px}.pmvDlgBody{padding:6px 18px 18px;overflow:auto;max-height:calc(86dvh - 74px)}.pmvFilters{display:grid;grid-template-columns:1fr 180px;gap:8px;position:sticky;top:0;background:#fff;padding:4px 0 10px}.pmvResults{display:grid;gap:8px}.pmvStore{width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;border:1px solid #e2e6ec;background:#fff;border-radius:16px;padding:12px}.pmvStore b{display:block;font-size:14px}.pmvStore small{display:block;color:#737b86;margin-top:3px}.pmvStore em{font-style:normal;font-size:10px;color:#0b6bdc;font-weight:800;white-space:nowrap}.pmvStore[disabled]{opacity:.48}@media(max-width:560px){.pmvFilters{grid-template-columns:1fr}.pmvDialog{max-height:90dvh}.pmvDlgBody{max-height:calc(90dvh - 74px)}}`;
+.pmvHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 13px 7px;background:#fff}.pmvHead span{font-size:12px;color:#6f7783;font-weight:750}.pmvAdd{border:1px solid #cfe0fb;background:#f5f9ff;color:#0b6bdc;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:850;min-height:36px}.timelineRow.pmvSwipeReady{touch-action:pan-y;overflow:hidden}.timelineRow.pmvSwipeReady:before{content:'Retirer';position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-end;padding:0 18px;background:#fff0ef;color:#b42318;font-size:12px;font-weight:850;opacity:0;transition:opacity .12s}.timelineRow.pmvSwipeReady.pmvSwiping:before{opacity:1}.timelineRow.pmvSwipeReady .tlMain{position:relative;z-index:1;background:#fff;transition:transform .16s ease}.timelineRow.pmvSwipeReady.pmvDragging .tlMain{transition:none}.pmvHint{padding:0 13px 9px;color:#99a0aa;font-size:10px;background:#fff}.pmvSuggest{padding:0 13px 10px;background:#fff}.pmvSuggestTitle{display:block;font-size:11px;color:#6f7783;font-weight:750;margin:0 0 7px}.pmvSuggestRow{display:flex;align-items:center;gap:10px;padding:8px 10px;margin-bottom:6px;border:1px solid #e4e8ee;border-radius:14px;background:#fbfcfe}.pmvSuggestRow:last-child{margin-bottom:0}.pmvSuggestText{flex:1 1 auto;min-width:0}.pmvSuggestName{display:block;font-size:13px;font-weight:700;color:#1d2939;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pmvSuggestMeta{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-top:3px;font-size:11px;color:#6f7783}.pmvSuggestKm{font-weight:800;color:#0b6bdc}.pmvSuggestBadge{padding:1px 7px;border-radius:999px;background:#eef2f7;color:#475467;font-size:10px;font-weight:800;white-space:nowrap}.pmvSuggestBadge.p1{background:#fdeceb;color:#b42318}.pmvSuggestBadge.p2{background:#fff4e2;color:#8a5000}.pmvSuggestAdd{flex:0 0 auto;min-height:44px;min-width:44px;padding:0 13px;border:1px solid #cfe0fb;border-radius:13px;background:#f5f9ff;color:#0b6bdc;font-size:12px;font-weight:850}.pmvDialog{width:min(620px,calc(100% - 18px));max-height:86dvh;border:0;border-radius:26px;padding:0;overflow:hidden}.pmvDialog::backdrop{background:rgba(15,23,42,.32);backdrop-filter:blur(4px)}.pmvDlgHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:18px 18px 10px;background:#fff;position:sticky;top:0;z-index:2}.pmvDlgHead h2{font-size:21px;margin:0}.pmvDlgHead p{font-size:12px;color:#737b86;margin:4px 0 0}.pmvClose{border:0;background:#f1f3f6;width:36px;height:36px;border-radius:999px;font-size:22px}.pmvDlgBody{padding:6px 18px 18px;overflow:auto;max-height:calc(86dvh - 74px)}.pmvFilters{display:grid;grid-template-columns:1fr 180px;gap:8px;position:sticky;top:0;background:#fff;padding:4px 0 10px}.pmvResults{display:grid;gap:8px}.pmvStore{width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;border:1px solid #e2e6ec;background:#fff;border-radius:16px;padding:12px}.pmvStore b{display:block;font-size:14px}.pmvStore small{display:block;color:#737b86;margin-top:3px}.pmvStore em{font-style:normal;font-size:10px;color:#0b6bdc;font-weight:800;white-space:nowrap}.pmvStore[disabled]{opacity:.48}@media(max-width:560px){.pmvFilters{grid-template-columns:1fr}.pmvDialog{max-height:90dvh}.pmvDlgBody{max-height:calc(90dvh - 74px)}}`;
  doc.head.appendChild(s)}
 function ensureDialog(win){const doc=win.document;let dlg=doc.getElementById('pmvDialog');if(dlg)return dlg;dlg=doc.createElement('dialog');dlg.id='pmvDialog';dlg.className='pmvDialog';dlg.innerHTML='<div class="pmvDlgHead"><div><h2>Ajouter un magasin</h2><p id="pmvDayLabel"></p></div><button class="pmvClose" type="button" aria-label="Fermer">×</button></div><div class="pmvDlgBody"><div class="pmvFilters"><input id="pmvSearch" type="search" placeholder="Enseigne, ville, adresse"><select id="pmvBrand"><option value="">Toutes les enseignes</option></select></div><div id="pmvResults" class="pmvResults"></div></div>';doc.body.appendChild(dlg);dlg.querySelector('.pmvClose').onclick=()=>dlg.close();dlg.querySelector('#pmvSearch').addEventListener('input',()=>renderResults(win));dlg.querySelector('#pmvBrand').addEventListener('change',()=>renderResults(win));return dlg}
 function openDialog(win){const dlg=ensureDialog(win),day=currentDay(win),brands=[...new Set((win.state.stores||[]).filter(s=>s&&s.active!==false).map(s=>text(s.enseigne)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr')),sel=dlg.querySelector('#pmvBrand');sel.innerHTML='<option value="">Toutes les enseignes</option>'+brands.map(b=>'<option value="'+b.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'">'+b.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</option>').join('');dlg.querySelector('#pmvDayLabel').textContent=day+' · choisis un magasin de ton secteur';dlg.querySelector('#pmvSearch').value='';renderResults(win);dlg.showModal();setTimeout(()=>dlg.querySelector('#pmvSearch').focus(),40)}
 function renderResults(win){const dlg=ensureDialog(win),host=dlg.querySelector('#pmvResults'),q=norm(dlg.querySelector('#pmvSearch').value),brand=dlg.querySelector('#pmvBrand').value,day=currentDay(win);host.replaceChildren();const rows=(win.state.stores||[]).filter(s=>s&&s.active!==false&&!(win.state.excluded&&win.state.excluded[s.id])&&(!brand||text(s.enseigne)===brand)&&(!q||norm((s.enseigne||'')+' '+(s.ville||'')+' '+(s.adresse||'')).includes(q))).sort((a,b)=>text(a.enseigne).localeCompare(text(b.enseigne),'fr')||text(a.ville).localeCompare(text(b.ville),'fr')).slice(0,100);if(!rows.length){const p=win.document.createElement('p');p.className='tiny';p.textContent='Aucun magasin trouvé.';host.appendChild(p);return}
  for(const s of rows){const source=plannedDay(win.state,s.id),b=win.document.createElement('button');b.type='button';b.className='pmvStore';b.disabled=source===day;b.innerHTML='<span><b></b><small></small></span><em></em>';b.querySelector('b').textContent=(s.enseigne||'Magasin')+' '+(s.ville||'');b.querySelector('small').textContent=s.adresse||'Adresse non renseignée';b.querySelector('em').textContent=source===day?'Déjà ajouté':source?'Déplacer de '+source:'Ajouter';b.addEventListener('click',async()=>{if(b.disabled)return;const warning=capacityWarning(win,s,day);let message=source?'Déplacer '+(s.enseigne||'Magasin')+' '+(s.ville||'')+' de '+source+' vers '+day+' ?':'Ajouter '+(s.enseigne||'Magasin')+' '+(s.ville||'')+' à '+day+' ?';if(warning)message+='\n\nAttention : la journée passera à '+warning.credits+' crédits pour un plafond prévu de '+warning.max+'.';if(!win.confirm(message))return;dlg.close();await addStore(win,s.id,day)});host.appendChild(b)}}
+function suggestionSignature(day,date,rows){
+  return day+'|'+date+'|'+rows.map(r=>r.id+':'+Math.round(r.km*100)+':'+(r.prio||'')+':'+(r.daysSince==null?'x':r.daysSince)).join(',');
+}
+function removeSuggestHost(win){
+  const host=win.document.querySelector('#planPanel .pmvSuggest');
+  if(host&&host.parentNode)host.parentNode.removeChild(host);
+}
+function renderSuggestions(win){
+  const doc=win.document,shell=doc.querySelector('#planPanel .timelineShell');
+  if(!shell)return false;
+  const head=shell.querySelector('.pmvHead');
+  if(!head)return false;
+  const day=currentDay(win),date=dateOfDay(win,day);
+  let rows=[];
+  try{rows=suggestionsFor(win,day,date)}catch(e){rows=[]}
+
+  /* Rien à proposer : on retire le bloc au lieu d'afficher un cadre vide. */
+  if(!rows.length){
+    if(lastSuggestSignature!==null){lastSuggestSignature=null;removeSuggestHost(win)}
+    else removeSuggestHost(win);
+    return false;
+  }
+  const signature=suggestionSignature(day,date,rows);
+  const existing=shell.querySelector('.pmvSuggest');
+  /* Rendu idempotent : sans changement réel, on ne touche pas au DOM. C'est ce
+     qui empêche l'observateur du panneau de se rappeler lui-même en boucle. */
+  if(existing&&signature===lastSuggestSignature)return true;
+  lastSuggestSignature=signature;
+
+  const host=existing||doc.createElement('div');
+  host.className='pmvSuggest';
+  host.replaceChildren();
+  const title=doc.createElement('span');
+  title.className='pmvSuggestTitle';
+  title.textContent='À proximité de cette journée';
+  host.appendChild(title);
+
+  for(const row of rows){
+    const line=doc.createElement('div');line.className='pmvSuggestRow';
+    const textBox=doc.createElement('div');textBox.className='pmvSuggestText';
+    const name=doc.createElement('span');name.className='pmvSuggestName';
+    name.textContent=row.enseigne+(row.ville?' '+row.ville:'');
+    const meta=doc.createElement('div');meta.className='pmvSuggestMeta';
+    const km=doc.createElement('span');km.className='pmvSuggestKm';km.textContent=suggestionLabel(row);
+    meta.appendChild(km);
+    const badgeLabel=PRIO_BADGE[row.prio];
+    if(badgeLabel){
+      const badge=doc.createElement('span');
+      badge.className='pmvSuggestBadge'+(row.prio==='P1'?' p1':row.prio==='P2'?' p2':'');
+      badge.textContent=badgeLabel;
+      meta.appendChild(badge);
+    }
+    const seen=doc.createElement('span');seen.textContent=visitLabel(row);
+    meta.appendChild(seen);
+    textBox.appendChild(name);textBox.appendChild(meta);
+
+    const add=doc.createElement('button');
+    add.type='button';add.className='pmvSuggestAdd';add.textContent='Ajouter';
+    add.dataset.pmvSuggestId=row.id;
+    add.setAttribute('aria-label','Ajouter '+name.textContent+' à '+day);
+    add.addEventListener('click',()=>acceptSuggestion(win,row.id,day));
+
+    line.appendChild(textBox);line.appendChild(add);
+    host.appendChild(line);
+  }
+  if(!existing)head.insertAdjacentElement('afterend',host);
+  return true;
+}
+async function acceptSuggestion(win,id,day){
+  /* Même chemin que le dialogue « ＋ Ajouter » : même avertissement de
+     capacité, même confirmation, même addStore(). Le résultat dans l'état est
+     identique à un ajout manuel. */
+  const store=findStore(win.state,id);
+  if(!store)return{ok:false,error:'Magasin introuvable'};
+  const label=(store.enseigne||'Magasin')+' '+(store.ville||'');
+  const warning=capacityWarning(win,store,day);
+  let message='Ajouter '+label+' à '+day+' ?';
+  if(warning)message+='\n\nAttention : la journée passera à '+warning.credits+' crédits pour un plafond prévu de '+warning.max+'.';
+  try{if(typeof win.confirm==='function'&&!win.confirm(message))return{ok:false,cancelled:true}}catch(e){}
+  return addStore(win,id,day);
+}
+function installRadiusField(win){
+  const doc=win.document;
+  if(doc.getElementById('pmvRadiusKm'))return true;
+  /* On se greffe après le champ de capacité, propriété de daily-capacity.js,
+     sans jamais le modifier ni déplacer #planningSettings. */
+  const anchorField=doc.getElementById('maxVisitsPerDay');
+  if(!anchorField)return false;
+  const label=doc.createElement('label');
+  label.setAttribute('for','pmvRadiusKm');
+  label.textContent='Rayon des suggestions de proximité (km)';
+  const input=doc.createElement('input');
+  input.id='pmvRadiusKm';input.type='number';input.min='1';input.max='100';input.step='1';
+  input.value=String(radiusKm(win.state));
+  const hint=doc.createElement('p');
+  hint.className='tiny';
+  hint.textContent='Sert uniquement à proposer des magasins proches d’une journée déjà planifiée. Aucun ajout automatique.';
+  anchorField.insertAdjacentElement('afterend',hint);
+  hint.insertAdjacentElement('beforebegin',input);
+  input.insertAdjacentElement('beforebegin',label);
+  const apply=value=>{
+    try{
+      if(!win.state.settings)win.state.settings={};
+      const n=Number(value);
+      win.state.settings.suggestionRadiusKm=Number.isFinite(n)&&n>0?Math.min(100,Math.round(n)):DEFAULT_RADIUS_KM;
+      if(typeof win.save==='function')win.save();
+    }catch(e){}
+    lastSuggestSignature=null;
+    renderSuggestions(win);
+  };
+  input.addEventListener('input',function(){apply(this.value)});
+  input.addEventListener('change',function(){apply(this.value);this.value=String(radiusKm(win.state))});
+  return true;
+}
 function parseRowStoreId(row){const main=row&&row.querySelector&&row.querySelector('.tlMain'),attr=main&&main.getAttribute&&main.getAttribute('onclick'),m=String(attr||'').match(/openStoreQuick\(['"]([^'"]+)/);return m?m[1]:''}
 function bindRow(win,row){if(!row||row.classList.contains('calendarEvent')||row.dataset.pmvSwipeBound==='1')return;const id=parseRowStoreId(row);if(!id)return;row.dataset.pmvSwipeBound='1';row.dataset.pmvStoreId=id;row.classList.add('pmvSwipeReady');const main=row.querySelector('.tlMain');let sx=0,sy=0,lx=0,drag=false,armed=false,suppressUntil=0;
  row.addEventListener('touchstart',e=>{const t=e.touches&&e.touches[0];if(!t)return;sx=lx=t.clientX;sy=t.clientY;drag=false;armed=true;row.classList.add('pmvDragging')},{passive:true});
  row.addEventListener('touchmove',e=>{if(!armed)return;const t=e.touches&&e.touches[0];if(!t)return;const dx=t.clientX-sx,dy=t.clientY-sy;lx=t.clientX;if(!drag&&Math.abs(dx)>9&&Math.abs(dx)>Math.abs(dy)*1.2)drag=true;if(!drag)return;if(e.cancelable)e.preventDefault();row.classList.add('pmvSwiping');const shift=Math.max(-92,Math.min(92,dx));main.style.transform='translateX('+shift+'px)'},{passive:false});
  row.addEventListener('touchend',async e=>{if(!armed)return;armed=false;row.classList.remove('pmvDragging');const dx=lx-sx;main.style.transform='';row.classList.remove('pmvSwiping');if(!drag)return;suppressUntil=Date.now()+450;if(Math.abs(dx)<68)return;const day=currentDay(win),store=findStore(win.state,id),label=store?((store.enseigne||'Magasin')+' '+(store.ville||'')):'ce magasin';const accepted=win.confirm('Retirer '+label+' de '+day+' ?\n\nLe magasin reste dans ton secteur. Tu pourras le rajouter avec le bouton +.');if(!accepted)return;e.stopPropagation();await removeStore(win,id,day)},{passive:true});
  row.addEventListener('touchcancel',()=>{armed=false;drag=false;row.classList.remove('pmvDragging','pmvSwiping');main.style.transform=''},{passive:true});row.addEventListener('click',e=>{if(Date.now()<suppressUntil){e.preventDefault();e.stopPropagation();if(typeof e.stopImmediatePropagation==='function')e.stopImmediatePropagation()}},true)}
-function enhance(win){const doc=win.document,shell=doc.querySelector('#planPanel .timelineShell');if(!shell)return false;let head=shell.querySelector('.pmvHead');if(!head){head=doc.createElement('div');head.className='pmvHead';head.innerHTML='<span>Visites du jour</span><button class="pmvAdd" type="button">＋ Ajouter</button>';const timeline=shell.querySelector('.appleTimeline');shell.insertBefore(head,timeline||shell.firstChild);const hint=doc.createElement('div');hint.className='pmvHint';hint.textContent='Astuce : glisse une visite à gauche ou à droite pour la retirer.';head.insertAdjacentElement('afterend',hint);head.querySelector('.pmvAdd').addEventListener('click',()=>openDialog(win))}shell.querySelectorAll('.timelineRow:not(.calendarEvent)').forEach(r=>bindRow(win,r));return true}
+function enhance(win){const doc=win.document,shell=doc.querySelector('#planPanel .timelineShell');if(!shell)return false;let head=shell.querySelector('.pmvHead');if(!head){head=doc.createElement('div');head.className='pmvHead';head.innerHTML='<span>Visites du jour</span><button class="pmvAdd" type="button">＋ Ajouter</button>';const timeline=shell.querySelector('.appleTimeline');shell.insertBefore(head,timeline||shell.firstChild);const hint=doc.createElement('div');hint.className='pmvHint';hint.textContent='Astuce : glisse une visite à gauche ou à droite pour la retirer.';head.insertAdjacentElement('afterend',hint);head.querySelector('.pmvAdd').addEventListener('click',()=>openDialog(win))}shell.querySelectorAll('.timelineRow:not(.calendarEvent)').forEach(r=>bindRow(win,r));renderSuggestions(win);installRadiusField(win);return true}
 function install(win){if(installed)return;installed=true;ensureCss(win.document);ensureDialog(win);const run=()=>setTimeout(()=>enhance(win),0);run();win.document.addEventListener('store-runner:planning-updated',run);win.document.addEventListener('store-runner:data-restored',run);if(typeof win.MutationObserver!=='undefined'){const panel=win.document.getElementById('planPanel');if(panel){observer=new win.MutationObserver(run);observer.observe(panel,{childList:true,subtree:true})}}}
-return{DAYS,clonePlan,currentWeekKey,plannedDay,addToPlan,removeFromPlan,currentDay,addStore,removeStore,capacityWarning,parseRowStoreId,install,enhance};
+return{DAYS,clonePlan,currentWeekKey,plannedDay,addToPlan,removeFromPlan,currentDay,addStore,removeStore,capacityWarning,parseRowStoreId,install,enhance,DEFAULT_RADIUS_KM,MAX_SUGGESTIONS,MAX_WITH_PRIORITY,PRIO_BADGE,radiusKm,coords,dateOfDay,haversine,computeSuggestions,suggestionsFor,suggestionLabel,visitLabel,renderSuggestions,acceptSuggestion,installRadiusField};
 });
