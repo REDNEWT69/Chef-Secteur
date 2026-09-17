@@ -3,9 +3,12 @@ const vm=require('vm');
 const assert=require('assert/strict');
 
 const source=fs.readFileSync('period-day-slider.js','utf8');
+const navigation=fs.readFileSync('navigation-controller.js','utf8');
 assert.match(source,/function focusTodayIfVisible\(now\)/,'V205 doit exposer une sélection ciblée du jour courant');
-assert.match(source,/panelObserver\.observe\(panel,\{attributes:true,attributeFilter:\['class'\]\}\)/,'l’observer V205 doit rester borné à la classe du panneau Planning');
-assert.match(source,/if\(isActive&&!wasActive\)focusTodayIfVisible\(\)/,'le recentrage ne doit se produire qu’à l’ouverture du Planning');
+assert.match(source,/store-runner:planning-user-opened/,'le slider doit réagir au signal d’ouverture utilisateur du Planning');
+assert.doesNotMatch(source,/panelObserver/,'une activation technique de planPanel ne doit plus recentrer le jour');
+assert.match(navigation,/function isDirectPlanningEntry\(btn\)/,'la navigation doit distinguer une vraie entrée utilisateur dans Planning');
+assert.match(navigation,/store-runner:planning-user-opened/,'la navigation doit émettre le signal dédié après un tap vers Planning');
 assert.doesNotMatch(source,/setInterval\(/,'V205 ne doit ajouter aucune surveillance permanente');
 
 const RANGE='chef_sector_range_v1',ARCHIVE='chef_sector_plan_archive_v1';
@@ -42,7 +45,7 @@ ctx.window=ctx;
 vm.runInNewContext(source,ctx);
 assert(ctx.StoreRunnerPeriodDaySlider&&typeof ctx.StoreRunnerPeriodDaySlider.focusToday==='function');
 
-assert.equal(ctx.StoreRunnerPeriodDaySlider.focusToday(new Date('2026-09-17T12:00:00')),true,'ouvrir le Planning dans la période courante doit sélectionner aujourd’hui');
+assert.equal(ctx.StoreRunnerPeriodDaySlider.focusToday(new Date('2026-09-17T12:00:00')),true,'une vraie ouverture utilisateur dans la période courante doit sélectionner aujourd’hui');
 assert.equal(ctx.selectedPlanningDay,'Jeudi');
 assert.equal(selected,'Jeudi');
 assert.equal(state.settings.weekDate,'2026-09-14');
@@ -61,4 +64,4 @@ assert.equal(ctx.StoreRunnerPeriodDaySlider.focusToday(new Date('2026-09-17T12:0
 assert.equal(JSON.stringify(state.plan),before);
 assert.equal(ctx.selectedPlanningDay,'Mardi');
 
-console.log('planning-auto-today-v205: OK · ouverture sur aujourd’hui sans forcer une autre période');
+console.log('planning-auto-today-v205: OK · tap Planning vers aujourd’hui, activations techniques préservées');
