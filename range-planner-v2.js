@@ -58,7 +58,67 @@ function performanceBoost(s){
     return Number(api.planningBoost(storage(),s&&s.id,state.stores))||0;
   }catch(e){return 0}
 }
-function scoreOf(s){try{const base=typeof score==='function'?Number(score(s))||0:Number(s.priority)||0;return base+performanceBoost(s)}catch(e){return Number(s.priority)||0}}
+function storeIntervalDaysV211(s){
+  const direct=Number(s&&s.intervalDays);if(Number.isFinite(direct)&&direct>0)return direct;
+  const f=norm(s&&s.freq);if(f.includes('hebdo'))return 7;if(f.includes('bi'))return 15;if(f.includes('trimes'))return 90;return 30
+}
+function visitDateV211(s){
+  const id=s&&s.id,candidates=[];
+  try{
+    const api=window.StoreRunnerPerformanceV190;
+    if(api&&typeof api.completedVisitsFor==='function'){
+      const row=api.completedVisitsFor(state,id);if(row&&row.lastVisit)candidates.push(String(row.lastVisit).slice(0,10))
+    }
+  }catch(e){}
+  try{
+    const legacy=state.visits&&state.visits[String(id)];
+    if(legacy&&legacy.lastVisit)candidates.push(String(legacy.lastVisit).slice(0,10));
+    if(legacy&&Array.isArray(legacy.history))legacy.history.forEach(d=>candidates.push(String(d||'').slice(0,10)))
+  }catch(e){}
+  if(s&&s.lastVisit)candidates.push(String(s.lastVisit).slice(0,10));
+  return candidates.filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort().pop()||''
+}
+function performancePriorityV211(s){
+  try{
+    const api=window.StoreRunnerPerformanceV190,db=storage();
+    if(!api||!db||typeof api.rowForStore!=='function')return '';
+    const row=api.rowForStore(db,s&&s.id),snap=typeof api.latestSnapshot==='function'?api.latestSnapshot(db):null;
+    if(!row||!['P1','P2'].includes(String(row.prio||'')))return '';
+    if(snap&&typeof api.isTreated==='function'&&api.isTreated(db,snap.week,s&&s.id))return '';
+    return String(row.prio)
+  }catch(e){return ''}
+}
+function planningNeedV211(s,weekKey){
+  const ref=monday(parse(weekKey)||parse(state.settings&&state.settings.weekDate)||new Date()),last=visitDateV211(s),interval=storeIntervalDaysV211(s),p=Number(s&&s.priority)||3;
+  const lastDate=parse(last),age=lastDate?Math.max(0,Math.floor((ref-lastDate)/86400000)):null,ratio=lastDate?age/Math.max(1,interval):5;
+  let value=ratio*100+p*12,st=(state.settings&&state.settings.strategy)||'balanced';
+  if(st==='overdue')value=ratio*160+p*4;
+  if(st==='priority')value=p*50+ratio*45;
+  if(st==='near'){try{value=value-(Number(havBase(s))||0)*.7}catch(e){}}
+  const perf=performancePriorityV211(s),boost=performanceBoost(s);value+=boost;
+  let tier=1;const reasons=[];
+  if(!last){tier=3;reasons.push('jamais visité')}
+  if(ratio>=1.5){tier=5;reasons.push('très en retard')}
+  else if(ratio>=1){tier=Math.max(tier,4);reasons.push('en retard')}
+  else if(ratio>=.8){tier=Math.max(tier,3);reasons.push('bientôt dû')}
+  if(perf==='P1'){tier=Math.max(tier,4);value+=90;reasons.unshift('P1')}
+  else if(perf==='P2'){tier=Math.max(tier,3);value+=40;reasons.unshift('P2')}
+  if(p>=5){tier=Math.max(tier,3);reasons.push('priorité forte')}
+  else if(p>=4)tier=Math.max(tier,2);
+  if(last&&age<Math.min(7,Math.max(3,Math.round(interval*.25)))&&ratio<.5){
+    tier=Math.min(tier,perf==='P1'?3:2);value-=120;reasons.push('visité récemment')
+  }
+  const overdueDays=age==null?null:Math.max(0,age-interval),dueInDays=age==null?null:interval-age;
+  return{tier,score:Math.round(value*10)/10,week:iso(ref),lastVisit:last,intervalDays:interval,ageDays:age,overdueDays,dueInDays,performancePriority:perf,structuralPriority:p,reasons:[...new Set(reasons)]}
+}
+function compareNeedV211(a,b,weekKey){
+  const na=planningNeedV211(a,weekKey),nb=planningNeedV211(b,weekKey);
+  if(nb.tier!==na.tier)return nb.tier-na.tier;
+  if(nb.score!==na.score)return nb.score-na.score;
+  const oa=Number(na.overdueDays)||0,ob=Number(nb.overdueDays)||0;if(ob!==oa)return ob-oa;
+  return storeKey(a).localeCompare(storeKey(b))
+}
+function scoreOf(s,weekKey){return planningNeedV211(s,weekKey).score}
 /* Les crédits de visite appartiennent à visit-counting.js : on consomme son API
    publique plutôt que de redéfinir les règles ou la normalisation de casse ici.
    Une enseigne à 2 crédits occupe deux unités du plafond journalier, parce qu'une
@@ -131,7 +191,32 @@ function selectionNeed(pool,usable,target,max,weekKey){
   if(forcedCost>capacityCredits)throw new Error('Les magasins posés, imposés ou verrouillés demandent '+forcedCost+' crédit'+(forcedCost>1?'s':'')+' de visite pour seulement '+capacityCredits+' disponible'+(capacityCredits>1?'s':'')+'. Le planning précédent est conservé.');
   return{targetCount:Math.min(Math.max(Math.max(1,target),forced),pool.length),capacityCredits};
 }
-function chooseStores(pool,usedKeys,useCount,lastUsedWeek,targetCount,creditBudget,weekKey){
+function rotationWindowWeeksV211(pool,targetCount){
+  return Math.max(1,Math.min(8,Math.ceil((pool||[]).length/Math.max(1,Number(targetCount)||1))))
+}
+function rotationMemoryV211(pool,weekKey,targetCount,archiveSource){
+  const usedKeys=new Set(),useCount=new Map(),lastUsedWeek=new Map(),windowWeeks=rotationWindowWeeksV211(pool,targetCount),archive=archiveSource||loadArchive();
+  const ref=monday(parse(weekKey)||new Date()),byId=new Map((pool||[]).filter(Boolean).map(s=>[String(s.id),s])),valid=new Set((pool||[]).map(storeKey));
+  for(const [key,snap] of Object.entries(archive||{})){
+    const mon=parse((snap&&snap.weekMonday)||key);if(!mon)continue;
+    const delta=Math.round((monday(mon)-ref)/(7*86400000));if(delta>=0||delta< -windowWeeks)continue;
+    const weekSeen=new Set();
+    for(const day of DAYS)for(const raw of ((snap&&snap.plan&&snap.plan[day])||[])){
+      const canonical=raw&&raw.id!=null&&byId.has(String(raw.id))?byId.get(String(raw.id)):raw,k=storeKey(canonical);
+      if(!k||!valid.has(k)||weekSeen.has(k))continue;weekSeen.add(k);usedKeys.add(k);
+      useCount.set(k,(useCount.get(k)||0)+1);
+      const prev=lastUsedWeek.get(k);if(prev==null||delta>prev)lastUsedWeek.set(k,delta)
+    }
+  }
+  return{usedKeys,useCount,lastUsedWeek,windowWeeks}
+}
+function repeatReadinessV211(s,lastUsedWeek,weekIndex){
+  const k=storeKey(s),last=lastUsedWeek.get(k);if(last==null)return 0;
+  const elapsed=Math.max(0,(Number(weekIndex)||0-last)*7),perf=performancePriorityV211(s),factor=perf==='P1'?.75:perf==='P2'?.9:1;
+  const dueAfter=Math.max(7,Math.round(storeIntervalDaysV211(s)*factor));
+  return elapsed/dueAfter
+}
+function chooseStores(pool,usedKeys,useCount,lastUsedWeek,targetCount,creditBudget,weekKey,weekIndex=0){
   const chosen=[],keys=new Set();let credits=0;
   const add=(s,isForced=false)=>{
     const k=storeKey(s),cost=visitCredit(s);
@@ -139,26 +224,41 @@ function chooseStores(pool,usedKeys,useCount,lastUsedWeek,targetCount,creditBudg
     if(!isForced&&credits+cost>creditBudget)return false;
     chosen.push(s);keys.add(k);credits+=cost;return true;
   };
-  const forced=pool.filter(s=>forcedRank(s,weekKey)>0).sort((a,b)=>forcedRank(b,weekKey)-forcedRank(a,weekKey)||scoreOf(b)-scoreOf(a));
+  const forced=pool.filter(s=>forcedRank(s,weekKey)>0).sort((a,b)=>forcedRank(b,weekKey)-forcedRank(a,weekKey)||compareNeedV211(a,b,weekKey));
   for(const s of forced)add(s,true);
-  /* Un magasin jamais réellement placé reste frais jusqu'à son premier passage.
-     Le score ne départage que des magasins du même niveau de fraîcheur. */
-  const fresh=pool.filter(s=>!keys.has(storeKey(s))&&!usedKeys.has(storeKey(s))).sort((a,b)=>scoreOf(b)-scoreOf(a));
+
+  /* Une cadence réellement arrivée à échéance peut reprendre une petite part de la
+     semaine, mais jamais avaler toute la rotation. 30 % maximum laisse au moins 70 %
+     du budget aux magasins encore frais quand le secteur n'a pas fini son cycle. */
+  const repeatCap=Math.min(6,Math.floor(targetCount*.30)),dueRepeats=pool
+    .filter(s=>!keys.has(storeKey(s))&&usedKeys.has(storeKey(s))&&repeatReadinessV211(s,lastUsedWeek,weekIndex)>=1)
+    .sort((a,b)=>repeatReadinessV211(b,lastUsedWeek,weekIndex)-repeatReadinessV211(a,lastUsedWeek,weekIndex)||compareNeedV211(a,b,weekKey));
+  let repeated=0;
+  for(const s of dueRepeats){if(repeated>=repeatCap)break;if(add(s))repeated++}
+
+  /* Couverture du secteur : hors cadences réellement dues ci-dessus, un magasin absent
+     de la fenêtre de rotation passe avant une répétition de confort. Le besoin V211
+     décide l'ordre à l'intérieur de ce vivier : P1/P2, retard, fréquence et priorité. */
+  const fresh=pool.filter(s=>!keys.has(storeKey(s))&&!usedKeys.has(storeKey(s))).sort((a,b)=>compareNeedV211(a,b,weekKey));
   for(const s of fresh)add(s);
-  /* Une fois le vivier frais épuisé pour le budget restant, équilibrer d'abord le
-     nombre réel de passages, puis reprendre le moins récemment utilisé. Le score
-     n'intervient qu'en dernier départage. */
+
+  /* Quand le cycle est couvert, reprendre d'abord les cadences dues, puis équilibrer le
+     nombre de passages et l'ancienneté d'utilisation. Le score métier ne sert qu'après
+     ces garde-fous, afin qu'un gros P1 ne monopolise pas indéfiniment le planning. */
   if(chosen.length<targetCount&&credits<creditBudget){
     const old=pool.filter(s=>!keys.has(storeKey(s))).sort((a,b)=>{
+      const ra=repeatReadinessV211(a,lastUsedWeek,weekIndex),rb=repeatReadinessV211(b,lastUsedWeek,weekIndex);
+      if((rb>=1)!==(ra>=1))return rb>=1?1:-1;
+      if(rb!==ra&&Math.max(ra,rb)>=1)return rb-ra;
       const ka=storeKey(a),kb=storeKey(b),ca=useCount.get(ka)||0,cb=useCount.get(kb)||0;
       if(ca!==cb)return ca-cb;
       const la=lastUsedWeek.get(ka),lb=lastUsedWeek.get(kb);
       if(la!==lb)return (la==null?-999:la)-(lb==null?-999:lb);
-      return scoreOf(b)-scoreOf(a);
+      return compareNeedV211(a,b,weekKey)
     });
-    for(const s of old)add(s);
+    for(const s of old)add(s)
   }
-  return chosen;
+  return chosen
 }
 function tm(t){const p=String(t||'').split(':');return (+p[0]||0)*60+(+p[1]||0)}
 function finish(route,day){
@@ -277,10 +377,11 @@ async function strictSingleWeek(){
     const pool=eligible();if(!pool.length)throw new Error('Aucun magasin actif ne correspond aux filtres. Ouvre « Enseignes » et vérifie la sélection.');
     const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
     const limits=selectionNeed(pool,usable,Number(state.settings.target)||20,max,weekKey);
-    const chosen=chooseStores(pool,new Set(),new Map(),new Map(),limits.targetCount,limits.capacityCredits,weekKey),built=buildWeekUnique(chosen,usable,weekKey);ensureForcedPlaced(built,weekKey);const visits=countPlan(built.plan,usable);
+    const memory=rotationMemoryV211(pool,weekKey,limits.targetCount),chosen=chooseStores(pool,memory.usedKeys,memory.useCount,memory.lastUsedWeek,limits.targetCount,limits.capacityCredits,weekKey,0),built=buildWeekUnique(chosen,usable,weekKey);ensureForcedPlaced(built,weekKey);const visits=countPlan(built.plan,usable);
     const credits=usable.reduce((n,d)=>n+routeCredits(built.plan[d]),0);
     if(!visits)throw new Error('0 visite possible avec les réglages actuels. Vérifie l’heure de fin, la durée par magasin et ton point de départ. Le planning précédent est conservé.');
-    if(!await ChefReliability.propose({plan:built.plan,weekDate:iso(mon)})){showStatus('Planning précédent conservé.');return{ok:false,cancelled:true}}
+    const nextArchive=loadArchive();nextArchive[weekKey]=snapshot(mon,mon,addDays(mon,6),built.plan,days);
+    if(!await ChefReliability.propose({plan:built.plan,weekDate:iso(mon),archive:nextArchive})){showStatus('Planning précédent conservé.');return{ok:false,cancelled:true}}
     showStatus('Semaine générée : '+visits+' visites · '+credits+' crédit'+(credits>1?'s':'')+' de visite'+(built.unplaced.length?' · '+built.unplaced.length+' non placée'+(built.unplaced.length>1?'s':'')+' faute de créneau':'')+'.');
     return{ok:true,visits,credits,unplaced:built.unplaced.length};
   }catch(e){
@@ -299,7 +400,7 @@ async function generateRange(){
   try{
     ChefReliability.checkpoint('Avant génération de la période');
     const days=readControls(),pool=eligible();if(!pool.length)throw new Error('Aucun magasin actif ne correspond aux filtres.');
-    const target=Math.max(1,Number(state.settings.target)||20),max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4)),archive=loadArchive(),first=monday(start),last=monday(end),usedKeys=new Set(),useCount=new Map(),lastUsedWeek=new Map(),unique=new Set();
+    const target=Math.max(1,Number(state.settings.target)||20),max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4)),archive=loadArchive(),first=monday(start),last=monday(end),seed=rotationMemoryV211(pool,iso(first),target,archive),usedKeys=seed.usedKeys,useCount=seed.useCount,lastUsedWeek=seed.lastUsedWeek,unique=new Set();
     showStatus('Synchronisation Google Agenda puis génération de la période…');
     const calendarSynced=await syncCalendarRange(first,last);
     let mon=new Date(first),weekIndex=0,weeks=0,totalVisits=0,totalCredits=0,totalUnplaced=0;
@@ -317,13 +418,13 @@ async function generateRange(){
       const usable=activeDays(mon,days,start,end);
       if(!usable.length){archive[iso(mon)]=snapshot(mon,start,end,Object.fromEntries(DAYS.map(d=>[d,[]])),days);mon=addDays(mon,7);weekIndex++;weeks++;continue}
       const limits=selectionNeed(pool,usable,target,max,weekKey);
-      const chosen=chooseStores(pool,usedKeys,useCount,lastUsedWeek,limits.targetCount,limits.capacityCredits,weekKey),built=buildWeekUnique(chosen,usable,weekKey);ensureForcedPlaced(built,weekKey);const plan=built.plan,weekSeen=new Set();
+      const chosen=chooseStores(pool,usedKeys,useCount,lastUsedWeek,limits.targetCount,limits.capacityCredits,weekKey,weekIndex),built=buildWeekUnique(chosen,usable,weekKey);ensureForcedPlaced(built,weekKey);const plan=built.plan,weekSeen=new Set();
       totalUnplaced+=built.unplaced.length;
       for(const d of usable)for(const s of (plan[d]||[])){const k=storeKey(s);if(!k||weekSeen.has(k))continue;weekSeen.add(k);unique.add(k);usedKeys.add(k);useCount.set(k,(useCount.get(k)||0)+1);lastUsedWeek.set(k,weekIndex);totalVisits++;totalCredits+=visitCredit(s)}
       archive[iso(mon)]=snapshot(mon,start,end,plan,days);mon=addDays(mon,7);weekIndex++;weeks++;await new Promise(r=>setTimeout(r,10));
     }
     if(!totalVisits)throw new Error('La période donnerait 0 visite. Rien n’a été remplacé : vérifie les jours, les horaires et les indisponibilités Agenda.');
-    const range={start:iso(start),end:iso(end),weeks,workDays:days,uniqueStores:unique.size,totalVisits,rotation:'balanced-lru-credit-v8',calendarSynced,updatedAt:new Date().toISOString()};
+    const range={start:iso(start),end:iso(end),weeks,workDays:days,uniqueStores:unique.size,totalVisits,rotation:'pilot-v211',pilotWindowWeeks:seed.windowWeeks,calendarSynced,updatedAt:new Date().toISOString()};
     let displayMon=new Date(first),displaySnap=null;
     while(displayMon<=last){const snap=archive[iso(displayMon)];if(snap&&countPlan(snap.plan,DAYS)>0){displaySnap=snap;break}displayMon=addDays(displayMon,7)}
     if(!displaySnap)throw new Error('La période contient des visites mais aucune semaine affichable n’a été retrouvée. Le planning précédent est conservé.');
@@ -617,6 +718,16 @@ window.storeRunnerSetRecurringLock=function(id,day){
   if(!DAYS.includes(day))return false;
   state.locks[String(id)]=day;
   return true;
+};
+window.StoreRunnerPlanningPilotV211={
+  version:211,
+  explain:function(store,weekKey){return planningNeedV211(store,weekKey||currentWeekKey())},
+  compare:function(a,b,weekKey){return compareNeedV211(a,b,weekKey||currentWeekKey())},
+  rotationWindowWeeks:function(targetCount){return rotationWindowWeeksV211(eligible(),targetCount||Number(state.settings&&state.settings.target)||20)},
+  rotationMemorySummary:function(weekKey,targetCount){
+    const m=rotationMemoryV211(eligible(),weekKey||currentWeekKey(),targetCount||Number(state.settings&&state.settings.target)||20);
+    return{windowWeeks:m.windowWeeks,usedCount:m.usedKeys.size,useCount:Object.fromEntries(m.useCount),lastUsedWeek:Object.fromEntries(m.lastUsedWeek)}
+  }
 };
 function boot(){install()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();

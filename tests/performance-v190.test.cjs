@@ -372,11 +372,15 @@ await (async function fichierReel(){
   assert.equal(P.planningBoost(db,'s1',stores),0,'un magasin déjà traité ne repasse pas devant');
   P.markTreated(db,P.latestSnapshot(db).week,'s1',null);
   // Le planificateur ne consulte cette valeur que dans son classement de génération.
+  // V211 centralise désormais retard + cadence + P1/P2 dans planningNeedV211(), puis
+  // scoreOf() délègue à ce calcul explicable.
   const planner=require('fs').readFileSync(__dirname+'/../range-planner-v2.js','utf8');
-  assert.ok(/function performanceBoost\(/.test(planner)&&/scoreOf\(s\)\{[^}]*performanceBoost\(s\)/.test(planner),
-    'le planificateur lit la performance dans scoreOf, son seul point de classement');
-  assert.ok(!/performanceBoost/.test(planner.split('function scoreOf')[0].split('function performanceBoost')[0]),
-    'et nulle part avant, donc pas au chargement');
+  assert.ok(/function performanceBoost\(/.test(planner)&&/function planningNeedV211\([\s\S]*?performanceBoost\(s\)/.test(planner),
+    'le pilote V211 doit lire la performance dans son calcul de besoin de visite');
+  assert.ok(/function scoreOf\(s,weekKey\)\{return planningNeedV211\(s,weekKey\)\.score\}/.test(planner),
+    'scoreOf doit déléguer au besoin V211 plutôt que maintenir un classement concurrent');
+  assert.ok(!/performanceBoost/.test(planner.split('function performanceBoost')[0]),
+    'la performance ne doit toujours pas influencer le planning au chargement');
   console.error('  Planning : coup de pouce '+boost+' pour un P1, 0 une fois traité, 0 sans import');
 })();
 
