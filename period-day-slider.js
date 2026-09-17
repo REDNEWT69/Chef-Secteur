@@ -3,7 +3,7 @@
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   const ARCHIVE_KEY='chef_sector_plan_archive_v1';
   const RANGE_KEY='chef_sector_range_v1';
-  let activeDate='',tabObserver=null,renderScheduled=false,lastTabsSignature=null;
+  let activeDate='',tabObserver=null,renderScheduled=false,lastTabsSignature=null,overnightCuePulseRequested=false;
   function parse(v){const d=new Date(String(v||'')+'T12:00:00');return isNaN(d)?null:d}
   function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
   function monday(d){const x=new Date(d),w=x.getDay()||7;x.setDate(x.getDate()-w+1);return x}
@@ -125,6 +125,48 @@
     if(!entries.some(d=>iso(d)===key))return false;
     return loadDate(today);
   }
+  function overnightCandidateSafe(){try{return typeof window.overnightCandidate==='function'?window.overnightCandidate():null}catch(e){return null}}
+  function overnightLabel(candidate){
+    if(!candidate)return'';
+    const from=parse(candidate.fromDate),to=parse(candidate.toDate),fromDay=candidate.fromDay||(from?dayName(from):''),toDay=candidate.toDay||(to?dayName(to):'');
+    const dates=from&&to?' · '+from.getDate()+'/'+String(from.getMonth()+1).padStart(2,'0')+' → '+to.getDate()+'/'+String(to.getMonth()+1).padStart(2,'0'):'';
+    return(fromDay&&toDay?fromDay+' → '+toDay:'Découché')+dates;
+  }
+  function cueHost(){return document.getElementById('planningHeroV2')||document.getElementById('planningToolsV2')}
+  function focusHotel(candidate){
+    const date=parse(candidate&&candidate.fromDate);if(date)loadDate(date);
+    try{if(typeof window.renderOvernight==='function')window.renderOvernight()}catch(e){}
+    const reveal=()=>{
+      const box=document.getElementById('overnightBox');if(!box)return;
+      box.classList.remove('srHotelFocusV206');void box.offsetWidth;box.classList.add('srHotelFocusV206');
+      box.addEventListener('animationend',()=>box.classList.remove('srHotelFocusV206'),{once:true});
+      if(typeof box.scrollIntoView==='function')box.scrollIntoView({block:'center'});
+    };
+    if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>requestAnimationFrame(reveal));else reveal();
+  }
+  function syncOvernightVisibility(){
+    const box=document.getElementById('dayTabs');if(!box)return false;
+    const candidate=overnightCandidateSafe();
+    box.querySelectorAll('.hotelDayBadge').forEach(b=>{const tab=b.closest('.dayTab');if(!candidate||!tab||tab.dataset.date!==String(candidate.fromDate||''))b.remove()});
+    if(candidate&&candidate.fromDate){
+      const tab=box.querySelector('.dayTab[data-date="'+String(candidate.fromDate).replace(/"/g,'')+'"]');
+      if(tab){let badge=tab.querySelector('.hotelDayBadge');if(!badge){badge=document.createElement('span');badge.className='hotelDayBadge';tab.appendChild(badge)}badge.textContent='🌙 découché';badge.setAttribute('aria-label','Découché '+overnightLabel(candidate));badge.title='Découché '+overnightLabel(candidate)}
+    }
+    let cue=document.getElementById('planningOvernightCueV206');
+    if(!candidate){if(cue)cue.remove();overnightCuePulseRequested=false;return true}
+    const host=cueHost();if(!host)return false;
+    if(!cue){
+      cue=document.createElement('button');cue.id='planningOvernightCueV206';cue.type='button';cue.className='planningOvernightCueV206';
+      cue.innerHTML='<span class="planningOvernightCueIcon">🌙</span><span class="planningOvernightCueCopy"><b data-overnight-title></b><small>Hôtel conseillé · toucher pour afficher</small></span><span class="planningOvernightCueArrow" aria-hidden="true">›</span>';
+      cue.addEventListener('click',function(){focusHotel(overnightCandidateSafe()||candidate)});
+    }
+    if(cue.parentNode!==host)host.appendChild(cue);
+    const title=cue.querySelector('[data-overnight-title]');if(title)title.textContent='Découché '+overnightLabel(candidate);
+    cue.dataset.date=String(candidate.fromDate||'');
+    cue.setAttribute('aria-label','Découché '+overnightLabel(candidate)+'. Afficher l’hôtel conseillé.');
+    if(overnightCuePulseRequested){overnightCuePulseRequested=false;cue.classList.remove('is-pulsing');void cue.offsetWidth;cue.classList.add('is-pulsing');cue.addEventListener('animationend',()=>cue.classList.remove('is-pulsing'),{once:true})}
+    return true;
+  }
   function tabsSignature(entries){return entries.map(iso).join(',')}
   function boxMatchesEntries(box,entries){
     const tabs=[...box.querySelectorAll('.periodDayTab[data-date]')];
@@ -162,15 +204,16 @@
     }
     const active=updateActiveTab(box);
     if(active){syncPlanningHero();centerIfOffscreen(box,active)}
+    syncOvernightVisibility();
     return true;
   }
-  function css(){if(document.getElementById('periodDaySliderCss'))return;const s=document.createElement('style');s.id='periodDaySliderCss';s.textContent='.periodDayTabs{display:flex!important;gap:8px!important;overflow-x:auto!important;overflow-y:hidden!important;grid-template-columns:none!important;-webkit-overflow-scrolling:touch;touch-action:auto!important;overscroll-behavior-x:contain;padding:4px 1px 8px!important;scrollbar-width:none}.periodDayTabs::-webkit-scrollbar{display:none}.periodDayTab{flex:1 1 0!important;min-width:56px!important;max-width:96px!important;touch-action:auto!important;border:1px solid #e1e5ed;background:#fff;border-radius:16px;padding:8px 6px!important;text-align:center;color:#667085;min-height:66px}.periodDayTab span,.periodDayTab small{display:block;font-size:10px;line-height:1.1}.periodDayTab b{display:block;font-size:18px;line-height:1.2;color:#1d2939;margin:2px 0}.periodDayTab.active{background:#111318!important;color:#fff!important;border-color:#111318!important}.periodDayTab.active b{color:#fff!important}';document.head.appendChild(s)}
+  function css(){if(document.getElementById('periodDaySliderCss'))return;const s=document.createElement('style');s.id='periodDaySliderCss';s.textContent='.periodDayTabs{display:flex!important;gap:8px!important;overflow-x:auto!important;overflow-y:hidden!important;grid-template-columns:none!important;-webkit-overflow-scrolling:touch;touch-action:auto!important;overscroll-behavior-x:contain;padding:4px 1px 8px!important;scrollbar-width:none}.periodDayTabs::-webkit-scrollbar{display:none}.periodDayTab{position:relative;flex:1 1 0!important;min-width:56px!important;max-width:96px!important;touch-action:auto!important;border:1px solid #e1e5ed;background:#fff;border-radius:16px;padding:8px 6px!important;text-align:center;color:#667085;min-height:66px}.periodDayTab span,.periodDayTab small{display:block;font-size:10px;line-height:1.1}.periodDayTab b{display:block;font-size:18px;line-height:1.2;color:#1d2939;margin:2px 0}.periodDayTab.active{background:#111318!important;color:#fff!important;border-color:#111318!important}.periodDayTab.active b{color:#fff!important}.periodDayTab .hotelDayBadge{position:absolute;top:4px;right:4px;display:flex!important;align-items:center;justify-content:center;width:18px;height:18px;margin:0!important;padding:0!important;overflow:hidden;border-radius:999px;background:#fff4c2;border:1px solid rgba(154,98,0,.16);font-size:0!important;line-height:1!important;box-shadow:0 2px 7px rgba(91,64,0,.10);z-index:2}.periodDayTab .hotelDayBadge:before{content:"🌙";font-size:11px;line-height:1}.periodDayTab.active .hotelDayBadge{position:static;width:auto;height:auto;display:inline-flex!important;margin:4px auto 0!important;padding:3px 5px!important;font-size:9px!important;font-weight:850;white-space:nowrap;color:#ffe08a;background:rgba(255,224,138,.12);border-color:rgba(255,224,138,.26);box-shadow:none}.periodDayTab.active .hotelDayBadge:before{content:"";font-size:0}.planningOvernightCueV206{width:100%;display:flex;align-items:center;gap:10px;margin:10px 0 2px;padding:11px 12px;border:1px solid rgba(154,98,0,.18);border-radius:16px;background:linear-gradient(135deg,rgba(255,248,219,.98),rgba(255,255,255,.92));box-shadow:0 6px 18px rgba(91,64,0,.08);color:#3f3212;text-align:left;min-height:54px}.planningOvernightCueIcon{font-size:20px!important;line-height:1!important;flex:0 0 auto}.planningOvernightCueCopy{display:flex!important;flex:1 1 auto;min-width:0;flex-direction:column;gap:2px}.planningOvernightCueCopy b{font-size:12px;line-height:1.2;color:#3f3212;white-space:normal}.planningOvernightCueCopy small{font-size:10px;color:#806b32;white-space:normal}.planningOvernightCueArrow{font-size:23px!important;line-height:1!important;color:#9a6200;flex:0 0 auto}.planningOvernightCueV206.is-pulsing{animation:srOvernightCuePulseV206 .62s ease-in-out 2}.srHotelFocusV206{animation:srHotelFocusV206 .8s ease-out 1}@keyframes srOvernightCuePulseV206{0%,100%{transform:scale(1);box-shadow:0 6px 18px rgba(91,64,0,.08)}50%{transform:scale(1.018);box-shadow:0 8px 25px rgba(184,132,0,.20)}}@keyframes srHotelFocusV206{0%{outline:0 solid rgba(242,201,76,0)}35%{outline:5px solid rgba(242,201,76,.28);outline-offset:4px}100%{outline:0 solid rgba(242,201,76,0);outline-offset:8px}}@media(prefers-reduced-motion:reduce){.planningOvernightCueV206.is-pulsing,.srHotelFocusV206{animation:none!important}}';document.head.appendChild(s)}
   function observeTabs(){if(tabObserver||typeof MutationObserver==='undefined')return;const box=document.getElementById('dayTabs');if(!box)return;tabObserver=new MutationObserver(()=>{if(!box.querySelector('.periodDayTab'))scheduleRender()});tabObserver.observe(box,{childList:true})}
   function boot(){css();observeTabs();renderTabs();bindListSwipe(document.getElementById('planPanel'))}
   window.addEventListener('chef-range-generated',function(){activeDate='';scheduleRender()});
   document.addEventListener('store-runner:planning-updated',scheduleRender);
   document.addEventListener('store-runner:data-restored',function(){activeDate='';scheduleRender()});
-  document.addEventListener('store-runner:planning-user-opened',function(){focusTodayIfVisible()});
-  window.StoreRunnerPeriodDaySlider={focusToday:focusTodayIfVisible};
+  document.addEventListener('store-runner:planning-user-opened',function(){overnightCuePulseRequested=true;focusTodayIfVisible();scheduleRender()});
+  window.StoreRunnerPeriodDaySlider={focusToday:focusTodayIfVisible,syncOvernight:syncOvernightVisibility};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
