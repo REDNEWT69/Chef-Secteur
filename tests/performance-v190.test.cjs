@@ -401,3 +401,5 @@ await (async function fichierReel(){
 console.log('PASS: import .xlsx local, 51 lignes et 7 P1 sur le fichier type, PDM absente jamais fabriquée, W34 et W35 coexistent, mapping conservé, réglages V189 intacts, P1 > P2 > à surveiller, croisement visites sans causalité.');
 });
 })().catch(e=>{console.error(e);process.exit(1)});
+
+require('./performance-store-reconcile-v209.test.cjs');

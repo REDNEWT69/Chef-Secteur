@@ -26,3 +26,5 @@ test('V192 affiche un brief performance compact à 390 px sans toucher au planni
   expect(result.text).toContain('Prio 1');expect(result.text).toContain('PDM YTD');expect(result.text).toContain('34,2 %');expect(result.text).toContain('Mission');
   expect(result.width).toBeLessThanOrEqual(result.viewport);expect(result.overflow).toBeLessThanOrEqual(1);expect(result.planStable).toBe(true);expect(result.priority).toBe(4);expect(errors).toEqual([]);
 });
+
+require('./performance-store-reconcile-v209-browser.spec.cjs');

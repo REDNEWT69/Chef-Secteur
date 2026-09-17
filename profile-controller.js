@@ -104,7 +104,8 @@
       const row=Array.isArray(rows)&&rows[0];
       const lat=Number(row&&row.lat),lon=Number(row&&row.lon);
       if(!row||!isFinite(lat)||!isFinite(lon))throw new Error('Adresse introuvable. Essaie une ville ou une adresse plus précise.');
-      return{lat:lat,lon:lon,address:String(row.display_name||text).trim()};
+      const a=row.address||{},city=String(a.city||a.town||a.village||a.municipality||'').trim(),postcode=String(a.postcode||'').trim();
+      return{lat:lat,lon:lon,address:String(row.display_name||text).trim(),city:city,postcode:postcode};
     }catch(e){
       if(e&&e.name==='AbortError')throw new Error('La recherche d’adresse a pris trop de temps.');
       throw e;
@@ -208,6 +209,7 @@
   }
 
   window.storeRunnerToast=toast;
+  window.StoreRunnerGeocode={forward:forwardGeocode,reverse:reverseGeocode};
   window.storeRunnerHasValidBase=validBase;
   window.lookupDepartureAddress=async function(){
     const btn=document.getElementById('departureLookupBtn');
