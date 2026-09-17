@@ -181,16 +181,19 @@ const ids=rows=>rows.map(r=>r.id);
   assert.deepEqual(priorites,priorites.map(()=>3),'store.priority n’est jamais touché');
 }
 
-/* 14. « Ajouter » donne exactement le même résultat qu'un ajout manuel. --- */
+/* 14. « Ajouter » donne le même état que l'ajout manuel, sans confirmation
+       tant que la capacité de la journée reste respectée. ------------------ */
 function fakeWin(state){
-  const db=new Map();
-  return {
+  const db=new Map(),confirmations=[];
+  const win={
     state,
     __chefStorage:{getItem:k=>db.has(k)?db.get(k):null,setItem:(k,v)=>db.set(k,String(v)),removeItem:k=>db.delete(k)},
-    confirm:()=>true,
+    confirm:message=>{confirmations.push(String(message||''));return true},
     CustomEvent:class{constructor(type,init){this.type=type;this.detail=init&&init.detail}},
     document:{dispatchEvent(){return true},querySelector(){return null},querySelectorAll(){return[]}}
   };
+  win.__confirmations=confirmations;
+  return win;
 }
 {
   const manuel=baseState(),suggere=baseState();
@@ -206,12 +209,35 @@ function fakeWin(state){
       const strip=s=>JSON.stringify({plan:s.plan,stores:s.stores,locks:s.locks,excluded:s.excluded});
       assert.equal(strip(suggere),strip(manuel),'l’ajout par suggestion doit produire exactement le même état');
       assert.deepEqual(suggere.plan.Jeudi.map(s=>s.id),['anc','v0']);
+      assert.equal(winB.__confirmations.length,0,'sans dépassement de capacité, Ajouter doit être immédiat');
 
       /* La suggestion acceptée disparaît de la liste suivante. */
       const restantes=M.computeSuggestions(suggere,'Jeudi',TODAY,deps());
       assert.deepEqual(ids(restantes),['v1'],'le magasin ajouté n’est plus proposé');
 
-      /* 15. Une sauvegarde existante reste valide, avec ou sans le réglage. */
+      /* 15. Si la capacité serait dépassée, l'avertissement reste obligatoire. */
+      const bloque=baseState();
+      bloque.settings.maxVisitsPerDay=1;
+      bloque.stores.push(store('cap',2));
+      const winC=fakeWin(bloque);
+      winC.confirm=message=>{winC.__confirmations.push(String(message||''));return false};
+      const annule=await M.acceptSuggestion(winC,'cap','Jeudi');
+      assert.equal(annule.cancelled,true,'refuser l’avertissement doit annuler l’ajout');
+      assert.deepEqual(bloque.plan.Jeudi.map(s=>s.id),['anc'],'le planning reste intact après refus');
+      assert.equal(winC.__confirmations.length,1,'le dépassement doit demander une seule confirmation');
+      assert.match(winC.__confirmations[0],/2 crédits/,'l’avertissement doit annoncer la charge prévue');
+      assert.match(winC.__confirmations[0],/plafond prévu de 1/,'l’avertissement doit rappeler le plafond');
+
+      const accepte=baseState();
+      accepte.settings.maxVisitsPerDay=1;
+      accepte.stores.push(store('cap-ok',2));
+      const winD=fakeWin(accepte);
+      const force=await M.acceptSuggestion(winD,'cap-ok','Jeudi');
+      assert.equal(force.ok,true,'accepter le dépassement doit conserver le chemin addStore');
+      assert.deepEqual(accepte.plan.Jeudi.map(s=>s.id),['anc','cap-ok']);
+      assert.equal(winD.__confirmations.length,1,'le dépassement accepté ne demande qu’une confirmation');
+
+      /* 16. Une sauvegarde existante reste valide, avec ou sans le réglage. */
       const R=require(path.join(__dirname,'..','reliability-core.js'));
       const sansReglage=JSON.parse(JSON.stringify(baseState()));
       assert.ok(!('suggestionRadiusKm' in sansReglage.settings),'la clé n’est pas obligatoire');
@@ -224,7 +250,7 @@ function fakeWin(state){
       assert.equal(M.radiusKm(sansReglage),M.DEFAULT_RADIUS_KM,'sans réglage, 10 km par défaut');
       assert.equal(M.DEFAULT_RADIUS_KM,10);
 
-      console.log('suggestions de proximité : OK · rayon 9,9/10,1 · jour passé · jour vide · exclusions · fermé · sans GPS · tri et plafond · P1 en 4e · badge absent · brouillon ignoré · ajout identique au manuel · sauvegarde inchangée');
+      console.log('suggestions de proximité : OK · rayon 9,9/10,1 · jour passé · jour vide · exclusions · fermé · sans GPS · tri et plafond · P1 en 4e · badge absent · brouillon ignoré · ajout direct · confirmation seulement si capacité dépassée · sauvegarde inchangée');
     }
   })().catch(e=>{console.error(e);process.exit(1)});
 }
