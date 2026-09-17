@@ -8,14 +8,14 @@ const index=fs.readFileSync(path.join(process.cwd(),'index.html'),'utf8');
 const sw=fs.readFileSync(path.join(process.cwd(),'sw.js'),'utf8');
 const version=JSON.parse(fs.readFileSync(path.join(process.cwd(),'version.json'),'utf8'));
 
-assert(index.includes("const BUILD_REV='20260917-anonresidus197'"),'index doit publier le build V197');
-assert(sw.includes('const BUILD_REV = "20260917-anonresidus197"'),'sw doit publier le même build V197');
-assert.equal(version.latestBuild,'20260917-anonresidus197');
-assert.equal(version.displayVersion,'197');
+assert(index.includes("const BUILD_REV='20260917-anonlibelles198'"),'index doit publier le build V198');
+assert(sw.includes('const BUILD_REV = "20260917-anonlibelles198"'),'sw doit publier le même build V198');
+assert.equal(version.latestBuild,'20260917-anonlibelles198');
+assert.equal(version.displayVersion,'198');
 assert(index.includes("'./v182-fixes.js'"),'le runtime de fiabilisation doit rester chargé');
 assert(index.includes("'./priority-campaign-v187.js'"),'le moteur de priorités V188 doit être chargé');
 assert(index.includes('id="srRuntimeBoot"'),'le boot historique doit être masqué pendant le rendu moderne');
-assert(index.includes('<img src="./app-icon.svg?rev=20260917-anonresidus197" alt="S-RUNNER">'),'le loader doit afficher le vrai logo S-RUNNER');
+assert(index.includes('<img src="./app-icon.svg?rev=20260917-anonlibelles198" alt="S-RUNNER">'),'le loader doit afficher le vrai logo S-RUNNER');
 assert(sw.includes('"./v182-fixes.js"'),'les correctifs terrain doivent fonctionner hors ligne après installation');
 assert(sw.includes('"./priority-campaign-v187.js"'),'le moteur de priorités V188 doit fonctionner hors ligne');
 assert(source.includes('removeHomePilotageShortcut'),'Pilotage doit rester retiré de l’accueil');
@@ -85,7 +85,7 @@ assert.equal(Math.round(overnight.candidate.saving),180);
 assert.equal(Math.round(overnight.candidate.remoteKm),90);
 
 state.profile.overnightMode='mandatory';
-state.plan.Lundi=[{id:'local-a',x:8,enseigne:'A',ville:'Limonest'}];
+state.plan.Lundi=[{id:'local-a',x:8,enseigne:'A',ville:'Ville-Test L'}];
 state.plan.Mardi=[{id:'local-b',x:12,enseigne:'B',ville:'Lyon'}];
 overnight=ctx.StoreRunnerOvernightV182.analyze();
 assert.equal(overnight.reason,'mandatory-no-useful','le mode obligatoire ne doit pas forcer un hôtel près du domicile');
