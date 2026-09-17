@@ -282,16 +282,17 @@ function renderSuggestions(win){
   return true;
 }
 async function acceptSuggestion(win,id,day){
-  /* Même chemin que le dialogue « ＋ Ajouter » : même avertissement de
-     capacité, même confirmation, même addStore(). Le résultat dans l'état est
-     identique à un ajout manuel. */
+  /* Un clic sur une suggestion ajoute directement le magasin tant que la
+     capacité prévue de la journée reste respectée. Si elle serait dépassée,
+     on conserve l'avertissement et la confirmation avant le même addStore(). */
   const store=findStore(win.state,id);
   if(!store)return{ok:false,error:'Magasin introuvable'};
-  const label=(store.enseigne||'Magasin')+' '+(store.ville||'');
   const warning=capacityWarning(win,store,day);
-  let message='Ajouter '+label+' à '+day+' ?';
-  if(warning)message+='\n\nAttention : la journée passera à '+warning.credits+' crédits pour un plafond prévu de '+warning.max+'.';
-  try{if(typeof win.confirm==='function'&&!win.confirm(message))return{ok:false,cancelled:true}}catch(e){}
+  if(warning){
+    const label=(store.enseigne||'Magasin')+' '+(store.ville||'');
+    const message='Ajouter '+label+' à '+day+' ?\n\nAttention : la journée passera à '+warning.credits+' crédits pour un plafond prévu de '+warning.max+'.';
+    try{if(typeof win.confirm==='function'&&!win.confirm(message))return{ok:false,cancelled:true}}catch(e){}
+  }
   return addStore(win,id,day);
 }
 function installRadiusField(win){
