@@ -27,7 +27,7 @@ function ensureStyle(){
 @media(max-width:700px){
   #${DIALOG_ID}.srVisitV216{--sr-v216-head-h:92px;scroll-padding-top:calc(var(--sr-v216-head-h) + 58px)}
   #${DIALOG_ID}.srVisitV216 #${NAV_ID}{position:sticky;top:var(--sr-v216-head-h);z-index:11;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin:0 -12px 8px;padding:6px 12px 7px;background:rgba(255,255,255,.95);border-bottom:1px solid #eceff4;backdrop-filter:blur(18px) saturate(1.12);-webkit-backdrop-filter:blur(18px) saturate(1.12)}
-  #${DIALOG_ID}.srVisitV216 .srVisitTopV215{z-index:30}
+  #${DIALOG_ID}.srVisitV216 .srVisitTopV215{position:fixed;right:18px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:30;margin:0;pointer-events:auto;touch-action:manipulation}
   #${NAV_ID} button{min-width:0;min-height:38px;padding:6px 7px;border:1px solid #e1e6ef;border-radius:11px;background:#f7f8fb;color:#667085;font-size:10.5px;font-weight:850;white-space:nowrap}
   #${NAV_ID} button[aria-selected="true"]{background:#1428a0;color:#fff;border-color:#1428a0;box-shadow:0 5px 14px rgba(20,40,160,.16)}
   #${NAV_ID} .srV216Count{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;margin-left:3px;padding:0 4px;border-radius:999px;background:rgba(102,112,133,.12);font-size:9px;line-height:1}
