@@ -38,6 +38,14 @@ jobs:
                   raise SystemExit('legacy prompt assertion not found: '+old)
               s=s.replace(old,new,1)
           p.write_text(s,encoding='utf-8')
+
+          p=Path('visit-report-slack.js')
+          s=p.read_text(encoding='utf-8')
+          marker='- utilise uniquement les faits présents dans DONNEES_SOURCE ;'
+          if s.count(marker) != 2:
+              raise SystemExit('merged prompt invariant marker count='+str(s.count(marker)))
+          s=s.replace(marker, marker+'\n- N’invente aucun fait, même plausible ;')
+          p.write_text(s,encoding='utf-8')
           PY
       - name: Targeted tests
         run: |
