@@ -1,0 +1,40 @@
+name: V224 refine
+on:
+  push:
+    branches:
+      - chatgpt/v224-proofread-quota
+    paths:
+      - tools/v224_refine.py
+      - .github/workflows/v224-refine.yml
+permissions:
+  contents: write
+jobs:
+  refine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v224-proofread-quota
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply refinement
+        run: python tools/v224_refine.py
+      - name: Focused checks
+        run: |
+          node --check note-proofreader-v221.js
+          node --check workers/chef-secteur-ai.js
+          node tests/note-proofreader-v221.test.cjs
+          node tests/ai-gateway-cors.test.cjs
+          node tests/build-revision.test.cjs
+          node tests/syntax.test.cjs
+      - name: Commit refinement
+        run: |
+          git config user.name "REDNEWT69"
+          git config user.email "103671138+REDNEWT69@users.noreply.github.com"
+          git add -A
+          git commit -m "V224: envoyer seulement la note brute au proofread [skip ci]"
+          git push origin HEAD:chatgpt/v224-proofread-quota
