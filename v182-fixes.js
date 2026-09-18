@@ -121,14 +121,38 @@ function rebalancePlanByGeography(plan,options){
   options=options||{};if(!window.state||!plan)return{ok:false,plan:plan||{},changed:false,reason:'no-state'};
   const workDays=(options.days||selectedWorkDays()).filter(d=>DAYS.includes(d)),weekKey=String(options.weekKey||currentWeekKey()),mon=parse(weekKey)||monday(parse((state.settings&&state.settings.weekDate)||'')||new Date()),max=Math.max(1,Math.min(8,Number(state.settings&&state.settings.maxVisitsPerDay)||4));
   if(!workDays.length||!homePoint())return{ok:false,plan,changed:false,reason:'no-days-or-base'};
-  const out=Object.fromEntries(DAYS.map(d=>[d,workDays.includes(d)?[]:clone((plan&&plan[d])||[])])),free=[],seen=new Set(),origin={};
-  for(const day of workDays)for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(!id||seen.has(id))continue;seen.add(id);origin[id]=day;const fixed=lockDayV185(id,weekKey)||appointmentDayV185(id,mon)||(visitedOnV185(id,iso(addDays(mon,DAYS.indexOf(day))))?day:'');if(fixed){if(!workDays.includes(fixed))return{ok:false,plan,changed:false,reason:'fixed-outside'};out[fixed].push(store)}else free.push(store)}
+  const out=Object.fromEntries(DAYS.map(d=>[d,workDays.includes(d)?[]:clone((plan&&plan[d])||[])])),free=[],seen=new Set(),origin={},fixedIds=new Set();
+  for(const day of workDays)for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(!id||seen.has(id))continue;seen.add(id);origin[id]=day;const fixed=lockDayV185(id,weekKey)||appointmentDayV185(id,mon)||(visitedOnV185(id,iso(addDays(mon,DAYS.indexOf(day))))?day:'');if(fixed){if(!workDays.includes(fixed))return{ok:false,plan,changed:false,reason:'fixed-outside'};out[fixed].push(store);fixedIds.add(id)}else free.push(store)}
   for(const day of workDays){out[day]=optimizeRouteV185(out[day]);if(routeCreditsV185(out[day])>max||!dayFitsV185(out[day],day,mon))return{ok:false,plan,changed:false,reason:'fixed-capacity'}}
   const sortDirection=options.preferNearFirst?1:-1;
   free.sort((a,b)=>sortDirection*(homeDistance(a)-homeDistance(b))||DAYS.indexOf(origin[String(a.id)])-DAYS.indexOf(origin[String(b.id)]));
   for(const store of free){
     let best=null;for(const day of workDays){const date=iso(addDays(mon,DAYS.indexOf(day)));if(dayBlockedV185(date))continue;const current=out[day]||[];if(routeCreditsV185(current)+planningCreditV185(store)>max)continue;const trial=optimizeRouteV185(current.concat([store]));if(!dayFitsV185(trial,day,mon))continue;const score=candidateScoreV185(out,day,store,trial,workDays);if(!best||score<best.score-0.001||(Math.abs(score-best.score)<0.001&&DAYS.indexOf(day)<DAYS.indexOf(best.day)))best={day,trial,score}}
     if(!best)return{ok:false,plan,changed:false,reason:'unplaced',store};out[best.day]=best.trial
+  }
+  /* V220 : V185 optimise les kilomètres après le moteur escargot. Il n'a plus le droit
+     de gagner quelques kilomètres en compactant 12 visites sur trois jours si le plan
+     source couvrait déjà les cinq jours. On répare uniquement les jours que le moteur
+     amont avait réellement couverts ; une journée volontairement vide (cible < nombre
+     de jours) reste donc vide. Les visites fixes ne sont jamais déplacées. */
+  const coverageDays=workDays.filter(day=>((plan&&plan[day])||[]).length>0&&!dayBlockedV185(iso(addDays(mon,DAYS.indexOf(day))))),coverageSet=new Set(coverageDays);
+  for(const target of coverageDays){
+    if((out[target]||[]).length)continue;
+    let bestMove=null;
+    for(const donor of workDays){
+      const donorRoute=out[donor]||[],minimum=coverageSet.has(donor)?1:0;if(donorRoute.length<=minimum)continue;
+      for(let i=0;i<donorRoute.length;i++){
+        const store=donorRoute[i],id=String(store&&store.id||'');if(!id||fixedIds.has(id))continue;
+        const donorTrial=optimizeRouteV185(donorRoute.filter((_,idx)=>idx!==i)),targetTrial=optimizeRouteV185((out[target]||[]).concat([store]));
+        if(routeCreditsV185(targetTrial)>max||routeCreditsV185(donorTrial)>max)continue;
+        if(!dayFitsV185(targetTrial,target,mon)||!dayFitsV185(donorTrial,donor,mon))continue;
+        const beforeA=routeKmV185(donorRoute),beforeB=routeKmV185(out[target]||[]),afterA=routeKmV185(donorTrial),afterB=routeKmV185(targetTrial);
+        const score=(Number.isFinite(afterA)?afterA:99999)+(Number.isFinite(afterB)?afterB:99999)-(Number.isFinite(beforeA)?beforeA:99999)-(Number.isFinite(beforeB)?beforeB:0),originMatch=origin[id]===target;
+        if(!bestMove||(originMatch&&!bestMove.originMatch)||(originMatch===bestMove.originMatch&&(score<bestMove.score-0.001||(Math.abs(score-bestMove.score)<0.001&&DAYS.indexOf(donor)<DAYS.indexOf(bestMove.donor)))))bestMove={donor,donorTrial,targetTrial,score,originMatch};
+      }
+    }
+    if(!bestMove)return{ok:false,plan,changed:false,reason:'coverage-unplaced',day:target};
+    out[bestMove.donor]=bestMove.donorTrial;out[target]=bestMove.targetTrial;
   }
   for(const day of workDays){out[day]=optimizeRouteV185(out[day]);if(routeCreditsV185(out[day])>max)return{ok:false,plan,changed:false,reason:'capacity-after'}}
   if(!sameStoreIds(plan,out,workDays))return{ok:false,plan,changed:false,reason:'store-integrity'};
