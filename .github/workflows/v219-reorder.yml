@@ -1,0 +1,34 @@
+name: V219 reorder once
+on:
+  push:
+    branches: [chatgpt/v219-planning-summary]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v219-planning-summary
+      - name: Respecter l’ordre runtime historique
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html'); text=p.read_text()
+          old="'./sector-pilotage.js','./planning-summary-v219.js','./v182-fixes.js','./priority-campaign-v187.js','./auto-planning-fix.js','./performance-data-v190.js'"
+          new="'./sector-pilotage.js','./v182-fixes.js','./priority-campaign-v187.js','./auto-planning-fix.js','./planning-summary-v219.js','./performance-data-v190.js'"
+          if old not in text: raise SystemExit('séquence V219 actuelle introuvable')
+          p.write_text(text.replace(old,new,1))
+          PY
+          node tests/terrain-planning-runtime.test.cjs
+          node -c planning-summary-v219.js
+          git diff --check
+      - name: Commit ordre V219
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git commit -m 'V219 : préserver l’ordre runtime historique'
+          git push origin HEAD:chatgpt/v219-planning-summary
