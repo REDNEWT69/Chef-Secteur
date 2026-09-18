@@ -4,6 +4,7 @@
 'use strict';
 const SHEET_ID='srReportSheet',VISIT_BTN_ID='srReportBtn',QUICK_BTN_ID='srReportQuickBtn',SHARE_BTN_ID='srReportSharePhotos',AI_BTN_ID='srReportAI',EDIT_BTN_ID='srReportEdit';
 const PLACEHOLDER='[Non renseigné par le FMT]';
+const PRIMARY_BRAND='Sam'+'sung';
 const FAMILY_OF_BRAND={
   'grands-magasins':['boulanger','darty','fnac','conforama','but'],
   'cuisinistes':['schmidt','cuisinella'],
@@ -11,38 +12,28 @@ const FAMILY_OF_BRAND={
 };
 const MERGED={cuisinistes:1,'buying-groups':1};
 const GRAND_SAMPLE={
-  brun:`Résumé BRUN
+  brun:`⚫ Résumé BRUN – [Enseigne Ville]
 
-Première visite sur le magasin [Enseigne Ville]. Présenter en une phrase le contexte utile du point de vente et son évolution uniquement si ces éléments sont présents dans les notes.
+Rédiger 3 à 6 paragraphes courts et naturels. Regrouper les informations qui parlent du même sujet : équipe et retours vendeurs, TV / OLED / Neo QLED / Lifestyle, audio, concurrence, merchandising, massifications et OMNI lorsqu'ils sont réellement renseignés. Les références, prix, volumes et verbatims utiles restent visibles dans le texte.
 
-Présenter ensuite les contacts rencontrés, l’équipe et les informations magasin utiles, dans un style fluide et factuel.
+Ne pas réciter une checklist. Chaque paragraphe doit apporter un constat terrain utile au business ou au merchandising.
 
-Décrire les nouveautés, références, démonstrations et tendances commerciales avec les références exactes fournies par le FMT, sans en inventer.
+### 🎯 Plan d’action / prochain passage
+- [action factuelle directement liée à un constat ou à un suivi saisi]
+- [autre action uniquement si elle découle réellement des notes]
 
-Expliquer le positionnement de la marque face à la concurrence et les retours vendeurs uniquement lorsque ces informations existent dans la source.
+**Photos : X au total – Y avant / Z après / N autres.**`,
+  blanc:`⚪ Résumé BLANC – [Enseigne Ville]
 
-Concernant les massifications, résumer la situation constatée et la raison éventuelle quand elle est connue.
+Rédiger 3 à 6 paragraphes courts et naturels. Regrouper les informations par sujet ou famille réellement présente dans les notes : aspiration, cuisson, froid, lavage, petit électroménager, concurrence, visibilité, massification et retours vendeurs. Les références, prix, volumes et verbatims utiles restent visibles dans le texte.
 
-OMNI à suivre : résumer en une phrase les sujets PLV / merch réellement relevés.
+Ne pas réciter une checklist. Chaque paragraphe doit faire ressortir un constat terrain utile et le positionnement observé de la marque, sans extrapolation.
 
-Formation / prochain passage
+### 🎯 Plan d’action / prochain passage
+- [action factuelle directement liée à un constat ou à un suivi saisi]
+- [autre action uniquement si elle découle réellement des notes]
 
-Faire clairement ressortir les besoins de formation, l’interlocuteur à revoir et les contrôles prévus au prochain passage.`,
-  blanc:`Résumé BLANC
-
-Première visite sur le magasin [Enseigne Ville]. Présenter en une phrase le contexte utile du point de vente uniquement si les notes le renseignent.
-
-Présenter les contacts rencontrés et les informations d’équipe pertinentes.
-
-Décrire naturellement la situation de la marque sur le froid, le lavage et les autres familles uniquement avec les faits réellement saisis, y compris les objections ou retours SAV lorsqu’ils existent.
-
-Faire ressortir les tendances locales utiles au business et les opportunités réellement observées, sans extrapolation.
-
-Concernant les massifications, résumer clairement la situation de la marque et de la concurrence ainsi que les éventuels points à revoir.
-
-Formation / prochain passage
-
-Faire clairement ressortir la formation à prévoir, les objections à travailler et les contrôles du prochain passage à partir des seules notes disponibles.`
+**Photos : X au total – Y avant / Z après / N autres.**`
 };
 function norm(v){return String(v==null?'':v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim()}
 function skeletonFor(enseigne){const n=norm(enseigne);for(const key of Object.keys(FAMILY_OF_BRAND))if(FAMILY_OF_BRAND[key].indexOf(n)>=0)return key;return 'grands-magasins'}
@@ -90,39 +81,126 @@ function officialStructure(skeleton){
 function aiPrompt(data){
  const source=JSON.stringify(data,null,2);
  if(data.skeleton==='grands-magasins'){
-  const fam=String(data.family||'brun').toUpperCase(),sample=GRAND_SAMPLE[data.family]||GRAND_SAMPLE.brun;
-  return `Tu es un Field Merchandising Trainer (FMT) d’excellence. Tu transformes des notes terrain brutes en un résumé Slack professionnel, naturel, concret et immédiatement exploitable par la direction.
+  const fam=String(data.family||'brun').toUpperCase(),emoji=fam==='BLANC'?'⚪':'⚫',sample=GRAND_SAMPLE[data.family]||GRAND_SAMPLE.brun,storeName=[text(data.store&&data.store.enseigne),text(data.store&&data.store.ville)].filter(Boolean).join(' ');
+  return `Tu es un Field Merchandising Trainer (FMT) d’excellence. Tu rédiges le résumé de fin de visite destiné à une direction commerciale. Le résultat doit ressembler à un compte rendu écrit par un chef de secteur expérimenté : naturel, précis, synthétique, hiérarchisé et immédiatement exploitable.
 
-RÈGLES ABSOLUES :
-1. Utilise UNIQUEMENT les faits présents dans DONNEES_SOURCE. N’invente jamais un nom, un chiffre, une référence produit, une tendance, une action, une cause ou une formation.
-2. L’EXEMPLE_DE_STYLE_VALIDÉ sert uniquement de modèle de ton, de longueur et d’organisation. Il est INTERDIT d’en recopier les faits s’ils n’existent pas dans DONNEES_SOURCE.
-3. Conserve exactement les références produit fournies dans la source. Ne les corrige pas de toi-même.
-4. Réécris les notes en français professionnel et fluide. Corrige orthographe et syntaxe, regroupe les idées proches et supprime les doublons.
-5. Ne montre JAMAIS les libellés techniques 6P tels que PROMOTION, PRIX, PRODUIT, PLACE, PROPRETÉ ou PÉDAGOGIE. Transforme leur contenu utile en phrases naturelles dans la bonne partie du résumé.
-6. N’affiche pas les mentions automatiques « responsable à définir » ou « sans échéance » sauf si elles ont réellement été saisies comme information terrain.
-7. Couvre, lorsqu’elles sont renseignées, les attentes métier suivantes : ${officialStructure(data.skeleton)}
-8. Les formations doivent ressortir clairement. Ne les enterre pas dans un paragraphe secondaire.
-9. Si une information indispensable manque réellement, utilise exactement ${PLACEHOLDER}, mais n’empile pas des sous-sections vides.
-10. Le résultat doit être directement collable dans Slack : aucun préambule, aucune explication de ta méthode, aucun bloc de code.
-11. Si des photos sont présentes, mentionne seulement le nombre et, s’ils sont connus, avant/après. N’invente jamais le contenu visuel des photos.
+RÈGLES DE FOND — PRIORITÉ ABSOLUE :
+1. Utilise UNIQUEMENT les faits présents dans DONNEES_SOURCE. N’invente jamais un nom, un chiffre, une référence, un prix, un volume, une tendance, une cause, une action réalisée, une promesse, une formation ou une conclusion.
+2. Conserve exactement les références produit, prix, volumes, noms de concurrents, prénoms et verbatims utiles lorsqu’ils sont présents. Ne corrige jamais une référence produit de toi-même.
+3. Ne retranscris pas les notes ligne par ligne. Regroupe les informations proches par sujet ou univers produit et hiérarchise-les selon leur intérêt terrain : visibilité / merchandising, performance ou tendance observée, retour vendeur, concurrence, action réalisée, massification, OMNI et point de blocage.
+4. Fais des liens uniquement lorsque le lien est explicitement présent dans les notes. Ne transforme jamais deux constats séparés en relation de cause à effet supposée.
+5. Corrige orthographe, grammaire et syntaxe. Supprime les répétitions et les formulations vagues ou génériques. Préfère des phrases courtes, concrètes et professionnelles.
+6. Ne montre JAMAIS les libellés techniques 6P (PROMOTION, PRIX, PRODUIT, PLACE, PROPRETÉ, PÉDAGOGIE). Intègre seulement leur contenu utile dans le texte naturel.
+7. Couvre, uniquement lorsqu’ils sont renseignés, les sujets métier suivants : ${officialStructure(data.skeleton)}
+8. Dans le corps du résumé, n’affiche pas de rubrique vide et n’ajoute pas ${PLACEHOLDER} à chaque information absente. Omet simplement les thèmes non renseignés.
+9. Le plan d’action doit contenir uniquement des actions explicitement prévues dans la source OU des suivis opérationnels évidents et conservateurs qui découlent directement d’un constat réel. Exemple autorisé : un meuble de marque explicitement absent peut conduire à « suivre la possibilité de mise en place du meuble ». Exemple interdit : inventer une négociation, un accord magasin, une commande ou une formation non mentionnée.
+10. Si une formation / un prochain passage est explicitement saisi, il doit apparaître dans le plan d’action. N’invente jamais une formation.
+11. Si aucune action sûre ne peut être formulée, écris uniquement ${PLACEHOLDER} sous le titre du plan d’action.
+12. Si photos.total > 0, termine par une seule ligne photos avec le total et les compteurs disponibles avant / après / autres. Si photos.total = 0, n’ajoute aucune ligne Photos.
+13. Le résultat est destiné à Slack : aucun préambule, aucune explication de méthode, aucun bloc de code, aucune phrase du type « voici le résumé ».
 
 FORMAT STRICT :
-Résumé ${fam}
+${emoji} Résumé ${fam} – ${storeName||'[Enseigne Ville]'}
 
-[plusieurs paragraphes courts et naturels couvrant les faits utiles]
+[3 à 6 paragraphes courts, naturels et regroupés intelligemment. Utilise si pertinent des amorces comme « Sur l’aspiration », « Sur la cuisson », « Sur le froid », « Côté TV » ou « Sur l’audio », mais seulement pour les thèmes réellement présents.]
 
-Formation / prochain passage
+### 🎯 Plan d’action / prochain passage
+- [2 à 5 actions maximum, uniquement si elles sont sûres et directement reliées aux faits]
 
-[formation, suivi et plan d’action ; ${PLACEHOLDER} si rien n’est disponible]
+[Si photos.total > 0 : **Photos : X au total – Y avant / Z après / N autres.**]
 
 DONNEES_SOURCE :
 ${source}
 
-EXEMPLE_DE_STYLE_VALIDÉ — STYLE UNIQUEMENT, PAS UNE SOURCE FACTUELLE :
+EXEMPLE_DE_STYLE_VALIDÉ — STYLE ET ORGANISATION UNIQUEMENT, JAMAIS UNE SOURCE FACTUELLE :
 ${sample}`;
  }
- const title=data.skeleton==='cuisinistes'?'COMPTE RENDU DE VISITE CUISINISTE':'COMPTE RENDU DE VISITE BUYING GROUP';
- return `Tu es un Field Merchandising Trainer (FMT). Rédige un ${title} professionnel à partir UNIQUEMENT de DONNEES_SOURCE. N’invente aucun fait. Corrige uniquement la forme, déduplique, et transforme les anciennes observations techniques en français naturel sans afficher les libellés 6P. Si une information attendue manque, écris exactement ${PLACEHOLDER}. Le texte doit être directement collable dans Slack, sans préambule ni bloc de code. Respecte cette trame métier : ${officialStructure(data.skeleton)}\n\nDONNEES_SOURCE :\n${source}`
+ if(data.skeleton==='cuisinistes'){
+  return `Tu es un Field Merchandising Trainer (FMT) expert des enseignes cuisinistes. Transforme DONNEES_SOURCE en un compte rendu professionnel, analytique mais factuel, destiné à la direction.
+
+RÈGLES ABSOLUES :
+- utilise uniquement les faits présents dans DONNEES_SOURCE ;
+- N’invente aucun fait, même plausible ;
+- n’invente aucun chiffre, contact, cause, performance, marque partenaire, contrat, litige, rendez-vous ou action ;
+- corrige la forme, regroupe les informations proches, supprime les doublons et conserve les références / montants / dates exacts ;
+- rédige naturellement : ne récite pas les notes et ne montre pas les libellés techniques 6P ;
+- pour chaque information attendue mais absente, écris exactement ${PLACEHOLDER} ;
+- le plan d’action ne contient que les actions ou suivis réellement saisis ;
+- aucun préambule ni bloc de code.
+
+FORMAT STRICT :
+# COMPTE RENDU DE VISITE CUISINISTE
+**Enseigne :** [Schmidt / Cuisinella] | **Magasin :** [Ville / Point de vente]
+
+### 1. Suivi Magasin
+- **Chiffre d’Affaires 2025 / 2026 :** [montants exacts ou ${PLACEHOLDER}]
+- **Groupement :** [statut + nombre de magasins ou ${PLACEHOLDER}]
+- **Équipe du Magasin :** [propriétaire / directeur / nombre de concepteurs-vendeurs ou ${PLACEHOLDER}]
+
+### 2. Point Produits & Concurrence
+- **Performance de la marque :** [faits de vente vs concurrence uniquement]
+- **Typologie de produits porteurs :** [familles réellement citées]
+- **Marques Partenaires :** [marques + raisons réellement citées]
+
+### 3. Formation
+- **Historique Classroom :** [Oui / Non + date + nombre de personnes si disponibles]
+
+### 4. Contrats d’Exposition (Expo)
+- **Contrat d’Expo ${PRIMARY_BRAND} :** [Oui avec montant / nombre de produits / temps restant, ou Non avec points bloquants]
+- **Contrat Concurrent :** [marque et produits]
+
+### 5. SAV / ADV
+- **Litiges en cours :** [détails + statut de résolution FMT / SEF]
+
+### 6. Plan d’Action & Prochaines Étapes
+- **Suivi Opérationnel :** [RDV point chiffre / Classroom / accompagnement technique réellement saisi]
+- **Statut Négociation Contrat d’Expo :** [RDV programmé + date / RDV effectué en attente retour / signé en attente livraison]
+
+DONNEES_SOURCE :
+${source}`;
+ }
+ return `Tu es un Field Merchandising Trainer (FMT) expert des Buying Groups Gitem et Pro&Cie. Transforme DONNEES_SOURCE en un compte rendu structuré, clair, analytique mais strictement factuel pour la direction.
+
+RÈGLES ABSOLUES :
+- utilise uniquement les faits présents dans DONNEES_SOURCE ;
+- N’invente aucun fait, même plausible ;
+- n’invente aucun chiffre, ancienneté, effectif, performance, motif d’absence, partenaire, formation, litige, perception de Findis ou action ;
+- corrige la forme, regroupe les informations proches, supprime les doublons et conserve les références / dates / chiffres exacts ;
+- ne récite pas les notes et ne montre pas les libellés techniques 6P ;
+- pour chaque information attendue mais absente, écris exactement ${PLACEHOLDER} ;
+- le plan d’action ne contient que les engagements ou suivis réellement présents dans la source ;
+- aucun préambule ni bloc de code.
+
+FORMAT STRICT :
+# COMPTE RENDU DE VISITE BUYING GROUP
+**Enseigne :** [Gitem / Pro&Cie] | **Magasin :** [Ville / Point de vente]
+
+### 1. Suivi Magasin & Profil
+- **Ancienneté & Effectif :** [temps de détention / nombre de personnes]
+- **Santé du magasin :** [faits réellement saisis sur la dynamique commerciale]
+
+### 2. Point Produits & Concurrence
+- **Performance SEF & Présence :** [ventes vs concurrence / présence par famille et motifs réellement cités]
+- **Typologie & Partenaires :** [familles porteuses / marques partenaires et leviers réellement cités]
+
+### 3. Formation & Newsletter
+- **Statut Formation :** [session prévue + date / non + raison réellement citée]
+- **Newsletter SEF :** [réception + avis du magasin]
+
+### 4. Écosystème SAV & Technique
+- **Système Protechneed :** [magasin informé Oui/Non + formation éventuelle]
+- **Valise Haas & SAV :** [utilisation / fonctionnement / relation SAV]
+- **Litiges SAV :** [litiges + suivi FMT ou Marc]
+
+### 5. Contexte Marché : Rachat par Findis
+- **Perception Terrain :** [assortiment / stock / livraison uniquement si réellement renseignés]
+
+### 6. Plan d’Action
+- **PDL & Linéaire :** [suivi réellement prévu]
+- **Accompagnement :** [formations produits / Haas / SAV / technique réellement prévues]
+
+DONNEES_SOURCE :
+${source}`
 }
 function cleanAIText(value){let s=text(value);s=s.replace(/^```(?:markdown|md|text)?\s*/i,'').replace(/\s*```$/,'').trim();s=s.replace(/^(?:Voici|Voilà)\s+(?:le|ton|votre)\s+(?:compte rendu|résumé)[^\n]*\n+/i,'').trim();return s}
 let sheet=null,activeVisit='',activeTab='blanc',aiDrafts=Object.create(null);
@@ -142,7 +220,7 @@ function updateAIButton(merged){const b=sheet&&sheet.querySelector('#'+AI_BTN_ID
 function updateEditButton(){const area=sheet&&sheet.querySelector('#srReportText'),b=sheet&&sheet.querySelector('#'+EDIT_BTN_ID);if(!area||!b)return;b.textContent=area.readOnly?'Modifier le texte':'Terminer la modification'}
 async function refresh(){const v=visitById(activeVisit);if(!v){say('Visite introuvable.',true);return}const store=storeOf(state(),v),skeleton=skeletonFor(store.enseigne),merged=!!MERGED[skeleton];sheet.querySelector('#srReportSubtitle').textContent=text(store.enseigne)+' '+text(store.ville)+' · '+visitDate(v)+(merged?' · un seul compte rendu':' · deux comptes rendus');const tabs=sheet.querySelector('#srReportTabs');tabs.replaceChildren();tabs.hidden=merged;if(!merged){const M=model();for(const family of M.FAMILIES){const b=btn(family.toUpperCase(),()=>{activeTab=family;say('');refresh()},'sr-reportTab');b.setAttribute('role','tab');b.setAttribute('aria-selected',activeTab===family?'true':'false');b.dataset.family=family;tabs.append(b)}}const photos=merged?[]:await photosFor(v.storeId,activeTab),key=draftKey(v,skeleton),area=sheet.querySelector('#srReportText');area.dataset.draftKey=key;area.readOnly=true;area.value=Object.prototype.hasOwnProperty.call(aiDrafts,key)?aiDrafts[key]:build(state(),v.id,activeTab,photos);updatePhotoButton(photos,merged);updateAIButton(merged);updateEditButton()}
 function toggleEdit(){const area=sheet&&sheet.querySelector('#srReportText');if(!area)return false;area.readOnly=!area.readOnly;updateEditButton();if(!area.readOnly){area.focus();area.setSelectionRange(area.value.length,area.value.length);say('Tu peux corriger le texte avant de le copier dans Slack.')}else{const k=area.dataset.draftKey;if(k)aiDrafts[k]=area.value;say('Modifications conservées pour cette sortie magasin.')}return true}
-async function generateAI(){const v=visitById(activeVisit);if(!v){say('Visite introuvable.',true);return false}const store=storeOf(state(),v),skeleton=skeletonFor(store.enseigne),merged=!!MERGED[skeleton],button=sheet&&sheet.querySelector('#'+AI_BTN_ID),area=sheet&&sheet.querySelector('#srReportText');if(typeof root.callAIGateway!=='function'||!root.aiConfig||!root.aiConfig.gateway){say('IA en ligne indisponible. Le rapport local reste utilisable et modifiable.',true);return false}const photos=merged?[]:await photosFor(v.storeId,activeTab),payload=buildAIPayload(state(),v.id,activeTab,photos),key=draftKey(v,skeleton),oldLabel=button&&button.textContent;if(button){button.disabled=true;button.textContent='✨ Génération en cours…'}say('Génération du compte rendu à partir de tes seules notes terrain…');try{const response=await root.callAIGateway({mode:'assistant',message:aiPrompt(payload),context:{task:'visit_report',visit:payload}}),generated=cleanAIText(response&&response.text);if(!generated||generated.length<80)throw new Error('réponse trop courte');if(skeleton==='grands-magasins'&&!/^Résumé\s+(BRUN|BLANC)/i.test(generated))throw new Error('format de résumé inattendu');if(skeleton==='grands-magasins'&&!/Formation\s*\/\s*prochain passage/i.test(generated))throw new Error('bloc formation / prochain passage manquant');aiDrafts[key]=generated;if(area){area.dataset.draftKey=key;area.value=generated;area.readOnly=true}updateEditButton();say((merged?'Compte rendu':'Résumé '+activeTab.toUpperCase())+' généré. Relis-le, corrige si besoin, puis copie-le dans Slack.');return true}catch(e){say('IA indisponible ou réponse incomplète : '+(e&&e.message?e.message:String(e))+'. Le rapport local est conservé.',true);return false}finally{if(button){button.disabled=false;button.textContent=oldLabel||'✨ Générer avec l’IA';updateAIButton(merged)}}}
+async function generateAI(){const v=visitById(activeVisit);if(!v){say('Visite introuvable.',true);return false}const store=storeOf(state(),v),skeleton=skeletonFor(store.enseigne),merged=!!MERGED[skeleton],button=sheet&&sheet.querySelector('#'+AI_BTN_ID),area=sheet&&sheet.querySelector('#srReportText');if(typeof root.callAIGateway!=='function'||!root.aiConfig||!root.aiConfig.gateway){say('IA en ligne indisponible. Le rapport local reste utilisable et modifiable.',true);return false}const photos=merged?[]:await photosFor(v.storeId,activeTab),payload=buildAIPayload(state(),v.id,activeTab,photos),key=draftKey(v,skeleton),oldLabel=button&&button.textContent;if(button){button.disabled=true;button.textContent='✨ Génération en cours…'}say('Génération du compte rendu à partir de tes seules notes terrain…');try{const response=await root.callAIGateway({mode:'assistant',message:aiPrompt(payload),context:{task:'visit_report',visit:payload}}),generated=cleanAIText(response&&response.text);if(!generated||generated.length<80)throw new Error('réponse trop courte');if(skeleton==='grands-magasins'&&!/^(?:⚫|⚪)?\s*Résumé\s+(BRUN|BLANC)\b/i.test(generated))throw new Error('format de résumé inattendu');if(skeleton==='grands-magasins'&&!/(?:Formation|Plan d[’']action)\s*\/\s*prochain passage/i.test(generated))throw new Error('bloc plan d’action / prochain passage manquant');aiDrafts[key]=generated;if(area){area.dataset.draftKey=key;area.value=generated;area.readOnly=true}updateEditButton();say((merged?'Compte rendu':'Résumé '+activeTab.toUpperCase())+' généré. Relis-le, corrige si besoin, puis copie-le dans Slack.');return true}catch(e){say('IA indisponible ou réponse incomplète : '+(e&&e.message?e.message:String(e))+'. Le rapport local est conservé.',true);return false}finally{if(button){button.disabled=false;button.textContent=oldLabel||'✨ Générer avec l’IA';updateAIButton(merged)}}}
 async function copy(){const area=sheet&&sheet.querySelector('#srReportText');if(!area)return false;try{if(root.navigator&&root.navigator.clipboard&&root.navigator.clipboard.writeText){await root.navigator.clipboard.writeText(area.value);say('Compte rendu copié.');return true}}catch(e){}const wasReadonly=area.readOnly;try{area.readOnly=false;area.select();const ok=root.document.execCommand&&root.document.execCommand('copy');area.readOnly=wasReadonly;if(ok){say('Compte rendu copié.');return true}}catch(e){area.readOnly=wasReadonly}say('Copie impossible ici. Sélectionne le texte et copie-le à la main.',true);return false}
 async function sharePhotos(){const v=visitById(activeVisit);if(!v){say('Visite introuvable.',true);return false}const api=root.StorePhotosV1;if(!api||typeof api.listByFamily!=='function'||typeof api.shareRecords!=='function'){say('Partage photo indisponible ici. Ouvre Photos magasin pour les télécharger une par une.',true);return false}let rows;try{rows=await api.listByFamily(v.storeId,activeTab)}catch(e){say('Photos indisponibles : '+(e.message||String(e)),true);return false}updatePhotoButton(rows,false);const area=sheet&&sheet.querySelector('#srReportText'),key=currentDraftKey();if(area&&!Object.prototype.hasOwnProperty.call(aiDrafts,key))area.value=build(state(),v.id,activeTab,rows);if(!rows.length){say('Aucune photo pour cette famille.');return false}try{const result=await api.shareRecords(rows);if(result==='shared'){say(rows.length+' photo'+(rows.length>1?'s':'')+' '+activeTab.toUpperCase()+' partagée'+(rows.length>1?'s':'')+'.');return true}if(result==='downloaded'){say('Photo téléchargée.');return true}say('Partage de plusieurs fichiers indisponible ici. Ouvre Photos magasin pour les télécharger une par une.',true);return false}catch(e){if(e&&e.name==='AbortError'){say('Partage annulé.');return false}say('Partage impossible : '+(e.message||String(e))+'. Ouvre Photos magasin pour les télécharger une par une.',true);return false}}
 function close(){if(sheet&&sheet.open)sheet.close()}
