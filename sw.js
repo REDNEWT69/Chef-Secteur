@@ -13,7 +13,7 @@ const CORE_SHELL = [
 const OPTIONAL_SHELL = [
   "./visit-report-slack.js",
   "./store-runner-opportunities.js",
-  "./performance-data-v190.js", "./performance-ui-v190.js", "./assistant-performance-context-v192.js", "./cuisiniste-contracts-v193.js",
+  "./performance-data-v190.js", "./performance-ui-v190.js", "./assistant-performance-context-v192.js", "./visit-mobile-ux-v215.js", "./cuisiniste-contracts-v193.js",
   "./region-stores.js", "./region-stores.css",
   "./region-fetch-resilience.js",
   "./official-catalog.js",
