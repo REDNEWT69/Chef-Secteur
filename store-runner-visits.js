@@ -37,6 +37,8 @@ function legacyReport(host,block){
  host.append(details)
 }
 function frenchDay(iso){const p=String(iso||'').split('-');return p.length===3?p[2]+'/'+p[1]:String(iso||'')}
+function localDay(){const d=new Date(),p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())}
+function sameDayCompleted(storeId){const id=String(storeId||''),day=localDay();return domain().visits.filter(v=>String(v.storeId)===id&&v.status==='completed'&&v.completedDate===day).sort((a,b)=>String(b.completedAt||b.updatedAt||'').localeCompare(String(a.completedAt||a.updatedAt||'')))[0]||null}
 /* La promesse de la visite précédente, pour la famille affichée uniquement. Lecture seule :
    aucune écriture, aucun champ supplémentaire à remplir en magasin. */
 function lastPromise(v,family){
@@ -68,13 +70,31 @@ function report(host,v){
  legacyReport(host,block);
  if(v.status==='draft'){
   host.append(element('p','Quand tu sors du magasin, utilise « 📤 Sortie magasin » en haut : le texte et les photos seront déjà séparés BLANC / BRUN.','sr-terrainExitHint'));
-  host.append(button('Terminer la visite',()=>completeVisit(v),'primary'))
- }else host.append(element('p','Visite terminée le '+v.completedDate,'sr-completed'))
+  const finish=button('Terminer la visite',()=>completeVisit(v),'primary');finish.dataset.srCompleteVisit=v.id;host.append(finish)
+ }else{
+  host.append(element('p','Visite terminée le '+v.completedDate,'sr-completed'));
+  if(v.completedDate===localDay()){const reopen=button('↩ Réouvrir cette visite',()=>reopenVisit(v,true),'secondary');reopen.dataset.srReopenVisit=v.id;host.append(reopen)}
+ }
 }
 function completionText(v){const d=M.reportOf(v),choices=[d.brun.team,d.blanc.team,d.brun.training,d.blanc.training,d.shared.context];return choices.map(x=>String(x||'').trim()).find(Boolean)||'Visite terrain enregistrée'}
-function localDay(){const d=new Date(),p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())}
 async function completeVisit(v){
- await save(s=>{const live=M.getVisit(s,v.id);if(!String(live.conclusion||'').trim())M.editVisit(s,v.id,'conclusion',null,completionText(live).slice(0,500));M.complete(s,v.id,localDay())},()=>{viewStep=3;render();if(typeof window.renderAll==='function')window.renderAll();renderQuickMemory();message('Visite terminée et enregistrée dans l’historique.')})
+ if(!window.confirm('Terminer cette visite maintenant ?\n\nElle passera dans l’historique et deviendra en lecture seule.')){message('Visite conservée en cours.');return false}
+ return save(s=>{const live=M.getVisit(s,v.id);if(!String(live.conclusion||'').trim())M.editVisit(s,v.id,'conclusion',null,completionText(live).slice(0,500));M.complete(s,v.id,localDay())},()=>{viewStep=3;render();if(typeof window.renderAll==='function')window.renderAll();renderQuickMemory();message('Visite terminée et enregistrée dans l’historique.')})
+}
+async function reopenVisit(v,ask){
+ if(!v||v.status!=='completed')return false;
+ if(v.completedDate!==localDay()){message('Seule une visite terminée aujourd’hui peut être réouverte.',true);return false}
+ if(ask&& !window.confirm('Réouvrir cette visite ?\n\nElle repassera en cours sans créer une nouvelle visite ni ajouter un nouveau jour.'))return false;
+ const visitId=v.id;
+ return save(s=>{
+  const live=M.getVisit(s,visitId);if(live.status!=='completed')return;
+  const day=live.completedDate,storeId=String(live.storeId);
+  if(day!==localDay())throw Error('Seule une visite terminée aujourd’hui peut être réouverte.');
+  live.status='draft';live.completedAt=null;live.completedDate=null;live.updatedAt=new Date().toISOString();
+  const otherSameDay=(s.businessV2&&s.businessV2.visits||[]).some(x=>x.id!==live.id&&String(x.storeId)===storeId&&x.status==='completed'&&x.completedDate===day);
+  const legacy=s.visits&&s.visits[storeId];
+  if(legacy&&Array.isArray(legacy.history)&&!otherSameDay){legacy.history=legacy.history.filter(x=>x!==day);legacy.history.sort();legacy.lastVisit=legacy.history[legacy.history.length-1]||''}
+ },()=>{activeId=visitId;previewFamily=activeFamily(current());viewStep=3;render();if(typeof window.renderAll==='function')window.renderAll();renderQuickMemory();message('Visite réouverte · tu peux continuer BLANC et BRUN.')})
 }
 /* Le parcours terrain n'a plus qu'une étape : l'ancien onglet Suivi ne pouvait plus rien
    afficher, aucun chemin ne créant plus d'action. Les actions encore ouvertes restent
@@ -89,7 +109,12 @@ function steps(host,v){
 function render(){const v=current();if(!v){hub();return}body.replaceChildren();title.textContent=name(v.storeId)+' · '+(v.status==='draft'?'Visite en cours':'Visite terminée');steps(body,v);familySwitch(body,v);report(body,v)}
 function hub(){activeId=null;title.textContent='Visites';body.replaceChildren();const rows=domain().visits.slice().sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));if(!rows.length)body.append(element('p','Démarre une visite depuis une fiche magasin, le planning ou la tournée.'));for(const v of rows){const box=element('section',undefined,'sr-item');box.append(element('h3',name(v.storeId)),element('p',v.status==='draft'?'Visite en cours':('Terminée le '+v.completedDate)),button(v.status==='draft'?'Reprendre la visite':'Consulter la visite',()=>{activeId=v.id;previewFamily=activeFamily(v);viewStep=3;render()}));body.append(box)}}
 function show(){if(!dialog.open){opener=document.activeElement;dialog.showModal()}}
-async function start(storeId){show();let id;await save(s=>{id=M.start(s,String(storeId));const v=M.getVisit(s,id);if(v.status==='draft'&&v.step!==3)M.editVisit(s,id,'step',null,3)},()=>{activeId=id;previewFamily=activeFamily(current());viewStep=3;render()})}
+async function start(storeId){
+ show();
+ const key=String(storeId),draft=domain().visits.find(v=>String(v.storeId)===key&&v.status==='draft');
+ if(!draft){const recent=sameDayCompleted(key);if(recent&&window.confirm('Une visite de ce magasin a déjà été terminée aujourd’hui.\n\nOK : reprendre cette visite\nAnnuler : créer une nouvelle visite'))return reopenVisit(recent,false)}
+ let id;await save(s=>{id=M.start(s,key);const v=M.getVisit(s,id);if(v.status==='draft'&&v.step!==3)M.editVisit(s,id,'step',null,3)},()=>{activeId=id;previewFamily=activeFamily(current());viewStep=3;render()});return id
+}
 function openVisit(visitId){const v=domain().visits.find(x=>x.id===String(visitId));if(!v)return false;show();activeId=v.id;previewFamily=activeFamily(v);viewStep=3;render();return true}
 function openHub(){show();save(undefined,hub);return true}
 async function close(){if(!await save())return;dialog.close();if(opener&&opener.isConnected)opener.focus();if(typeof window.renderAll==='function')window.renderAll()}
