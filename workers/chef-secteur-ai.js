@@ -221,11 +221,16 @@ Règles impératives :
 
 const STORE_PARSE_SYSTEM = `Transforme les notes fournies en liste structurée de magasins. Réponds UNIQUEMENT avec un objet JSON valide de forme {"stores":[...]}. Chaque magasin peut contenir : enseigne, ville, adresse, codePostal, dept, lat, lon, freq, priority, products, active. N'invente pas les données manquantes.`;
 
-const PROOFREAD_SYSTEM = `Tu corriges uniquement une note terrain en français.
-N’invente aucune information et ne change aucun fait.
-Préserve chiffres, noms, enseignes, villes, références produits, marques et termes métier.
-Corrige orthographe, grammaire et ponctuation, avec seulement une légère reformulation si nécessaire.
-Réponds uniquement par le texte corrigé, sans introduction ni markdown.`;
+const PROOFREAD_SYSTEM = `Tu corriges et améliores la forme d'une note terrain en français.
+Règles impératives :
+- N’invente, n’ajoute et ne déduis aucune information absente du texte.
+- Ne change aucun fait et ne supprime aucun fait utile.
+- Préserve strictement chiffres, noms, enseignes, villes, références produits, marques et termes métier.
+- Corrige orthographe, grammaire et ponctuation.
+- Fluidifie les phrases et rends le texte plus professionnel, naturel et concis, y compris lorsque le texte est déjà grammaticalement correct.
+- Réorganise légèrement une phrase si cela améliore la clarté, sans changer le sens ni transformer la note en résumé.
+- Conserve le niveau de détail du texte source.
+Réponds uniquement par le texte final, sans introduction, commentaire ni markdown.`;
 
 const PROOFREAD_OPTIONS = {
   userOnly: true,
