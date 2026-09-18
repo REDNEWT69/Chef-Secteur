@@ -1,0 +1,82 @@
+name: V219 apply once
+on:
+  push:
+    branches: [chatgpt/v219-planning-summary]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v219-planning-summary
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Appliquer V219 atomiquement
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          build_old='20260918-moononly218'
+          build_new='20260918-planningsummary219'
+
+          index=Path('index.html')
+          text=index.read_text()
+          if build_old not in text and build_new not in text:
+              raise SystemExit('BUILD_REV attendu absent de index.html')
+          text=text.replace(build_old,build_new)
+          needle="'./sector-pilotage.js','./v182-fixes.js'"
+          repl="'./sector-pilotage.js','./planning-summary-v219.js','./v182-fixes.js'"
+          if './planning-summary-v219.js' not in text:
+              if needle not in text: raise SystemExit('point insertion V219 absent de index.html')
+              text=text.replace(needle,repl,1)
+          index.write_text(text)
+
+          sw=Path('sw.js')
+          text=sw.read_text()
+          if build_old not in text and build_new not in text:
+              raise SystemExit('BUILD_REV attendu absent de sw.js')
+          text=text.replace(build_old,build_new)
+          needle='  "./planning-pro-plus.js",\n'
+          if '"./planning-summary-v219.js"' not in text:
+              if needle not in text: raise SystemExit('point insertion V219 absent de sw.js')
+              text=text.replace(needle,needle+'  "./planning-summary-v219.js",\n',1)
+          sw.write_text(text)
+
+          version=Path('version.json')
+          data=json.loads(version.read_text())
+          data['latestBuild']=build_new
+          data['displayVersion']='219'
+          data['channel']='stable'
+          data['releasedAt']='2026-09-18'
+          version.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
+
+          workflow=Path('.github/workflows/reliability-checks.yml')
+          text=workflow.read_text()
+          unit='      - run: node tests/planning-summary-v219.test.cjs\n'
+          if unit not in text:
+              anchor='      - run: node tests/sector-pilotage.test.cjs\n'
+              if anchor not in text: raise SystemExit('ancre test V219 absente')
+              text=text.replace(anchor,anchor+unit,1)
+          browser='tests/planning-summary-v219-browser.spec.cjs'
+          if browser not in text:
+              anchor='tests/sector-pilotage-browser.spec.cjs'
+              if anchor not in text: raise SystemExit('ancre browser V219 absente')
+              text=text.replace(anchor,anchor+' '+browser,1)
+          workflow.write_text(text)
+          PY
+          rm .github/workflows/v219-apply.yml
+          node -c planning-summary-v219.js
+          node tests/planning-summary-v219.test.cjs
+          git diff --check
+      - name: Commit final V219
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html sw.js version.json planning-summary-v219.js tests/planning-summary-v219.test.cjs tests/planning-summary-v219-browser.spec.cjs .github/workflows/reliability-checks.yml .github/workflows/v219-apply.yml
+          git commit -m 'V219 : synthèse planning compacte et pilotage mensuel'
+          git push origin HEAD:chatgpt/v219-planning-summary
