@@ -1,22 +1,90 @@
-name: V220 owner trace once
+name: V220 final diagnostics patch once
 on:
   push:
     branches:
       - chatgpt/v220-pilotage-snail-reliability
 permissions:
-  contents: read
+  contents: write
 jobs:
-  trace:
+  patch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: chatgpt/v220-pilotage-snail-reliability
-      - name: Lister les écritures et événements planning
+      - name: Synchroniser diagnostic et planning final
         run: |
-          printf '\n=== ARCHIVE WRITERS ===\n'
-          grep -RIn --include='*.js' --include='*.html' 'chef_sector_plan_archive_v1\|ARCHIVE_KEY' . | head -n 240 || true
-          printf '\n=== RANGE GENERATED LISTENERS ===\n'
-          grep -RIn --include='*.js' --include='*.html' 'chef-range-generated' . | head -n 160 || true
-          printf '\n=== PLANNING UPDATED LISTENERS ===\n'
-          grep -RIn --include='*.js' --include='*.html' 'store-runner:planning-updated' . | head -n 240 || true
+          python - <<'PY'
+          from pathlib import Path
+
+          terrain = Path('terrain-planning-v1.js')
+          text = terrain.read_text()
+          marker = "async function syncCalendar(first,state=root.state){"
+          helper = r'''function refreshThreeWeekDiagnostics(weeks,state=root.state){
+            const days=currentDays(state),target=Math.max(1,Number(state&&state.settings&&state.settings.target)||20),max=Math.max(1,Number(state&&state.settings&&state.settings.maxVisitsPerDay)||4),pool=((state&&state.stores)||[]).filter(s=>included(s,state)),ranked=rankStoresForSnail(pool,distanceOf,s=>performancePlanningBoost(s,state)),used=new Set(),planningDiagnostics=[];
+            for(const week of (weeks||[])){
+              const mon=parseISO(week&&week.weekKey)||new Date(),plan=week&&week.plan||emptyPlan(),activeDays=days.filter(day=>!dateBlocked(iso(addDays(mon,DAYS.indexOf(day))),state)),placed=flattenPlan(plan),weekPlaced=new Set(placed.map(storeKey));
+              for(const s of placed)used.add(storeKey(s));
+              const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked,used,weekPlaced,credit:visitCredit,fits:(route,day,wm)=>dayFits(route,day,state,wm),manual:!!(week&&week.manual)});
+              if(week)week.diagnostics=diagnostics;
+              planningDiagnostics.push({weekKey:String(week&&week.weekKey||''),days:diagnostics});
+            }
+            const dayRows=planningDiagnostics.flatMap(w=>(w.days||[]).filter(d=>d.status==='planned'||d.status==='empty')),emptyWorkDays=dayRows.filter(d=>d.status==='empty');
+            return{planningDiagnostics,dayCoverage:{planned:dayRows.filter(d=>d.status==='planned').length,active:dayRows.length,empty:emptyWorkDays.length},emptyWorkDays};
+          }
+          '''
+          if 'function refreshThreeWeekDiagnostics(' not in text:
+              if marker not in text:
+                  raise SystemExit('terrain marker absent')
+              text = text.replace(marker, helper + marker, 1)
+          api_old = 'buildThreeWeekSnail,resolveSnailStart,dayFits'
+          api_new = 'buildThreeWeekSnail,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits'
+          if api_new not in text:
+              if api_old not in text:
+                  raise SystemExit('terrain api marker absent')
+              text = text.replace(api_old, api_new, 1)
+          terrain.write_text(text)
+
+          geo = Path('v182-fixes.js')
+          text = geo.read_text()
+          old = "  const report=result.weeks.map(terrainOvernightRow);result.overnightReport=report;\n  try{const s=storage(),range=s&&JSON.parse(s.getItem(RANGE_KEY)||'null');if(range){range.overnightReport=report;range.rotation='snail-distance-geo-v185';range.updatedAt=new Date().toISOString();s.setItem(RANGE_KEY,JSON.stringify(range))}if(s&&typeof s.flush==='function')await s.flush()}catch(e){}"
+          new = "  let finalDiagnostics=null,finalHours=null;\n  try{const terrain=window.StoreRunnerTerrainPlanningV1;if(terrain&&typeof terrain.refreshThreeWeekDiagnostics==='function'){finalDiagnostics=terrain.refreshThreeWeekDiagnostics(result.weeks,state);result.dayCoverage=finalDiagnostics.dayCoverage;result.emptyWorkDays=finalDiagnostics.emptyWorkDays}if(terrain&&typeof terrain.summarizeOpeningHours==='function'){finalHours=terrain.summarizeOpeningHours(result.weeks,state);result.hoursReport=finalHours}}catch(e){console.warn('Diagnostic final escargot non recalculé',e)}\n  const report=result.weeks.map(terrainOvernightRow);result.overnightReport=report;\n  try{const s=storage(),range=s&&JSON.parse(s.getItem(RANGE_KEY)||'null');if(range){range.overnightReport=report;if(finalDiagnostics){range.planningDiagnostics=finalDiagnostics.planningDiagnostics;range.dayCoverage=finalDiagnostics.dayCoverage}if(finalHours)range.hoursReport=finalHours;range.rotation='snail-distance-geo-v185';range.updatedAt=new Date().toISOString();s.setItem(RANGE_KEY,JSON.stringify(range))}if(s&&typeof s.flush==='function')await s.flush()}catch(e){}"
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('v182 diagnostics marker absent')
+              text = text.replace(old, new, 1)
+          geo.write_text(text)
+
+          test = Path('tests/terrain-planning-v1.test.cjs')
+          text = test.read_text()
+          marker = "\nconsole.log('terrain-planning-v1: OK');"
+          block = r'''
+
+          (function finalGeographicPlanOwnsTheDiagnostics(){
+            const stores=Array.from({length:12},(_,i)=>store(i+1));
+            const plan={Lundi:[stores[0]],Mardi:[stores[1]],Mercredi:stores.slice(2,6),Jeudi:stores.slice(6,8),Vendredi:stores.slice(8,12),Samedi:[]};
+            const state={manualWeekEdits:{},settings:{days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],target:12,maxVisitsPerDay:4},stores,excluded:{},included:{},calendarEvents:[]};
+            const weeks=[{weekKey:'2026-09-14',plan,manual:false}];
+            const rebuilt=terrain.refreshThreeWeekDiagnostics(weeks,state);
+            const counts=rebuilt.planningDiagnostics[0].days.filter(d=>d.status==='planned'||d.status==='empty').map(d=>d.count);
+            assert.deepStrictEqual(counts,[1,1,4,2,4],'le diagnostic doit décrire le planning final après optimisation géographique');
+            assert.deepStrictEqual(rebuilt.dayCoverage,{planned:5,active:5,empty:0});
+            assert.deepStrictEqual(weeks[0].diagnostics.map(d=>d.count),[1,1,4,2,4]);
+          })();
+          '''
+          if 'finalGeographicPlanOwnsTheDiagnostics' not in text:
+              if marker not in text:
+                  raise SystemExit('test marker absent')
+              text = text.replace(marker, block + marker, 1)
+          test.write_text(text)
+          PY
+          node --check terrain-planning-v1.js
+          node --check v182-fixes.js
+          node tests/terrain-planning-v1.test.cjs
+          git diff --check
+          rm -f .github/workflows/v220-owner-trace-once.yml
+          git config user.name "REDNEWT69"
+          git config user.email "103671138+REDNEWT69@users.noreply.github.com"
+          git add terrain-planning-v1.js v182-fixes.js tests/terrain-planning-v1.test.cjs .github/workflows/v220-owner-trace-once.yml
+          git commit -m "Fix V220 final planning diagnostics after geography"
+          git push origin HEAD:chatgpt/v220-pilotage-snail-reliability
