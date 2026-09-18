@@ -31,9 +31,10 @@ assert(capacity.includes('state.settings.target='), 'le module capacité doit co
 assert(index.includes('window.__storeRunnerPlanningGenerationActive=true'), 'V184 doit activer la capacité planning pendant la génération 3 semaines');
 assert(index.includes('api.generateThreeWeekSnail=wrapped'), 'V184 doit envelopper le générateur terrain 3 semaines');
 assert(index.includes('terrainSnailBtn')&&index.includes('api.generateThreeWeekSnail()'), 'le bouton terrain existant doit être rebranché vers le générateur corrigé');
-assert(index.includes("'./performance-ui-v190.js','./assistant-performance-context-v192.js','./visit-mobile-ux-v215.js','./update-manager.js'"),'le pont performance V192 puis l’UX visite V215 doivent charger avant le gestionnaire de mise à jour');
+assert(index.includes("'./performance-ui-v190.js','./assistant-performance-context-v192.js','./visit-mobile-ux-v215.js','./visit-mobile-tabs-v216.js','./update-manager.js'"),'le pont performance V192 puis les couches UX visite V215/V216 doivent charger avant le gestionnaire de mise à jour');
 assert(sw.includes('"./assistant-performance-context-v192.js"'),'le pont performance V192 doit rester disponible hors ligne');
 assert(sw.includes('"./visit-mobile-ux-v215.js"'),'l’UX visite V215 doit rester disponible hors ligne');
+assert(sw.includes('"./visit-mobile-tabs-v216.js"'),'les onglets visite V216 doivent rester disponibles hors ligne');
 assert(sw.includes('"./cuisiniste-contracts-v193.js"'),'le moteur contrats expo V193 doit rester disponible hors ligne');
 assert(!source.includes('window.generateWeek='), 'le module terrain ne doit pas reprendre generateWeek');
 assert(!source.includes('root.generateWeek='), 'le module terrain ne doit pas reprendre generateWeek');
