@@ -51,3 +51,4 @@ test('V213 ferme Pilotage Performance par glissement depuis la poignée haute',a
 });
 
 require('./performance-store-reconcile-v209-browser.spec.cjs');
+require('./visit-reopen-v214-browser.spec.cjs');
