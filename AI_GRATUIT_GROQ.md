@@ -1,19 +1,17 @@
-# IA gratuite pour Chef Secteur SAMSUNG
+# IA gratuite de Store Runner — secours Groq
 
-Option recommandée : **Groq Free Plan** + **Cloudflare Worker gratuit**.
+Le moteur principal recommandé est désormais **Cloudflare Workers AI** avec `@cf/google/gemma-4-26b-a4b-it`.
 
-## Pourquoi
-- pas besoin d'abonnement OpenAI API ;
-- le Free Plan Groq impose des limites de débit, mais convient à un usage personnel de l'application ;
-- la clé Groq reste côté Cloudflare et n'est jamais publiée dans GitHub Pages.
+Groq reste utile comme **moteur de secours** pendant la transition ou si Workers AI rencontre une erreur.
 
-## Étapes
-1. Créer un compte gratuit sur Groq Console.
-2. Créer une API key.
-3. Dans Cloudflare Workers, créer/déployer le Worker avec `workers/chef-secteur-ai.js`.
-4. Dans les paramètres du Worker > Variables and Secrets, ajouter un **secret** nommé `GROQ_API_KEY` et coller la clé Groq.
-5. Optionnel : variable texte `GROQ_MODEL=openai/gpt-oss-20b`.
-6. Déployer puis copier l'URL `https://...workers.dev`.
-7. Dans Chef Secteur, renseigner cette URL comme passerelle IA puis activer le mode IA en ligne.
+## Configuration de secours
 
-Ne jamais coller la clé Groq directement dans l'application ou le dépôt GitHub.
+1. Créer une API key dans Groq Console.
+2. Dans le Worker Cloudflare `chef-secteur-ai`, ouvrir **Variables and Secrets**.
+3. Ajouter un secret nommé `GROQ_API_KEY`.
+4. Optionnel : ajouter la variable texte `GROQ_MODEL=openai/gpt-oss-20b`.
+5. Déployer le Worker.
+
+Quand le binding Workers AI `AI` est présent, Gemma 4 est utilisé en priorité. Groq n'est appelé que si Workers AI est absent, renvoie une erreur ou ne produit pas de texte exploitable.
+
+Ne jamais coller la clé Groq directement dans Store Runner, dans GitHub ou dans une URL.
