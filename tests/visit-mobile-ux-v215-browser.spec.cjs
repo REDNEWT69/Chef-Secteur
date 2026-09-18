@@ -58,7 +58,7 @@ test('V215 compacte la visite sans perdre actions, famille ni performance',async
   await expect(fold.locator('.srPerfBrief192')).toContainText('Mission très longue');
 
   await page.evaluate(()=>{
-    const d=document.getElementById('srVisitDialog'),spacer=document.createElement('div');spacer.id='v215Spacer';spacer.style.height='900px';d.appendChild(spacer);d.scrollTop=600;d.dispatchEvent(new Event('scroll'));
+    const d=document.getElementById('srVisitDialog'),spacer=document.createElement('div');spacer.id='v215Spacer';spacer.style.height='900px';spacer.style.pointerEvents='none';d.appendChild(spacer);d.scrollTop=600;d.dispatchEvent(new Event('scroll'));
   });
   const top=dialog.locator('.srVisitTopV215');
   await expect(top).toBeVisible();
