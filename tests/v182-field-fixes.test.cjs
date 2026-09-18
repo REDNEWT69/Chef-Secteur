@@ -135,6 +135,22 @@ for(const day of workDays){
   const credits=route.reduce((n,s)=>n+ctx.storeVisitCredit(s),0);assert.ok(credits<=4,'V185 doit respecter la capacité planning Boulanger');
 }
 
+/* V220 : l'optimisation géographique ne doit plus recompacter une semaine équilibrée
+   au point de recréer les jeudi/vendredi vides que l'escargot vient de corriger. */
+state.settings.maxVisitsPerDay=4;ctx.storeVisitCredit=()=>1;
+const coverageStores=Array.from({length:12},(_,i)=>({id:'cov-'+(i+1),x:100,enseigne:'Test',ville:'Zone'}));
+const coverageInput={
+  Lundi:coverageStores.slice(0,3),Mardi:coverageStores.slice(3,6),Mercredi:coverageStores.slice(6,8),
+  Jeudi:coverageStores.slice(8,10),Vendredi:coverageStores.slice(10,12),Samedi:[]
+};
+geo=ctx.StoreRunnerGeographyV185.rebalance(coverageInput,{weekKey:'2026-09-14',preferNearFirst:true});
+assert.equal(geo.ok,true,'V185 doit conserver une solution quand les cinq jours sont couvrables');
+for(const day of workDays)assert.ok((geo.plan[day]||[]).length>0,'V185 ne doit pas vider '+day+' si ce jour était couvert en entrée');
+const coverageIds=workDays.flatMap(day=>(geo.plan[day]||[]).map(s=>s.id));
+assert.equal(coverageIds.length,12,'V185 doit conserver les 12 magasins');
+assert.equal(new Set(coverageIds).size,12,'V185 ne doit créer aucun doublon pendant la réparation de couverture');
+for(const day of workDays)assert.ok((geo.plan[day]||[]).length<=4,day+' doit rester sous la capacité après réparation');
+
 const oldPlan={
   Lundi:[{id:'old-mon'}],Mardi:[{id:'old-tue'}],Mercredi:[{id:'old-wed'}],Jeudi:[{id:'old-thu'}],Vendredi:[{id:'old-fri'}],Samedi:[{id:'old-sat'}]
 };

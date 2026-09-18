@@ -194,4 +194,49 @@ function flat(week){
   assert.deepStrictEqual(next.map(s=>s.id), ['s1','s2']);
 })();
 
+(function balancedTargetCoversTheWholeWorkWeek(){
+  const stores=Array.from({length:40},(_,i)=>store(i+1));
+  const built=terrain.buildThreeWeekSnail({state:{manualWeekEdits:{}},firstMonday:monday(),days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],target:12,maxCreditsPerDay:4,stores,archive:{},distanceOf:s=>s.distance,priorityOf:()=>0,creditOf:()=>1,lockDayForWeek:()=>'',appointmentDay:()=>'',dayBlocked:()=>false,dayFits:()=>true});
+  const first=built.weeks[0],lengths=['Lundi','Mardi','Mercredi','Jeudi','Vendredi'].map(d=>first.plan[d].length);
+  assert.deepStrictEqual(lengths,[3,3,2,2,2],'12 visites doivent être réparties sur les 5 jours au lieu de remplir seulement le début de semaine');
+  assert.strictEqual(first.diagnostics.filter(d=>d.status==='empty').length,0);
+  assert.deepStrictEqual(flat(first).map(s=>s.id),Array.from({length:12},(_,i)=>'s'+(i+1)),'la progression proche → loin reste stable');
+})();
+
+(function performancePriorityWinsInsideTheRadialPool(){
+  const stores=Array.from({length:20},(_,i)=>store(i+1));
+  const boost=s=>s.id==='s10'?60:s.id==='s9'?25:0;
+  const built=terrain.buildThreeWeekSnail({state:{manualWeekEdits:{}},firstMonday:monday(),days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],target:5,maxCreditsPerDay:4,stores,archive:{},distanceOf:s=>s.distance,priorityOf:boost,creditOf:()=>1,lockDayForWeek:()=>'',appointmentDay:()=>'',dayBlocked:()=>false,dayFits:()=>true});
+  assert.deepStrictEqual(flat(built.weeks[0]).map(s=>s.id),['s10','s9','s1','s2','s3'],'P1 puis P2 doivent passer avant la distance, la distance départage ensuite');
+})();
+
+(function blockedDayIsExplainedNotSilentlyEmpty(){
+  const stores=Array.from({length:30},(_,i)=>store(i+1));
+  const built=terrain.buildThreeWeekSnail({state:{manualWeekEdits:{}},firstMonday:monday(),days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],target:8,maxCreditsPerDay:4,stores,archive:{},distanceOf:s=>s.distance,priorityOf:()=>0,creditOf:()=>1,lockDayForWeek:()=>'',appointmentDay:()=>'',dayBlocked:d=>d==='2026-09-17',dayFits:()=>true});
+  const diag=built.weeks[0].diagnostics.find(d=>d.day==='Jeudi');
+  assert.strictEqual(diag.status,'blocked');
+  assert.match(diag.reason,/bloqué|indisponible/i);
+  for(const day of ['Lundi','Mardi','Mercredi','Vendredi'])assert.ok(built.weeks[0].plan[day].length>0,day+' doit être alimenté');
+})();
+
+(function targetBelowWorkDaysExplainsTheNecessaryGap(){
+  const stores=Array.from({length:20},(_,i)=>store(i+1));
+  const built=terrain.buildThreeWeekSnail({state:{manualWeekEdits:{}},firstMonday:monday(),days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],target:4,maxCreditsPerDay:4,stores,archive:{},distanceOf:s=>s.distance,priorityOf:()=>0,creditOf:()=>1,lockDayForWeek:()=>'',appointmentDay:()=>'',dayBlocked:()=>false,dayFits:()=>true});
+  assert.strictEqual(built.emptyWorkDays.length,3,'un jour par semaine reste nécessairement vide quand la cible est 4 pour 5 jours');
+  assert.ok(built.emptyWorkDays.every(d=>/objectif hebdomadaire inférieur/i.test(d.reason)));
+})();
+
+
+(function finalGeographicPlanOwnsTheDiagnostics(){
+  const stores=Array.from({length:12},(_,i)=>store(i+1));
+  const plan={Lundi:[stores[0]],Mardi:[stores[1]],Mercredi:stores.slice(2,6),Jeudi:stores.slice(6,8),Vendredi:stores.slice(8,12),Samedi:[]};
+  const state={manualWeekEdits:{},settings:{days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],target:12,maxVisitsPerDay:4},stores,excluded:{},included:{},calendarEvents:[]};
+  const weeks=[{weekKey:'2026-09-14',plan,manual:false}];
+  const rebuilt=terrain.refreshThreeWeekDiagnostics(weeks,state);
+  const counts=rebuilt.planningDiagnostics[0].days.filter(d=>d.status==='planned'||d.status==='empty').map(d=>d.count);
+  assert.deepStrictEqual(counts,[1,1,4,2,4],'le diagnostic doit décrire le planning final après optimisation géographique');
+  assert.deepStrictEqual(rebuilt.dayCoverage,{planned:5,active:5,empty:0});
+  assert.deepStrictEqual(weeks[0].diagnostics.map(d=>d.count),[1,1,4,2,4]);
+})();
+
 console.log('terrain-planning-v1: OK');
