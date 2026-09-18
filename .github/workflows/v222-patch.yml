@@ -1,0 +1,40 @@
+name: V222 focused patch
+
+on:
+  push:
+    branches:
+      - chatgpt/v222-better-visit-ai
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, 'V222: apply final patch') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v222-better-visit-ai
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply V222 patch
+        run: python tools/v222_patch.py
+      - name: Targeted tests
+        run: |
+          node tests/syntax.test.cjs
+          node tests/visit-report-slack.test.cjs
+          node tests/branding.test.cjs
+          node tests/build-revision.test.cjs
+      - name: Push application patch
+        run: |
+          git config user.name "REDNEWT69"
+          git config user.email "103671138+REDNEWT69@users.noreply.github.com"
+          git add visit-report-slack.js tests/visit-report-slack.test.cjs index.html sw.js version.json
+          git commit -m "V222: apply final patch"
+          git push origin HEAD:chatgpt/v222-better-visit-ai
