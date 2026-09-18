@@ -299,7 +299,9 @@ export default {
       return json({ error: 'Méthode non autorisée.', method: request.method }, 405, origin);
     }
 
-    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+    // Les routes IA consommatrices ne sont utilisables que depuis Store Runner.
+    // Un POST direct sans Origin est refusé avant tout appel Workers AI ou Groq.
+    if (!origin || !ALLOWED_ORIGINS.has(origin)) {
       return json({ error: 'Origine non autorisée.' }, 403, origin);
     }
 
