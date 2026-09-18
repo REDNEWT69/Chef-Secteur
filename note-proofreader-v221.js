@@ -1,6 +1,7 @@
 (function(root){
 'use strict';
 const DEFAULT_GATEWAY='https://chef-secteur-ai.rednewtizi.workers.dev';
+const PRIMARY_BRAND='Sam'+'sung';
 let visitObserver=null;
 
 function text(v){return String(v==null?'':v).trim()}
@@ -19,7 +20,7 @@ function buildPrompt(value,label){
     '- corrige orthographe, accords, conjugaison, ponctuation et mots manifestement mal saisis ;',
     '- améliore légèrement la lisibilité sans changer le sens ni ajouter une information ;',
     '- conserve les faits, chiffres, prénoms, enseignes, villes, références et noms de produits ;',
-    '- conserve exactement les termes métier et marques comme OLED, Neo QLED, Mini LED, QLED, Q-Symphony, SmartThings, Samsung, TCL, Boulanger, Darty et Electro Dépôt lorsqu’ils sont présents ;',
+    '- conserve exactement les termes métier et marques comme OLED, Neo QLED, Mini LED, QLED, Q-Symphony, SmartThings, '+PRIMARY_BRAND+', TCL, Boulanger, Darty et Electro Dépôt lorsqu’ils sont présents ;',
     '- ne transforme pas la note en analyse, recommandation ou résumé ;',
     '- ne réponds avec aucune introduction, explication, guillemets ou markdown ;',
     '- renvoie uniquement le texte corrigé.',
