@@ -1,0 +1,38 @@
+name: V221 reorder runtime
+on:
+  push:
+    branches: [chatgpt/v221-note-proofreader]
+    paths: ['.github/workflows/v221-reorder.yml']
+permissions:
+  contents: write
+jobs:
+  reorder:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v221-note-proofreader
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Déplacer le correcteur après Opportunity
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          old="scriptTag('./store-runner-visits.js')+scriptTag('./note-proofreader-v221.js')+scriptTag('./store-runner-opportunities.js')"
+          new="scriptTag('./store-runner-visits.js')+scriptTag('./store-runner-opportunities.js')+scriptTag('./note-proofreader-v221.js')"
+          if old not in s:
+              raise SystemExit('séquence runtime V221 introuvable')
+          p.write_text(s.replace(old,new,1),encoding='utf-8')
+          PY
+          node tests/terrain-planning-runtime.test.cjs
+          node tests/note-proofreader-v221.test.cjs
+      - name: Pousser index corrigé
+        run: |
+          git config user.name "REDNEWT69"
+          git config user.email "103671138+REDNEWT69@users.noreply.github.com"
+          git add index.html
+          git commit -m "V221: respecter l'ordre Visit puis Opportunity"
+          git push origin HEAD:chatgpt/v221-note-proofreader
