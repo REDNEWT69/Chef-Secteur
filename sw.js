@@ -1,4 +1,4 @@
-const BUILD_REV = "20260918-moononly218";
+const BUILD_REV = "20260918-planningsummary219";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -47,6 +47,7 @@ const OPTIONAL_SHELL = [
   "./working-hours-end.js",
   "./daily-capacity.js",
   "./planning-pro-plus.js",
+  "./planning-summary-v219.js",
   "./period-day-slider.js",
   "./planning-manual-visits.js",
   "./workdays-enforcer.js",
