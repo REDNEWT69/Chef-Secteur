@@ -14,16 +14,13 @@ function cleanReply(value){
 function buildPrompt(value,label){
   const source=text(value),field=text(label)||'note terrain';
   return [
-    'Corrige uniquement le texte ci-dessous pour un compte rendu terrain professionnel en français.',
+    'Corrige cette note terrain en français professionnel, sans changer le sens.',
+    'Corrige orthographe, grammaire, accords, conjugaison, ponctuation et mots manifestement mal saisis.',
+    'N’invente rien. Conserve exactement faits, chiffres, noms, enseignes, villes, références produits, marques et termes métier.',
+    'Préserve tels quels OLED, QLED, Neo QLED, Mini LED, Q-Symphony, SmartThings, Samsung et TCL lorsqu’ils sont présents.',
+    'Reformule seulement si nécessaire pour la lisibilité. Ne fais ni analyse, ni résumé, ni recommandation.',
+    'Réponds uniquement avec le texte corrigé, sans introduction, guillemets ni markdown.',
     'Champ : '+field+'.',
-    'Règles impératives :',
-    '- corrige orthographe, accords, conjugaison, ponctuation et mots manifestement mal saisis ;',
-    '- améliore légèrement la lisibilité sans changer le sens ni ajouter une information ;',
-    '- conserve les faits, chiffres, prénoms, enseignes, villes, références et noms de produits ;',
-    '- conserve exactement les termes métier et marques comme OLED, Neo QLED, Mini LED, QLED, Q-Symphony, SmartThings, '+PRIMARY_BRAND+', TCL, Boulanger, Darty et Electro Dépôt lorsqu’ils sont présents ;',
-    '- ne transforme pas la note en analyse, recommandation ou résumé ;',
-    '- ne réponds avec aucune introduction, explication, guillemets ou markdown ;',
-    '- renvoie uniquement le texte corrigé.',
     '',
     'TEXTE :',
     source
@@ -56,7 +53,7 @@ async function correct(value,options){
   const sleepFn=typeof options.sleep==='function'?options.sleep:defaultSleep,maxAutoRetryMs=options.maxAutoRetryMs==null?15000:Math.max(0,Number(options.maxAutoRetryMs)||0);
   let hadRateLimit=false,lastRetryMs=8000;
   for(let attempt=0;attempt<2;attempt++){
-    const response=await fetchFn(gateway,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'assistant',message:buildPrompt(source,options.label),context:{instructions:'Correction de note uniquement. Ne modifier aucune donnée métier.'}})});
+    const response=await fetchFn(gateway,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'proofread',message:buildPrompt(source,options.label),context:{instructions:'Correction de note uniquement. Ne modifier aucune donnée métier.'}})});
     let data={};try{data=await response.json()}catch(e){}
     const rawError=errorText(data),limited=response.status===429||/rate\s*limit|too many requests|tokens per minute|\btpm\b/i.test(rawError);
     if(!response.ok){
