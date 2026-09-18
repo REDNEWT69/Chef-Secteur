@@ -46,4 +46,18 @@ const blanc=Pilotage.compute(state,{family:'blanc',now:new Date('2026-09-15T12:0
 assert.strictEqual(blanc.total,2,'le filtre BLANC inclut les magasins mixtes et BLANC');
 assert.strictEqual(blanc.rows.some(r=>r.store.id==='b'),false);
 
+const performanceRows=[
+  {storeId:'b',prio:'P1',pdmYtd:22},
+  {storeId:'a',prio:'P2',pdmYtd:44},
+  {storeId:'c',prio:'watch',pdmYtd:null}
+];
+const unified=Pilotage.compute(state,{now:new Date('2026-09-15T12:00:00Z'),performanceRows,performanceWeek:'W37'});
+assert.strictEqual(unified.performanceWeek,'W37');
+assert.deepStrictEqual(unified.officialCounts,{P1:1,P2:1,watch:1,nodata:0,none:0});
+assert.strictEqual(unified.rows.find(r=>r.store.id==='b').officialPriority,'P1');
+assert.strictEqual(unified.rows.find(r=>r.store.id==='b').pdm,22,'la PDM YTD du fichier devient la référence quand elle existe');
+assert.strictEqual(unified.rows.find(r=>r.store.id==='b').pdmSource,'performance');
+assert.strictEqual(unified.rows.find(r=>r.store.id==='c').pdm,null,'le fichier ne transforme pas une PDM vide en zéro');
+assert.strictEqual(unified.rows[0].store.id,'b','P1 doit remonter avant le score terrain sans modifier ce score');
+
 console.log('sector-pilotage: OK');
