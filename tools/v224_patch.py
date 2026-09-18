@@ -82,6 +82,9 @@ p=ROOT/'tests/note-proofreader-v221.test.cjs'
 s=p.read_text()
 assert "assert.equal(request.body.mode,'assistant');" in s,'assert mode assistant introuvable'
 s=s.replace("assert.equal(request.body.mode,'assistant');","assert.equal(request.body.mode,'proofread');\n  assert.ok(request.body.message.length<900,'Le prompt correcteur doit rester compact pour préserver le quota TPM');",1)
+old_assert="assert.match(prompt,/uniquement le texte corrigé/i);"
+assert old_assert in s,'assert texte corrigé introuvable'
+s=s.replace(old_assert,"assert.match(prompt,/uniquement (?:avec )?le texte corrigé/i);",1)
 p.write_text(s)
 
 # Le test passerelle existant devient aussi garde de consommation du mode proofread.
