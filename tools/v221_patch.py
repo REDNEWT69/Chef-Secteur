@@ -6,9 +6,9 @@ OLD='20260918-pilotagesnail220'
 NEW='20260918-noteproof221'
 TEXT_SUFFIXES={'.js','.cjs','.html','.json','.yml','.yaml','.md'}
 
-# Bump exact partout où l'ancienne révision est figée.
+# Bump exact partout où l'ancienne révision est figée, hors workflows GitHub.
 for path in ROOT.rglob('*'):
-    if not path.is_file() or '.git' in path.parts or path.suffix.lower() not in TEXT_SUFFIXES:
+    if not path.is_file() or '.git' in path.parts or '.github' in path.parts or path.suffix.lower() not in TEXT_SUFFIXES:
         continue
     src=path.read_text(encoding='utf-8',errors='ignore')
     if OLD in src:
@@ -43,25 +43,10 @@ data=json.loads(version.read_text(encoding='utf-8'))
 data.update({'latestBuild':NEW,'displayVersion':'221','channel':'stable','releasedAt':'2026-09-18'})
 version.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 
-# Reliability : garde pur + vrai navigateur 390 px.
-wf=ROOT/'.github/workflows/reliability-checks.yml'
-s=wf.read_text(encoding='utf-8')
-unit='      - run: node tests/note-proofreader-v221.test.cjs\n'
-if unit not in s:
-    anchor='      - run: node tests/visit-storage.test.cjs\n'
-    if anchor not in s: raise SystemExit('ancre verify introuvable')
-    s=s.replace(anchor,anchor+unit,1)
-browser='tests/note-proofreader-v221-browser.spec.cjs'
-if browser not in s:
-    anchor='tests/visit-mobile-ux-v215-browser.spec.cjs'
-    if anchor not in s: raise SystemExit('ancre browser introuvable')
-    s=s.replace(anchor,anchor+' '+browser,1)
-wf.write_text(s,encoding='utf-8')
-
-# Contrôles de contrat avant commit. Les outils temporaires .py ne font pas partie du runtime.
+# Contrôles de contrat avant commit. Les workflows seront mis à jour directement via GitHub.
 remaining=[]
 for path in ROOT.rglob('*'):
-    if not path.is_file() or '.git' in path.parts or path.suffix.lower() not in TEXT_SUFFIXES:
+    if not path.is_file() or '.git' in path.parts or '.github' in path.parts or path.suffix.lower() not in TEXT_SUFFIXES:
         continue
     if OLD in path.read_text(encoding='utf-8',errors='ignore'):
         remaining.append(str(path.relative_to(ROOT)))
