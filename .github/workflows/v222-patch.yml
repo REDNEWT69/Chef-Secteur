@@ -29,11 +29,15 @@ jobs:
           from pathlib import Path
           p=Path('tests/visit-report-slack.test.cjs')
           s=p.read_text(encoding='utf-8')
-          old="assert.ok(prompt.includes('INTERDIT d’en recopier les faits'));"
-          new="assert.ok(prompt.includes('JAMAIS UNE SOURCE FACTUELLE'));"
-          if old not in s:
-              raise SystemExit('legacy prompt assertion not found')
-          p.write_text(s.replace(old,new,1),encoding='utf-8')
+          replacements={
+            "assert.ok(prompt.includes('INTERDIT d’en recopier les faits'));":"assert.ok(prompt.includes('JAMAIS UNE SOURCE FACTUELLE'));",
+            "assert.ok(prompt.includes('PROMOTION, PRIX, PRODUIT, PLACE, PROPRETÉ ou PÉDAGOGIE'));":"assert.ok(prompt.includes('libellés techniques 6P'));"
+          }
+          for old,new in replacements.items():
+              if old not in s:
+                  raise SystemExit('legacy prompt assertion not found: '+old)
+              s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
           PY
       - name: Targeted tests
         run: |
