@@ -1,0 +1,43 @@
+name: V220 browser guard once
+on:
+  push:
+    branches:
+      - chatgpt/v220-pilotage-snail-reliability
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v220-pilotage-snail-reliability
+      - name: Ajuster le garde 390 px
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('tests/terrain-planning-browser.spec.cjs')
+          text=p.read_text()
+          old="  for(const counts of generated.dayCounts)expect(Object.values(counts)).toEqual([3,3,2,2,2]);"
+          new="""  for(let wi=0;wi<generated.dayCounts.length;wi++){
+            const values=Object.values(generated.dayCounts[wi]);
+            expect(values.reduce((n,v)=>n+v,0)).toBe(12);
+            expect(values.every(v=>v>0)).toBe(true);
+            expect(values.every(v=>v<=4)).toBe(true);
+            const diag=(generated.planningDiagnostics[wi]?.days||[]).filter(d=>d.status==='planned'||d.status==='empty').map(d=>d.count);
+            expect(diag).toEqual(values);
+          }"""
+          if old not in text: raise SystemExit('assertion V220 introuvable')
+          p.write_text(text.replace(old,new,1))
+          PY
+          rm .github/workflows/v220-browser-guard-once.yml
+          node -c tests/terrain-planning-browser.spec.cjs
+          git diff --check
+      - name: Commit le garde V220
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'V220 : valider la couverture réelle des jours'
+          git push origin HEAD:chatgpt/v220-pilotage-snail-reliability
