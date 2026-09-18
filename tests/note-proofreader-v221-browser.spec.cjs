@@ -41,7 +41,9 @@ test('V221 corrige une note avec aperçu puis sauvegarde uniquement après Appli
   await expect(preview).toContainText('Le vendeur trouve l’image trop sombre sur les Mini LED. Q-Symphony ne fonctionne pas.');
   await expect(note).toHaveValue(raw);
   expect(payload).not.toBeNull();
-  expect(payload.mode).toBe('assistant');
+  expect(payload.mode).toBe('proofread');
+  expect(payload.proofreadText).toBe(raw);
+  expect(payload.proofreadLabel).toContain('Note terrain BRUN');
   expect(payload.message).toContain(raw);
   expect(payload.message).toContain('Q-Symphony');
 
