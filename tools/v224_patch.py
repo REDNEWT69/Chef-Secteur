@@ -24,7 +24,7 @@ replacement="""function buildPrompt(value,label){
   ].join('\\n')
 }
 function errorText"""
-s2,n=re.subn(pattern,replacement,s,count=1)
+s2,n=re.subn(pattern,lambda _m: replacement,s,count=1)
 assert n==1,'buildPrompt introuvable'
 s=s2
 old="mode:'assistant',message:buildPrompt(source,options.label),context:{instructions:'Correction de note uniquement. Ne modifier aucune donnée métier.'}"
@@ -86,7 +86,7 @@ p.write_text(s)
 # Le test passerelle existant devient aussi garde de consommation du mode proofread.
 p=ROOT/'tests/ai-gateway-cors.test.cjs'
 s=p.read_text()
-extra="""
+extra=r"""
 
 if(!/mode === 'proofread'/.test(worker))throw new Error('Passerelle IA: mode proofread dédié absent');
 if(!/const PROOFREAD_SYSTEM/.test(worker))throw new Error('Passerelle IA: prompt proofread léger absent');
