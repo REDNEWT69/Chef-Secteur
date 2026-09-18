@@ -1,6 +1,7 @@
 (function(root){
 'use strict';
 const DEFAULT_GATEWAY='https://chef-secteur-ai.rednewtizi.workers.dev';
+let visitObserver=null;
 
 function text(v){return String(v==null?'':v).trim()}
 function cleanReply(value){
@@ -74,6 +75,22 @@ function attach(labelNode,input,options){
   cancel.addEventListener('click',()=>{status.textContent='Texte original conservé.';hide();input.focus()});
   return true
 }
-const api={buildPrompt,cleanReply,correct,attach};root.StoreRunnerNoteProofreader=api;
+function labelFor(field){
+  if(!field)return'note terrain';
+  for(const node of Array.from(field.childNodes||[])){if(node.nodeType===3&&text(node.textContent))return text(node.textContent)}
+  return text(field.getAttribute&&field.getAttribute('aria-label'))||'note terrain'
+}
+function enhanceVisitNotes(){
+  if(!root.document)return 0;const dialog=root.document.getElementById('srVisitDialog');if(!dialog)return 0;let count=0;
+  dialog.querySelectorAll('.sr-field textarea').forEach(input=>{const field=input.closest('.sr-field');if(field&&attach(field,input,{label:labelFor(field)}))count++});
+  return count
+}
+function boot(){
+  if(!root.document)return false;const dialog=root.document.getElementById('srVisitDialog');if(!dialog)return false;enhanceVisitNotes();
+  if(!visitObserver&&typeof root.MutationObserver==='function'){visitObserver=new root.MutationObserver(()=>enhanceVisitNotes());visitObserver.observe(dialog,{childList:true,subtree:true})}
+  return true
+}
+const api={buildPrompt,cleanReply,correct,attach,enhanceVisitNotes,boot};root.StoreRunnerNoteProofreader=api;
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
+if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else root.setTimeout(boot,0)}
 })(typeof window!=='undefined'?window:globalThis);
