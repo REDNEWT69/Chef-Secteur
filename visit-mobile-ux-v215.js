@@ -5,7 +5,7 @@
 'use strict';
 
 const DIALOG_ID='srVisitDialog';
-let observer=null,scheduled=false,busy=false,scrollBound=false;
+let observer=null,discoveryObserver=null,scheduled=false,busy=false,scrollBound=false;
 
 function q(sel,host){try{return (host||root.document).querySelector(sel)}catch(e){return null}}
 function qa(sel,host){try{return Array.from((host||root.document).querySelectorAll(sel))}catch(e){return[]}}
@@ -139,7 +139,15 @@ function attach(){
   ['store-runner:data-restored','store-runner:planning-updated'].forEach(name=>root.document.addEventListener(name,schedule));
   return true;
 }
-function boot(){ensureStyle();if(attach())return;let tries=0;const timer=setInterval(()=>{tries++;if(attach()||tries>40)clearInterval(timer)},100)}
+function boot(){
+  ensureStyle();if(attach())return;
+  const host=root.document.documentElement||root.document;
+  discoveryObserver=new MutationObserver(()=>{
+    if(!attach())return;
+    if(discoveryObserver){discoveryObserver.disconnect();discoveryObserver=null}
+  });
+  discoveryObserver.observe(host,{childList:true,subtree:true});
+}
 
 root.StoreRunnerVisitMobileUXV215={enhance,compactFamily,foldPerformance};
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()}
