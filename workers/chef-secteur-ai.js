@@ -108,6 +108,19 @@ Règles impératives :
 
 const STORE_PARSE_SYSTEM = `Transforme les notes fournies en liste structurée de magasins. Réponds UNIQUEMENT avec un objet JSON valide de forme {"stores":[...]}. Chaque magasin peut contenir : enseigne, ville, adresse, codePostal, dept, lat, lon, freq, priority, products, active. N'invente pas les données manquantes.`;
 
+const PROOFREAD_SYSTEM = `Tu corriges uniquement une note terrain en français.
+N’invente aucune information et ne change aucun fait.
+Préserve chiffres, noms, enseignes, villes, références produits, marques et termes métier.
+Corrige orthographe, grammaire et ponctuation, avec seulement une légère reformulation si nécessaire.
+Réponds uniquement par le texte corrigé, sans introduction ni markdown.`;
+
+function proofreadMaxTokens(input) {
+  const chars = String(input || '').length;
+  // Le plafond est dynamique : une note courte ne réserve plus 1000 tokens de sortie.
+  // 160 couvre une petite note ; 700 garde une marge pour les notes terrain longues.
+  return Math.min(700, Math.max(160, Math.ceil(chars / 3.5) + 40));
+}
+
 async function handlePing(env, origin) {
   if (!env.GROQ_API_KEY) {
     return json({
@@ -167,6 +180,27 @@ export default {
     try {
       if (mode === 'ping') {
         return handlePing(env, origin);
+      }
+
+      if (mode === 'proofread') {
+        const raw = String(body.proofreadText || '').trim().slice(0, 12000);
+        const label = String(body.proofreadLabel || 'note terrain').trim().slice(0, 120);
+        const fallback = String(body.message || '').trim().slice(0, 12000);
+        const source = raw || fallback;
+        if (!source) return json({ error: 'Message vide.' }, 400, origin);
+        const user = raw ? `Champ : ${label}.\nTEXTE :\n${raw}` : fallback;
+        const result = await callGroq(env, PROOFREAD_SYSTEM, user, proofreadMaxTokens(source));
+        if (!result.text) throw new Error('Réponse IA vide.');
+        return json({
+          text: result.text,
+          reply: result.text,
+          answer: result.text,
+          message: result.text,
+          actions: [],
+          model: result.model,
+          provider: result.provider,
+          mode: 'proofread'
+        }, 200, origin);
       }
 
       if (mode === 'parse_stores') {
