@@ -183,9 +183,13 @@ export default {
       }
 
       if (mode === 'proofread') {
-        const user = String(body.message || '').trim().slice(0, 12000);
-        if (!user) return json({ error: 'Message vide.' }, 400, origin);
-        const result = await callGroq(env, PROOFREAD_SYSTEM, user, proofreadMaxTokens(user));
+        const raw = String(body.proofreadText || '').trim().slice(0, 12000);
+        const label = String(body.proofreadLabel || 'note terrain').trim().slice(0, 120);
+        const fallback = String(body.message || '').trim().slice(0, 12000);
+        const source = raw || fallback;
+        if (!source) return json({ error: 'Message vide.' }, 400, origin);
+        const user = raw ? `Champ : ${label}.\nTEXTE :\n${raw}` : fallback;
+        const result = await callGroq(env, PROOFREAD_SYSTEM, user, proofreadMaxTokens(source));
         if (!result.text) throw new Error('Réponse IA vide.');
         return json({
           text: result.text,

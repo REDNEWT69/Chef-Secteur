@@ -25,6 +25,8 @@ assert.match(prompt,/uniquement (?:avec )?le texte corrigé/i);
   assert.equal(request.options.method,'POST');
   assert.equal(request.body.mode,'proofread');
   assert.ok(request.body.message.length<900,'Le prompt correcteur doit rester compact pour préserver le quota TPM');
+  assert.equal(request.body.proofreadText,'vendeur trouve image tro sombre');
+  assert.equal(request.body.proofreadLabel,'Note terrain BRUN');
   assert.match(request.body.message,/vendeur trouve image tro sombre/);
   assert.equal(request.body.context.instructions,'Correction de note uniquement. Ne modifier aucune donnée métier.');
 

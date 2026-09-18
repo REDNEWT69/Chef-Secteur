@@ -21,7 +21,8 @@ if(!/request\.method === 'OPTIONS'/.test(worker)||!/Origine non autorisée/.test
 if(!/mode === 'proofread'/.test(worker))throw new Error('Passerelle IA: mode proofread dédié absent');
 if(!/const PROOFREAD_SYSTEM/.test(worker))throw new Error('Passerelle IA: prompt proofread léger absent');
 if(!/function proofreadMaxTokens/.test(worker))throw new Error('Passerelle IA: plafond dynamique proofread absent');
-if(!/callGroq\(env, PROOFREAD_SYSTEM, user, proofreadMaxTokens\(user\)\)/.test(worker))throw new Error('Passerelle IA: proofread doit utiliser son prompt et son plafond dédiés');
+if(!/body\.proofreadText/.test(worker))throw new Error('Passerelle IA: proofread doit accepter le texte brut dédié');
+if(!/callGroq\(env, PROOFREAD_SYSTEM, user, proofreadMaxTokens\(source\)\)/.test(worker))throw new Error('Passerelle IA: proofread doit utiliser son prompt et son plafond dédiés');
 if(worker.indexOf("mode === 'proofread'")>worker.indexOf('const context = compactContext'))throw new Error('Passerelle IA: proofread ne doit pas traverser le contexte assistant');
 
 console.log('AI gateway CORS + proofread quota guards: OK');

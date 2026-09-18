@@ -53,7 +53,7 @@ async function correct(value,options){
   const sleepFn=typeof options.sleep==='function'?options.sleep:defaultSleep,maxAutoRetryMs=options.maxAutoRetryMs==null?15000:Math.max(0,Number(options.maxAutoRetryMs)||0);
   let hadRateLimit=false,lastRetryMs=8000;
   for(let attempt=0;attempt<2;attempt++){
-    const response=await fetchFn(gateway,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'proofread',message:buildPrompt(source,options.label),context:{instructions:'Correction de note uniquement. Ne modifier aucune donnée métier.'}})});
+    const response=await fetchFn(gateway,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'proofread',message:buildPrompt(source,options.label),proofreadText:source,proofreadLabel:text(options.label).slice(0,120),context:{instructions:'Correction de note uniquement. Ne modifier aucune donnée métier.'}})});
     let data={};try{data=await response.json()}catch(e){}
     const rawError=errorText(data),limited=response.status===429||/rate\s*limit|too many requests|tokens per minute|\btpm\b/i.test(rawError);
     if(!response.ok){
