@@ -1,5 +1,6 @@
 const fs=require('fs');
 const path=require('path');
+const vm=require('vm');
 
 const worker=fs.readFileSync(path.join(process.cwd(),'workers/chef-secteur-ai.js'),'utf8');
 
@@ -40,4 +41,84 @@ if(!/callAI\(env, STORE_PARSE_SYSTEM, user, 1600\)/.test(worker))throw new Error
 if(!/callAI\(env, ASSISTANT_SYSTEM, user, 1000\)/.test(worker))throw new Error('Passerelle IA: assistant doit passer par le routeur Workers AI/Groq');
 if(worker.indexOf("mode === 'proofread'")>worker.indexOf('const context = compactContext'))throw new Error('Passerelle IA: proofread ne doit pas traverser le contexte assistant');
 
-console.log('AI gateway CORS + Workers AI Gemma + Groq fallback guards: OK');
+class TestResponse{
+  constructor(body,init={}){
+    this.body=body==null?'':String(body);
+    this.status=init.status||200;
+    this.headers=init.headers||{};
+  }
+  async json(){return this.body?JSON.parse(this.body):null;}
+}
+
+function makeRequest(body){
+  return {
+    method:'POST',
+    url:'https://chef-secteur-ai.example.workers.dev/',
+    headers:{get:(name)=>String(name).toLowerCase()==='origin'?'https://store-runner.fr':''},
+    json:async()=>body
+  };
+}
+
+async function exerciseProviderRouting(){
+  const transformed=worker.replace('export default {','module.exports = {');
+  let fetchCalls=0;
+  const sandbox={
+    module:{exports:{}},
+    exports:{},
+    Response:TestResponse,
+    URL,
+    console:{warn:()=>{},log:()=>{},error:()=>{}},
+    fetch:async()=>{
+      fetchCalls+=1;
+      return {
+        ok:true,
+        status:200,
+        json:async()=>({choices:[{message:{content:'Groq secours'},finish_reason:'stop'}]})
+      };
+    }
+  };
+  vm.runInNewContext(transformed,sandbox,{filename:'chef-secteur-ai.js'});
+  const handler=sandbox.module.exports;
+
+  const primary=await handler.fetch(
+    makeRequest({mode:'assistant',message:'Test Gemma',context:{}}),
+    {
+      AI:{run:async(model,payload)=>{
+        if(model!=='@cf/google/gemma-4-26b-a4b-it')throw new Error(`Modèle Workers AI inattendu: ${model}`);
+        if(!payload||!Array.isArray(payload.messages))throw new Error('Payload Workers AI invalide');
+        return {response:'Gemma primaire'};
+      }},
+      GROQ_API_KEY:'secours-present'
+    }
+  );
+  const primaryJson=await primary.json();
+  if(primary.status!==200||primaryJson.provider!=='cloudflare-workers-ai'||primaryJson.text!=='Gemma primaire')throw new Error('Passerelle IA: Workers AI n’est pas réellement prioritaire');
+  if(fetchCalls!==0)throw new Error('Passerelle IA: Groq a été appelé alors que Workers AI fonctionnait');
+
+  const fallback=await handler.fetch(
+    makeRequest({mode:'assistant',message:'Test fallback',context:{}}),
+    {
+      AI:{run:async()=>{throw new Error('Workers AI indisponible');}},
+      GROQ_API_KEY:'secours-present'
+    }
+  );
+  const fallbackJson=await fallback.json();
+  if(fallback.status!==200||fallbackJson.provider!=='groq'||fallbackJson.text!=='Groq secours')throw new Error('Passerelle IA: fallback Groq non fonctionnel');
+  if(fallbackJson.fallbackFrom!=='cloudflare-workers-ai')throw new Error('Passerelle IA: origine du fallback non exposée');
+  if(fetchCalls!==1)throw new Error(`Passerelle IA: nombre d’appels Groq inattendu (${fetchCalls})`);
+
+  const ping=await handler.fetch(
+    makeRequest({mode:'ping'}),
+    {
+      AI:{run:async()=>({response:'ok'})},
+      GROQ_API_KEY:'secours-present'
+    }
+  );
+  const pingJson=await ping.json();
+  if(!pingJson.ok||pingJson.provider!=='cloudflare-workers-ai'||pingJson.workersAiBinding!==true)throw new Error('Passerelle IA: ping Workers AI incorrect');
+  if(!pingJson.fallback||pingJson.fallback.provider!=='groq')throw new Error('Passerelle IA: ping ne publie pas le fallback Groq');
+}
+
+exerciseProviderRouting()
+  .then(()=>console.log('AI gateway CORS + Workers AI Gemma + Groq fallback guards: OK'))
+  .catch((err)=>{console.error(err);process.exitCode=1;});
