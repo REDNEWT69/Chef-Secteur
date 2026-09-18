@@ -16,6 +16,7 @@ if(!/ALLOWED_ORIGINS\.has\(origin\)/.test(worker))throw new Error('Passerelle IA
 if(!/headers\[['"]Access-Control-Allow-Origin['"]\]\s*=\s*origin/.test(worker))throw new Error('Passerelle IA: l’origine autorisée doit être reflétée dans Access-Control-Allow-Origin');
 if(/Access-Control-Allow-Origin['"]?\s*:\s*['"]\*/.test(worker))throw new Error('Passerelle IA: wildcard CORS interdit');
 if(!/request\.method === 'OPTIONS'/.test(worker)||!/Origine non autorisée/.test(worker))throw new Error('Passerelle IA: garde-fou preflight CORS absent');
+if(!/if\s*\(!origin\s*\|\|\s*!ALLOWED_ORIGINS\.has\(origin\)\)/.test(worker))throw new Error('Passerelle IA: un POST sans Origin doit être refusé avant tout appel IA');
 
 if(!/DEFAULT_WORKERS_AI_MODEL\s*=\s*['"]@cf\/google\/gemma-4-26b-a4b-it['"]/.test(worker))throw new Error('Passerelle IA: Gemma 4 Workers AI doit être le modèle principal');
 if(!/function hasWorkersAI/.test(worker)||!/env\.AI\.run/.test(worker))throw new Error('Passerelle IA: binding Workers AI `AI` absent du code');
@@ -56,12 +57,20 @@ class TestResponse{
   async json(){return this.body?JSON.parse(this.body):null;}
 }
 
-function makeRequest(body){
+function makeRequest(body,origin='https://store-runner.fr'){
   return {
     method:'POST',
     url:'https://chef-secteur-ai.example.workers.dev/',
-    headers:{get:(name)=>String(name).toLowerCase()==='origin'?'https://store-runner.fr':''},
+    headers:{get:(name)=>String(name).toLowerCase()==='origin'?origin:''},
     json:async()=>body
+  };
+}
+
+function makeGetRequest(origin=''){
+  return {
+    method:'GET',
+    url:'https://chef-secteur-ai.example.workers.dev/ping',
+    headers:{get:(name)=>String(name).toLowerCase()==='origin'?origin:''}
   };
 }
 
@@ -85,6 +94,26 @@ async function exerciseProviderRouting(){
   };
   vm.runInNewContext(transformed,sandbox,{filename:'chef-secteur-ai.js'});
   const handler=sandbox.module.exports;
+
+  let blockedWorkersCalls=0;
+  const blockedEnv={
+    AI:{run:async()=>{blockedWorkersCalls+=1;return{response:'ne doit jamais être appelé'}}},
+    GROQ_API_KEY:'secours-present'
+  };
+
+  const noOrigin=await handler.fetch(makeRequest({mode:'assistant',message:'appel direct',context:{}},''),blockedEnv);
+  const noOriginJson=await noOrigin.json();
+  if(noOrigin.status!==403||noOriginJson.error!=='Origine non autorisée.')throw new Error('Passerelle IA: POST sans Origin non bloqué');
+  if(blockedWorkersCalls!==0||fetchCalls!==0)throw new Error('Passerelle IA: un POST sans Origin a consommé un fournisseur IA');
+
+  const foreignOrigin=await handler.fetch(makeRequest({mode:'assistant',message:'appel étranger',context:{}},'https://evil.example'),blockedEnv);
+  if(foreignOrigin.status!==403)throw new Error('Passerelle IA: POST d’une origine inconnue non bloqué');
+  if(blockedWorkersCalls!==0||fetchCalls!==0)throw new Error('Passerelle IA: une origine inconnue a consommé un fournisseur IA');
+
+  const directPing=await handler.fetch(makeGetRequest(),blockedEnv);
+  const directPingJson=await directPing.json();
+  if(directPing.status!==200||!directPingJson.ok||directPingJson.provider!=='cloudflare-workers-ai')throw new Error('Passerelle IA: le GET /ping de diagnostic doit rester disponible');
+  if(blockedWorkersCalls!==0||fetchCalls!==0)throw new Error('Passerelle IA: GET /ping ne doit pas consommer le modèle');
 
   const primary=await handler.fetch(
     makeRequest({mode:'assistant',message:'Test Gemma',context:{}}),
@@ -126,5 +155,5 @@ async function exerciseProviderRouting(){
 }
 
 exerciseProviderRouting()
-  .then(()=>console.log('AI gateway CORS + Workers AI Gemma + Groq fallback + proofread style guards: OK'))
+  .then(()=>console.log('AI gateway CORS + origin guard + Workers AI Gemma + Groq fallback + proofread style guards: OK'))
   .catch((err)=>{console.error(err);process.exitCode=1;});
