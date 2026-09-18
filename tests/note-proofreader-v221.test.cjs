@@ -29,5 +29,33 @@ assert.match(prompt,/uniquement le texte corrigé/i);
 
   await assert.rejects(()=>P.correct('',{fetch:async()=>{throw Error('ne doit pas être appelé')}}),/Écris une note/);
   await assert.rejects(()=>P.correct('texte',{gateway:'https://example.test/ai',fetch:async()=>({ok:false,status:503,json:async()=>({error:'IA indisponible'})})}),/IA indisponible/);
+
+  let calls=0,waited=0,retryNotice=0;
+  const afterLimit=await P.correct('vendeur trouve image tro sombre',{label:'Note terrain BRUN',gateway:'https://example.test/ai',sleep:async ms=>{waited=ms},onRateLimit:info=>{retryNotice=info.retryAfterMs},fetch:async()=>{
+    calls++;
+    if(calls===1)return{ok:false,status:429,json:async()=>({error:'Rate limit reached on tokens per minute (TPM). Please try again in 6.9s. Upgrade at billing.'})};
+    return{ok:true,status:200,json:async()=>({text:'Le vendeur trouve l’image trop sombre.'})};
+  }});
+  assert.equal(afterLimit,'Le vendeur trouve l’image trop sombre.');
+  assert.equal(calls,2);
+  assert.equal(waited,6900);
+  assert.equal(retryNotice,6900);
+
+  await assert.rejects(async()=>{
+    try{
+      await P.correct('texte',{gateway:'https://example.test/ai',maxAutoRetryMs:0,fetch:async()=>({ok:false,status:429,json:async()=>({error:'Rate limit reached for model gpt-oss-20b in organization secret-org. Upgrade billing.'})})});
+    }catch(err){
+      assert.equal(err.code,'RATE_LIMIT');
+      assert.ok(err.retryAfterMs>=1000);
+      assert.doesNotMatch(err.message,/gpt-oss|organization|billing|tokens per minute/i);
+      throw err;
+    }
+  },/momentanément très sollicité/i);
+
+  let recoveryCalls=0;
+  await assert.rejects(()=>P.correct('texte',{gateway:'https://example.test/ai',sleep:async()=>{},fetch:async()=>{
+    recoveryCalls++;
+    return recoveryCalls===1?{ok:false,status:429,json:async()=>({error:'Rate limit reached. Please try again in 1s.'})}:{ok:true,status:200,json:async()=>({text:''})};
+  }}),/récupère encore/i);
   console.log('note-proofreader-v221.test.cjs: OK');
 })().catch(err=>{console.error(err);process.exitCode=1});
