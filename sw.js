@@ -1,4 +1,4 @@
-const BUILD_REV = "20260918-visitux215";
+const BUILD_REV = "20260918-visittabs216";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
