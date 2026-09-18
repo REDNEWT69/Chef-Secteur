@@ -145,11 +145,12 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
   await expect(page.locator('#planPanel')).toContainText('Ville 1');
 
   const chosen=await page.evaluate(() => {
-    const route=window.state.plan.Lundi||[];
-    const id=route[1]&&route[1].id;
-    if(!id)throw new Error('Deuxième magasin du lundi absent');
-    window.openStoreQuick(id,'Lundi');
-    return {id,before:route.map(s=>s.id)};
+    const days=['Lundi','Mardi','Mercredi','Jeudi','Vendredi'];
+    const day=days.find(d=>(window.state.plan[d]||[]).length>=2);
+    if(!day)throw new Error('Aucune journée avec deux magasins pour tester Commencer par ici');
+    const route=window.state.plan[day]||[],id=route[1]&&route[1].id;
+    window.openStoreQuick(id,day);
+    return {id,day,before:route.map(s=>s.id)};
   });
   const start=page.locator('#startQuickStoreFirstBtn');
   await expect(start).toBeVisible();
@@ -157,8 +158,8 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
   if(!startBox)throw new Error('Bouton Commencer par ici introuvable');
   expect(startBox.height).toBeGreaterThanOrEqual(44);
   await start.tap();
-  await page.waitForFunction(id => window.state.plan.Lundi[0] && window.state.plan.Lundi[0].id===id, chosen.id);
-  const after=await page.evaluate(() => window.state.plan.Lundi.map(s=>s.id));
+  await page.waitForFunction(({id,day}) => window.state.plan[day][0] && window.state.plan[day][0].id===id, {id:chosen.id,day:chosen.day});
+  const after=await page.evaluate(day => window.state.plan[day].map(s=>s.id), chosen.day);
   expect(after[0]).toBe(chosen.id);
   expect(new Set(after)).toEqual(new Set(chosen.before));
   expect(after).toHaveLength(chosen.before.length);
