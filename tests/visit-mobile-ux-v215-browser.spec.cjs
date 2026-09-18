@@ -1,0 +1,70 @@
+const {test,expect}=require('@playwright/test');
+const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
+
+test.use({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1,
+  serviceWorkers:'block',screenshot:'only-on-failure',trace:'retain-on-failure'});
+
+test('V215 compacte la visite sans perdre actions, famille ni performance',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.state&&window.StoreRunnerVisits&&window.StoreRunnerVisitModel&&window.StoreRunnerVisitMobileUXV215);
+
+  await page.evaluate(()=>{
+    const M=window.StoreRunnerVisitModel,st=window.state;
+    st.stores=[{id:'v215-store',enseigne:'Boulanger',ville:'Saint Etienne Villars',adresse:'1 rue Test',dept:'42',lat:45.47,lon:4.36,active:true,priority:5,products:['Blanc','Brun']}];
+    st.businessV2=M.empty();st.notes={};st.visits={};st.included={};st.excluded={};st.locks={};st.plan={};st.appointments=[];st.calendarEvents=[];
+    save();
+    window.StoreRunnerVisits.start('v215-store');
+  });
+
+  const dialog=page.locator('#srVisitDialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveClass(/srVisitV215/);
+
+  const header=dialog.locator(':scope > .sr-head');
+  const position=await header.evaluate(el=>getComputedStyle(el).position);
+  expect(position).toBe('sticky');
+  await expect(header.getByRole('button',{name:/Fermer/i})).toBeVisible();
+  await expect(page.locator('#srReportBtn')).toBeVisible();
+
+  const active=dialog.locator('.sr-familyActive');
+  await expect(active).toContainText(/actif · notes & photos classées ici/i);
+  await dialog.locator('.sr-familyBtn[data-family="brun"]').tap();
+  await expect(active).toContainText('BRUN actif');
+  await dialog.locator('.sr-familyBtn[data-family="blanc"]').tap();
+  await expect(active).toContainText('BLANC actif');
+
+  await page.evaluate(()=>{
+    const d=document.getElementById('srVisitDialog'),intro=d.querySelector('.sr-terrainIntro')||d.lastElementChild;
+    const old=d.querySelector('.srPerfBrief192');if(old)old.remove();
+    const perf=document.createElement('section');perf.className='srPerfBrief192';perf.dataset.storeId='v215-store';
+    perf.innerHTML='<div class="srPerfBrief192Head"><span class="srPerfBrief192Badge p1">Prio 1</span><b>Brief performance · Boulanger Saint Etienne Villars</b></div><div class="srPerfBrief192Grid"><div class="srPerfBrief192Cell"><span>PDM YTD</span><b>35 %</b></div><div class="srPerfBrief192Cell"><span>Écart cible</span><b>−7,2 pt</b></div><div class="srPerfBrief192Cell"><span>Évolution vs N-1</span><b>−12 %</b></div><div class="srPerfBrief192Cell"><span>Tendance hebdo</span><b>baisse</b></div></div><p class="srPerfBrief192Note">Mission très longue de test destinée à vérifier que le détail reste disponible.</p>';
+    intro.parentNode.insertBefore(perf,intro);
+    window.StoreRunnerVisitMobileUXV215.enhance();
+  });
+
+  const fold=dialog.locator('details.srVisitPerfFoldV215');
+  await expect(fold).toBeVisible();
+  await expect(fold.locator('summary')).toContainText('Prio 1');
+  await expect(fold.locator('summary')).toContainText('Écart −7,2 pt');
+  await expect(fold).not.toHaveAttribute('open','');
+  await fold.locator('summary').tap();
+  await expect(fold).toHaveAttribute('open','');
+  await expect(fold.locator('.srPerfBrief192')).toContainText('Mission très longue');
+
+  await page.evaluate(()=>{
+    const d=document.getElementById('srVisitDialog'),spacer=document.createElement('div');spacer.id='v215Spacer';spacer.style.height='900px';d.appendChild(spacer);d.scrollTop=600;d.dispatchEvent(new Event('scroll'));
+  });
+  const top=dialog.locator('.srVisitTopV215');
+  await expect(top).toBeVisible();
+  const headerBox=await header.boundingBox();
+  expect(headerBox).not.toBeNull();
+  expect(headerBox.y).toBeGreaterThanOrEqual(0);
+  expect(headerBox.y).toBeLessThan(100);
+  await top.tap();
+  await page.waitForFunction(()=>document.getElementById('srVisitDialog').scrollTop<80);
+
+  const overflow=await dialog.evaluate(el=>el.scrollWidth-el.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  expect(errors).toEqual([]);
+});
