@@ -43,6 +43,11 @@ test('V215 compacte la visite sans perdre actions, famille ni performance',async
     window.StoreRunnerVisitMobileUXV215.enhance();
   });
 
+  /* Depuis V216, Performance vit volontairement dans Vue. Le garde V215 continue
+     donc de tester son accordéon, mais dans son nouvel emplacement produit. */
+  const tabsV216=dialog.locator('#srVisitTabsV216');
+  if(await tabsV216.count())await tabsV216.getByRole('tab',{name:'Vue'}).tap();
+
   const fold=dialog.locator('details.srVisitPerfFoldV215');
   await expect(fold).toBeVisible();
   await expect(fold.locator('summary')).toContainText('Prio 1');
