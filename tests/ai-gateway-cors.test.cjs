@@ -28,6 +28,12 @@ if(!/workersReady && groqReady/.test(worker))throw new Error('Passerelle IA: pin
 
 if(!/mode === 'proofread'/.test(worker))throw new Error('Passerelle IA: mode proofread dédié absent');
 if(!/const PROOFREAD_SYSTEM/.test(worker))throw new Error('Passerelle IA: prompt proofread léger absent');
+if(!/N’invente, n’ajoute et ne déduis aucune information absente du texte/.test(worker))throw new Error('Passerelle IA: le correcteur doit interdire invention, ajout et déduction');
+if(!/Ne change aucun fait et ne supprime aucun fait utile/.test(worker))throw new Error('Passerelle IA: le correcteur doit préserver tous les faits utiles');
+if(!/Fluidifie les phrases et rends le texte plus professionnel, naturel et concis/.test(worker))throw new Error('Passerelle IA: le correcteur doit fluidifier et professionnaliser la forme');
+if(!/y compris lorsque le texte est déjà grammaticalement correct/.test(worker))throw new Error('Passerelle IA: la fluidification doit aussi s’appliquer aux textes déjà corrects');
+if(!/sans changer le sens ni transformer la note en résumé/.test(worker))throw new Error('Passerelle IA: le correcteur ne doit pas résumer ni changer le sens');
+if(!/Conserve le niveau de détail du texte source/.test(worker))throw new Error('Passerelle IA: le correcteur doit conserver le niveau de détail');
 if(!/function proofreadMaxTokens/.test(worker))throw new Error('Passerelle IA: plafond dynamique proofread absent');
 if(!/function proofreadRetryTokens/.test(worker))throw new Error('Passerelle IA: retry de budget proofread absent');
 if(!/body\.proofreadText/.test(worker))throw new Error('Passerelle IA: proofread doit accepter le texte brut dédié');
@@ -120,5 +126,5 @@ async function exerciseProviderRouting(){
 }
 
 exerciseProviderRouting()
-  .then(()=>console.log('AI gateway CORS + Workers AI Gemma + Groq fallback guards: OK'))
+  .then(()=>console.log('AI gateway CORS + Workers AI Gemma + Groq fallback + proofread style guards: OK'))
   .catch((err)=>{console.error(err);process.exitCode=1;});
