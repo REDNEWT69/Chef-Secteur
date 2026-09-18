@@ -1,5 +1,6 @@
 (function(){
   'use strict';
+  /* V213 : la poignée Performance ferme le dialogue sans voler le scroll du contenu. */
   let startY=0,lastY=0,startTime=0,dragging=false;
   let perfStartY=0,perfLastY=0,perfStartTime=0,perfDragging=false;
   function panel(){return document.getElementById('assistantPanel')}
