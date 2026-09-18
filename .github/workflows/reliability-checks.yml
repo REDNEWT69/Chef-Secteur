@@ -80,6 +80,7 @@ jobs:
       - run: node tests/assistant-archive-integrity.test.cjs
       - run: node tests/ai-gateway-cors.test.cjs
       - run: node tests/assistant-online-health.test.cjs
+      - run: node tests/cloudflare-access-v332.test.cjs
       - run: node tests/overnight-intent-ui.test.cjs
       - run: node tests/apple-route-canonical-stores.test.cjs
       - run: node tests/business-v2-architecture.test.cjs
