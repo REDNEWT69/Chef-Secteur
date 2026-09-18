@@ -24,6 +24,14 @@ assert(ui.includes("Voir tout l’historique"),'la fiche magasin doit permettre 
 assert(ui.includes("!['done','cancelled'].includes(a.status)"),'la mémoire terrain doit garder uniquement les actions encore ouvertes');
 assert(ui.includes("quickMemoryObserver.observe(sheet,{attributes:true,attributeFilter:['class','aria-hidden']})"),'l’observation doit rester bornée à la feuille magasin');
 assert(ui.includes("row.dataset.srHistoryVisit=v.id"),'chaque visite historique doit rester ouvrable dans son détail');
+// V214 : une clôture terrain ne peut plus être le résultat d'un tap fantôme autour d'un refresh.
+assert(ui.includes("window.confirm('Terminer cette visite maintenant ?"),'Terminer doit demander une confirmation explicite');
+assert(ui.includes("Visite conservée en cours."),'annuler la confirmation doit laisser le brouillon intact');
+assert(ui.includes("↩ Réouvrir cette visite"),'une visite clôturée aujourd’hui doit pouvoir être réouverte');
+assert(ui.includes("otherSameDay"),'la réouverture doit préserver un jour réellement utilisé par une autre visite terminée');
+assert(ui.includes("Une visite de ce magasin a déjà été terminée aujourd’hui."),'redémarrer le même magasin le même jour doit proposer de reprendre la visite existante');
+assert(ui.includes("document.addEventListener('visibilitychange',()=>{if(document.hidden)save()})"),'le passage en arrière-plan doit seulement sauvegarder, jamais terminer');
+assert(!/visibilitychange[^\n]{0,220}completeVisit/.test(ui),'aucun chemin de visibilité/rechargement ne doit clôturer une visite');
 // Le modèle 6P reste testé ci-dessus pour la compatibilité des anciennes visites, mais le
 // parcours terrain V170 ne doit plus l'exposer comme un second TeamHaven.
 assert(ui.includes('const VISIBLE_STEPS=[3]'),'le parcours visible se réduit au seul carnet Terrain');
@@ -42,4 +50,4 @@ assert(ui.includes('Famille active : '),'le changement BLANC / BRUN doit donner 
 assert(ui.includes("'Note terrain '+family.toUpperCase()"),'une grande note terrain remplace les sous-options');
 assert(ui.includes("'Prochain passage / formation '+family.toUpperCase()"),'le prochain passage reste directement saisissable');
 assert(ui.includes('api.open(v.storeId)'),'les photos restent accessibles directement depuis la visite');
-console.log('PASS: Visit/Action model legacy, carnet terrain V170, history compatibility, store memory surface, V2 backup/restore, invalid data and module ownership.');
+console.log('PASS: Visit/Action model legacy, carnet terrain V170, V214 visit close guard/reopen, history compatibility, store memory surface, V2 backup/restore, invalid data and module ownership.');
