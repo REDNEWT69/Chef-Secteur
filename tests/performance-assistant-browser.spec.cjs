@@ -27,4 +27,27 @@ test('V192 affiche un brief performance compact à 390 px sans toucher au planni
   expect(result.width).toBeLessThanOrEqual(result.viewport);expect(result.overflow).toBeLessThanOrEqual(1);expect(result.planStable).toBe(true);expect(result.priority).toBe(4);expect(errors).toEqual([]);
 });
 
+test('V213 ferme Pilotage Performance par glissement depuis la poignée haute',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.StoreRunnerPerformanceUIV190&&document.body);
+  await page.evaluate(()=>window.StoreRunnerPerformanceUIV190.open());
+  const sheet=page.locator('#srPerfSheet');
+  const handle=page.locator('#srPerfSheet .srPerfDragHandleV213');
+  await expect(sheet).toHaveAttribute('open','');
+  await expect(handle).toBeVisible();
+  const style=await handle.evaluate(el=>({position:getComputedStyle(el).position,touchAction:getComputedStyle(el).touchAction}));
+  expect(style.position).toBe('sticky');expect(style.touchAction).toBe('none');
+  await page.evaluate(()=>{
+    const handle=document.querySelector('#srPerfSheet .srPerfDragHandleV213');
+    function fire(type,y,active){
+      const touch=new Touch({identifier:213,target:handle,clientX:195,clientY:y,pageX:195,pageY:y,screenX:195,screenY:y,radiusX:2,radiusY:2,rotationAngle:0,force:1});
+      handle.dispatchEvent(new TouchEvent(type,{bubbles:true,cancelable:true,touches:active?[touch]:[],targetTouches:active?[touch]:[],changedTouches:[touch]}));
+    }
+    fire('touchstart',80,true);fire('touchmove',270,true);fire('touchend',270,false);
+  });
+  await expect(sheet).not.toHaveAttribute('open','');
+  expect(errors).toEqual([]);
+});
+
 require('./performance-store-reconcile-v209-browser.spec.cjs');
