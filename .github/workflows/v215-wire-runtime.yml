@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: chatgpt/v215-visit-mobile-ux
-      - name: Câbler V215
+      - name: Câbler V215 dans le runtime
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -25,26 +25,12 @@ jobs:
           if old in s:
               s=s.replace(old,new,1)
           p.write_text(s)
-
-          p=Path('.github/workflows/reliability-checks.yml')
-          s=p.read_text()
-          node='      - run: node tests/v212-smart-schedule.test.cjs\n'
-          node215='      - run: node tests/visit-mobile-ux-v215.test.cjs\n'
-          if node215 not in s:
-              if node not in s: raise SystemExit('ancre node V215 introuvable')
-              s=s.replace(node,node+node215,1)
-          browser='tests/v212-smart-schedule-browser.spec.cjs tests/performance-assistant-browser.spec.cjs'
-          browser215='tests/v212-smart-schedule-browser.spec.cjs tests/visit-mobile-ux-v215-browser.spec.cjs tests/performance-assistant-browser.spec.cjs'
-          if browser215 not in s:
-              if browser not in s: raise SystemExit('ancre browser V215 introuvable')
-              s=s.replace(browser,browser215,1)
-          p.write_text(s)
           PY
-      - name: Auto-nettoyage et commit
+      - name: Commit runtime
         run: |
-          rm .github/workflows/v215-wire-runtime.yml
           git config user.name "Store Runner Bot"
           git config user.email "actions@users.noreply.github.com"
-          git add index.html .github/workflows/reliability-checks.yml .github/workflows/v215-wire-runtime.yml
-          git commit -m "V215 wire complete : charger l'UX visite et ses tests"
+          git add index.html
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "V215 wire complete : charger l'UX visite"
           git push origin HEAD:chatgpt/v215-visit-mobile-ux
