@@ -52,27 +52,35 @@ function compactContext(context) {
   };
 }
 
-async function callGroq(env, system, user, maxTokens) {
+async function callGroq(env, system, user, maxTokens, options = {}) {
   if (!env.GROQ_API_KEY) {
     throw new Error('Secret GROQ_API_KEY absent du Worker Cloudflare en Production.');
   }
 
   const model = env.GROQ_MODEL || DEFAULT_MODEL;
+  const isGptOss = /^openai\/gpt-oss-/i.test(model);
+  const messages = options.userOnly
+    ? [{ role: 'user', content: [system, user].filter(Boolean).join('\n\n') }]
+    : [
+        { role: 'system', content: system },
+        { role: 'user', content: user }
+      ];
+  const payload = {
+    model,
+    messages,
+    temperature: 0.2,
+    max_completion_tokens: maxTokens || 900
+  };
+  if (isGptOss && options.reasoningEffort) payload.reasoning_effort = options.reasoningEffort;
+  if (isGptOss && options.includeReasoning === false) payload.include_reasoning = false;
+
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${env.GROQ_API_KEY}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user }
-      ],
-      temperature: 0.2,
-      max_tokens: maxTokens || 900
-    })
+    body: JSON.stringify(payload)
   });
 
   const data = await response.json().catch(() => ({}));
@@ -83,11 +91,15 @@ async function callGroq(env, system, user, maxTokens) {
     throw new Error(msg);
   }
 
-  const text = data && data.choices && data.choices[0] && data.choices[0].message
-    ? data.choices[0].message.content
-    : '';
+  const choice = data && data.choices && data.choices[0] ? data.choices[0] : null;
+  const text = choice && choice.message ? choice.message.content : '';
 
-  return { text: String(text || '').trim(), model, provider: 'groq' };
+  return {
+    text: String(text || '').trim(),
+    finishReason: choice ? String(choice.finish_reason || '') : '',
+    model,
+    provider: 'groq'
+  };
 }
 
 const ASSISTANT_SYSTEM = `Tu es l'assistant opérationnel d'un chef de secteur.
@@ -114,11 +126,21 @@ Préserve chiffres, noms, enseignes, villes, références produits, marques et t
 Corrige orthographe, grammaire et ponctuation, avec seulement une légère reformulation si nécessaire.
 Réponds uniquement par le texte corrigé, sans introduction ni markdown.`;
 
+const PROOFREAD_GROQ_OPTIONS = {
+  userOnly: true,
+  reasoningEffort: 'low',
+  includeReasoning: false
+};
+
 function proofreadMaxTokens(input) {
   const chars = String(input || '').length;
-  // Le plafond est dynamique : une note courte ne réserve plus 1000 tokens de sortie.
-  // 160 couvre une petite note ; 700 garde une marge pour les notes terrain longues.
-  return Math.min(700, Math.max(160, Math.ceil(chars / 3.5) + 40));
+  // GPT-OSS consomme aussi des tokens de raisonnement dans le budget de completion.
+  // 320 minimum laisse une marge au raisonnement faible tout en restant très loin du chemin assistant.
+  return Math.min(700, Math.max(320, Math.ceil(chars / 3.5) + 80));
+}
+
+function proofreadRetryTokens(input) {
+  return Math.min(900, Math.max(520, proofreadMaxTokens(input) + 220));
 }
 
 async function handlePing(env, origin) {
@@ -189,8 +211,13 @@ export default {
         const source = raw || fallback;
         if (!source) return json({ error: 'Message vide.' }, 400, origin);
         const user = raw ? `Champ : ${label}.\nTEXTE :\n${raw}` : fallback;
-        const result = await callGroq(env, PROOFREAD_SYSTEM, user, proofreadMaxTokens(source));
-        if (!result.text) throw new Error('Réponse IA vide.');
+        let result = await callGroq(env, PROOFREAD_SYSTEM, user, proofreadMaxTokens(source), PROOFREAD_GROQ_OPTIONS);
+        // Si GPT-OSS consomme exceptionnellement tout le budget en raisonnement,
+        // on refait une seule tentative avec davantage de marge plutôt que de renvoyer « IA vide ».
+        if (!result.text) {
+          result = await callGroq(env, PROOFREAD_SYSTEM, user, proofreadRetryTokens(source), PROOFREAD_GROQ_OPTIONS);
+        }
+        if (!result.text) throw new Error('La correction IA n’a pas produit de texte final. Réessaie dans quelques secondes.');
         return json({
           text: result.text,
           reply: result.text,
