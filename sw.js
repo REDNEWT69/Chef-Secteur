@@ -1,4 +1,4 @@
-const BUILD_REV = "20260918-pilotagesnail220";
+const BUILD_REV = "20260918-noteproof221";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -7,6 +7,7 @@ const CORE_SHELL = [
   "./store-runner-visit-model.js",
   "./store-runner-visit-store.js",
   "./store-runner-visits.js",
+  "./note-proofreader-v221.js",
   "./store-runner-visits.css",
   "./reliability-core.js"
 ];
