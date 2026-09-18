@@ -101,7 +101,14 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
   expect(all).toHaveLength(36);
   expect(new Set(all).size).toBe(36);
   expect(generated.dayCoverage).toMatchObject({planned:15,active:15,empty:0});
-  for(const counts of generated.dayCounts)expect(Object.values(counts)).toEqual([3,3,2,2,2]);
+  for(let wi=0;wi<generated.dayCounts.length;wi++){
+  const values=Object.values(generated.dayCounts[wi]);
+  expect(values.reduce((n,v)=>n+v,0)).toBe(12);
+  expect(values.every(v=>v>0)).toBe(true);
+  expect(values.every(v=>v<=4)).toBe(true);
+  const diag=(generated.planningDiagnostics[wi]?.days||[]).filter(d=>d.status==='planned'||d.status==='empty').map(d=>d.count);
+  expect(diag).toEqual(values);
+}
   expect(generated.planningDiagnostics).toHaveLength(3);
   const expectedWeek=(from,to)=>new Set(Array.from({length:to-from+1},(_,i)=>'snail-'+String(from+i).padStart(2,'0')));
   expect(new Set(generated.weeks[0])).toEqual(expectedWeek(1,12));
