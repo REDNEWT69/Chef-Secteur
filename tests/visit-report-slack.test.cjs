@@ -39,10 +39,26 @@ for(const [enseigne,attendu] of [['Darty','grands-magasins'],['BOULANGER','grand
 (function payloadIA(){const {s,id}=freshVisit('Boulanger');M.editReport(s,id,'shared','context','Première visite, magasin récent.');M.editReport(s,id,'brun','team','Samsung est bien placé face à LG grâce à Glare Free.');M.editReport(s,id,'brun','training','Former le RU Brun sur les nouveautés 2026.');M.editReport(s,id,'blanc','team','Note BLANC qui ne doit pas sortir côté BRUN.');M.edit6P(s,id,'place',1,'status','opportunity');M.edit6P(s,id,'place',1,'comment','Massification à négocier');M.edit6P(s,id,'place',1,'family','brun');const p=R.buildAIPayload(s,id,'brun',[{family:'brun',moment:'avant'},{family:'brun',moment:'apres'}]);assert.equal(p.family,'brun');assert.equal(p.noteTerrain,'Samsung est bien placé face à LG grâce à Glare Free.');assert.ok(!JSON.stringify(p).includes('Note BLANC'));assert.equal(p.photos.total,2);assert.equal(p.photos.before,1);assert.equal(p.photos.after,1);assert.ok(p.legacyObservations.some(x=>x.comment==='Massification à négocier'))})();
 
 // Le prompt IA verrouille le style validé sans autoriser le modèle à recopier ses faits.
-(function promptIA(){const {s,id}=freshVisit('Boulanger');M.editReport(s,id,'brun','team','Nouveautés TV observées.');const p=R.buildAIPayload(s,id,'brun',[]),prompt=R.aiPrompt(p);assert.ok(prompt.includes('Résumé BRUN'));assert.ok(prompt.includes('Formation / prochain passage'));assert.ok(prompt.includes('EXEMPLE_DE_STYLE_VALIDÉ'));assert.ok(prompt.includes('INTERDIT d’en recopier les faits'));assert.ok(prompt.includes('Massifications'));assert.ok(prompt.includes('Suivi OMNI'));assert.ok(prompt.includes('N’invente jamais'));assert.ok(prompt.includes('Nouveautés TV observées.'));assert.ok(prompt.includes('PROMOTION, PRIX, PRODUIT, PLACE, PROPRETÉ ou PÉDAGOGIE'));assert.equal(R.cleanAIText('```markdown\nRésumé BRUN\n\nTexte\n```'),'Résumé BRUN\n\nTexte')})();
+(function promptIA(){const {s,id}=freshVisit('Boulanger');M.editReport(s,id,'brun','team','Nouveautés TV observées.');const p=R.buildAIPayload(s,id,'brun',[]),prompt=R.aiPrompt(p);assert.ok(prompt.includes('Résumé BRUN'));assert.ok(prompt.includes('Plan d’action / prochain passage'));assert.ok(prompt.includes('EXEMPLE_DE_STYLE_VALIDÉ'));assert.ok(prompt.includes('JAMAIS UNE SOURCE FACTUELLE'));assert.ok(prompt.includes('Massifications'));assert.ok(prompt.includes('Suivi OMNI'));assert.ok(prompt.includes('N’invente jamais'));assert.ok(prompt.includes('Nouveautés TV observées.'));assert.ok(prompt.includes('libellés techniques 6P'));assert.ok(prompt.includes('hiérarchise'));assert.ok(prompt.includes('références produit, prix, volumes'));assert.ok(prompt.includes('actions explicitement prévues'));assert.ok(prompt.includes('Photos : X au total'));assert.equal(R.cleanAIText('```markdown\nRésumé BRUN\n\nTexte\n```'),'Résumé BRUN\n\nTexte')})();
 
 // Cuisinistes / buying groups gardent un CR unique, mais utilisent eux aussi le carnet simple.
 (function merged(){for(const [enseigne,titre] of [['Schmidt','# COMPTE RENDU DE VISITE — CUISINISTE'],['Gitem','# COMPTE RENDU DE VISITE — BUYING GROUP']]){const {s,id}=freshVisit(enseigne);M.editReport(s,id,'blanc','team','Note blanc.');M.editReport(s,id,'brun','team','Note brun.');const txt=R.build(s,id,'brun');assert.ok(txt.startsWith(titre));assert.ok(!txt.includes('Famille '));assert.ok(txt.includes('Note blanc.\n\nNote brun.'));assert.ok(!txt.includes('**Photos :**'));assert.equal(R.build(s,id,'blanc'),txt);const prompt=R.aiPrompt(R.buildAIPayload(s,id,'brun',[]));assert.ok(prompt.includes('N’invente aucun fait'))}})();
+
+// Les deux trames métier du PDF restent explicites, mais avec les mêmes garde-fous rédactionnels.
+(function promptsMetierV222(){
+ const cuisiniste=R.aiPrompt({skeleton:'cuisinistes',store:{enseigne:'Schmidt',ville:'Test'},family:'mixte'});
+ assert.ok(cuisiniste.includes('Chiffre d’Affaires 2025 / 2026'));
+ assert.ok(cuisiniste.includes('Historique Classroom'));
+ assert.ok(cuisiniste.includes('Contrat d’Expo'));
+ assert.ok(cuisiniste.includes('SAV / ADV'));
+ assert.ok(cuisiniste.includes('n’invente aucun chiffre'));
+ const buying=R.aiPrompt({skeleton:'buying-groups',store:{enseigne:'Gitem',ville:'Test'},family:'mixte'});
+ assert.ok(buying.includes('Protechneed'));
+ assert.ok(buying.includes('Valise Haas'));
+ assert.ok(buying.includes('Rachat par Findis'));
+ assert.ok(buying.includes('PDL & Linéaire'));
+ assert.ok(buying.includes('n’invente aucun chiffre'));
+})();
 
 (function ancienne(){const {s,id}=freshVisit('Darty'),v=M.getVisit(s,id);delete v.activeFamily;delete v.report;for(const rows of Object.values(v.sixP))for(const row of rows)delete row.family;const empreinte=JSON.stringify(s),txt=R.build(s,id,'blanc',[]);assert.ok(txt.includes('Famille BLANC'));assert.equal(JSON.stringify(s),empreinte)})();
 
