@@ -237,6 +237,18 @@ function buildThreeWeekSnail(options){
   const dayRows=weeks.flatMap(w=>(w.diagnostics||[]).filter(d=>d.status==='planned'||d.status==='empty')),emptyWorkDays=dayRows.filter(d=>d.status==='empty');
   return{weeks,uniqueStores:new Set(weeks.flatMap(w=>flattenPlan(w.plan).map(storeKey))).size,totalVisits:weeks.reduce((n,w)=>n+flattenPlan(w.plan).length,0),unknownGps:unknownGps.size,dayCoverage:{planned:dayRows.filter(d=>d.status==='planned').length,active:dayRows.length,empty:emptyWorkDays.length},emptyWorkDays};
 }
+function refreshThreeWeekDiagnostics(weeks,state=root.state){
+  const days=currentDays(state),target=Math.max(1,Number(state&&state.settings&&state.settings.target)||20),max=Math.max(1,Number(state&&state.settings&&state.settings.maxVisitsPerDay)||4),pool=((state&&state.stores)||[]).filter(s=>included(s,state)),ranked=rankStoresForSnail(pool,distanceOf,s=>performancePlanningBoost(s,state)),used=new Set(),planningDiagnostics=[];
+  for(const week of (weeks||[])){
+    const mon=parseISO(week&&week.weekKey)||new Date(),plan=week&&week.plan||emptyPlan(),activeDays=days.filter(day=>!dateBlocked(iso(addDays(mon,DAYS.indexOf(day))),state)),placed=flattenPlan(plan),weekPlaced=new Set(placed.map(storeKey));
+    for(const s of placed)used.add(storeKey(s));
+    const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked,used,weekPlaced,credit:visitCredit,fits:(route,day,wm)=>dayFits(route,day,state,wm),manual:!!(week&&week.manual)});
+    if(week)week.diagnostics=diagnostics;
+    planningDiagnostics.push({weekKey:String(week&&week.weekKey||''),days:diagnostics});
+  }
+  const dayRows=planningDiagnostics.flatMap(w=>(w.days||[]).filter(d=>d.status==='planned'||d.status==='empty')),emptyWorkDays=dayRows.filter(d=>d.status==='empty');
+  return{planningDiagnostics,dayCoverage:{planned:dayRows.filter(d=>d.status==='planned').length,active:dayRows.length,empty:emptyWorkDays.length},emptyWorkDays};
+}
 async function syncCalendar(first,state=root.state){
   if(typeof root.syncGoogleCalendar!=='function')return false;
   const original=state.settings&&state.settings.weekDate,merged=new Map((state.calendarEvents||[]).map(e=>[String(e.id||'')+'|'+String(e.date||'')+'|'+String(e.start||''),e]));let ok=true;
@@ -377,6 +389,6 @@ function installStartButton(){
 }
 function install(){installSnailButton();installStartButton()}
 function boot(){install();root.document&&root.document.addEventListener('store-runner:planning-updated',()=>{install();renderStoredInsights()});root.document&&root.document.addEventListener('store-runner:data-restored',()=>{install();renderStoredInsights()})}
-const api={rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,resolveSnailStart,dayFits,overnightForPlan,analyzeOvernightWeeks,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits,overnightForPlan,analyzeOvernightWeeks,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()}
 })(typeof window!=='undefined'?window:globalThis);

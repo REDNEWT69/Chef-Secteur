@@ -226,4 +226,17 @@ function flat(week){
   assert.ok(built.emptyWorkDays.every(d=>/objectif hebdomadaire inférieur/i.test(d.reason)));
 })();
 
+
+(function finalGeographicPlanOwnsTheDiagnostics(){
+  const stores=Array.from({length:12},(_,i)=>store(i+1));
+  const plan={Lundi:[stores[0]],Mardi:[stores[1]],Mercredi:stores.slice(2,6),Jeudi:stores.slice(6,8),Vendredi:stores.slice(8,12),Samedi:[]};
+  const state={manualWeekEdits:{},settings:{days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],target:12,maxVisitsPerDay:4},stores,excluded:{},included:{},calendarEvents:[]};
+  const weeks=[{weekKey:'2026-09-14',plan,manual:false}];
+  const rebuilt=terrain.refreshThreeWeekDiagnostics(weeks,state);
+  const counts=rebuilt.planningDiagnostics[0].days.filter(d=>d.status==='planned'||d.status==='empty').map(d=>d.count);
+  assert.deepStrictEqual(counts,[1,1,4,2,4],'le diagnostic doit décrire le planning final après optimisation géographique');
+  assert.deepStrictEqual(rebuilt.dayCoverage,{planned:5,active:5,empty:0});
+  assert.deepStrictEqual(weeks[0].diagnostics.map(d=>d.count),[1,1,4,2,4]);
+})();
+
 console.log('terrain-planning-v1: OK');
