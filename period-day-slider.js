@@ -3,7 +3,7 @@
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   const ARCHIVE_KEY='chef_sector_plan_archive_v1';
   const RANGE_KEY='chef_sector_range_v1';
-  let activeDate='',tabObserver=null,renderScheduled=false,lastTabsSignature=null,overnightCuePulseRequested=false;
+  let activeDate='',tabObserver=null,renderScheduled=false,lastTabsSignature=null,overnightCuePulseRequested=false,overnightRingDate='';
   function parse(v){const d=new Date(String(v||'')+'T12:00:00');return isNaN(d)?null:d}
   function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
   function monday(d){const x=new Date(d),w=x.getDay()||7;x.setDate(x.getDate()-w+1);return x}
@@ -175,16 +175,27 @@
     };
     if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>requestAnimationFrame(reveal));else reveal();
   }
+  function bindOvernightRingEnd(tab,candidateDate){
+    if(!tab||!candidateDate||tab.dataset.overnightRingBound===candidateDate)return;
+    tab.dataset.overnightRingBound=candidateDate;
+    tab.addEventListener('animationend',function(e){
+      if(!e||e.animationName!=='srOvernightRingV207'||overnightRingDate!==candidateDate)return;
+      overnightRingDate='';tab.classList.remove('srOvernightRingV207');delete tab.dataset.overnightRingBound;
+    });
+  }
   function syncOvernightVisibility(){
     const box=document.getElementById('dayTabs');if(!box)return false;
     const candidate=overnightCandidateSafe(),animate=overnightCuePulseRequested,candidateDate=String(candidate&&candidate.fromDate||'');
+    if(animate&&candidateDate)overnightRingDate=candidateDate;
+    if(!candidateDate)overnightRingDate='';
+    const keepRing=!!candidateDate&&overnightRingDate===candidateDate;
     /* Le nettoyage ne porte que sur la pastille posée par la bande. D'autres modules
        écrivent la même classe sur les mêmes onglets (ui-polish.js pour l'hôtel réservé et
        le déplacement professionnel) : les effacer revenait à supprimer leur marqueur à
        chaque rendu de la bande. */
     box.querySelectorAll('.hotelDayBadge').forEach(b=>{if(!b.dataset.overnight)return;const tab=b.closest('.dayTab');if(!candidate||!tab||tab.dataset.date!==candidateDate)b.remove()});
     box.querySelectorAll('.srOvernightDayV207').forEach(tab=>{if(!candidate||tab.dataset.date!==candidateDate)tab.classList.remove('srOvernightDayV207')});
-    box.querySelectorAll('.srOvernightRingV207').forEach(tab=>{if(!candidate||tab.dataset.date!==candidateDate||animate)tab.classList.remove('srOvernightRingV207')});
+    box.querySelectorAll('.srOvernightRingV207').forEach(tab=>{if(!keepRing||tab.dataset.date!==candidateDate)tab.classList.remove('srOvernightRingV207')});
     if(candidate&&candidate.fromDate){
       const tab=box.querySelector('.dayTab[data-date="'+candidateDate.replace(/"/g,'')+'"]');
       if(tab){
@@ -194,7 +205,10 @@
         badge.textContent='🌙 découché';
         badge.setAttribute('aria-label','Découché '+overnightLabel(candidate));
         badge.title='Découché '+overnightLabel(candidate);
-        if(animate){void tab.offsetWidth;tab.classList.add('srOvernightRingV207')}
+        if(keepRing){
+          if(animate&&tab.classList.contains('srOvernightRingV207')){tab.classList.remove('srOvernightRingV207');void tab.offsetWidth}
+          tab.classList.add('srOvernightRingV207');bindOvernightRingEnd(tab,candidateDate)
+        }
       }
     }
     let cue=document.getElementById('planningOvernightCueV206');
