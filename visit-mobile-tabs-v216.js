@@ -6,6 +6,7 @@
 
 const DIALOG_ID='srVisitDialog',NAV_ID='srVisitTabsV216',OVERVIEW_ID='srVisitOverviewV216',HISTORY_ID='srVisitHistoryV216';
 let activeTab='action',lastVisitId='',observer=null,discoveryObserver=null,scheduled=false,busy=false;
+let releaseStabilityInstalled=false,dayIntentSeq=0,hotelLock=null,hotelObserver=null,hotelObservedBox=null,settingsObserver=null,hotelRepairing=false;
 
 function q(sel,host){try{return (host||root.document).querySelector(sel)}catch(e){return null}}
 function qa(sel,host){try{return Array.from((host||root.document).querySelectorAll(sel))}catch(e){return[]}}
@@ -90,6 +91,84 @@ function apply(d,b,v){
 }
 function selectTab(key){if(!['view','action','history'].includes(key))return false;activeTab=key;const d=dialog();if(d){d.scrollTop=0;enhance()}return true}
 
+/* Release V216 : le déploiement complet a révélé deux courses de rendu anciennes.
+   Cette garde reste strictement visuelle : elle réaffirme le dernier choix tactile de jour
+   et protège le formulaire Hôtel pendant que la feuille de réglages est ouverte. */
+function markPlanningTabActive(tab){
+  if(!tab)return false;const host=tab.parentNode;if(!host)return false;
+  qa('.periodDayTab[data-date]',host).forEach(node=>node.classList.toggle('active',node===tab));return true
+}
+function reinforcePlanningDay(date,seq){
+  if(!date||seq!==dayIntentSeq)return false;
+  const current=q('#dayTabs .periodDayTab.active[data-date]');if(current&&current.dataset.date===date)return true;
+  const tab=q('#dayTabs .periodDayTab[data-date="'+date+'"]');if(!tab)return false;
+  try{if(typeof tab.onclick==='function')tab.onclick.call(tab)}catch(e){}
+  markPlanningTabActive(tab);return true
+}
+function planningSettingsOpen(){const el=q('#planningSettings');return!!(el&&el.classList.contains('planningSettingsSheetOpen'))}
+function captureHotelLock(){
+  if(!hotelLock)return false;const box=q('#overnightBox');if(!box||!planningSettingsOpen())return false;
+  const editor=q('.srHotelReservationV212[data-night]',box);if(!editor)return false;
+  const night=String(editor.dataset.night||'');if(hotelLock.date&&night&&hotelLock.date!==night)return false;
+  hotelLock.date=night||hotelLock.date;hotelLock.html=box.innerHTML;
+  const name=q('#srHotelNameV212',editor),ref=q('#srHotelRefV212',editor);hotelLock.name=String(name&&name.value||'');hotelLock.reference=String(ref&&ref.value||'');return true
+}
+function syncLockedHotelEditor(){
+  if(!hotelLock||hotelRepairing)return false;
+  if(!planningSettingsOpen()){hotelLock=null;return false}
+  const box=q('#overnightBox');if(!box)return false;
+  let editor=q('.srHotelReservationV212[data-night]',box);
+  if(editor&&(!hotelLock.date||String(editor.dataset.night||'')===hotelLock.date)){
+    const name=q('#srHotelNameV212',editor),ref=q('#srHotelRefV212',editor);
+    if(name&&name.value!==hotelLock.name)name.value=hotelLock.name;
+    if(ref&&ref.value!==hotelLock.reference)ref.value=hotelLock.reference;
+    if(!hotelLock.html)captureHotelLock();return true
+  }
+  if(!hotelLock.html)return false;
+  hotelRepairing=true;
+  try{
+    box.innerHTML=hotelLock.html;editor=q('.srHotelReservationV212[data-night]',box);
+    const name=q('#srHotelNameV212',editor),ref=q('#srHotelRefV212',editor);
+    if(name)name.value=hotelLock.name;if(ref)ref.value=hotelLock.reference;return true
+  }finally{hotelRepairing=false}
+}
+function ensureHotelObservers(){
+  const box=q('#overnightBox');
+  if(box&&box!==hotelObservedBox&&typeof root.MutationObserver==='function'){
+    if(hotelObserver)hotelObserver.disconnect();hotelObservedBox=box;hotelObserver=new root.MutationObserver(syncLockedHotelEditor);hotelObserver.observe(box,{childList:true,subtree:true})
+  }
+  const settings=q('#planningSettings');
+  if(settings&&!settingsObserver&&typeof root.MutationObserver==='function'){
+    settingsObserver=new root.MutationObserver(()=>{if(hotelLock&&!planningSettingsOpen())hotelLock=null});settingsObserver.observe(settings,{attributes:true,attributeFilter:['class','open']})
+  }
+}
+function installReleaseStabilityV216(){
+  if(releaseStabilityInstalled||!root.document)return false;releaseStabilityInstalled=true;
+  root.document.addEventListener('click',e=>{
+    const target=e&&e.target&&e.target.closest?e.target:null;if(!target)return;
+    const tab=target.closest('#dayTabs .periodDayTab[data-date]');
+    if(tab){
+      const date=String(tab.dataset.date||''),seq=++dayIntentSeq;markPlanningTabActive(tab);
+      root.setTimeout(()=>reinforcePlanningDay(date,seq),0);
+      if(typeof root.requestAnimationFrame==='function')root.requestAnimationFrame(()=>reinforcePlanningDay(date,seq));
+    }
+    const cue=target.closest('#planningOvernightCueV206');
+    if(cue){
+      hotelLock={date:String(cue.dataset.date||''),html:'',name:'',reference:''};ensureHotelObservers();captureHotelLock();
+      root.setTimeout(()=>{if(hotelLock&&!hotelLock.html)captureHotelLock();syncLockedHotelEditor()},0)
+    }
+    if(target.closest('[data-planning-settings-close]'))hotelLock=null;
+  });
+  root.document.addEventListener('input',e=>{
+    if(!hotelLock||!e||!e.target)return;
+    if(e.target.id==='srHotelNameV212')hotelLock.name=String(e.target.value||'');
+    else if(e.target.id==='srHotelRefV212')hotelLock.reference=String(e.target.value||'');
+  });
+  root.document.addEventListener('keydown',e=>{if(e&&e.key==='Escape')hotelLock=null},true);
+  root.document.addEventListener('store-runner:hotel-reservation-updated',()=>{hotelLock=null});
+  ensureHotelObservers();return true
+}
+
 function enhance(){
   if(busy)return false;const d=dialog();if(!d)return false;const b=bodyOf(d);if(!b)return false;busy=true;
   try{
@@ -101,7 +180,7 @@ function enhance(){
 }
 function schedule(){if(scheduled)return;scheduled=true;const run=()=>{scheduled=false;enhance()};if(typeof root.requestAnimationFrame==='function')root.requestAnimationFrame(run);else root.setTimeout(run,0)}
 function attach(){const d=dialog();if(!d)return false;enhance();if(observer)return true;observer=new MutationObserver(schedule);observer.observe(d,{childList:true,subtree:true,attributes:true,attributeFilter:['class','open','aria-pressed']});root.addEventListener&&root.addEventListener('resize',schedule,{passive:true});return true}
-function boot(){ensureStyle();if(attach())return;const host=root.document.documentElement||root.document;discoveryObserver=new MutationObserver(()=>{if(!attach())return;if(discoveryObserver){discoveryObserver.disconnect();discoveryObserver=null}});discoveryObserver.observe(host,{childList:true,subtree:true})}
+function boot(){ensureStyle();installReleaseStabilityV216();if(attach())return;const host=root.document.documentElement||root.document;discoveryObserver=new MutationObserver(()=>{if(!attach())return;if(discoveryObserver){discoveryObserver.disconnect();discoveryObserver=null}});discoveryObserver.observe(host,{childList:true,subtree:true})}
 
 root.StoreRunnerVisitTabsV216={enhance,selectTab,currentTab:()=>activeTab};
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()}
