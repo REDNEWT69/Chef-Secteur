@@ -1,0 +1,22 @@
+name: V220 owner trace once
+on:
+  push:
+    branches:
+      - chatgpt/v220-pilotage-snail-reliability
+permissions:
+  contents: read
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v220-pilotage-snail-reliability
+      - name: Lister les écritures et événements planning
+        run: |
+          printf '\n=== ARCHIVE WRITERS ===\n'
+          grep -RIn --include='*.js' --include='*.html' 'chef_sector_plan_archive_v1\|ARCHIVE_KEY' . | head -n 240 || true
+          printf '\n=== RANGE GENERATED LISTENERS ===\n'
+          grep -RIn --include='*.js' --include='*.html' 'chef-range-generated' . | head -n 160 || true
+          printf '\n=== PLANNING UPDATED LISTENERS ===\n'
+          grep -RIn --include='*.js' --include='*.html' 'store-runner:planning-updated' . | head -n 240 || true
