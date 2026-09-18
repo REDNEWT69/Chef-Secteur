@@ -172,9 +172,15 @@ function install(){
   if(!root||typeof root.callAIGateway!=='function')return false;
   root.callAIGateway=wrapGateway(root.callAIGateway);return Boolean(root.callAIGateway&&root.callAIGateway.__visitReportJsonV225)
 }
+function installEventually(attempt){
+  attempt=Math.max(0,Number(attempt)||0);
+  if(install())return true;
+  if(root&&root.document&&attempt<80)root.setTimeout(function(){installEventually(attempt+1)},100);
+  return false
+}
 
-const api={cleanJsonText,parseStructured,list,scalar,schemaFor,buildPrompt,renderStructured,renderBrun,renderBlanc,hasUsefulContent,wrapGateway,install};
+const api={cleanJsonText,parseStructured,list,scalar,schemaFor,buildPrompt,renderStructured,renderBrun,renderBlanc,hasUsefulContent,wrapGateway,install,installEventually};
 root.StoreRunnerVisitReportJSONV225=api;
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
-if(root&&typeof root.callAIGateway==='function')install();
+if(root&&root.document)installEventually(0);else if(root&&typeof root.callAIGateway==='function')install();
 })(typeof window!=='undefined'?window:globalThis);
