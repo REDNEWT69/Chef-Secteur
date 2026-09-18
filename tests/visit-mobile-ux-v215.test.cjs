@@ -22,7 +22,7 @@ assert(tabs.includes("activeTab='action'"),'Action doit être la vue terrain par
 assert(tabs.includes("if(id!==lastVisitId){lastVisitId=id;activeTab='action'}"),'une nouvelle visite doit revenir sur Action');
 assert(tabs.includes('srVisitOverviewV216'),'Vue doit posséder un résumé propre');
 assert(tabs.includes('srVisitHistoryV216'),'Historique doit avoir son panneau dédié');
-assert(tabs.includes('StoreRunnerVisits.memoryFor'),'Historique doit relire la mémoire métier existante');
+assert(tabs.includes('memoryFor(v.storeId)'),'Historique doit relire la mémoire métier existante');
 assert(!/touchstart|touchmove|pointermove/.test(tabs),'V216 ne doit ajouter aucun geste vertical métier');
 assert(!/session\.|localStorage\.setItem|\.complete\(|status\s*=\s*["']completed|save\(/.test(tabs),'V216 doit rester strictement en lecture seule');
 assert(index.includes("'./visit-mobile-ux-v215.js','./visit-mobile-tabs-v216.js','./update-manager.js'"),'V216 doit charger après V215 et avant update-manager');
