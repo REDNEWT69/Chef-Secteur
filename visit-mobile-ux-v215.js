@@ -57,7 +57,7 @@ function ensureHeader(d){
   const head=q(':scope > .sr-head',d)||q('.sr-head',d);if(!head)return false;
   /* Ne jamais déplacer les boutons : Opportunités et Sortie magasin insèrent leurs
      actions relativement à ces enfants directs. V215 ne prend que la propriété visuelle. */
-  head.classList.add('srVisitHeadV215');
+  if(!head.classList.contains('srVisitHeadV215'))head.classList.add('srVisitHeadV215');
   return true;
 }
 
@@ -72,7 +72,8 @@ function compactFamily(d){
   const family=activeFamily(d);if(!family)return false;
   const wanted=family+' actif · notes & photos classées ici';
   if(text(active.textContent)!==wanted)active.textContent=wanted;
-  active.setAttribute('aria-label','Famille active : '+family+'. Notes et photos classées dans cette famille.');
+  const aria='Famille active : '+family+'. Notes et photos classées dans cette famille.';
+  if(active.getAttribute('aria-label')!==aria)active.setAttribute('aria-label',aria);
   return true;
 }
 
@@ -89,7 +90,9 @@ function perfParts(brief){
 function updatePerfSummary(fold,brief){
   const summary=q(':scope > summary',fold);if(!summary)return;
   const p=perfParts(brief),badge=q('.srVisitPerfSummaryBadgeV215',summary),metric=q('.srVisitPerfSummaryMetricV215',summary);
-  if(badge)badge.textContent=p.badge;if(metric)metric.textContent=p.gap&&p.gap!=='—'?'Écart '+p.gap:'Voir le détail';
+  const metricText=p.gap&&p.gap!=='—'?'Écart '+p.gap:'Voir le détail';
+  if(badge&&text(badge.textContent)!==p.badge)badge.textContent=p.badge;
+  if(metric&&text(metric.textContent)!==metricText)metric.textContent=metricText;
 }
 function foldPerformance(d){
   const brief=q('.srPerfBrief192',d);if(!brief)return false;
@@ -118,7 +121,7 @@ function ensureTopButton(d){
   }
   if(!scrollBound){
     scrollBound=true;
-    d.addEventListener('scroll',()=>{const btn=q('.srVisitTopV215',d);if(btn)btn.classList.toggle('srVisitTopVisibleV215',d.scrollTop>280)},{passive:true});
+    d.addEventListener('scroll',()=>{const btn=q('.srVisitTopV215',d);if(!btn)return;const visible=d.scrollTop>280;if(btn.classList.contains('srVisitTopVisibleV215')!==visible)btn.classList.toggle('srVisitTopVisibleV215',visible)},{passive:true});
   }
   return b;
 }
@@ -126,7 +129,7 @@ function ensureTopButton(d){
 function enhance(){
   if(busy)return false;const d=dialog();if(!d)return false;busy=true;
   try{
-    ensureStyle();d.classList.add('srVisitV215');ensureHeader(d);compactFamily(d);foldPerformance(d);compactSecondary(d);ensureTopButton(d);return true;
+    ensureStyle();if(!d.classList.contains('srVisitV215'))d.classList.add('srVisitV215');ensureHeader(d);compactFamily(d);foldPerformance(d);compactSecondary(d);ensureTopButton(d);return true;
   }finally{busy=false}
 }
 function schedule(){if(scheduled)return;scheduled=true;const run=()=>{scheduled=false;enhance()};if(typeof root.requestAnimationFrame==='function')root.requestAnimationFrame(run);else setTimeout(run,0)}
