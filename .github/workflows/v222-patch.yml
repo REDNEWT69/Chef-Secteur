@@ -23,7 +23,18 @@ jobs:
         with:
           python-version: '3.12'
       - name: Apply V222 patch
-        run: python tools/v222_patch.py
+        run: |
+          python tools/v222_patch.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('tests/visit-report-slack.test.cjs')
+          s=p.read_text(encoding='utf-8')
+          old="assert.ok(prompt.includes('INTERDIT d’en recopier les faits'));"
+          new="assert.ok(prompt.includes('JAMAIS UNE SOURCE FACTUELLE'));"
+          if old not in s:
+              raise SystemExit('legacy prompt assertion not found')
+          p.write_text(s.replace(old,new,1),encoding='utf-8')
+          PY
       - name: Targeted tests
         run: |
           node tests/syntax.test.cjs
