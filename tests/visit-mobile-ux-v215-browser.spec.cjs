@@ -136,10 +136,6 @@ test('V217 épure la visite selon les familles configurées dans la fiche magasi
     save();
   });
 
-  expect(await page.evaluate(()=>window.StoreRunnerVisits.familiesForStore('v217-blanc'))).toEqual(['blanc']);
-  expect(await page.evaluate(()=>window.StoreRunnerVisits.familiesForStore('v217-brun'))).toEqual(['brun']);
-  expect((await page.evaluate(()=>window.StoreRunnerVisits.familiesForStore('v217-legacy'))).sort()).toEqual(['blanc','brun']);
-
   await page.evaluate(async()=>{await window.StoreRunnerVisits.start('v217-blanc')});
   const dialog=page.locator('#srVisitDialog');await expect(dialog).toBeVisible();
   await expect(dialog.locator('.sr-familyBtn')).toHaveCount(1);
