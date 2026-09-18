@@ -119,3 +119,50 @@ test('V216 sépare Vue Action Historique sans toucher aux actions métier',async
   const overflow=await dialog.evaluate(el=>el.scrollWidth-el.clientWidth);expect(overflow).toBeLessThanOrEqual(1);
   expect(errors).toEqual([]);
 });
+
+test('V217 épure la visite selon les familles configurées dans la fiche magasin',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.state&&window.StoreRunnerVisits&&window.StoreRunnerVisitModel&&window.StoreRunnerVisitMobileUXV215&&window.StoreRunnerVisitTabsV216);
+
+  await page.evaluate(()=>{
+    const M=window.StoreRunnerVisitModel,st=window.state;
+    st.stores=[
+      {id:'v217-blanc',enseigne:'Darty',ville:'Blanc',adresse:'1 rue Test',active:true,products:['Blanc']},
+      {id:'v217-brun',enseigne:'Darty',ville:'Brun',adresse:'2 rue Test',active:true,products:['Brun']},
+      {id:'v217-legacy',enseigne:'Darty',ville:'Legacy',adresse:'3 rue Test',active:true,products:[]}
+    ];
+    st.businessV2=M.empty();st.notes={};st.visits={};st.included={};st.excluded={};st.locks={};st.plan={};st.appointments=[];st.calendarEvents=[];
+    save();
+  });
+
+  await page.evaluate(async()=>{await window.StoreRunnerVisits.start('v217-blanc')});
+  const dialog=page.locator('#srVisitDialog');await expect(dialog).toBeVisible();
+  await expect(dialog.locator('.sr-familyBtn')).toHaveCount(1);
+  await expect(dialog.locator('.sr-familyBtn')).toHaveText('BLANC');
+  await expect(dialog.locator('.sr-familyBtn[data-family="brun"]')).toHaveCount(0);
+  await expect(dialog.locator('.sr-familyActive')).toHaveCount(0);
+  await expect(dialog.getByText('Contexte magasin · facultatif',{exact:true})).toBeVisible();
+  await expect(dialog.locator('.sr-terrainExitHint')).toHaveCount(0);
+  expect(await page.evaluate(()=>window.state.businessV2.visits.find(v=>v.storeId==='v217-blanc'&&v.status==='draft').activeFamily)).toBe('blanc');
+
+  await dialog.locator(':scope > .sr-head').getByRole('button',{name:/Fermer/i}).tap();
+  await expect(dialog).not.toBeVisible();
+
+  await page.evaluate(async()=>{await window.StoreRunnerVisits.start('v217-brun')});
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('.sr-familyBtn')).toHaveCount(1);
+  await expect(dialog.locator('.sr-familyBtn')).toHaveText('BRUN');
+  await expect(dialog.locator('.sr-familyBtn[data-family="blanc"]')).toHaveCount(0);
+  await expect(dialog.locator('.sr-familyActive')).toHaveCount(0);
+  expect(await page.evaluate(()=>window.state.businessV2.visits.find(v=>v.storeId==='v217-brun'&&v.status==='draft').activeFamily)).toBe('brun');
+
+  await dialog.locator(':scope > .sr-head').getByRole('button',{name:/Fermer/i}).tap();
+  await expect(dialog).not.toBeVisible();
+
+  await page.evaluate(async()=>{await window.StoreRunnerVisits.start('v217-legacy')});
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('.sr-familyBtn')).toHaveCount(2);
+  await expect(dialog.locator('.sr-familyActive')).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
