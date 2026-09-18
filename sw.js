@@ -79,6 +79,7 @@ const SCOPE_ORIGIN = new URL(SCOPE).origin;
 const V2_PREFIX = new URL('./v2/', SCOPE).href;
 const VERSION_URL = new URL('./version.json', SCOPE).href;
 const AI_API_PREFIX = new URL('./api/ai', SCOPE).href;
+const ACCESS_PATH_PREFIX = '/cdn-cgi/access/';
 function requestFor(path){return new Request(new URL(path,SCOPE), {cache:'reload'});}
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
@@ -103,6 +104,11 @@ self.addEventListener('fetch', event => {
   // navigateur effectue sa requête réseau normale pour /v2/, sans lecture ni
   // écriture dans le cache V1.
   if (url.href.startsWith(V2_PREFIX)) return;
+
+  // V332 : les endpoints natifs Cloudflare Access doivent rester entièrement
+  // hors du service worker. Logout, callbacks et contrôles de session doivent
+  // toujours être servis par Cloudflare et ne jamais tomber sur le cache PWA.
+  if (url.origin === SCOPE_ORIGIN && url.pathname.startsWith(ACCESS_PATH_PREFIX)) return;
 
   // V332 : l'authentification Cloudflare Access doit toujours contrôler les
   // navigations de premier niveau. Une ancienne coque PWA hors ligne ne doit
