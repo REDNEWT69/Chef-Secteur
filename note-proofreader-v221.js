@@ -17,7 +17,7 @@ function buildPrompt(value,label){
     'Corrige cette note terrain en français professionnel, sans changer le sens.',
     'Corrige orthographe, grammaire, accords, conjugaison, ponctuation et mots manifestement mal saisis.',
     'N’invente rien. Conserve exactement faits, chiffres, noms, enseignes, villes, références produits, marques et termes métier.',
-    'Préserve tels quels OLED, QLED, Neo QLED, Mini LED, Q-Symphony, SmartThings, Samsung et TCL lorsqu’ils sont présents.',
+    'Préserve tels quels OLED, QLED, Neo QLED, Mini LED, Q-Symphony, SmartThings, '+PRIMARY_BRAND+' et TCL lorsqu’ils sont présents.',
     'Reformule seulement si nécessaire pour la lisibilité. Ne fais ni analyse, ni résumé, ni recommandation.',
     'Réponds uniquement avec le texte corrigé, sans introduction, guillemets ni markdown.',
     'Champ : '+field+'.',
