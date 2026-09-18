@@ -42,6 +42,10 @@ s=p.read_text()
 needle="if(!/function proofreadMaxTokens/.test(worker))throw new Error('Passerelle IA: plafond dynamique proofread absent');"
 repl=needle+"\nif(!/body\\.proofreadText/.test(worker))throw new Error('Passerelle IA: proofread doit accepter le texte brut dédié');"
 assert needle in s,'garde proofread worker introuvable'
-p.write_text(s.replace(needle,repl,1))
+s=s.replace(needle,repl,1)
+old_guard="if(!/callGroq\\(env, PROOFREAD_SYSTEM, user, proofreadMaxTokens\\(user\\)\\)/.test(worker))throw new Error('Passerelle IA: proofread doit utiliser son prompt et son plafond dédiés');"
+new_guard="if(!/callGroq\\(env, PROOFREAD_SYSTEM, user, proofreadMaxTokens\\(source\\)\\)/.test(worker))throw new Error('Passerelle IA: proofread doit utiliser son prompt et son plafond dédiés');"
+assert old_guard in s,'garde callGroq proofread introuvable'
+p.write_text(s.replace(old_guard,new_guard,1))
 
 Path('tools/v224_refine.py').unlink()
