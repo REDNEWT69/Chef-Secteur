@@ -71,12 +71,14 @@ const OPTIONAL_SHELL = [
   "./sector-admin.js"
 ];
 const SCOPE = self.registration.scope;
+const SCOPE_ORIGIN = new URL(SCOPE).origin;
 // Store Runner V2 (v2/) est une application volontairement isolée de ce
 // service worker V1 : ne jamais coder /v2/ en dur, toujours le calculer
 // depuis SCOPE (fonctionne aussi bien sous store-runner.fr que sous une URL
 // GitHub Pages du type /Chef-Secteur/v2/).
 const V2_PREFIX = new URL('./v2/', SCOPE).href;
 const VERSION_URL = new URL('./version.json', SCOPE).href;
+const AI_API_PREFIX = new URL('./api/ai', SCOPE).href;
 function requestFor(path){return new Request(new URL(path,SCOPE), {cache:'reload'});}
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
@@ -101,6 +103,17 @@ self.addEventListener('fetch', event => {
   // navigateur effectue sa requête réseau normale pour /v2/, sans lecture ni
   // écriture dans le cache V1.
   if (url.href.startsWith(V2_PREFIX)) return;
+
+  // V332 : l'authentification Cloudflare Access doit toujours contrôler les
+  // navigations de premier niveau. Une ancienne coque PWA hors ligne ne doit
+  // jamais permettre de contourner l'écran de connexion.
+  if (event.request.mode === 'navigate') return;
+
+  // L'API IA partage le domaine de Store Runner pour réutiliser la session
+  // Cloudflare Access. Le service worker ne doit ni intercepter ni mettre en
+  // cache son ping, afin que l'état d'authentification reste vérifié au réseau.
+  if (url.href.startsWith(AI_API_PREFIX)) return;
+
   // Le manifeste de version doit toujours venir du réseau : sinon l'interface de mise à
   // jour peut comparer l'application à une ancienne copie mise en cache. On ignore ici
   // le query-string anti-cache ajouté par update-manager.js.
@@ -114,16 +127,20 @@ self.addEventListener('fetch', event => {
     try {
       const response = await fetch(event.request, {cache:'no-store'});
       if (!response.ok) throw new Error('HTTP '+response.status);
-      await cache.put(event.request,response.clone());
+
+      // Ne jamais mettre en cache une page de connexion Access obtenue après
+      // redirection. Sinon un script ou un fichier CSS pourrait être remplacé
+      // durablement par du HTML d'authentification.
+      let responseOrigin='';
+      try{responseOrigin=response.url?new URL(response.url).origin:'';}catch(e){}
+      if (!response.redirected && (!responseOrigin || responseOrigin === SCOPE_ORIGIN)) {
+        await cache.put(event.request,response.clone());
+      }
       return response;
     } catch (error) {
       let cached = await cache.match(event.request);
       if (!cached) cached = await cache.match(event.request, {ignoreSearch:true});
       if (cached) return cached;
-      if (event.request.mode === 'navigate') {
-        const entry = await cache.match(new URL('./index.html',SCOPE).href, {ignoreSearch:true});
-        if (entry) return entry;
-      }
       return new Response('Fichier indisponible hors ligne', {status:503,headers:{'Content-Type':'text/plain; charset=utf-8'}});
     }
   })());
