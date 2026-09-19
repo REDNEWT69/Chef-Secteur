@@ -1,4 +1,4 @@
-const BUILD_REV = "20260918-proofreadquota224";
+const BUILD_REV = "20260919-access332";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
