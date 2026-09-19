@@ -19,7 +19,7 @@ async function reopenQuickAndTapPhotos(page){
 test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA FMT + reload offline bloqué par Access',async({page,context})=>{
   test.setTimeout(90000);
   const pageErrors=[];page.on('pageerror',e=>pageErrors.push(String(e&&e.message||e)));
-  await page.addInitScript(()=>sessionStorage.setItem('store-runner-sw-reload:20260915-ai-report172','1'));
+  await page.addInitScript(()=>{try{sessionStorage.setItem('store-runner-sw-reload:20260915-ai-report172','1')}catch(_){}});
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.StorePhotosV1&&window.StoreRunnerVisitReport&&window.BoulangerDefaultHoursV1&&window.StoreOpeningHoursV1&&window.StoreRunnerVisitModel&&window.ChefReliability&&window.state&&typeof window.openStoreQuick==='function');
   await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
