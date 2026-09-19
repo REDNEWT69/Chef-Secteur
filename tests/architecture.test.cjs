@@ -111,7 +111,7 @@ requireMatch('planning-generation-controller.js','moteur semaine spécialisé co
 
 const ai=read('ai-gateway-config.js');
 if(/\b(?:client_secret|api[_-]?key)\b\s*[:=]\s*['"][^'"]{12,}['"]/i.test(ai))throw new Error('IA: secret ou clé API détecté côté navigateur');
-if(!/workers\.dev/.test(ai))throw new Error('IA: passerelle publique attendue absente');
+if(!/const DEFAULT_GATEWAY=['"]\/api\/ai['"]/.test(ai))throw new Error('IA: passerelle same-origin /api/ai attendue absente');
 if(!/MAX_TRIES\s*=\s*\d+/.test(ai)||!/setTimeout\(retry,\s*100\)/.test(ai))throw new Error('IA: retry borné attendu absent');
 
 const index=read('index.html'),sw=read('sw.js');
