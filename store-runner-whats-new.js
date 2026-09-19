@@ -53,8 +53,22 @@
     return null;
   }
 
+  /* Un stockage simplement présent ne suffit pas : sur iPhone il peut exister et
+     refuser toute écriture (quota, navigation privée). On le sonde une fois — lecture
+     et écriture réelles — car c'est cette écriture qui tient la promesse « une seule
+     fois ». Un stockage qui lève est traité comme absent. */
+  let probedStorage;
   function storage(){
-    try{return window.__chefStorage||window.localStorage||null}catch(e){return null}
+    if(probedStorage!==undefined)return probedStorage;
+    let candidate=null;
+    try{candidate=window.__chefStorage||window.localStorage||null}catch(e){candidate=null}
+    if(candidate){
+      const probe='__srwn_probe__';
+      try{candidate.setItem(probe,'1');candidate.getItem(probe);candidate.removeItem(probe)}
+      catch(e){candidate=null}
+    }
+    probedStorage=candidate||null;
+    return probedStorage;
   }
 
   function lastSeenVersion(){
@@ -69,6 +83,28 @@
     const value=String(version||currentVersion()||'');
     if(!value)return false;
     try{s.setItem(SEEN_KEY,value);return true}catch(e){return false}
+  }
+
+  /* « Quoi de neuf » suppose un avant. L'instantané est pris à l'évaluation du
+     script, avant DOMContentLoaded, donc avant que l'application ne restaure et
+     réécrive ses propres données : à cet instant le stockage ne reflète que les
+     sessions précédentes. Une première installation n'a aucune nouveauté à
+     annoncer — sa version est enregistrée en silence pour que la prochaine mise
+     à jour, elle, soit bien annoncée. */
+  const PRIOR_INSTALL_KEYS=['sector_planner_universal_v1','chef_sector_plan_archive_v1',
+                            'chef_recovery_backups_v1','store-runner-last-seen-build'];
+  let priorInstall=null;
+  function hadPriorInstall(){
+    if(priorInstall!==null)return priorInstall;
+    priorInstall=false;
+    const s=storage();
+    if(s){
+      const keys=[SEEN_KEY].concat(PRIOR_INSTALL_KEYS);
+      for(let i=0;i<keys.length;i++){
+        try{if(s.getItem(keys[i])!=null){priorInstall=true;break}}catch(e){}
+      }
+    }
+    return priorInstall;
   }
 
   /* Sans persistance utilisable, « une seule fois » ne peut pas être tenu : on
@@ -164,6 +200,7 @@
 
   function autoOpen(){
     if(!hasUnseenRelease())return false;
+    if(!hadPriorInstall()){markSeen(currentVersion());return false}
     /* Le bandeau « Mise à jour installée » du centre de mise à jour arrive au même
        moment et ferait doublon sous le fond flouté. On masque uniquement ce toast
        passager ; un bandeau collant (mise à jour disponible ou installation en
@@ -210,6 +247,7 @@
     latestRelease:latestRelease,
     lastSeenVersion:lastSeenVersion,
     hasUnseenRelease:hasUnseenRelease,
+    hadPriorInstall:hadPriorInstall,
     markSeen:markSeen,
     open:open,
     close:close,
@@ -221,6 +259,7 @@
   if(typeof module!=='undefined'&&module.exports)module.exports=publicApi;
   if(typeof window==='undefined'||typeof document==='undefined')return;
   window.StoreRunnerWhatsNew=publicApi;
+  hadPriorInstall();   // instantané pris maintenant, avant que l'application n'écrive
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});
   else start();
 })();
