@@ -10,13 +10,5 @@
   "background_color": "#f4f6fa",
   "theme_color": "#1428A0",
   "lang": "fr-FR",
-  "orientation": "portrait-primary",
-  "icons": [
-    {
-      "src": "./app-icon-ios-v332.svg?rev=20260919-iosicon332",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    }
-  ]
+  "orientation": "portrait-primary"
 }
