@@ -1,29 +1,31 @@
 # Store Runner V2
 
-Store Runner V2 est reconstruite en parallèle de la V1, sans recopier sa dette historique. Le dossier `v2/` reste isolé du runtime V1, de son `index.html` et de son service worker, sauf l’exclusion explicite qui empêche justement le service worker V1 d’intercepter `/v2/`.
+Store Runner V2 est reconstruite en parallèle de la V1, sans recopier sa dette historique. Le dossier `v2/` reste isolé du runtime V1. Le service worker V1 connaît uniquement `/v2/` pour l’exclure explicitement de son interception.
 
-> Le dossier `v2/` désigne la nouvelle application décidée dans #115. Il ne faut pas le confondre avec l’ancienne propriété V1 `state.businessV2` utilisée pour Visit / Action / 6P.
+> Le dossier `v2/` désigne la nouvelle application décidée dans #115. Il ne faut pas le confondre avec l’ancienne propriété V1 `state.businessV2` utilisée par Visit / Action / Opportunity.
 
-## État actuel
+## État réel
+
+Le chantier est plus avancé que l’ancien README ne l’indiquait :
 
 - **V2-01 — socle + stockage : livré**
 - **V2-02 — shell mobile : livré**
 - **V2-03 — magasins : livré**
-- **V2-04 — planning semaine : prochaine étape**
+- **V2-04 — planning semaine déterministe : livré**
+- **V2-04b — navigation entre semaines : livré**
+- **V2-04c — rotation équilibrée : livré**
+- **V2-05a — swipe tactile entre jours : livré**
+- **V2-06 — génération 3 semaines en tournée escargot : livré**
+- **V2-07 — import local V1 + persistance : livré**
+- **Outils terrain du planning : livrés dans l’environnement de test**
 
 La V2 publique de test reste accessible sous `https://store-runner.fr/v2/public/`. Elle est en `noindex,nofollow` et ne remplace pas la V1 de production.
 
 ## Choix techniques
 
-La V2 utilise uniquement des modules **ESM natifs** (`.mjs`). Il n’y a ni bundler, ni transpilation, ni `package.json` propre à `v2/`, ni dépendance npm de runtime.
+La V2 utilise des modules **ESM natifs** (`.mjs`) sans bundler ni dépendance npm de runtime.
 
-Les tests unitaires/comportementaux sont des scripts Node 22 avec `node:assert/strict`. Un faux DOM minimal est maintenu dans `v2/tests/fake-dom.mjs`; aucune dépendance jsdom n’est utilisée.
-
-Le dépôt possède désormais aussi une infrastructure **Playwright + Chromium** dans la Reliability. Elle exécute V1 et V2 sur un viewport mobile **390 × 844** avec interactions tactiles réelles.
-
-## Contrat de données
-
-Le modèle racine reste indépendant du DOM et versionné :
+Le contrat racine reste indépendant du DOM et versionné :
 
 ```json
 {
@@ -38,149 +40,101 @@ Le modèle racine reste indépendant du DOM et versionné :
 }
 ```
 
-Modules du socle :
+Socle principal :
 
-- `src/core/state.mjs` : création/clonage de l’état V2 ;
-- `src/core/validate.mjs` : validation du contrat racine ;
-- `src/core/store.mjs` : store central, mises à jour contrôlées et abonnements ;
-- `src/storage/persistence.mjs` : sauvegarde/chargement/reset ;
-- `src/storage/json-transfer.mjs` : import/export JSON V2 validé.
+- `src/core/state.mjs` : état V2 ;
+- `src/core/validate.mjs` : validation du contrat ;
+- `src/core/store.mjs` : store central et abonnements ;
+- `src/storage/persistence.mjs` : sauvegarde / chargement / reset ;
+- `src/storage/json-transfer.mjs` : import / export JSON validé ;
+- `src/migration/v1-backup.mjs` : pont local et explicite depuis une sauvegarde V1.
 
-## Shell mobile
+## Shell et écrans
 
-Le shell conserve la propriété exclusive de la structure globale : header, zone principale, écrans et navigation basse.
+`src/app/shell.mjs` reste l’unique propriétaire de la structure globale : header, zone principale, écrans et navigation basse. Une feature ne doit modifier que son propre contenu.
 
-Modules :
+Les quatre onglets sont toujours :
 
-- `src/app/navigation.mjs` : navigation pure, sans DOM ;
-- `src/app/shell.mjs` : propriétaire unique de la structure globale ;
-- `src/ui/render.mjs` : helpers de rendu DOM ;
-- `mountScreen(screenId, node)` : point d’extension officiel pour monter une feature dans un écran.
+- **Accueil** : encore léger / non paritaire avec la V1 ;
+- **Planning** : feature réelle ;
+- **Magasins** : feature réelle ;
+- **Plus** : contient les outils de données, notamment l’import local V1.
 
-Règles non négociables :
+Le point d’entrée public monte actuellement :
 
-- une feature ne déplace jamais un élément appartenant au shell ;
-- pas de réparation du DOM global après rendu ;
-- pas de `MutationObserver` global ;
-- pas de rerender déclenché par `focus` ou `visibilitychange` ;
-- pas de seconde initialisation silencieuse du shell ;
-- un écran métier met à jour uniquement son propre contenu.
+- `createPlanningFeature` ;
+- `createTerrainToolsFeature` ;
+- `createPlanningRangeFeature` ;
+- `createStoresFeature` ;
+- `createDataToolsFeature`.
 
-## V2-03 — Magasins
+## Planning V2
+
+Le planning n’est plus un placeholder. Les modules actuels sont :
+
+- `src/planning/planning.mjs` : écran et génération semaine ;
+- `src/planning/week.mjs` : contrat / logique semaine ;
+- `src/planning/range.mjs` : génération multi-semaines ;
+- `src/planning/range-ui.mjs` : UI de période ;
+- `src/planning/terrain-tools.mjs` : outils terrain ;
+- `src/planning/teamhaven.mjs` : préparation TeamHaven.
+
+Les jalons déjà livrés couvrent une génération déterministe, la navigation entre semaines, une rotation équilibrée, le swipe tactile entre jours et une tournée escargot sur trois semaines. Les apprentissages récents de la V1 servent de contrat métier vivant, mais le code V1 ne doit pas être recopié dans la V2.
+
+## Magasins
 
 `src/stores/stores.mjs` est le propriétaire métier de l’écran Magasins.
 
-Comportement livré :
-
-- lecture de `state.stores` depuis le store central ;
-- liste de magasins ;
-- recherche enseigne / ville / adresse ;
-- recherche insensible aux accents ;
-- tap sur une carte pour ouvrir la fiche ;
-- fermeture explicite de la fiche ;
-- fermeture automatique si le magasin ouvert disparaît du store ;
-- aucune recherche ne mute l’état central.
-
-Le shell masque lui-même son placeholder lorsqu’une vraie feature est montée. L’écran Magasins n’est donc plus un placeholder.
+Comportement livré : liste, recherche enseigne / ville / adresse, recherche insensible aux accents, fiche magasin, fermeture explicite et mise à jour sûre lorsque le magasin disparaît du store.
 
 Les données publiques de démonstration sont synthétiques et anonymisées. Elles ne doivent jamais être considérées comme des données métier réelles.
 
-## Navigation actuelle
+## Migration V1
 
-Les quatre onglets restent :
+Le pont `src/migration/v1-backup.mjs` est déjà opérationnel pour le sous-ensemble sûr nécessaire au démarrage de la V2 :
 
-- **Accueil** : placeholder ;
-- **Planning** : placeholder, prochaine étape V2-04 ;
-- **Magasins** : feature réelle V2-03 ;
-- **Plus** : placeholder.
+- profil ;
+- magasins ;
+- réglages ;
+- exclusions planning connues ;
+- persistance locale du résultat.
 
-La navigation garantit un seul écran actif et un seul onglet actif. Plusieurs allers-retours ne doivent jamais dupliquer le shell ni installer des listeners en double.
+Il valide explicitement le format `ChefSecteurBackup`, la version d’enveloppe et le schéma V1 attendu. Il ne modifie jamais le fichier source.
 
-## Mobile
+Les domaines encore non migrés sont signalés dans le rapport plutôt qu’ignorés silencieusement, notamment visites, notes, locks, rendez-vous, actions, `businessV2` et cache Google Agenda. Voir `MIGRATION_V1.md` et `PARITY.md`.
+
+La V1 reste la source de vérité utilisateur tant qu’une migration complète et la parité fonctionnelle ne sont pas validées.
+
+## Mobile et tests
 
 Viewport de référence : **390 × 844**.
 
-Contrats protégés :
+Contrats protégés : safe-area, navigation basse fixe, absence d’overflow horizontal, cibles tactiles principales ≥ 44 px, swipe horizontal sans casser le scroll vertical et navigation utilisable après overlays.
 
-- safe-area en haut et en bas ;
-- navigation basse fixe ;
-- contenu atteignable au-dessus de la navigation ;
-- aucune largeur fixe provoquant un overflow horizontal ;
-- cibles tactiles principales ≥ 44 px ;
-- navigation utilisable après ouverture/fermeture d’un overlay.
+La Reliability contient les tests V2 du socle, du store, du stockage, des magasins, du shell, de l’isolation, de la migration V1 et du planning. Les tests navigateur couvrent également le shell, les magasins, le planning, les périodes, les outils terrain et l’import V1.
 
-## Tests
-
-Tests Node actuellement enregistrés dans la Reliability :
-
-```text
-node v2/tests/state.test.mjs
-node v2/tests/store.test.mjs
-node v2/tests/stores.test.mjs
-node v2/tests/storage.test.mjs
-node v2/tests/json-transfer.test.mjs
-node v2/tests/navigation.test.mjs
-node v2/tests/shell.test.mjs
-node v2/tests/architecture.test.mjs
-node v2/tests/isolation.test.mjs
-```
-
-Le job Playwright exécute également :
-
-```text
-v2/tests/mobile-browser.spec.cjs
-```
-
-Ce test navigateur couvre notamment :
-
-- chargement réel des modules ESM ;
-- shell unique ;
-- taps sur les 4 onglets ;
-- cibles tactiles ;
-- absence d’overflow à 390 px ;
-- contenu non masqué par la nav basse ;
-- V2-03 Magasins : liste, recherche `beta` → `Bêta`, ouverture de fiche, fermeture de l’overlay, navigation encore fonctionnelle ensuite.
-
-Playwright reste **complémentaire** à une validation réelle Safari iOS / Android. Il ne remplace pas #82.
+Playwright reste complémentaire à une validation réelle Safari iOS / Android. Il ne remplace pas le ticket #82.
 
 ## Publication et isolation
 
-GitHub Pages publie le dépôt entier. `/v2/public/` est donc volontairement accessible comme environnement de test public.
-
-Important :
-
-- `https://store-runner.fr/` reste la V1 ;
+- `https://store-runner.fr/` reste la V1 de production ;
+- `/v2/public/` reste un environnement de test ;
 - la V1 n’importe aucun module V2 ;
-- le service worker V1 exclut `/v2/` de son interception ;
-- aucune donnée réelle de secteur ne doit être saisie dans l’environnement V2 public ;
-- aucune bascule prod ne sera faite avant parité fonctionnelle, migration sûre et validation mobile réelle.
+- le service worker V1 n’intercepte pas `/v2/` ;
+- aucune donnée réelle ne doit être saisie dans l’environnement public de démonstration ;
+- aucune bascule production ne doit être faite avant parité, migration sûre et validation mobile réelle.
 
-## Migration V1
+## Reste à construire avant parité
 
-Voir `MIGRATION_V1.md`.
+La priorité n’est plus de reconstruire le planning de base : il existe déjà. Le reste principal est désormais :
 
-Aucun import automatique des vraies données V1 n’est activé à ce stade. La V1 reste la source de vérité utilisateur jusqu’à décision explicite de migration.
+1. visites / 6P / actions ;
+2. rendez-vous + historique ;
+3. migration V1 de ces domaines sans perte ;
+4. Google Calendar / OAuth une fois le cœur stable ;
+5. assistant IA en dernier ;
+6. stratégie PWA / mise à jour propre à V2 ;
+7. validation réelle iPhone + Android ;
+8. plusieurs jours d’utilisation sans régression bloquante avant toute bascule.
 
-## Prochaine étape : V2-04 Planning semaine
-
-Le planning sera reconstruit par couches, sans recopier le moteur historique :
-
-1. contrat de données d’une semaine et des journées ;
-2. lecture des magasins depuis le store central ;
-3. affichage d’une semaine synthétique ;
-4. changement de jour ;
-5. génération simple et déterministe ;
-6. seulement ensuite trajets, contraintes, multi-semaines et interactions avancées.
-
-Chaque couche doit arriver avec ses tests Node et navigateur avant la suivante.
-
-## Toujours hors périmètre
-
-- vraies données métier ;
-- bascule de la V1 ;
-- Google Calendar / OAuth ;
-- assistant IA ;
-- visites / 6P / actions ;
-- migration automatique V1 ;
-- PWA / service worker propre à V2 ;
-- nouvelles fonctionnalités métier non présentes dans la V1.
+Le détail de parité est maintenu dans `PARITY.md`.
