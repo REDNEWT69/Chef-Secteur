@@ -63,24 +63,34 @@ export function createDataToolsFeature(options) {
   root.appendChild(note);
   root.appendChild(label);
   root.appendChild(status);
+  const reportDetails = doc.createElement('ul');
+  reportDetails.classList.add('srv2-migration-report');
+  root.appendChild(reportDetails);
 
   function importText(text) {
+    reportDetails.replaceChildren();
     try {
-      const migrated = parseAndMigrateV1Backup(text);
+      const migrated = parseAndMigrateV1Backup(text, store.getState());
+      if (options.persist) options.persist(migrated.state);
       store.replace(migrated.state);
       const { report } = migrated;
+      for (const message of report.warnings) {
+        const item = doc.createElement('li'); item.textContent = message; reportDetails.appendChild(item);
+      }
+      const visitSummary = report.visits.status === 'empty' ? ' Visites V1 : 0 (conteneur vide reconnu).'
+        : report.visits.status === 'absent' ? ' Visites V1 : conteneur absent.' : ' Visites V1 : non migrées (format non documenté).';
       const warnings = report.warnings.length
         ? ` ${report.warnings.length} ${plural(report.warnings.length, 'élément')} d’historique reste${report.warnings.length > 1 ? 'nt' : ''} uniquement dans V1.`
         : '';
       const gps = report.missingGpsStores > 0
         ? ` ${report.missingGpsStores} ${plural(report.missingGpsStores, 'magasin')} sans GPS.`
         : ' GPS prêts pour tous les magasins.';
-      status.textContent = `Secteur importé : ${report.totalStores} magasins, ${report.activeStores} actifs.${gps}${warnings}`;
+      status.textContent = `Secteur importé : ${report.totalStores} magasins, ${report.activeStores} actifs.${gps}${warnings}${visitSummary}`;
       return migrated;
     } catch (error) {
       status.textContent = error instanceof V1MigrationError || error instanceof DataToolsError
         ? `Import refusé : ${error.message}`
-        : 'Import refusé : sauvegarde illisible.';
+        : `Import non enregistré : ${error.message || 'sauvegarde illisible'}`;
       return null;
     }
   }

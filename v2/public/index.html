@@ -61,10 +61,10 @@
   const planningRangeFeature = createPlanningRangeFeature({ document, store });
   shell.mountScreen('planning', planningRangeFeature.element);
 
-  const storesFeature = createStoresFeature({ document, store });
+  const storesFeature = createStoresFeature({ document, store, persist: next => saveState(localStorage, next) });
   shell.mountScreen('stores', storesFeature.element);
 
-  const dataToolsFeature = createDataToolsFeature({ document, store });
+  const dataToolsFeature = createDataToolsFeature({ document, store, persist: next => saveState(localStorage, next) });
   shell.mountScreen('more', dataToolsFeature.element);
 </script>
 </body>

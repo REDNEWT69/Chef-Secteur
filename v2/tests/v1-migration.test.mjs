@@ -7,6 +7,7 @@ import { createEmptyState } from '../src/core/state.mjs';
 import { createStore } from '../src/core/store.mjs';
 import { migrateV1Backup, parseAndMigrateV1Backup, V1MigrationError } from '../src/migration/v1-backup.mjs';
 import { loadState, saveState, STORAGE_KEY } from '../src/storage/persistence.mjs';
+import { createVisitsService } from '../src/visits/visits.mjs';
 import { createFakeDocument } from './fake-dom.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -145,3 +146,70 @@ assert.throws(() => parseAndMigrateV1Backup('{pas json'), /JSON invalide/);
 }
 
 console.log('v2 migration V1 locale: ok');
+
+// V2-08A: only the observed empty object is recognized, never inferred history.
+for (const raw of [{ 'v1-01': { lastVisit: '2026-09-18', history: ['2026-09-18'] } },
+  [{ storeId: 'v1-01', date: '2026-09-18', status: 'completed' }], [], null, false, '', 42]) {
+  const source = JSON.parse(fixtureText);
+  source.state.visits = raw;
+  source.state.businessV2 = { visits: [{ storeId: 'v1-01', date: '2026-09-18' }] };
+  const before = JSON.stringify(source);
+  const { state, report } = migrateV1Backup(source);
+  assert.deepEqual(state.visits, [], 'no phantom V1 visits');
+  assert.equal(report.visits.status, 'not_migrated');
+  assert.equal(report.visits.migrated, 0);
+  assert(report.warnings.some(row => row.includes('state.visits non migré')));
+  assert(report.warnings.some(row => row.includes('state.businessV2')));
+  assert.equal(JSON.stringify(source), before);
+}
+{
+  const first = migrateV1Backup(fixture);
+  const second = migrateV1Backup(fixture, first.state);
+  assert.equal(first.report.visits.status, 'empty');
+  assert.equal(second.report.visits.migrated, 0);
+  assert.deepEqual(second.state, first.state);
+  const absent = JSON.parse(fixtureText); delete absent.state.visits;
+  assert.equal(migrateV1Backup(absent).report.visits.status, 'absent');
+}
+
+// Repeated import and reload preserve native history and an in-progress visit.
+{
+  const storage = memoryStorage();
+  const store = createStore(migrateV1Backup(fixture).state);
+  const persist = next => saveState(storage, next);
+  let serial = 0;
+  const visits = createVisitsService({ store, persist, makeId: () => String(++serial), now: () => new Date('2026-09-18T12:00:00.000Z') });
+  visits.finish(visits.start('v1-01').id);
+  visits.start('v1-02');
+  const expected = store.getState().visits;
+  const feature = createDataToolsFeature({ document: createFakeDocument(), store, persist });
+  for (let repeat = 0; repeat < 2; repeat++) {
+    const result = feature.importText(fixtureText);
+    assert(result);
+    assert.equal(result.report.visits.preservedV2Entries, 2);
+    assert.deepEqual(loadState(storage).visits, expected);
+    store.replace(loadState(storage));
+  }
+  const ambiguous = JSON.parse(fixtureText);
+  ambiguous.state.visits = { 'v1-01': { lastVisit: '2026-09-18' } };
+  feature.importText(JSON.stringify(ambiguous));
+  assert.deepEqual(store.getState().visits, expected);
+  const details = feature.element.children.find(child => child.classList.contains('srv2-migration-report'));
+  assert(details.children.some(child => child.textContent.includes('state.visits non migré')));
+
+  // Never orphan an existing V2 visit when another sector is imported.
+  const missingStore = JSON.parse(fixtureText);
+  missingStore.state.stores = missingStore.state.stores.filter(row => row.id !== 'v1-01');
+  const memoryBefore = store.getState(), diskBefore = storage.raw(STORAGE_KEY);
+  assert.equal(feature.importText(JSON.stringify(missingStore)), null);
+  assert.deepEqual(store.getState(), memoryBefore);
+  assert.equal(storage.raw(STORAGE_KEY), diskBefore);
+
+  const failed = createDataToolsFeature({ document: createFakeDocument(), store, persist() { throw Error('QuotaExceededError'); } });
+  assert.equal(failed.importText(fixtureText), null);
+  assert.deepEqual(store.getState(), memoryBefore);
+  assert.equal(storage.raw(STORAGE_KEY), diskBefore);
+  const status = failed.element.children.find(child => child.classList.contains('srv2-data-tools-status'));
+  assert.match(status.textContent, /Import non enregistré/);
+}
+console.log('v2 visits conservative import and reload: ok');

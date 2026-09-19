@@ -14,16 +14,15 @@ function isInstant(value) {
 }
 
 export function validateVisits(rows) {
+  if (!Array.isArray(rows)) throw Error('visits: tableau attendu');
   const ids = new Set();
   for (const row of rows) {
     // Pre-existing opaque placeholders remain readable, never interpreted as visits.
     if (!row || !Object.hasOwn(row, 'visitVersion')) continue;
     if (!isVisit(row) || typeof row.id !== 'string' || !row.id || typeof row.storeId !== 'string' || !row.storeId
-      || ids.has(row.id) || !['in_progress', 'completed', 'cancelled'].includes(row.status)) throw Error('visits: visite invalide ou identifiant dupliqué');
+      || ids.has(row.id) || rows.filter(other => other?.id === row.id).length !== 1 || !['in_progress', 'completed', 'cancelled'].includes(row.status)) throw Error('visits: visite invalide ou identifiant dupliqué');
     ids.add(row.id);
-    if (row.source === 'v1-date') {
-      if (row.status !== 'completed' || !isDate(row.completedDate) || row.startedAt !== null || row.completedAt !== null) throw Error('visits: date V1 invalide');
-    } else if (row.source === 'native') {
+    if (row.source === 'native') {
       if (!isInstant(row.startedAt)) throw Error('visits: début invalide');
       if (row.status === 'completed') {
         if (!isInstant(row.completedAt) || row.completedAt < row.startedAt || !isDate(row.completedDate)) throw Error('visits: fin invalide');
@@ -39,12 +38,15 @@ export function historyForStore(state, storeId) {
       || String(b.completedAt || '').localeCompare(String(a.completedAt || '')) || a.id.localeCompare(b.id));
 }
 
-export function createVisitsService({ store, persist = () => {}, now = () => new Date(), makeId = () => globalThis.crypto.randomUUID() }) {
+export function createVisitsService({ store, persist, now = () => new Date(), makeId = () => globalThis.crypto.randomUUID() }) {
+  if (typeof persist !== 'function') throw new TypeError('persist: sauvegarde synchrone obligatoire');
+  if (persist.constructor.name === 'AsyncFunction') throw new TypeError('persist: sauvegarde synchrone obligatoire');
   function commit(mutate) {
     const next = store.getState();
     const result = mutate(next);
     validateVisits(next.visits);
-    persist(next); // An unavailable disk must not turn a visit into a false success.
+    const saved = persist(next); // An unavailable disk must not turn a visit into a false success.
+    if (saved && typeof saved.then === 'function') throw new TypeError('persist: sauvegarde synchrone obligatoire');
     store.replace(next);
     return { ...result };
   }

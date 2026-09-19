@@ -373,3 +373,12 @@ body {
   .srv2-store-inactive { color: #b7bac0; }
   .srv2-store-detail-close { background: #252932; color: #f2f3f5; }
 }
+
+/* Minimal visit controls stay within the store detail owner. */
+.srv2-store-visits { border-top: 1px solid #cbd5e1; padding-top: 12px; overflow-wrap: anywhere; }
+.srv2-store-visits h3 { margin: 0 0 8px; }
+.srv2-visit-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.srv2-visit-controls button { min-height: 44px; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 12px; font: inherit; color: inherit; background: transparent; }
+.srv2-visit-history { padding-left: 24px; }
+.srv2-visit-history li { margin: 8px 0; }
+.srv2-migration-report { overflow-wrap: anywhere; }

@@ -175,3 +175,109 @@ test('V2-03 Magasins : liste, recherche et fiche restent tactiles à 390 px', as
   expect(overflow.documentScrollWidth).toBeLessThanOrEqual(overflow.documentClientWidth + 1);
   expect(pageErrors, 'La feature Magasins V2 ne doit produire aucune erreur JS').toEqual([]);
 });
+
+// V2-08A stays in the mobile entry point already selected by the full CI.
+const visitsFixture = require('../fixtures/v1-backup-demo.json');
+const visitsStorageKey = 'store_runner_v2_state';
+async function importVisitsFixture(page, visits = {}) {
+  await page.locator('.srv2-tab[data-tab="more"]').tap();
+  const backup = JSON.parse(JSON.stringify(visitsFixture)); backup.state.visits = visits;
+  await page.locator('.srv2-data-import-input').setInputFiles({
+    name: 'synthetic-v1.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup)),
+  });
+  await expect(page.locator('.srv2-data-tools-status')).toContainText('Secteur importé');
+}
+async function openVisitsStore(page) {
+  await page.locator('.srv2-tab[data-tab="stores"]').tap();
+  await page.locator('.srv2-store-card').first().tap();
+  await expect(page.locator('.srv2-store-detail')).toBeVisible();
+}
+async function readVisitsState(page) {
+  return page.evaluate(key => JSON.parse(localStorage.getItem(key)), visitsStorageKey);
+}
+
+test('V2-08A : démarrer, recharger, terminer et rouvrir une visite à 390×844', async ({ page, context }) => {
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto(V2_URL);
+  await importVisitsFixture(page);
+  const initial = await readVisitsState(page);
+  await openVisitsStore(page);
+  const start = page.locator('.srv2-visit-start');
+  const box = await start.boundingBox();
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  await start.tap();
+  await expect(page.locator('.srv2-visit-status')).toHaveText('Visite en cours');
+  const started = await readVisitsState(page);
+  expect(started.visits).toHaveLength(1);
+  expect(started.visits[0].status).toBe('in_progress');
+
+  await page.reload(); await openVisitsStore(page);
+  await expect(page.locator('.srv2-visit-status')).toHaveText('Visite en cours');
+  await expect(page.locator('.srv2-visit-start')).toHaveCount(0);
+  await page.locator('.srv2-visit-finish').tap();
+  await expect(page.locator('.srv2-visit-history li')).toHaveCount(1);
+  const finished = await readVisitsState(page);
+  expect(finished.visits).toHaveLength(1);
+  expect(finished.visits[0].id).toBe(started.visits[0].id);
+  expect(finished.visits[0].status).toBe('completed');
+  expect(finished.planning).toEqual(initial.planning);
+  expect(finished.actions).toEqual(initial.actions);
+  expect(finished.appointments).toEqual(initial.appointments);
+  const date = finished.visits[0].completedDate.split('-').reverse().join('/');
+  await expect(page.locator('.srv2-last-visit')).toHaveText('Dernière visite : ' + date);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391);
+  expect(errors).toEqual([]);
+
+  // Real tab closure/reopening in the same browser storage, then repeated import.
+  await page.close();
+  const reopened = await context.newPage();
+  await reopened.goto(V2_URL); await openVisitsStore(reopened);
+  await expect(reopened.locator('.srv2-visit-history li')).toHaveCount(1);
+  await expect(reopened.locator('.srv2-last-visit')).toHaveText('Dernière visite : ' + date);
+  await reopened.locator('.srv2-store-detail-close').tap();
+  for (let repeat = 0; repeat < 2; repeat++) {
+    await importVisitsFixture(reopened);
+    expect((await readVisitsState(reopened)).visits).toEqual(finished.visits);
+  }
+  await importVisitsFixture(reopened, { 'v1-01': { lastVisit: '2026-09-18', history: ['2026-09-18'] } });
+  await expect(reopened.locator('.srv2-data-tools-status')).toContainText('Visites V1 : non migrées');
+  await expect(reopened.locator('.srv2-migration-report')).toContainText('state.visits non migré');
+  expect((await readVisitsState(reopened)).visits).toEqual(finished.visits);
+  await reopened.reload(); await openVisitsStore(reopened);
+  await expect(reopened.locator('.srv2-visit-history li')).toHaveCount(1);
+});
+
+test('V2-08A : stockage indisponible, aucun faux succès ni perte après reload', async ({ page }) => {
+  await page.goto(V2_URL); await importVisitsFixture(page); await openVisitsStore(page);
+  const before = await readVisitsState(page);
+  async function failWrites() {
+    await page.evaluate(key => {
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function(name, value) {
+        if (name === key) throw new DOMException('Stockage plein', 'QuotaExceededError');
+        return original.call(this, name, value);
+      };
+    }, visitsStorageKey);
+  }
+  await failWrites();
+  await page.locator('.srv2-visit-start').tap();
+  await expect(page.locator('.srv2-visit-status')).toContainText('Visite non enregistrée');
+  await expect(page.locator('.srv2-visit-finish')).toHaveCount(0);
+  expect(await readVisitsState(page)).toEqual(before);
+  await page.reload(); await openVisitsStore(page);
+  await page.locator('.srv2-visit-start').tap();
+  const inProgress = await readVisitsState(page);
+  await failWrites();
+  await page.locator('.srv2-visit-finish').tap();
+  await expect(page.locator('.srv2-visit-status')).toContainText('Visite non enregistrée');
+  await expect(page.locator('.srv2-visit-history li')).toHaveCount(0);
+  expect(await readVisitsState(page)).toEqual(inProgress);
+  await page.reload(); await openVisitsStore(page);
+  await expect(page.locator('.srv2-visit-status')).toHaveText('Visite en cours');
+  await page.locator('.srv2-visit-cancel').tap();
+  expect((await readVisitsState(page)).visits[0].status).toBe('cancelled');
+  await page.reload(); await openVisitsStore(page);
+  await expect(page.locator('.srv2-visit-history li')).toHaveCount(0);
+  await expect(page.locator('.srv2-last-visit')).toHaveText('Aucune visite terminée.');
+  await expect(page.locator('.srv2-visit-start')).toBeVisible();
+});
