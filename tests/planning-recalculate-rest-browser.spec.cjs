@@ -12,7 +12,7 @@ test('V181 : recalcul du planning sépare les Boulanger sans perdre de magasin',
     const a=mk('b1','Boulanger','Ville-Test C'),b=mk('b2','Boulanger','Ville-Test H'),f=mk('f1','Fnac','Ville-Test B'),but=mk('but1','BUT','Ville-Test E');
     const now=new Date(),nextMonday=new Date(now),weekday=now.getDay()||7,delta=(8-weekday)%7||7;nextMonday.setDate(now.getDate()+delta);
     const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-    state.stores=[a,b,f,but];state.visits={};
+    state.stores=[a,b,f,but];state.visits={};state.profile=Object.assign({},state.profile,{baseLat:43.6,baseLon:-0.6});
     state.businessV2=window.StoreRunnerVisitModel&&typeof StoreRunnerVisitModel.empty==='function'?StoreRunnerVisitModel.empty():{version:2,revision:0,visits:[],actions:[],storeSnapshots:{}};
     state.locks={};state.appointments=[];state.manualWeekEdits={};state.calendarEvents=[];
     state.settings=Object.assign({},state.settings,{weekDate:iso(nextMonday),days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],maxVisitsPerDay:4});
@@ -91,4 +91,44 @@ test('V179 : un dépassement fixe explique les vrais crédits sans casser le pla
   expect(after).toBe(seeded.before);
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
+});
+test('Consolidation : modifications hors ligne, recalcul réel et réouverture à 390px',async({page,context})=>{
+  page.on('dialog',d=>d.accept());
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.StoreRunnerManualPlanning&&window.ChefReliability&&typeof ChefReliability.propose==='function'&&window.__storeRunnerBuildRemainingWeekPlan);
+  const expected=await page.evaluate(async()=>{
+    const mon=new Date();mon.setDate(mon.getDate()+((8-(mon.getDay()||7))%7||7));
+    const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    const week=iso(mon),mk=id=>({id,enseigne:'Fnac',ville:id,adresse:'1 rue test',dept:'99',active:true,lat:45,lon:4,priority:3});
+    const stores=['move','remove','add','done','appt','free'].map(mk);
+    state.stores=stores;state.excluded={};state.locks={move:'Lundi'};state.manualWeekEdits={};state.calendarEvents=[];state.visits={done:{lastVisit:week,history:[week]}};
+    state.businessV2=StoreRunnerVisitModel.empty();
+    const apptDate=new Date(mon);apptDate.setDate(mon.getDate()+2);
+    state.appointments=[{id:'appt1',storeId:'appt',date:iso(apptDate),time:'08:30',duration:60}];
+    state.settings=Object.assign({},state.settings,{weekDate:week,days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],maxVisitsPerDay:4,startTime:'08:30',endTime:'18:00',visitMinutes:60});
+    state.profile=Object.assign({},state.profile,{baseLat:45,baseLon:4});
+
+    state.plan={Lundi:[stores[0],stores[1],stores[3]],Mardi:[stores[5]],Mercredi:[stores[4]],Jeudi:[],Vendredi:[],Samedi:[]};
+    const db=window.__chefStorage||localStorage;db.setItem('chef_sector_plan_archive_v1','{}');db.removeItem('chef_sector_range_v1');
+    document.getElementById('weekDate').value=week;save();if(db.flush)await db.flush();initControls();renderAll();
+    return{week};
+  });
+  await context.setOffline(true);
+  const edits=await page.evaluate(async()=>{
+    const M=StoreRunnerManualPlanning;
+    const a=await M.addStore(window,'move','Jeudi'),b=await M.removeStore(window,'remove','Lundi'),c=await M.addStore(window,'add','Vendredi');
+    return[a,b,c].map(r=>r.ok);
+  });
+  expect(edits).toEqual([true,true,true]);
+  const result=await page.evaluate(()=>storeRunnerRecalculateRemainingWeek());expect(result.ok,JSON.stringify(result)).toBeTruthy();
+  await page.evaluate(async()=>{const db=window.__chefStorage||localStorage;if(db.flush)await db.flush()});
+  await context.setOffline(false);
+  await page.close();
+  const reopened=await context.newPage();
+  await reopened.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await reopened.waitForFunction(()=>window.state&&window.StoreRunnerManualPlanning);
+  const saved=await reopened.evaluate(()=>({plan:Object.fromEntries(Object.entries(state.plan).map(([d,rows])=>[d,rows.map(s=>s.id)])),locks:state.locks,manual:state.manualWeekEdits,archive:JSON.parse((window.__chefStorage||localStorage).getItem('chef_sector_plan_archive_v1')),overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}));
+  expect(saved.plan.Jeudi).toContain('move');expect(saved.plan.Vendredi).toContain('add');expect(saved.plan.Lundi).toContain('done');expect(saved.plan.Mercredi).toContain('appt');
+  expect(Object.values(saved.plan).flat()).not.toContain('remove');expect(Object.values(saved.plan).flat()).toHaveLength(5);
+  expect(saved.locks.move).toEqual({day:'Jeudi',week:expected.week});expect(saved.manual[expected.week]).toBeTruthy();expect(saved.archive[expected.week].manualEdited).toBeTruthy();expect(saved.overflow).toBeLessThanOrEqual(1);
 });

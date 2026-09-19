@@ -186,6 +186,7 @@ function fakeWin(state){
   const db=new Map();
   return {
     state,
+    save(){db.set('sector_planner_universal_v1',JSON.stringify(state))},
     __chefStorage:{getItem:k=>db.has(k)?db.get(k):null,setItem:(k,v)=>db.set(k,String(v)),removeItem:k=>db.delete(k)},
     confirm:()=>true,
     CustomEvent:class{constructor(type,init){this.type=type;this.detail=init&&init.detail}},
