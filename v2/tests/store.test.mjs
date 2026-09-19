@@ -32,3 +32,6 @@ store.update(draft => { draft.settings.target = 20; });
 assert.equal(notifications, 1);
 
 console.log('v2 store: ok');
+
+// Keep Visites regressions in the existing CI Node entry point.
+await import('./visits.test.mjs');

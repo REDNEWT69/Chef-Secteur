@@ -15,9 +15,21 @@
 
 La V2 reste isolée sous `/v2/` et ne remplace pas la V1 de production.
 
+## Lot V2-08A — #355 / PR #364
+
+Socle Visites natif implémenté dans cette PR : démarrage, fin, annulation,
+historique terminé par magasin et dernière visite dans la fiche. La sauvegarde
+locale précède la mise à jour du store ; une erreur reste visible sans faux succès.
+Les tests Node et mobile 390×844 couvrent le reload, la réouverture et les réimports.
+
+Migration limitée au contrat réellement observé : `state.visits: {}` donne zéro
+visite. Tout contenu peuplé ou ambigu est signalé comme non migré, sans déduire
+`lastVisit` ou `history`. Les visites V2 existantes sont conservées au réimport.
+Cette étape ne constitue pas une parité Visites V1 ni une bascule de production.
+
 ## Ce qui manque encore avant une bascule
 
-- visites / 6P / actions ;
+- parité complète Visites V1, puis 6P / actions ;
 - rendez-vous + historique ;
 - Google Calendar / OAuth ;
 - assistant IA ;

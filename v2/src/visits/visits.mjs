@@ -69,7 +69,7 @@ export function createVisitsService({ store, persist, now = () => new Date(), ma
     if (current.status === 'completed') return { ...current };
     if (current.status !== 'in_progress') throw Error('Cette visite ne peut pas être terminée.');
     return commit(next => {
-      const row = next.visits.find(row => row.id === id), date = now();
+      const row = next.visits.find(row => isVisit(row) && row.id === id), date = now();
       row.status = 'completed';
       row.completedAt = date.toISOString();
       row.completedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -80,7 +80,7 @@ export function createVisitsService({ store, persist, now = () => new Date(), ma
     const current = store.getState().visits.find(row => isVisit(row) && row.id === id);
     if (!current || current.status === 'completed') throw Error('Seule une visite en cours peut être annulée.');
     if (current.status === 'cancelled') return { ...current };
-    return commit(next => { const row = next.visits.find(row => row.id === id); row.status = 'cancelled'; return row; });
+    return commit(next => { const row = next.visits.find(row => isVisit(row) && row.id === id); row.status = 'cancelled'; return row; });
   }
   return Object.freeze({ start, finish, cancel, history: id => historyForStore(store.getState(), id) });
 }

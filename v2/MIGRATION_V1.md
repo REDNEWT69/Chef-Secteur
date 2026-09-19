@@ -182,3 +182,36 @@ Un second export, pris après usage réel, contenant au minimum :
 Tant que ces cas ne sont pas observés, le convertisseur ne doit traiter que `profile`, `stores`,
 `settings`, `plan` et `archive`, et **refuser bruyamment** tout champ inconnu ou non vide qu'il ne
 sait pas convertir — jamais l'ignorer en silence.
+
+
+## 6. V2-08A — contrat conservateur Visites (#355)
+
+Le seul conteneur Visites observé reste `state.visits: {}`. Il produit zéro
+visite et un rapport `visits.status: "empty"`, `migrated: 0`. Un champ absent
+est annoncé `absent`. Tout autre contenu (objet peuplé, tableau, valeur nulle
+ou scalaire) est annoncé `not_migrated` avec avertissement visible dans Plus.
+Aucun format peuplé, notamment `lastVisit` / `history`, n'est reconnu par déduction
+depuis le code V1. `businessV2` reste hors périmètre et signalé.
+
+Le réimport conserve intégralement les entrées Visites V2 existantes. Il refuse
+l'import si le nouveau secteur omet un magasin référencé par une visite native,
+pour éviter un historique orphelin. Deux imports du même fichier, y compris
+après reload, ne créent aucune visite et ne dupliquent pas l'historique natif.
+Le fichier source reste inchangé ; seules des fixtures synthétiques sont utilisées.
+
+Le modèle **natif V2**, indépendant du format V1 inconnu, est versionné par
+`visitVersion: 1` dans le conteneur `visits` du schéma global V2 inchangé :
+
+- `id` unique, `storeId` du magasin, `source: "native"` ;
+- `status`: `in_progress`, `completed` ou `cancelled` ;
+- `startedAt`: instant UTC ISO ;
+- `completedAt`: instant UTC ISO à la fin, sinon `null` ;
+- `completedDate`: date locale de fin `YYYY-MM-DD`, sinon `null`.
+
+Démarrer crée une visite en cours ; redémarrer la même visite ou terminer deux
+fois est idempotent. Seules les visites terminées figurent dans l'historique
+et déterminent la dernière visite. Les anciennes entrées V2 opaques sans
+`visitVersion` sont conservées mais ne sont pas interprétées comme des visites.
+La dépendance de sauvegarde synchrone est obligatoire pour le service Visites ;
+un échec n'applique aucune mutation au store. Aucun lien automatique avec le
+planning, les actions, les rendez-vous ou le service worker n'est ajouté.
