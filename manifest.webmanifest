@@ -13,10 +13,10 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "./app-icon.svg?rev=20260909-8",
+      "src": "./app-icon-ios-v332.svg?rev=20260919-iosicon332",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }
