@@ -7,7 +7,7 @@ test.use({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScal
 test('V221 corrige une note avec aperçu puis sauvegarde uniquement après Appliquer',async({page})=>{
   const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
   let payload=null;
-  await page.route('https://chef-secteur-ai.rednewtizi.workers.dev/**',async route=>{
+  await page.route(url=>url.origin===new URL(APP_URL).origin&&url.pathname==='/api/ai',async route=>{
     const req=route.request();
     if(req.method()==='POST'){
       payload=JSON.parse(req.postData()||'{}');
