@@ -52,17 +52,29 @@ const api={answer,compactContext,draftRows,openActions,openOpportunities,recentV
 if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
 
-/* V193 est chargé séparément pour garder le moteur cuisinistes indépendant des visites. */
+/* Les modules cuisinistes restent séparés des visites. Le moteur de proposition se charge
+   seulement après le socle V193 afin que son resolver assistant dispose du dernier tarif. */
 (function(root){
   'use strict';
   if(!root.document)return;
+  const rev=String(root.__STORE_RUNNER_BUILD_REV||'v225');
+  function loadProposalV225(){
+    if(root.StoreRunnerCuisinisteProposalV225||root.document.getElementById('sr-cuisiniste-proposal-v225-script'))return;
+    const p=root.document.createElement('script');
+    p.id='sr-cuisiniste-proposal-v225-script';
+    p.src='./cuisiniste-contract-proposal-v225.js?rev='+encodeURIComponent(rev);
+    p.async=false;
+    root.document.head.appendChild(p);
+  }
   function loadCuisinisteV193(){
-    if(root.StoreRunnerCuisinisteV193||root.document.getElementById('sr-cuisiniste-v193-script'))return;
+    if(root.StoreRunnerCuisinisteV193){loadProposalV225();return}
+    const existing=root.document.getElementById('sr-cuisiniste-v193-script');
+    if(existing){existing.addEventListener('load',loadProposalV225,{once:true});return}
     const s=root.document.createElement('script');
     s.id='sr-cuisiniste-v193-script';
-    const rev=String(root.__STORE_RUNNER_BUILD_REV||'v193');
     s.src='./cuisiniste-contracts-v193.js?rev='+encodeURIComponent(rev);
     s.async=false;
+    s.addEventListener('load',loadProposalV225,{once:true});
     root.document.head.appendChild(s);
   }
   if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',loadCuisinisteV193,{once:true});else loadCuisinisteV193();
