@@ -16,7 +16,7 @@ async function reopenQuickAndTapPhotos(page){
   await photo.tap();
 }
 
-test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA FMT',async({page,context})=>{
+test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA FMT + reload offline bloqué par Access',async({page,context})=>{
   test.setTimeout(90000);
   const pageErrors=[];page.on('pageerror',e=>pageErrors.push(String(e&&e.message||e)));
   await page.addInitScript(()=>sessionStorage.setItem('store-runner-sw-reload:20260915-ai-report172','1'));
@@ -173,8 +173,16 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA F
   await expect(reloadedCards.nth(1).locator('.sr-photoNote')).toHaveValue('Avant implantation');
   await page.locator('#srPhotoClose').tap();
 
+  // V332 : aucune navigation hors ligne ne doit être servie depuis l'ancienne
+  // coque PWA, sinon Cloudflare Access pourrait être contourné.
   await context.setOffline(true);
-  await page.reload({waitUntil:'domcontentloaded'});
+  let offlineReloadError='';
+  try{await page.reload({waitUntil:'domcontentloaded',timeout:5000});}catch(e){offlineReloadError=String(e&&e.message||e);}
+  expect(offlineReloadError).toContain('ERR_INTERNET_DISCONNECTED');
+  await context.setOffline(false);
+
+  // Les données locales, elles, restent bien persistées lorsque le réseau revient.
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.StorePhotosV1&&window.BoulangerDefaultHoursV1&&window.state&&typeof window.openStoreQuick==='function'&&window.state.stores.some(s=>s.id==='photo-store'));
   await reopenQuickAndTapPhotos(page);
   await expect(page.locator('#storePhotosDialog .sr-photoCard')).toHaveCount(2);
