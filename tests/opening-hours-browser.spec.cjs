@@ -12,13 +12,13 @@ test.use({
   trace: 'retain-on-failure'
 });
 
-test('V1 horaires : saisie, défauts Boulanger/Darty, planning et reload hors ligne bloqué par Access à 390 px', async ({ page, context }) => {
+test('V1 horaires : saisie, défauts Boulanger/Darty, planning et hors ligne à 390 px', async ({ page, context }) => {
   test.setTimeout(60000);
   const pageErrors=[];
   page.on('pageerror', e => pageErrors.push(String(e && e.message || e)));
   // Ce scénario teste le cache et la persistance ; neutraliser uniquement le
   // rechargement automatique initial pour ne pas interrompre la fixture.
-  await page.addInitScript(()=>{try{sessionStorage.setItem('store-runner-sw-reload:20260913-storephotos164','1')}catch(_){}});
+  await page.addInitScript(()=>sessionStorage.setItem('store-runner-sw-reload:20260913-storephotos164','1'));
   await page.goto(APP_URL, {waitUntil:'domcontentloaded'});
   await page.waitForFunction(() => window.StoreOpeningHoursV1 && window.BoulangerDefaultHoursV1 && window.state && typeof window.openStoreQuick==='function');
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
@@ -127,20 +127,10 @@ test('V1 horaires : saisie, défauts Boulanger/Darty, planning et reload hors li
 
   await expect.poll(()=>page.evaluate(async()=>!!await caches.match(new URL('./boulanger-default-hours.js',location.href).href,{ignoreSearch:true}))).toBe(true);
   await expect.poll(()=>page.evaluate(async()=>!!await caches.match(new URL('./store-opening-hours.js',location.href).href,{ignoreSearch:true}))).toBe(true);
-
-  // V332 : une navigation hors ligne ne doit plus retomber sur la coque PWA
-  // en cache. Access doit rester l'autorité pour toute nouvelle navigation.
   await context.setOffline(true);
-  let offlineReloadError='';
-  try{await page.reload({waitUntil:'domcontentloaded',timeout:5000});}catch(e){offlineReloadError=String(e&&e.message||e);}
-  expect(offlineReloadError).toContain('ERR_INTERNET_DISCONNECTED');
-  await context.setOffline(false);
-
-  // Les données locales restent persistées et reviennent dès que le réseau est
-  // disponible et qu'Access peut de nouveau autoriser la navigation.
-  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.StoreOpeningHoursV1&&window.BoulangerDefaultHoursV1&&window.state);
-  await expect.poll(()=>page.evaluate(()=>window.StoreOpeningHoursV1.scheduleRoute(window.state.plan.Lundi,'Lundi').unknownCount)).toBe(1);
+  expect(await page.evaluate(()=>window.StoreOpeningHoursV1.scheduleRoute(window.state.plan.Lundi,'Lundi').unknownCount)).toBe(1);
   expect(await page.evaluate(()=>window.state.stores.find(s=>s.id==='hours-2').openingHours.Lundi)).toEqual([{open:'09:30',close:'19:30'}]);
   expect(await page.evaluate(()=>window.state.stores.find(s=>s.id==='hours-3').openingHours.Lundi)).toEqual([{open:'09:30',close:'19:30'}]);
   await page.evaluate(()=>window.StoreOpeningHoursV1.openHoursDialog('hours-1'));

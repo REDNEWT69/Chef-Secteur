@@ -13,10 +13,10 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "./apple-touch-icon-v334.png?rev=20260919-pwa336",
-      "sizes": "180x180",
-      "type": "image/png",
-      "purpose": "any"
+      "src": "./app-icon.svg?rev=20260909-8",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ]
 }

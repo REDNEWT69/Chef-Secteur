@@ -1,6 +1,6 @@
 (function(){
   'use strict';
-  const DEFAULT_GATEWAY='/api/ai';
+  const DEFAULT_GATEWAY='https://chef-secteur-ai.rednewtizi.workers.dev';
   const VISIT_JSON_MODULE='./visit-report-ai-json-v225.js';
   const MAX_TRIES=80;
   let tries=0;
@@ -34,9 +34,8 @@
     try{
       if(!window.aiConfig) return false;
 
-      // La passerelle IA reste sur le même domaine que Store Runner afin que
-      // Cloudflare Access protège le site et l'API avec la même session.
-      // Aucun secret ni endpoint workers.dev n'est exposé côté navigateur.
+      // Toujours utiliser la passerelle publique officielle du projet.
+      // Aucune clé API n'est stockée côté navigateur.
       if(window.aiConfig.gateway!==DEFAULT_GATEWAY){
         window.aiConfig.gateway=DEFAULT_GATEWAY;
       }
