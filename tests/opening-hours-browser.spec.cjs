@@ -18,7 +18,7 @@ test('V1 horaires : saisie, défauts Boulanger/Darty, planning et reload hors li
   page.on('pageerror', e => pageErrors.push(String(e && e.message || e)));
   // Ce scénario teste le cache et la persistance ; neutraliser uniquement le
   // rechargement automatique initial pour ne pas interrompre la fixture.
-  await page.addInitScript(()=>sessionStorage.setItem('store-runner-sw-reload:20260913-storephotos164','1'));
+  await page.addInitScript(()=>{try{sessionStorage.setItem('store-runner-sw-reload:20260913-storephotos164','1')}catch(_){}});
   await page.goto(APP_URL, {waitUntil:'domcontentloaded'});
   await page.waitForFunction(() => window.StoreOpeningHoursV1 && window.BoulangerDefaultHoursV1 && window.state && typeof window.openStoreQuick==='function');
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
