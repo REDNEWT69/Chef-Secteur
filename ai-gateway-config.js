@@ -1,6 +1,6 @@
 (function(){
   'use strict';
-  const DEFAULT_GATEWAY='https://chef-secteur-ai.rednewtizi.workers.dev';
+  const DEFAULT_GATEWAY='/api/ai';
   const VISIT_JSON_MODULE='./visit-report-ai-json-v225.js';
   const MAX_TRIES=80;
   let tries=0;
