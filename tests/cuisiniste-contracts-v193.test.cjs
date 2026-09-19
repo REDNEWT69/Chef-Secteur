@@ -14,8 +14,10 @@ const H=['Facturation','CHECK','SECTEUR','GROUPE','ENSEIGNE','VILLE CUISINISTE',
 function row(sector,brand,city,client,status,obj,real,progress,remain,closure,prod,start=46082,end=46446){const r=Array(H.length).fill(null);Object.assign(r,{2:sector,4:brand,5:city,7:client,9:start,10:end,14:status,15:obj,16:real,22:progress,23:remain,25:closure,26:0,27:1234,28:prod});return r}
 const trackingRows=[H,row('Zone Ancienne','SCHMIDT','TEST-NORD',111,'Finalisé',6000,7000,1.1,'Fin','gratuit','OLDREF',45597,46081),row('Zone Ancienne','SCHMIDT','TEST-NORD',111,'En cours',7200,6300,.875,6,'25%','BRBTEST',46082,46446),row('Secteur Test Nord','SCHMIDT','TEST-CENTRE',222,'Alerte',5400,2200,.407,1,'100%','MICROTEST',45930,46300),row('Zone Ancienne','SCHMIDT','TEST-SUD',333,'Finalisé',8000,9000,1.125,'Fin','gratuit','HISTREF',45200,45930),row('Zone Autre','SCHMIDT','HORS-ZONE',444,'Alerte',1,0,0,1,'100%','NOPE')];
 const tracking=workbook([{name:'ONGLET_TEST',rows:hitRows},{name:'ONGLET_TEST_SUIVI',rows:trackingRows}]);
-const tariffRows=[['FS/BI','Famille','Segment','Référence SCHMIDT GROUPE','Référence commerciale SAMSUNG','Référence SAP SAMSUNG\r\n (à utiliser sur les contrats expo)','Code EAN','Descriptif','Type',"Prix d'achat Magasin",'OBJECTIF Contrat Expo x12 (à mentionner sur le contrat)','INFOS'],['BI','REF','COMBINE','BRBTEST0','BRBTEST','BRBTEST',123,'Combiné test','BIP',600,7200,'']];
+const tariffHeader=['FS/BI','Famille','Segment','Référence SCHMIDT GROUPE','Référence commerciale SAMSUNG','Référence SAP SAMSUNG\r\n (à utiliser sur les contrats expo)','Code EAN','Descriptif','Type',"Prix d'achat Magasin",'OBJECTIF Contrat Expo x12 (à mentionner sur le contrat)','INFOS'];
+const tariffRows=[tariffHeader,['BI','REF','COMBINE','BRBTEST0','BRBTEST','BRBTEST',123,'Combiné test','BIP',600,7200,''],['BI','REF','EXCEPTION','X9TEST0','X9TEST','X9TEST',124,'Produit exception x9','BIP',600,5400,'objectif explicite x9']];
 const tariff=workbook([{name:'SCHMIDT GROUPE',rows:tariffRows}]);
+const tariffUpdated=workbook([{name:'SCHMIDT GROUPE',rows:[tariffHeader,['BI','REF','COMBINE','BRBTEST0','BRBTEST','BRBTEST',123,'Combiné test tarif révisé','BIP',700,8400,''],['BI','REF','EXCEPTION','X9TEST0','X9TEST','X9TEST',124,'Produit exception x9','BIP',600,5400,'objectif explicite x9']]}]);
 
 function memory(){const m=new Map();return{getItem:k=>m.has(k)?m.get(k):null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k)}}
 global.__chefStorage=memory();
@@ -29,11 +31,12 @@ const api=require('../cuisiniste-contracts-v193.js');
   const centre=t.sites.find(s=>/CENTRE/.test(s.city));assert.equal(centre.activeContract.status,'Alerte');assert.equal(centre.activeContract.monthsRemaining,1);
   const sud=t.sites.find(s=>s.city==='TEST-SUD');assert.equal(sud.activeContract,null);assert.equal(sud.lastContract.status,'Finalisé');
   api.saveTracking(global.__chefStorage,t);
-  const p=await api.parseTariffWorkbook(tariff);assert.equal(p.products.length,1);api.saveTariff(global.__chefStorage,p);assert.equal(api.productInfo(global.__chefStorage,'BRBTEST').family,'REF');assert.equal(api.productInfo(global.__chefStorage,'HISTREF'),null);
-  const resolved=api.resolveSites(global.__chefStorage,global.state.stores);assert.deepEqual(resolved.map(x=>x.storeId),['s1','s2','s3']);
+  const p=await api.parseTariffWorkbook(tariff);assert.equal(p.products.length,2);api.saveTariff(global.__chefStorage,p);assert.equal(api.productInfo(global.__chefStorage,'BRBTEST').family,'REF');assert.equal(api.productInfo(global.__chefStorage,'BRBTEST').contractObjective,7200);assert.equal(api.productInfo(global.__chefStorage,'X9TEST').contractObjective,5400,'l’objectif explicite du référentiel fait foi, même s’il correspond à une exception x9');assert.equal(api.productInfo(global.__chefStorage,'HISTREF'),null);
+  const p2=await api.parseTariffWorkbook(tariffUpdated);api.saveTariff(global.__chefStorage,p2);assert.equal(api.productInfo(global.__chefStorage,'BRBTEST').contractObjective,8400,'une nouvelle proposition peut lire le dernier référentiel');assert.equal(api.latestTariff(global.__chefStorage).products.find(x=>x.refCommercial==='BRBTEST').purchasePrice,700);
+  const resolved=api.resolveSites(global.__chefStorage,global.state.stores);assert.deepEqual(resolved.map(x=>x.storeId),['s1','s2','s3']);assert.equal(resolved.find(x=>x.storeId==='s1').activeContract.objective,7200,'un contrat existant garde son objectif historique après import d’un nouveau tarif');
   const sig=api.planningSignal('s2');assert.equal(sig.source,'Contrat expo');assert(sig.score>=100);assert(/Alerte/.test(sig.reason));
   const ctx=api.compactContext({planning:{safe:true}});assert.equal(ctx.cuisinistesV193.sector,'Secteur Test Nord');assert(ctx.cuisinistesV193.sites.length<=10);assert(!JSON.stringify(ctx).includes('ONGLET_TEST'));
   const ans=api.answer('Prépare-moi ma visite chez Test-Nord');assert(/point chiffre/i.test(ans));assert(/6 mois/.test(ans));
   assert.equal(JSON.stringify(global.state),before,'questions/import must not mutate planning or store.priority');
-  console.log('V193 cuisinistes: OK · 3 Secteur Test Nord · Zone Ancienne legacy ignored · alert/history/tariff/assistant');
+  console.log('V193 cuisinistes: OK · 3 Secteur Test Nord · Zone Ancienne legacy ignored · alert/history/tariff versioning/x9/assistant');
 })().catch(e=>{console.error(e);process.exit(1)});
