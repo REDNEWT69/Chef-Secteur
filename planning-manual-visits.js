@@ -11,7 +11,7 @@ const DEFAULT_RADIUS_KM=10;      /* rayon par défaut, réglable dans les Régla
 const MAX_SUGGESTIONS=3;         /* plafond normal */
 const MAX_WITH_PRIORITY=4;       /* plafond quand un P1 du rayon doit rester visible */
 const PRIO_BADGE={P1:'P1',P2:'P2',watch:'À surveiller'};
-let installed=false,observer=null,lastSuggestSignature=null;
+let installed=false,observer=null,lastSuggestSignature=null,editBusy=false;
 function text(v){return String(v==null?'':v).trim()}
 function norm(v){return text(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim()}
 function parse(v){const d=new Date(String(v||'')+'T12:00:00');return isNaN(d)?null:d}
@@ -30,12 +30,33 @@ function removeFromPlan(state,id,day){if(!state||!DAYS.includes(day)||!state.pla
 function credit(win,store){try{if(typeof win.storeVisitCredit==='function')return Math.max(1,Number(win.storeVisitCredit(store))||1)}catch(e){}return 1}
 function targetCredits(win,store,day){const route=((win.state&&win.state.plan&&win.state.plan[day])||[]).filter(s=>String(s.id)!==String(store.id));return route.reduce((n,s)=>n+credit(win,s),0)+credit(win,store)}
 function capacityWarning(win,store,day){const max=Math.max(1,Number(win.state&&win.state.settings&&win.state.settings.maxVisitsPerDay)||4),credits=targetCredits(win,store,day);return credits>max?{credits,max}:null}
-function syncDatedLock(win,id,day){try{const info=typeof win.storeRunnerLockInfo==='function'?win.storeRunnerLockInfo(id):null;if(info&&info.recurring)return;const week=currentWeekKey(win.state);if(info&&info.week===week&&info.day===day)return;if(typeof win.storeRunnerPinPlannedStore==='function'){win.storeRunnerPinPlannedStore(id,day);return}win.state.locks=win.state.locks||{};win.state.locks[String(id)]={day,week}}catch(e){}}
+function syncDatedLock(win,id,day){const info=typeof win.storeRunnerLockInfo==='function'?win.storeRunnerLockInfo(id):null;const week=currentWeekKey(win.state);if(info&&info.week===week&&info.day===day)return;win.state.locks=win.state.locks||{};win.state.locks[String(id)]={day,week}}
 function clearDatedLock(win,id,day){try{const info=typeof win.storeRunnerLockInfo==='function'?win.storeRunnerLockInfo(id):null;if(!info||info.recurring)return;const week=currentWeekKey(win.state);if(info.week===week&&info.day===day){if(typeof win.storeRunnerUnpinPlannedStore==='function')win.storeRunnerUnpinPlannedStore(id);else if(win.state.locks)delete win.state.locks[String(id)]}}catch(e){}}
-async function persist(win,reason,detail){const week=currentWeekKey(win.state),now=new Date().toISOString(),db=storage(win);try{if(win.ChefReliability&&typeof win.ChefReliability.checkpoint==='function')win.ChefReliability.checkpoint('Avant modification manuelle du planning : '+reason,db)}catch(e){}win.state.manualWeekEdits=win.state.manualWeekEdits||{};win.state.manualWeekEdits[week]={at:now,plan:clonePlan(win.state)};if(db){let archive={};try{archive=JSON.parse(db.getItem(ARCHIVE_KEY)||'{}')||{}}catch(e){}archive[week]=Object.assign({},archive[week]||{},{weekMonday:week,plan:clonePlan(win.state),manualEdited:true,manualEditedAt:now});try{db.setItem(ARCHIVE_KEY,JSON.stringify(archive))}catch(e){}}
- try{if(typeof win.save==='function')win.save()}catch(e){}try{if(db&&typeof db.flush==='function')await db.flush()}catch(e){}try{if(typeof win.renderAll==='function')win.renderAll();else if(typeof win.renderWeek==='function')win.renderWeek()}catch(e){}try{win.document.dispatchEvent(new win.CustomEvent('store-runner:planning-updated',{detail:Object.assign({reason,weekDate:week},detail||{})}))}catch(e){}return true}
-async function addStore(win,id,day){day=day||currentDay(win);const store=findStore(win.state,id);if(!store)return{ok:false,error:'Magasin introuvable'};const result=addToPlan(win.state,id,day);if(!result.ok||result.already)return result;syncDatedLock(win,id,day);await persist(win,result.sourceDay?'manual-store-moved':'manual-store-added',{day,sourceDay:result.sourceDay||null,storeId:String(id)});return result}
-async function removeStore(win,id,day){day=day||currentDay(win);const result=removeFromPlan(win.state,id,day);if(!result.ok)return result;clearDatedLock(win,id,day);await persist(win,'manual-store-removed',{day,storeId:String(id)});return result}
+async function persist(win,reason,detail){const week=currentWeekKey(win.state),now=new Date().toISOString(),db=storage(win);if(!db||typeof win.save!=='function')throw Error('Sauvegarde indisponible.');win.state.manualWeekEdits=win.state.manualWeekEdits||{};win.state.manualWeekEdits[week]={at:now,plan:clonePlan(win.state)};const archive=JSON.parse(db.getItem(ARCHIVE_KEY)||'{}')||{};archive[week]=Object.assign({},archive[week]||{},{weekMonday:week,plan:clonePlan(win.state),manualEdited:true,manualEditedAt:now});db.setItem(ARCHIVE_KEY,JSON.stringify(archive));
+ win.save();if(typeof db.flush==='function')await db.flush();try{if(typeof win.renderAll==='function')win.renderAll();else if(typeof win.renderWeek==='function')win.renderWeek()}catch(e){}try{win.document.dispatchEvent(new win.CustomEvent('store-runner:planning-updated',{detail:Object.assign({reason,weekDate:week},detail||{})}))}catch(e){}return true}
+async function editStore(win,id,day,remove){
+  if(editBusy)return{ok:false,error:'Une modification est déjà en cours.'};
+  editBusy=true;const db=storage(win),fields=['plan','locks','manualWeekEdits'],before={},stored={};
+  try{
+    for(const key of fields)before[key]=win.state[key]===undefined?undefined:JSON.parse(JSON.stringify(win.state[key]));
+    if(!db)throw Error('Sauvegarde indisponible.');
+    for(const key of [ARCHIVE_KEY,'sector_planner_universal_v1'])stored[key]=db.getItem(key);
+    if(win.ChefReliability&&typeof win.ChefReliability.checkpoint==='function')win.ChefReliability.checkpoint('Avant modification manuelle du planning',db);
+    const result=remove?removeFromPlan(win.state,id,day):addToPlan(win.state,id,day);
+    if(!result.ok||result.already)return result;
+    if(remove)clearDatedLock(win,id,day);else syncDatedLock(win,id,day);
+    await persist(win,remove?'manual-store-removed':result.sourceDay?'manual-store-moved':'manual-store-added',{day,sourceDay:result.sourceDay||null,storeId:String(id)});
+    return result;
+  }catch(e){
+    for(const key of fields){if(before[key]===undefined)delete win.state[key];else win.state[key]=before[key]}
+    let error=e.message||String(e);
+    try{for(const [key,value] of Object.entries(stored)){if(value===null)db.removeItem(key);else db.setItem(key,value)}if(db&&typeof db.flush==='function')await db.flush()}catch(restoreError){error+=' · Récupération du stockage requise : '+restoreError.message}
+    if(typeof win.showError==='function')win.showError('Modification non enregistrée : '+error);
+    return{ok:false,error};
+  }finally{editBusy=false}
+}
+async function addStore(win,id,day){return editStore(win,id,day||currentDay(win),false)}
+async function removeStore(win,id,day){return editStore(win,id,day||currentDay(win),true)}
 /* ---------------------------------------------------------------------------
    Suggestions de magasins proches.
 

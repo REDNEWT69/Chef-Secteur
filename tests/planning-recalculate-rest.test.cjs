@@ -1,3 +1,4 @@
+require('./planning-consolidation.test.cjs');
 const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 
 const source=fs.readFileSync(__dirname+'/../planning-generation-controller.js','utf8')+'\n'+fs.readFileSync(__dirname+'/../planning-cascade-v181.js','utf8');
