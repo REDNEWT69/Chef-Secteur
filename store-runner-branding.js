@@ -3,6 +3,8 @@
   const APP_NAME='Store Runner';
   const SIGNATURE='S-RUNNER By Red①';
   const LOGO='./app-icon.svg';
+  const TOUCH_ICON='./apple-touch-icon-v333.png?rev=20260919-iosicon333';
+  const MANIFEST='./manifest.webmanifest?rev=20260919-iosicon333';
   let observer=null,observerHost=null,homeObserver=null,homeObserverHost=null,storesObserver=null,retry=0,applyScheduled=false;
 
   function text(v){return String(v==null?'':v).trim()}
@@ -30,6 +32,19 @@
   function setText(el,value){if(el&&el.textContent!==value)el.textContent=value}
   function setAttr(el,name,value){if(el&&el.getAttribute(name)!==value)el.setAttribute(name,value)}
 
+  function ensureInstallMeta(){
+    if(!document.head)return;
+    let apple=document.querySelector('link[rel="apple-touch-icon"]');
+    if(!apple){apple=document.createElement('link');apple.rel='apple-touch-icon';document.head.appendChild(apple)}
+    setAttr(apple,'href',TOUCH_ICON);setAttr(apple,'sizes','180x180');setAttr(apple,'type','image/png');
+    let icon=document.querySelector('link[rel="icon"]');
+    if(!icon){icon=document.createElement('link');icon.rel='icon';document.head.appendChild(icon)}
+    setAttr(icon,'href',TOUCH_ICON);setAttr(icon,'sizes','180x180');setAttr(icon,'type','image/png');
+    let manifest=document.querySelector('link[rel="manifest"]');
+    if(!manifest){manifest=document.createElement('link');manifest.rel='manifest';document.head.appendChild(manifest)}
+    setAttr(manifest,'href',MANIFEST);
+  }
+
   function ensureCss(){
     if(document.getElementById('store-runner-branding-css'))return;
     const s=document.createElement('style');
@@ -52,11 +67,14 @@
   }
 
   function applyMeta(){
+    ensureInstallMeta();
     if(document.title!==APP_NAME)document.title=APP_NAME;
-    const apple=document.querySelector('meta[name="apple-mobile-web-app-title"]');
-    if(apple)setAttr(apple,'content',APP_NAME);
-    const app=document.querySelector('meta[name="application-name"]');
-    if(app)setAttr(app,'content',APP_NAME);
+    let apple=document.querySelector('meta[name="apple-mobile-web-app-title"]');
+    if(!apple){apple=document.createElement('meta');apple.name='apple-mobile-web-app-title';document.head.appendChild(apple)}
+    setAttr(apple,'content',APP_NAME);
+    let app=document.querySelector('meta[name="application-name"]');
+    if(!app){app=document.createElement('meta');app.name='application-name';document.head.appendChild(app)}
+    setAttr(app,'content',APP_NAME);
   }
 
   function applyTop(){
