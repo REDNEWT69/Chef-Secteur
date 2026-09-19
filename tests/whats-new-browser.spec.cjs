@@ -5,33 +5,63 @@ test.use({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScal
   serviceWorkers:'block',screenshot:'only-on-failure',trace:'retain-on-failure'});
 
 const SEEN_KEY='store-runner-whatsnew-last-seen';
-const STATE_KEY='sector_planner_universal_v1';
+const LAST_BUILD_KEY='store-runner-whatsnew-last-build';
+const ANCIEN_BUILD='20260101-ancienbuild225';
 const ready=page=>page.waitForFunction(()=>window.StoreRunnerWhatsNew&&window.state&&document.getElementById('moreSheetV2'));
-const stored=page=>page.evaluate(k=>{try{return (window.__chefStorage||localStorage).getItem(k)}catch(e){return null}},SEEN_KEY);
+const read=(page,key)=>page.evaluate(k=>{try{return (window.__chefStorage||localStorage).getItem(k)}catch(e){return null}},key);
 
-// Une installation neuve n'a pas d'« avant » : c'est aussi pourquoi les autres specs,
-// qui partent d'un profil vierge, ne voient jamais cet écran s'interposer.
 test('Une installation neuve n’annonce rien et prépare la mise à jour suivante',async({page})=>{
   const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
   await ready(page);
-  expect(await page.evaluate(()=>window.StoreRunnerWhatsNew.hadPriorInstall())).toBe(false);
+  expect(await page.evaluate(()=>window.StoreRunnerWhatsNew.launchState())).toBe('premiere-installation');
   await page.waitForTimeout(2200);                 // au-delà du délai d'ouverture automatique
   await expect(page.locator('#storeRunnerWhatsNew')).toBeHidden();
-  expect(await stored(page)).toBe(await page.evaluate(()=>window.StoreRunnerWhatsNew.currentVersion()));
+  expect(await read(page,SEEN_KEY)).toBe(await page.evaluate(()=>window.StoreRunnerWhatsNew.currentVersion()));
+  expect(await read(page,LAST_BUILD_KEY)).toBe(await page.evaluate(()=>window.StoreRunnerWhatsNew.currentBuild()));
   expect(errors).toEqual([]);
 });
 
-test('Nouveautés s’affiche une seule fois après mise à jour et se rouvre depuis le menu ⋮ à 390 px',async({page})=>{
+// Régression : pendant store-photos-browser, la modale restait ouverte après le
+// rechargement de page et interceptait le tap sur #srReportQuickBtn. Un rechargement
+// dans la même version n'est pas une mise à jour et ne doit rien ouvrir, même lorsque
+// l'application a entre-temps écrit ses données.
+test('Un rechargement dans la même version n’interpose jamais l’écran sur l’application',async({page})=>{
   const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
-  // On simule un utilisateur qui avait déjà une version installée.
-  await page.addInitScript(key=>{try{if(!localStorage.getItem(key))localStorage.setItem(key,'{}')}catch(e){}},STATE_KEY);
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await ready(page);
+  await expect(page.locator('#storeRunnerWhatsNew')).toBeHidden();
+
+  // L'application écrit ses données, exactement comme le fait le test métier.
+  await page.evaluate(()=>{
+    const st=window.state;
+    st.stores=[{id:'whatsnew-reload',enseigne:'Boulanger',ville:'Test',adresse:'1 rue Test',active:true,products:['Brun']}];
+    st.visits={};st.notes={};st.included={};st.excluded={};st.locks={};st.plan={};
+    try{save()}catch(e){}
+  });
+
+  await page.reload({waitUntil:'domcontentloaded'});
+  await ready(page);
+  expect(await page.evaluate(()=>window.StoreRunnerWhatsNew.launchState())).toBe('meme-build');
+  expect(await page.evaluate(()=>window.StoreRunnerWhatsNew.pendingVersion())).toBeNull();
+  await page.waitForTimeout(2200);
+  await expect(page.locator('#storeRunnerWhatsNew')).toBeHidden();
+
+  // Rien n'intercepte les gestes de l'application : un vrai tap aboutit.
+  await page.locator('.bottomNavBtn[data-more="1"]').tap();
+  await expect(page.locator('#moreSheetV2')).toHaveClass(/open/);
+  expect(errors).toEqual([]);
+});
+
+test('Nouveautés s’affiche une seule fois après une vraie mise à jour et se rouvre depuis le menu ⋮ à 390 px',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+  // Un utilisateur qui tournait sur une version antérieure et reçoit celle-ci.
+  await page.addInitScript(([key,build])=>{try{if(!localStorage.getItem(key))localStorage.setItem(key,build)}catch(e){}},[LAST_BUILD_KEY,ANCIEN_BUILD]);
 
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
   await ready(page);
-  expect(await page.evaluate(()=>window.StoreRunnerWhatsNew.hadPriorInstall())).toBe(true);
+  expect(await page.evaluate(()=>window.StoreRunnerWhatsNew.launchState())).toBe('mise-a-jour');
 
-  // --- Première ouverture d'une version jamais vue --------------------------------------
   const dialog=page.locator('#storeRunnerWhatsNew');
   await expect(dialog).toBeVisible({timeout:6000});
   const version=await page.evaluate(()=>window.StoreRunnerWhatsNew.currentVersion());
@@ -61,17 +91,18 @@ test('Nouveautés s’affiche une seule fois après mise à jour et se rouvre de
   const ok=dialog.locator('[data-srwn-ok]');
   await expect(ok).toHaveText('Compris');
   expect((await ok.boundingBox()).height).toBeGreaterThanOrEqual(44);
-  expect(await stored(page)).toBeNull();
+  expect(await read(page,SEEN_KEY)).toBeNull();
 
-  // --- « Compris » ferme et enregistre la version --------------------------------------
+  // --- « Compris » ferme, enregistre la version et désarme l'annonce --------------------
   await ok.tap();
   await expect(dialog).toBeHidden();
-  expect(await stored(page)).toBe(version);
+  expect(await read(page,SEEN_KEY)).toBe(version);
+  expect(await page.evaluate(()=>window.StoreRunnerWhatsNew.pendingVersion())).toBeNull();
 
   // --- Après rechargement : plus d'ouverture automatique --------------------------------
   await page.reload({waitUntil:'domcontentloaded'});
   await ready(page);
-  expect(await stored(page)).toBe(version);
+  expect(await page.evaluate(()=>window.StoreRunnerWhatsNew.launchState())).toBe('meme-build');
   await page.waitForTimeout(2200);
   await expect(page.locator('#storeRunnerWhatsNew')).toBeHidden();
   expect(await page.evaluate(()=>window.StoreRunnerWhatsNew.hasUnseenRelease())).toBe(false);
@@ -89,7 +120,7 @@ test('Nouveautés s’affiche une seule fois après mise à jour et se rouvre de
 
   await page.locator('#storeRunnerWhatsNew [data-srwn-ok]').tap();
   await expect(page.locator('#storeRunnerWhatsNew')).toBeHidden();
-  expect(await stored(page)).toBe(version);
+  expect(await read(page,SEEN_KEY)).toBe(version);
 
   expect(errors).toEqual([]);
 });

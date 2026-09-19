@@ -87,6 +87,9 @@ function makeDocument(){
   return doc;
 }
 
+const BUILD='20260919-whatsnew226';
+const BUILD_PRECEDENT='20260919-planning226';
+
 function makeStorage(seed){
   const map=new Map(Object.entries(seed||{}));
   return {map,
@@ -114,9 +117,8 @@ function boot(opts){
   const ctx={console,JSON,Date,Math,String,Number,Boolean,Object,Array,Set,Map,RegExp,Error,Promise,
              document:doc,setTimeout:clock.setTimeout,clearTimeout:clock.clearTimeout};
   ctx.window=ctx;ctx.self=ctx;ctx.globalThis=ctx;
-  ctx.__STORE_RUNNER_BUILD_REV=('build' in o)?o.build:'20260919-whatsnew226';
-  // Par défaut on simule une installation existante : « quoi de neuf » suppose un avant.
-  if(o.storage!==null)ctx.__chefStorage=o.storage||makeStorage(o.fresh?{}:{sector_planner_universal_v1:'{}'});
+  ctx.__STORE_RUNNER_BUILD_REV=('build' in o)?o.build:BUILD;
+  if(o.storage!==null)ctx.__chefStorage=o.storage||makeStorage(o.seed||{});
   vm.runInNewContext(SOURCE,ctx);
   const api=ctx.window.StoreRunnerWhatsNew;
   const view=()=>{
@@ -132,34 +134,80 @@ function boot(opts){
       compris:dialog.querySelector('[data-srwn-ok]')
     };
   };
+  const read=key=>{try{return ctx.__chefStorage?ctx.__chefStorage.getItem(key):null}catch(e){return null}};
   return {ctx,doc,clock,api,grid,sheet,view,
           menu:()=>doc.getElementById('storeRunnerWhatsNewMenuButton'),
-          stored:()=>ctx.__chefStorage?ctx.__chefStorage.getItem(api.SEEN_KEY):null};
+          stored:()=>read(api.SEEN_KEY),
+          dernierBuild:()=>read(api.LAST_BUILD_KEY),
+          annonce:()=>read(api.PENDING_KEY)};
 }
 
-// --- 1. Première ouverture d'une version jamais vue ------------------------------------
-const neuf=boot();
-assert.equal(neuf.view(),null,'rien ne doit s’afficher avant le délai d’ouverture');
-neuf.clock.flush();
-let vue=neuf.view();
-assert.equal(vue.ouvert,true,'une version jamais vue doit ouvrir l’écran Nouveautés');
+// --- 1. Première installation : rien à annoncer, mais la suivante le sera -------------
+const premiere=boot();
+premiere.clock.flush();
+assert.equal(premiere.api.launchState(),'premiere-installation','un stockage vierge est une première installation');
+assert.equal(premiere.view(),null,'une première installation n’a aucune nouveauté à annoncer');
+assert.equal(premiere.stored(),'226','sa version est enregistrée en silence');
+assert.equal(premiere.dernierBuild(),BUILD,'le build du lancement est noté pour la comparaison suivante');
+assert.equal(premiere.annonce(),null,'aucune annonce n’est armée par une première installation');
+
+// --- 2. LE SCÉNARIO DE LA CI : recharger la page dans la même version n’ouvre rien -----
+// store-photos-browser charge l'application, écrit ses données, puis recharge. La modale
+// s'interposait alors sur #srReportQuickBtn. Un rechargement n'est pas une mise à jour.
+const sessionCi=makeStorage();
+const ciLancement1=boot({storage:sessionCi});
+ciLancement1.clock.flush();
+assert.equal(ciLancement1.view(),null,'premier chargement du test métier : aucun écran');
+sessionCi.setItem('sector_planner_universal_v1','{"stores":[{"id":"photo-store"}]}');   // l'application sauvegarde
+sessionCi.setItem('store-runner-last-seen-build',BUILD);                                // le centre de mise à jour note le build
+const ciRechargement=boot({storage:sessionCi});
+ciRechargement.clock.flush();
+assert.equal(ciRechargement.api.launchState(),'meme-build','un rechargement reste le même build');
+assert.equal(ciRechargement.view(),null,'un rechargement ne doit jamais ouvrir l’écran, même avec des données présentes');
+assert.equal(ciRechargement.annonce(),null,'et n’arme aucune annonce');
+
+// Même en supposant que l'enregistrement « vue » ait échoué au premier chargement :
+// seule une annonce armée par un changement de build peut ouvrir l'écran.
+const sansEcritureVue=makeStorage();
+const refuseSeen={
+  getItem:k=>sansEcritureVue.getItem(k),
+  setItem:(k,v)=>{if(k==='store-runner-whatsnew-last-seen')throw new Error('quota');sansEcritureVue.setItem(k,v)},
+  removeItem:k=>sansEcritureVue.removeItem(k)
+};
+const fragile1=boot({storage:refuseSeen});
+fragile1.clock.flush();
+assert.equal(fragile1.stored(),null,'la version vue n’a pas pu être écrite');
+const fragile2=boot({storage:refuseSeen});
+fragile2.clock.flush();
+assert.equal(fragile2.view(),null,'sans annonce armée, un rechargement n’ouvre rien même si « vue » manque');
+
+// --- 3. Une vraie mise à jour utilisateur ouvre l'écran --------------------------------
+const maj=boot({seed:{[BUILD_PRECEDENT]:'',  'store-runner-whatsnew-last-build':BUILD_PRECEDENT}});
+assert.equal(maj.api.launchState(),'mise-a-jour','un build différent du lancement précédent est une mise à jour');
+assert.equal(maj.annonce(),'226','la mise à jour arme l’annonce dès l’évaluation du script');
+assert.equal(maj.view(),null,'rien ne s’affiche avant le délai d’ouverture');
+maj.clock.flush();
+let vue=maj.view();
+assert.equal(vue.ouvert,true,'une vraie mise à jour doit ouvrir l’écran Nouveautés');
 assert.equal(vue.titre,'Nouveautés V226','le titre doit nommer la version');
 assert.equal(vue.sous_titre,MODULE.releaseFor('226').title,'le sous-titre reprend le titre de la version');
 assert.deepEqual(vue.items,MODULE.releaseFor('226').items,'les éléments affichés sont ceux de la table');
-assert.equal(neuf.stored(),null,'rien n’est enregistré tant que l’utilisateur n’a pas fermé');
+assert.equal(maj.stored(),null,'rien n’est enregistré tant que l’utilisateur n’a pas fermé');
 
-// --- 2. « Compris » ferme et enregistre la version ------------------------------------
+// --- 4. « Compris » ferme, enregistre la version et désarme l'annonce ------------------
 vue.compris.dispatch('click');
-assert.equal(neuf.api.isOpen(),false,'Compris doit fermer la fenêtre');
-assert.equal(neuf.stored(),'226','Compris doit enregistrer la version comme vue');
+assert.equal(maj.api.isOpen(),false,'Compris doit fermer la fenêtre');
+assert.equal(maj.stored(),'226','Compris doit enregistrer la version comme vue');
+assert.equal(maj.annonce(),null,'Compris doit désarmer l’annonce');
 
-// --- 3. Relancement : plus jamais d'ouverture automatique pour cette version -----------
-const relance=boot({storage:neuf.ctx.__chefStorage});
+// --- 5. Relancement : plus jamais d'ouverture automatique pour cette version -----------
+const relance=boot({storage:maj.ctx.__chefStorage});
 relance.clock.flush();
+assert.equal(relance.api.launchState(),'meme-build');
 assert.equal(relance.api.hasUnseenRelease(),false,'la version vue ne doit plus être considérée comme neuve');
 assert.equal(relance.view(),null,'l’écran ne doit pas se rouvrir tout seul pour une version déjà vue');
 
-// --- 4. L'entrée du menu ⋮ rouvre le changelog à la demande ---------------------------
+// --- 6. L'entrée du menu ⋮ rouvre le changelog à la demande ---------------------------
 const bouton=relance.menu();
 assert(bouton,'le menu Plus doit exposer une entrée Nouveautés');
 assert.equal(bouton.textContent,'✦ Nouveautés','l’entrée doit être lisible dans le menu');
@@ -170,19 +218,43 @@ bouton.dispatch('click');
 assert.equal(relance.api.isOpen(),true,'l’entrée du menu doit rouvrir le changelog même après lecture');
 assert.equal(relance.view().titre,'Nouveautés V226');
 assert.equal(relance.sheet.classList.contains('open'),false,'ouvrir les nouveautés referme le menu Plus');
+// L'accès manuel reste disponible même sur une première installation silencieuse.
+premiere.menu().dispatch('click');
+assert.equal(premiere.view().titre,'Nouveautés V226','le menu ⋮ reste accessible après une installation neuve');
 
-// --- 5. Fermer par le fond vaut aussi « vu » ------------------------------------------
-const fond=boot();
+// --- 7. Fermer par le fond vaut aussi « vu » ------------------------------------------
+const fond=boot({seed:{'store-runner-whatsnew-last-build':BUILD_PRECEDENT}});
 fond.clock.flush();
 assert.equal(fond.api.isOpen(),true);
 fond.view().dialog.dispatch('click');
 assert.equal(fond.api.isOpen(),false,'un appui sur le fond doit fermer');
 assert.equal(fond.stored(),'226','une fermeture par le fond doit aussi enregistrer la version');
+assert.equal(fond.annonce(),null,'et désarmer l’annonce');
 
-// --- 6. Sans persistance : jamais d'ouverture automatique, menu toujours utilisable ----
+// --- 8. Installation antérieure à ce module : le centre de mise à jour fait foi --------
+const avantModule=boot({seed:{'store-runner-last-seen-build':BUILD_PRECEDENT,'sector_planner_universal_v1':'{}'}});
+avantModule.clock.flush();
+assert.equal(avantModule.api.launchState(),'mise-a-jour','un utilisateur déjà installé qui reçoit ce build est en mise à jour');
+assert.equal(avantModule.view().titre,'Nouveautés V226','il doit bien voir les nouveautés de la version reçue');
+
+// --- 9. Mise à jour quittée sans lecture : l'annonce survit ----------------------------
+const quittee=boot({seed:{'store-runner-whatsnew-last-build':BUILD_PRECEDENT}});
+quittee.clock.flush();
+assert.equal(quittee.api.isOpen(),true);
+assert.equal(quittee.annonce(),'226','l’annonce reste armée tant qu’elle n’a pas été lue');
+const reprise=boot({storage:quittee.ctx.__chefStorage});
+reprise.clock.flush();
+assert.equal(reprise.api.launchState(),'meme-build');
+assert.equal(reprise.view().ouvert,true,'une mise à jour jamais lue est réannoncée au lancement suivant');
+reprise.view().compris.dispatch('click');
+const apresLecture=boot({storage:quittee.ctx.__chefStorage});
+apresLecture.clock.flush();
+assert.equal(apresLecture.view(),null,'une fois lue, elle ne revient plus');
+
+// --- 10. Sans persistance : jamais d'ouverture automatique, menu toujours utilisable ---
 const sansStockage=boot({storage:null});
 sansStockage.clock.flush();
-assert.equal(sansStockage.api.hasUnseenRelease(),false,'sans stockage, « une seule fois » ne peut pas être tenu');
+assert.equal(sansStockage.api.launchState(),'inconnu','sans stockage, aucun « avant » ne peut être établi');
 assert.equal(sansStockage.view(),null,'mieux vaut ne rien ouvrir que rouvrir à chaque lancement');
 assert.equal(sansStockage.api.open('226'),true,'l’ouverture manuelle doit rester possible');
 assert.equal(sansStockage.api.isOpen(),true);
@@ -190,48 +262,36 @@ sansStockage.api.close();
 
 const stockageCasse=boot({storage:{getItem(){throw new Error('quota')},setItem(){throw new Error('quota')}}});
 stockageCasse.clock.flush();
-assert.equal(stockageCasse.view(),null,'un stockage qui lève ne doit pas rouvrir l’écran à chaque lancement');
+assert.equal(stockageCasse.api.launchState(),'inconnu','un stockage qui lève est traité comme absent');
+assert.equal(stockageCasse.view(),null,'et ne doit pas rouvrir l’écran à chaque lancement');
 
-// --- 7. Une version sans nouveautés décrites n'invente rien ---------------------------
-const inconnue=boot({build:'20260920-planning999'});
+// --- 11. Une version sans nouveautés décrites n'invente rien --------------------------
+const inconnue=boot({build:'20260920-planning999',seed:{'store-runner-whatsnew-last-build':BUILD}});
 inconnue.clock.flush();
 assert.equal(inconnue.api.currentVersion(),'999');
-assert.equal(inconnue.api.hasUnseenRelease(),false,'une version non décrite ne doit rien annoncer automatiquement');
+assert.equal(inconnue.api.launchState(),'mise-a-jour');
+assert.equal(inconnue.annonce(),null,'une version non décrite n’arme aucune annonce');
 assert.equal(inconnue.view(),null,'aucun écran fantôme pour une version non décrite');
 assert.equal(inconnue.stored(),null,'et rien n’est enregistré');
 inconnue.menu().dispatch('click');
 assert.equal(inconnue.view().titre,'Nouveautés V'+MODULE.latestRelease().version,'le menu retombe sur la dernière version décrite');
 
-// --- 8. Première installation : rien à annoncer, mais la prochaine le sera -------------
-const premiere=boot({fresh:true});
-premiere.clock.flush();
-assert.equal(premiere.api.hadPriorInstall(),false,'un stockage vierge est une première installation');
-assert.equal(premiere.view(),null,'une première installation n’a aucune nouveauté à annoncer');
-assert.equal(premiere.stored(),'226','sa version est enregistrée en silence');
-const apresMaj=boot({storage:premiere.ctx.__chefStorage,build:'20261005-planning227'});
-apresMaj.clock.flush();
-assert.equal(apresMaj.api.hadPriorInstall(),true,'après un premier lancement, l’installation est connue');
-assert.equal(apresMaj.api.currentVersion(),'227');
-assert.equal(apresMaj.view(),null,'la V227 n’étant pas décrite, rien ne s’invente');
-premiere.ctx.__chefStorage.setItem('store-runner-whatsnew-last-seen','225');
-const annonce=boot({storage:premiere.ctx.__chefStorage});
-annonce.clock.flush();
-assert.equal(annonce.view().titre,'Nouveautés V226','une mise à jour depuis une version déjà vue doit être annoncée');
-
-// --- 9. Le bandeau de mise à jour : seul le toast passager est masqué ------------------
+// --- 12. Le bandeau de mise à jour : seul le toast passager est masqué -----------------
 function bandeau(app,sticky){
   const b=makeEl('aside',app.doc);b.id='storeRunnerUpdateBanner';b.hidden=false;
   if(sticky)b.dataset.sticky='1';
   app.doc._byId['storeRunnerUpdateBanner']=b;
   return b;
 }
-const passager=boot();
+const passager=boot({seed:{'store-runner-whatsnew-last-build':BUILD_PRECEDENT}});
 const toast=bandeau(passager,false);
 passager.clock.flush();
+assert.equal(passager.api.isOpen(),true);
 assert.equal(toast.hidden,true,'le toast « Mise à jour installée » ne doit pas rester sous le fond flouté');
-const collant=boot();
+const collant=boot({seed:{'store-runner-whatsnew-last-build':BUILD_PRECEDENT}});
 const sticky=bandeau(collant,true);
 collant.clock.flush();
+assert.equal(collant.api.isOpen(),true);
 assert.equal(sticky.hidden,false,'un bandeau collant porte une information à garder et ne doit pas être masqué');
 
-console.log('quoi de neuf: ouverture unique, Compris persistant, menu ⋮ et cas dégradés ok · V'+MODULE.latestRelease().version);
+console.log('quoi de neuf: ouverture sur vraie mise à jour seulement, rechargement inerte, menu ⋮ et cas dégradés ok · V'+MODULE.latestRelease().version);

@@ -9,6 +9,11 @@
      métier, n'observe rien en permanence et n'ajoute aucun setInterval. */
 
   const SEEN_KEY='store-runner-whatsnew-last-seen';
+  const LAST_BUILD_KEY='store-runner-whatsnew-last-build';
+  const PENDING_KEY='store-runner-whatsnew-pending';
+  /* Clé du centre de mise à jour, lue seulement : elle note déjà le build à chaque
+     lancement, ce qui donne un « avant » aux installations antérieures à ce module. */
+  const UPDATE_MANAGER_BUILD_KEY='store-runner-last-seen-build';
   const DIALOG_ID='storeRunnerWhatsNew';
   const MENU_BUTTON_ID='storeRunnerWhatsNewMenuButton';
   const STYLE_ID='store-runner-whats-new-css';
@@ -39,8 +44,12 @@
     return m?m[1]:'';
   }
 
+  function currentBuild(){
+    return String((typeof window!=='undefined'&&window.__STORE_RUNNER_BUILD_REV)||'');
+  }
+
   function currentVersion(){
-    return displayVersion(typeof window!=='undefined'?window.__STORE_RUNNER_BUILD_REV:'');
+    return displayVersion(currentBuild());
   }
 
   function latestRelease(){
@@ -85,26 +94,59 @@
     try{s.setItem(SEEN_KEY,value);return true}catch(e){return false}
   }
 
-  /* « Quoi de neuf » suppose un avant. L'instantané est pris à l'évaluation du
-     script, avant DOMContentLoaded, donc avant que l'application ne restaure et
-     réécrive ses propres données : à cet instant le stockage ne reflète que les
-     sessions précédentes. Une première installation n'a aucune nouveauté à
-     annoncer — sa version est enregistrée en silence pour que la prochaine mise
-     à jour, elle, soit bien annoncée. */
-  const PRIOR_INSTALL_KEYS=['sector_planner_universal_v1','chef_sector_plan_archive_v1',
-                            'chef_recovery_backups_v1','store-runner-last-seen-build'];
-  let priorInstall=null;
-  function hadPriorInstall(){
-    if(priorInstall!==null)return priorInstall;
-    priorInstall=false;
-    const s=storage();
-    if(s){
-      const keys=[SEEN_KEY].concat(PRIOR_INSTALL_KEYS);
-      for(let i=0;i<keys.length;i++){
-        try{if(s.getItem(keys[i])!=null){priorInstall=true;break}}catch(e){}
+  /* La seule chose qui autorise une ouverture automatique, c'est un changement de
+     build réellement observé entre deux lancements. Présence de données, ancienneté
+     du profil ou absence de clé « vue » ne prouvent rien : une page qui se recharge
+     dans la même version en produit autant, et c'est ainsi que l'écran s'était
+     interposé pendant un test métier. On compare donc le build courant à celui du
+     lancement précédent, et rien d'autre.
+
+     L'instantané est pris à l'évaluation du script, avant DOMContentLoaded : à cet
+     instant le stockage ne reflète encore que les sessions passées, ni l'application
+     ni le centre de mise à jour n'ont réécrit quoi que ce soit.
+
+       'premiere-installation' → aucun avant : rien à annoncer, la version est notée
+                                 en silence pour que la mise à jour suivante le soit ;
+       'mise-a-jour'           → le build a changé depuis le lancement précédent ;
+       'meme-build'            → même version qu'au lancement précédent, y compris
+                                 un simple rechargement de page ;
+       'inconnu'               → sans persistance utilisable, on n'ouvre jamais. */
+  let launch=null;
+  function launchState(){
+    if(launch!==null)return launch;
+    const s=storage(),build=currentBuild();
+    if(!s||!build){launch='inconnu';return launch}
+    let previous=null;
+    try{previous=s.getItem(LAST_BUILD_KEY)}catch(e){previous=null}
+    if(previous==null){
+      try{previous=s.getItem(UPDATE_MANAGER_BUILD_KEY)}catch(e){previous=null}
+    }
+    try{s.setItem(LAST_BUILD_KEY,build)}catch(e){}
+    if(previous==null)launch='premiere-installation';
+    else if(previous!==build)launch='mise-a-jour';
+    else launch='meme-build';
+    /* Une vraie mise à jour arme l'annonce. La clé survit à une fermeture de
+       l'application avant lecture, et elle seule peut rouvrir l'écran dans un
+       lancement ultérieur : aucun rechargement ne peut l'écrire. */
+    if(launch==='mise-a-jour'){
+      const version=currentVersion();
+      if(version&&releaseFor(version)&&lastSeenVersion()!==version){
+        try{s.setItem(PENDING_KEY,version)}catch(e){}
       }
     }
-    return priorInstall;
+    return launch;
+  }
+
+  function pendingVersion(){
+    const s=storage();
+    if(!s)return null;
+    try{return s.getItem(PENDING_KEY)}catch(e){return null}
+  }
+
+  function clearPending(){
+    const s=storage();
+    if(!s)return false;
+    try{s.removeItem(PENDING_KEY);return true}catch(e){return false}
   }
 
   /* Sans persistance utilisable, « une seule fois » ne peut pas être tenu : on
@@ -189,7 +231,7 @@
   function close(){
     const dialog=document.getElementById(DIALOG_ID);
     if(dialog)dialog.classList.remove('open');
-    if(openedVersion){markSeen(openedVersion);openedVersion=null}
+    if(openedVersion){markSeen(openedVersion);clearPending();openedVersion=null}
     return true;
   }
 
@@ -199,8 +241,13 @@
   }
 
   function autoOpen(){
-    if(!hasUnseenRelease())return false;
-    if(!hadPriorInstall()){markSeen(currentVersion());return false}
+    const kind=launchState();
+    if(kind==='premiere-installation'){markSeen(currentVersion());return false}
+    if(kind==='inconnu')return false;
+    /* Seule une annonce armée par un changement de build ouvre l'écran. Un
+       rechargement dans la même version n'en arme aucune, donc n'ouvre rien. */
+    if(pendingVersion()!==currentVersion())return false;
+    if(!hasUnseenRelease()){clearPending();return false}
     /* Le bandeau « Mise à jour installée » du centre de mise à jour arrive au même
        moment et ferait doublon sous le fond flouté. On masque uniquement ce toast
        passager ; un bandeau collant (mise à jour disponible ou installation en
@@ -241,13 +288,17 @@
   const publicApi={
     RELEASES:RELEASES,
     SEEN_KEY:SEEN_KEY,
+    LAST_BUILD_KEY:LAST_BUILD_KEY,
+    PENDING_KEY:PENDING_KEY,
     displayVersion:displayVersion,
     currentVersion:currentVersion,
     releaseFor:releaseFor,
     latestRelease:latestRelease,
     lastSeenVersion:lastSeenVersion,
     hasUnseenRelease:hasUnseenRelease,
-    hadPriorInstall:hadPriorInstall,
+    launchState:launchState,
+    pendingVersion:pendingVersion,
+    currentBuild:currentBuild,
     markSeen:markSeen,
     open:open,
     close:close,
@@ -259,7 +310,7 @@
   if(typeof module!=='undefined'&&module.exports)module.exports=publicApi;
   if(typeof window==='undefined'||typeof document==='undefined')return;
   window.StoreRunnerWhatsNew=publicApi;
-  hadPriorInstall();   // instantané pris maintenant, avant que l'application n'écrive
+  launchState();   // instantané pris maintenant, avant que l'application n'écrive
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});
   else start();
 })();
