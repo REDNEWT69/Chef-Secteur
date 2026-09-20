@@ -37,8 +37,19 @@
     return true;
   }
 
-  function boot(){installField()}
+  /* Le point de départ reste disponible via le raccourci Départ du header et dans
+     les réglages Secteur. La grosse carte du Planning est donc purement redondante. */
+  function hidePlanningDepartureCard(){
+    var card=document.querySelector('#planPanel .departureCard');
+    if(!card)return false;
+    card.hidden=true;
+    card.style.setProperty('display','none','important');
+    card.setAttribute('aria-hidden','true');
+    return true;
+  }
+
+  function boot(){installField();hidePlanningDepartureCard()}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
-  document.addEventListener('store-runner:data-restored',syncField);
-  document.addEventListener('store-runner:planning-updated',function(){if(!document.getElementById('endTime'))installField()});
+  document.addEventListener('store-runner:data-restored',function(){syncField();hidePlanningDepartureCard()});
+  document.addEventListener('store-runner:planning-updated',function(){if(!document.getElementById('endTime'))installField();hidePlanningDepartureCard()});
 })();
