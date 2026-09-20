@@ -23,23 +23,11 @@ body:after{content:"";position:fixed;inset:0;z-index:-1;backdrop-filter:blur(42p
 `;
   document.head.appendChild(s)}
   function polishLabels(){try{document.querySelectorAll('#googleCalendarStatus').forEach(el=>{if(el.textContent&&/synchronis/i.test(el.textContent))el.style.color='#4b8f65'})}catch(e){}}
-  function compactPlanningChrome(){
-    try{
-      const mobile=typeof window.matchMedia==='function'&&window.matchMedia('(max-width:700px)').matches;
-      if(!mobile)return;
-      const head=document.querySelector('#planPanel .pmvHead');
-      if(head){const label=head.querySelector('span');if(label&&label.textContent!=='Visites')label.textContent='Visites'}
-      const hint=document.querySelector('#planPanel .pmvHint');if(hint)hint.hidden=true;
-      const legend=document.getElementById('planningHoursLegend');
-      if(legend&&legend.dataset.compactMobile!=='1'){
-        legend.dataset.compactMobile='1';
-        legend.innerHTML='<b>ⓘ Horaires</b> · arrivée estimée. Touchez l’heure pour la modifier.';
-      }
-      const shell=document.querySelector('#planPanel .timelineShell'),timeline=shell&&shell.querySelector('.appleTimeline'),suggest=shell&&shell.querySelector('.pmvSuggest');
-      if(timeline&&suggest&&timeline.nextElementSibling!==suggest)timeline.insertAdjacentElement('afterend',suggest);
-    }catch(e){}
-  }
-  function run(){if(busy)return;busy=true;try{ensureCss();polishLabels();compactPlanningChrome()}finally{busy=false}}
+  /* La densité mobile du planning est purement visuelle ici : le libellé de l'en-tête,
+     l'astuce de swipe, la légende horaires et l'ordre timeline / suggestions sont tenus
+     par leurs propriétaires (planning-manual-visits.js et timeline-end-times.js). Ce
+     module ne réécrit plus leur DOM : il se contente de la feuille de style. */
+  function run(){if(busy)return;busy=true;try{ensureCss();polishLabels()}finally{busy=false}}
   function scheduleRun(delay){clearTimeout(refreshTimer);refreshTimer=setTimeout(run,delay==null?40:delay)}
   function installEvents(){if(window.__iosRefreshEvents)return;window.addEventListener('focus',()=>scheduleRun(30));document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleRun(30)});document.addEventListener('store-runner:calendar-updated',()=>scheduleRun(20));document.addEventListener('store-runner:planning-updated',()=>scheduleRun(20));document.addEventListener('store-runner:data-restored',()=>scheduleRun(20));document.addEventListener('chef-range-generated',()=>scheduleRun(20));document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab,#dayTabs .periodDayTab'))scheduleRun(20)},true);window.__iosRefreshEvents=true}
   function boot(){installEvents();run();setTimeout(run,300)}

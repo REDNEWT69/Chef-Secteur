@@ -21,12 +21,14 @@ test('Planning V174 : + déplace un magasin et swipe le retire avec confirmation
     const hint=document.querySelector('#planPanel .pmvHint');
     const first=document.querySelector('#planPanel .appleTimeline .timelineRow');
     if(!head||!hint||!first)return null;
-    const hs=getComputedStyle(head),is=getComputedStyle(hint),hr=hint.getBoundingClientRect(),fr=first.getBoundingClientRect();
-    return{headBg:hs.backgroundColor,hintBg:is.backgroundColor,gap:Math.round(fr.top-hr.bottom)};
+    const hs=getComputedStyle(head),is=getComputedStyle(hint),hr=head.getBoundingClientRect(),fr=first.getBoundingClientRect();
+    return{headBg:hs.backgroundColor,hintDisplay:is.display,hintHidden:hint.hidden,gap:Math.round(fr.top-hr.bottom)};
   });
   expect(polish).toBeTruthy();
   expect(polish.headBg).toBe('rgba(0, 0, 0, 0)');
-  expect(polish.hintBg).toBe('rgba(0, 0, 0, 0)');
+  /* V229 : le swipe fonctionne toujours, mais son tutoriel n'occupe plus l'écran. */
+  expect(polish.hintHidden).toBe(true);
+  expect(polish.hintDisplay).toBe('none');
   expect(polish.gap).toBeGreaterThanOrEqual(12);
   await add.click();await expect(page.locator('#pmvDialog')).toBeVisible();
   await page.locator('#pmvSearch').fill('Darty Ville-Test B');

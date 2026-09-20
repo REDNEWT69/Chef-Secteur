@@ -72,6 +72,15 @@
     document.head.appendChild(style);
   }
 
+  /* Sur mobile, ce pavé explicatif mangeait la moitié de l'écran avant la première visite.
+     Le texte long reste disponible sur grand écran ; le téléphone n'affiche qu'un rappel
+     compact. La légende appartient à ce module : personne d'autre ne réécrit son contenu. */
+  const LEGEND_LONG='<b>Heure affichée : arrivée estimée au magasin.</b> Elle part de ton heure de début de journée et ajoute le trajet depuis le départ, puis le trajet entre chaque magasin. La durée indiquée est le temps prévu sur place, réglable dans Mon activité.';
+  const LEGEND_COMPACT='<b>ⓘ Horaires</b> · arrivée estimée au magasin, trajet compris. Touchez l’heure pour la modifier.';
+  function compactViewport(){
+    try{return typeof window.matchMedia==='function'&&window.matchMedia('(max-width:700px)').matches}catch(e){return false}
+  }
+  function legendMarkup(){return compactViewport()?LEGEND_COMPACT:LEGEND_LONG}
   function ensureLegend(week){
     const host=week&&week.parentNode;
     if(!host)return null;
@@ -80,9 +89,10 @@
       legend=document.createElement('div');
       legend.id=LEGEND_ID;
       legend.setAttribute('role','note');
-      legend.innerHTML='<b>Heure affichée : arrivée estimée au magasin.</b> Elle part de ton heure de début de journée et ajoute le trajet depuis le départ, puis le trajet entre chaque magasin. La durée indiquée est le temps prévu sur place, réglable dans Mon activité.';
       host.insertBefore(legend,week);
     }
+    const markup=legendMarkup();
+    if(legend.innerHTML!==markup)legend.innerHTML=markup;
     if(legend.hidden)legend.hidden=false;
     return legend;
   }

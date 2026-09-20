@@ -37,6 +37,7 @@ jobs:
       - run: node tests/cuisiniste-followup-v229.test.cjs
       - run: node tests/cuisiniste-import-xlsm.test.cjs
       - run: node tests/cuisiniste-bourgoin-scope.test.cjs
+      - run: node tests/cuisiniste-tracking-reserve-v229.test.cjs
       - run: node tests/default-stores-seed.test.cjs
       - run: node tests/calendar.test.cjs
       - run: node tests/google-oauth-production.test.cjs
@@ -100,6 +101,7 @@ jobs:
       - run: node tests/planning-card-mobile.test.cjs
       - run: node tests/planning-first-stop.test.cjs
       - run: node tests/planning-day-origin.test.cjs
+      - run: node tests/planning-alerts-v229.test.cjs
       - run: node tests/working-hours-architecture.test.cjs
       - run: node tests/daily-capacity-architecture.test.cjs
       - run: node tests/ci-policy.test.cjs

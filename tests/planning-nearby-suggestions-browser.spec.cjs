@@ -81,10 +81,12 @@ test('Suggestions de proximité à 390 px : trois lignes un jour futur, rien un 
   const kms=await rows.locator('.pmvSuggestKm').allTextContents();
   expect(kms).toEqual(['≈ 0,1 km','≈ 3 km','≈ 3,5 km']);
 
-  /* la zone est bien sous l'en-tête et avant l'astuce */
-  const order=await page.evaluate(()=>[...document.querySelector('#planPanel .timelineShell').children].map(e=>e.className.split(' ')[0]));
-  expect(order.indexOf('pmvSuggest')).toBe(order.indexOf('pmvHead')+1);
-  expect(order.indexOf('pmvHint')).toBe(order.indexOf('pmvSuggest')+1);
+  /* V229 : les visites réellement planifiées passent AVANT les suggestions de proximité.
+     L'ordre attendu est donc en-tête, astuce (masquée), timeline, puis suggestions. */
+  const order=await page.evaluate(()=>[...document.querySelector('#planPanel .timelineShell').children].map(e=>e.id||e.className.split(' ')[0]));
+  expect(order.indexOf('pmvHint')).toBe(order.indexOf('pmvHead')+1);
+  expect(order.indexOf('week')).toBeGreaterThan(order.indexOf('pmvHint'));
+  expect(order.indexOf('pmvSuggest')).toBe(order.indexOf('week')+1);
 
   /* aucun magasin sans visite n'est proposé quand la journée est vide */
   await page.evaluate(()=>{window.state.plan.Jeudi=[];try{save()}catch(e){}document.dispatchEvent(new CustomEvent('store-runner:planning-updated'))});
