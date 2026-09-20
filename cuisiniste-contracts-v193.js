@@ -147,9 +147,12 @@ function sameBrand(site,s){const a=norm(s&&(s.enseigne||s.retailer)),b=norm(site
    magasin qui appartient déjà, plus sûrement, à un autre site. */
 const MATCH_STRENGTH={mapping:5,client:4,'ville':3,'code-postal':2,auto:1};
 function assignStores(sites,pool,mapping,all){
-  const proposals=sites.map((site,index)=>{const m=matchSite(site,pool,mapping,all);return{index,site,m,strength:m.by?MATCH_STRENGTH[m.by]||0:0}});
+  /* À force de rapprochement égale, un candidat issu de HITLIST garde le magasin : un
+     candidat tracking-only ne peut jamais voler un magasin déjà attribué plus sûrement. */
+  const proposals=sites.map((site,index)=>{const m=matchSite(site,pool,mapping,all),strength=m.by?MATCH_STRENGTH[m.by]||0:0;
+    return{index,site,m,strength,rank:site&&site.trackingOnly?strength-0.5:strength}});
   const taken=new Map(),out=new Array(sites.length).fill(null);
-  for(const p of proposals.slice().sort((a,b)=>b.strength-a.strength||a.index-b.index)){
+  for(const p of proposals.slice().sort((a,b)=>b.rank-a.rank||a.index-b.index)){
     if(!p.m.store)continue;
     const id=String(p.m.store.id);
     if(taken.has(id))continue;
@@ -211,16 +214,87 @@ function contractFromRow(row,idx){
 function activeStatus(v){const n=norm(v);return !!n&&!/(finalis|termine|clotur|closed)/.test(n)}
 function latestByDate(rows){return rows.slice().sort((a,b)=>String(b.endDate||b.startDate||'').localeCompare(String(a.endDate||a.startDate||'')))[0]||null}
 function matchHitToContract(hit,c){if(!c)return false;if(norm(c.brand)!==norm(hit.brand))return false;const a=cityKey(c.city),b=hit.cityKey;if(a===b)return true;if(a.includes(b)||b.includes(a))return true;const at=a.split(' ').filter(x=>x.length>2),bt=b.split(' ').filter(x=>x.length>2);return bt.length>=2&&bt.filter(x=>at.includes(x)).length>=Math.min(2,bt.length)}
+/* Identité d'un groupe de contrats du suivi, indépendante de HITLIST. Le nom de société
+   n'est JAMAIS une identité à lui seul : deux magasins distincts peuvent partager la même
+   raison sociale. On retient enseigne normalisée + numéro client, et à défaut enseigne
+   normalisée + ville normalisée. */
+function trackingIdentity(c){
+  const brand=norm(c&&c.brand);if(!brand)return null;
+  const client=text(c&&c.clientNumber);
+  if(client)return{id:'client|'+brand+'|'+client,by:'client',clientNumber:client};
+  const city=cityKey(c&&c.city);if(!city)return null;
+  return{id:'ville|'+brand+'|'+city,by:'ville',clientNumber:''};
+}
+/* Réserve tirée du suivi lui-même : un magasin cuisiniste peut exister dans state.stores et
+   avoir des contrats dans le fichier sans jamais apparaître dans HITLIST. HITLIST cesse donc
+   d'être la seule source de candidats. Les groupes déjà lisibles dans HITLIST sont écartés :
+   la réserve ne sert qu'aux sites que HITLIST ne nomme pas. Bornée à MAX_RESERVE_SITES. */
+function buildTrackingReserve(contracts,knownHitSites){
+  /* Le regroupement n'est pas borné : la borne s'applique à la SORTIE, après l'exclusion
+     des groupes déjà nommés par HITLIST. Couper ici ferait tomber, dans un gros classeur,
+     exactement le magasin tracking-only que cette réserve existe pour rattraper : les 500
+     premiers groupes peuvent tous être connus de HITLIST. Le nombre de groupes reste borné
+     par les lignes réellement lues (MAX_USEFUL_ROWS). */
+  const groups=new Map();
+  for(const c of contracts||[]){
+    const ident=trackingIdentity(c);if(!ident)continue;
+    let g=groups.get(ident.id);
+    if(!g){g={ident,rows:[]};groups.set(ident.id,g)}
+    g.rows.push(c);
+  }
+  /* Une ligne sans numéro client et une ligne qui en porte un peuvent décrire le même
+     magasin. On replie le groupe « ville » sur le groupe « client » de même enseigne et
+     même ville : un seul candidat, avec tout son historique contrat. */
+  const clientByBrandCity=new Map();
+  for(const g of groups.values()){
+    if(g.ident.by!=='client')continue;
+    for(const c of g.rows){const k=norm(c.brand)+'|'+cityKey(c.city);if(!clientByBrandCity.has(k))clientByBrandCity.set(k,g)}
+  }
+  for(const [id,g] of Array.from(groups)){
+    if(g.ident.by!=='ville')continue;
+    const k=norm(g.rows[0].brand)+'|'+cityKey(g.rows[0].city),target=clientByBrandCity.get(k);
+    if(target&&target!==g){target.rows=target.rows.concat(g.rows);groups.delete(id)}
+  }
+  /* Un groupe n'est écarté que lorsqu'il est le SEUL à correspondre à un site HITLIST :
+     c'est alors bien ce site-là, déjà pris en charge. Quand deux numéros client distincts
+     partagent enseigne et ville et que HITLIST ne porte qu'une étiquette, les écarter tous
+     les deux rendrait le contrat du second magasin introuvable. Le site HITLIST garde son
+     magasin (candidat non tracking-only, prioritaire), le groupe en trop ne peut que
+     rattraper un AUTRE magasin réel, ou disparaître. */
+  const known=Array.isArray(knownHitSites)?knownHitSites:[];
+  const list=Array.from(groups.values()),claimed=new Set();
+  for(const site of known){
+    const hits=list.filter(g=>g.rows.some(c=>matchHitToContract(site,c)));
+    if(hits.length===1)claimed.add(hits[0]);
+  }
+  const out=[];
+  for(const g of list){
+    if(claimed.has(g))continue;
+    const history=g.rows.slice().sort((a,b)=>String(b.endDate).localeCompare(String(a.endDate)));
+    const active=latestByDate(history.filter(c=>activeStatus(c.status))),last=latestByDate(history),ref=active||last||history[0]||null;
+    if(!ref)continue;
+    out.push({key:'tracking|'+g.ident.id,trackingOnly:true,identityBy:g.ident.by,
+      brand:text(ref.brand).toUpperCase(),city:text(ref.city),cityKey:cityKey(ref.city),postal:'',
+      clientNumber:g.ident.clientNumber,company:text(ref.client),group:text(ref.group),
+      fileSector:text(ref.sector),label:'',
+      activeContract:active||null,lastContract:last||null,history:history.slice(0,8)});
+  }
+  return out.slice(0,MAX_RESERVE_SITES);
+}
 async function parseTrackingWorkbook(input,sector){
   const files=await unzip(input),hit=extractHitlist(readSheetByColumns(files,HITLIST_COLUMNS,'cuisinisteHitlistSheet'),sector),rows=readSheetByColumns(files,TRACKING_COLUMNS,'cuisinisteTrackingSheet'),h=trackingHeader(rows),all=[];
-  for(let r=h.hr+1;r<rows.length;r++){const c=contractFromRow(rows[r],h.idx);if(c.brand&&c.city&&c.clientNumber)all.push(c)}
+  /* Enseigne + ville suffisent à retenir une ligne : exiger en plus un numéro client
+     rendait inatteignable le repli d'identité « enseigne + ville » de la réserve, et
+     perdait au passage des contrats réels dont la colonne N° CLIENT est vide. */
+  for(let r=h.hr+1;r<rows.length;r++){const c=contractFromRow(rows[r],h.idx);if(c.brand&&c.city)all.push(c)}
   const withContracts=site=>{const history=all.filter(c=>matchHitToContract(site,c));const active=latestByDate(history.filter(c=>activeStatus(c.status))),last=latestByDate(history);return Object.assign({},site,{activeContract:active||null,lastContract:last||null,history:history.slice().sort((a,b)=>String(b.endDate).localeCompare(String(a.endDate))).slice(0,8)})};
   const sites=hit.map(withContracts);
   /* Les sites du fichier hors périmètre au moment de l'import sont gardés en réserve, sans
      jamais être affichés ni comptés. C'est ce qui permet à un cuisiniste ajouté APRÈS
      l'import d'apparaître avec son contrat, sans réimport et sans second stockage. */
   const others=(hit.others||[]).slice(0,MAX_RESERVE_SITES).map(withContracts);
-  return{type:'tracking',sector:hit.sector||'',sites,others,scanned:hit.scanned||sites.length,sectorScope:hit.sectorScope||'',sectorsFound:hit.sectorsFound||[],needsSectorChoice:!!hit.needsChoice,importedAt:nowIso()};
+  const trackingReserve=buildTrackingReserve(all,hit.concat(hit.others||[]));
+  return{type:'tracking',sector:hit.sector||'',sites,others,trackingReserve,scanned:hit.scanned||sites.length,sectorScope:hit.sectorScope||'',sectorsFound:hit.sectorsFound||[],needsSectorChoice:!!hit.needsChoice,importedAt:nowIso()};
 }
 function tariffHeader(rows){const hr=findHeaderRow(rows,['Famille','Segment','Référence SCHMIDT GROUPE','Référence commerciale SAMSUNG']);if(hr<0)throw new Error('Colonnes du tarif contrats expo introuvables.');const idx={};for(let i=0;i<rows[hr].length;i++)if(rows[hr][i]!=null)idx[norm(rows[hr][i])]=i;return{hr,idx}}
 async function parseTariffWorkbook(input){
@@ -231,7 +305,24 @@ async function parseTariffWorkbook(input){
 function productInfo(storage,ref){const t=latestTariff(storage),needle=norm(ref);if(!t||!needle)return null;return(t.products||[]).find(p=>[p.refSchmidt,p.refCommercial,p.refSap].some(v=>norm(v)===needle))||null}
 function appStoreScore(site,s){if(!site||!s)return 0;const brand=norm(s.enseigne||s.retailer||'');if(brand&&brand!==norm(site.brand)&&!brand.includes(norm(site.brand))&&!norm(site.brand).includes(brand))return 0;const a=cityKey(s.ville||s.city||''),b=site.cityKey;if(!a||!b)return 0;if(a===b)return 100;if(a.includes(b)||b.includes(a))return 80;const at=a.split(' ').filter(x=>x.length>2),bt=b.split(' ').filter(x=>x.length>2),hits=bt.filter(x=>at.includes(x)).length;return hits>=2?50+hits*5:0}
 function candidateLabel(s){return text(s.enseigne)+' · '+text(s.ville)}
-function siteClient(site){return text((site.activeContract&&site.activeContract.clientNumber)||(site.lastContract&&site.lastContract.clientNumber))}
+/* Le contrat le plus récent peut arriver sans numéro client. On balaie donc contrat actif,
+   dernier contrat puis historique avant de renoncer : sans ça, une ligne vide récente ferait
+   redescendre le rapprochement de « numéro client exact » à « enseigne + ville ». */
+function siteClient(site){
+  if(!site)return'';
+  const rows=[site.activeContract,site.lastContract].concat(Array.isArray(site.history)?site.history:[]);
+  for(const c of rows){const v=text(c&&c.clientNumber);if(v)return v}
+  return text(site.clientNumber);
+}
+/* Identité commerciale affichée sous le titre d'un site, uniquement si la donnée existe
+   dans le fichier importé. Aucune valeur n'est écrite en dur dans le code. */
+function siteCompany(site){const c=site&&(site.activeContract||site.lastContract);return text((c&&c.client)||(site&&site.company))}
+function siteIdentityLine(site){
+  const company=siteCompany(site),client=siteClient(site)||text(site&&site.clientNumber),parts=[];
+  if(company)parts.push('Société : '+company);
+  if(client)parts.push('client '+client);
+  return parts.join(' · ');
+}
 /* Échelle de rapprochement, dans cet ordre et sans jamais trancher une ambiguïté :
    1. mapping confirmé · 2. numéro client exact · 3. enseigne + ville · 4. enseigne + code
    postal · 5. score V193 franchement meilleur · sinon « à confirmer ». Un magasin retail
@@ -265,15 +356,25 @@ function matchSite(site,pool,mapping,all){
 function resolveSites(storage,list){
   const tr=latestTracking(storage);if(!tr)return[];
   const data=readStore(storage),ss=Array.isArray(list)?list:stores(),pool=cuisinisteStores(ss);
-  const imported=tr.sites||[],reserve=tr.others||[],pooled=imported.concat(reserve);
+  /* Trois sources de candidats, une seule table de résolution : les sites HITLIST du
+     périmètre, la réserve HITLIST hors périmètre, puis la réserve tirée du suivi. */
+  const imported=tr.sites||[],reserve=tr.others||[],tracking=tr.trackingReserve||[];
+  const pooled=imported.concat(reserve,tracking);
   const{assigned,proposals}=assignStores(pooled,pool,data.mapping,ss);
   const scope=norm(tr.sectorScope||'');
   const out=[];
   pooled.forEach((site,i)=>{
     const hit=assigned[i];
-    if(hit)return out.push(Object.assign({},site,{storeId:String(hit.store.id),matchedBy:hit.by}));
+    if(hit){
+      /* Tant qu'aucune clé HITLIST canonique ne désigne ce site, il vit sous « store:<id> ».
+         reconcileKeys() migrera le suivi le jour où un import apporte la vraie clé. */
+      const key=site.trackingOnly?'store:'+String(hit.store.id):site.key;
+      return out.push(Object.assign({},site,{key,storeId:String(hit.store.id),matchedBy:hit.by}));
+    }
     /* Sans magasin rattaché, un site n'est proposé à l'utilisateur que s'il était déjà
-       dans son périmètre : la réserve ne remonte jamais d'elle-même. */
+       dans son périmètre : ni la réserve HITLIST ni la réserve du suivi ne remontent
+       d'elles-mêmes. Un candidat tracking-only n'existe que rattaché à un magasin réel. */
+    if(site.trackingOnly)return;
     const known=i<imported.length||(scope&&norm(site.fileSector)===scope);
     if(!known)return;
     const cands=((proposals[i]||{}).m||{}).others||[];
@@ -342,7 +443,7 @@ function renderImportReview(body,sites,tr){
   body.append(box);
 }
 function renderSheet(){if(!sheet)return;const storage=db(),sites=resolveSites(storage,stores()),body=sheet.querySelector('#srCuisineBody');body.replaceChildren();const tr=latestTracking(storage),ta=latestTariff(storage);sheet.querySelector('#srCuisineSubtitle').textContent=(text((tr||{}).sector)||'Secteur à importer')+' · '+(tr?'suivi importé':'suivi à importer')+' · '+(ta?'tarifs importés':'tarifs à importer');if(pendingSectors&&pendingSectors.length){renderSectorChoice(body);return}if(!tr){body.append(el('p','Importe ton fichier contrats .xlsx ou .xlsm. Seuls les magasins qui correspondent à tes cuisinistes seront conservés dans Store Runner.','srCuisineMeta'));return}renderImportReview(body,sites,tr);const shown=followupSheetHeader(body,sites)||sites;
-for(const site of shown){const box=el('section',undefined,'srCuisineRow'),c=site.activeContract||site.lastContract,u=urgency(site);const head=el('div');const badge=el('span',site.activeContract?(c.status||'Contrat actif'):'Historique','srCuisineBadge'+(/alerte/i.test(c&&c.status||'')?' srCuisineAlert':''));head.append(badge,el('b',siteLabel(site)));box.append(head);if(c){const meta=[];meta.push(site.activeContract?'Contrat actif':'Aucun contrat actif trouvé · dernier contrat');if(c.startDate||c.endDate)meta.push('Période : '+(c.startDate||'—')+' → '+(c.endDate||'—'));if(c.objective!=null||c.realized!=null)meta.push('Objectif '+fmtEuro(c.objective)+' · réalisé '+fmtEuro(c.realized)+' · progression '+fmtPct(c.progress));if(c.monthsRemaining!=null&&typeof c.monthsRemaining==='number')meta.push('Temps restant : '+c.monthsRemaining+' mois');if(c.closure)meta.push('Clôture source : '+c.closure);if(c.toInvoice!=null&&text(c.toInvoice))meta.push('À facturer : '+text(c.toInvoice));if(c.portfolio!=null)meta.push('Portefeuille mois : '+fmtEuro(c.portfolio));const prod=renderProductLine(storage,c);if(prod)meta.push('Produits expo :\n'+prod);meta.push('Signal : '+u.label+' · '+u.reason);box.append(el('span',meta.join('\n'),'srCuisineMeta'))}else box.append(el('span','Aucun contrat retrouvé dans le suivi importé.','srCuisineMeta'));if(!site.storeId){const sel=el('select');sel.append(Object.assign(el('option','Rattacher à un magasin Store Runner…'),{value:''}));for(const s of stores())sel.append(Object.assign(el('option',text(s.enseigne)+' · '+text(s.ville)),{value:String(s.id)}));sel.onchange=()=>{if(sel.value){rememberMatch(storage,site.key,sel.value);followupReconcile(resolveSites(storage,stores()));renderSheet();renderStoreCard();queueVisitRender()}};box.append(sel)}else box.append(el('span','Rattaché au magasin Store Runner · '+site.matchedBy,'srCuisineMeta'));followupRow(box,site);body.append(box)}}
+for(const site of shown){const box=el('section',undefined,'srCuisineRow'),c=site.activeContract||site.lastContract,u=urgency(site);const head=el('div');const badge=el('span',site.activeContract?(c.status||'Contrat actif'):'Historique','srCuisineBadge'+(/alerte/i.test(c&&c.status||'')?' srCuisineAlert':''));head.append(badge,el('b',siteLabel(site)));box.append(head);const ident=siteIdentityLine(site);if(ident)box.append(el('span',ident,'srCuisineMeta'));if(c){const meta=[];meta.push(site.activeContract?'Contrat actif':'Aucun contrat actif trouvé · dernier contrat');if(c.startDate||c.endDate)meta.push('Période : '+(c.startDate||'—')+' → '+(c.endDate||'—'));if(c.objective!=null||c.realized!=null)meta.push('Objectif '+fmtEuro(c.objective)+' · réalisé '+fmtEuro(c.realized)+' · progression '+fmtPct(c.progress));if(c.monthsRemaining!=null&&typeof c.monthsRemaining==='number')meta.push('Temps restant : '+c.monthsRemaining+' mois');if(c.closure)meta.push('Clôture source : '+c.closure);if(c.toInvoice!=null&&text(c.toInvoice))meta.push('À facturer : '+text(c.toInvoice));if(c.portfolio!=null)meta.push('Portefeuille mois : '+fmtEuro(c.portfolio));const prod=renderProductLine(storage,c);if(prod)meta.push('Produits expo :\n'+prod);meta.push('Signal : '+u.label+' · '+u.reason);box.append(el('span',meta.join('\n'),'srCuisineMeta'))}else box.append(el('span','Aucun contrat retrouvé dans le suivi importé.','srCuisineMeta'));if(!site.storeId){const sel=el('select');sel.append(Object.assign(el('option','Rattacher à un magasin Store Runner…'),{value:''}));for(const s of stores())sel.append(Object.assign(el('option',text(s.enseigne)+' · '+text(s.ville)),{value:String(s.id)}));sel.onchange=()=>{if(sel.value){rememberMatch(storage,site.key,sel.value);followupReconcile(resolveSites(storage,stores()));renderSheet();renderStoreCard();queueVisitRender()}};box.append(sel)}else box.append(el('span','Rattaché au magasin Store Runner · '+site.matchedBy,'srCuisineMeta'));followupRow(box,site);body.append(box)}}
 async function importTracking(file,sector){
   try{
     status('Lecture locale du suivi contrats…');
@@ -394,7 +495,7 @@ function followupSection(storeId){
   if(!fu||typeof fu.renderStoreSection!=='function')return false;
   try{return fu.renderStoreSection(storeId)}catch(e){return false}
 }
-function renderStoreCard(){if(!root.document)return false;const sh=root.document.getElementById('storeQuickSheet'),start=root.document.getElementById('srQuickStart');if(!sh||!start||!start.dataset)return false;const storeId=text(start.dataset.srStart);let old=root.document.getElementById(STORE_CARD_ID);if(!storeId){if(old)old.remove();followupSection(null);return false}const x=briefingForStore(storeId);if(!x){if(old)old.remove();followupSection(storeId);return false}const anchor=root.document.getElementById('sqPerformance')||root.document.getElementById('sqVisitCredit')||root.document.getElementById('sqAddress');if(!anchor)return false;if(!old){ensureStyle();old=el('section');old.id=STORE_CARD_ID;old.setAttribute('aria-label','Contrat expo du magasin');anchor.insertAdjacentElement('afterend',old)}old.replaceChildren();const c=x.activeContract||x.lastContract,badge=el('span',x.activeContract?(c.status||'Contrat expo'):'Historique','srCuisineBadge'+(/alerte/i.test(c&&c.status||'')?' srCuisineAlert':''));old.append(badge,el('b','Contrat Expo · '+siteLabel(x)));if(c){const line=t=>old.append(el('span',t,'srCuisineMeta'));line(x.activeContract?'Contrat actif':'Aucun contrat actif trouvé · dernier contrat '+(c.status||''));line('Période '+(c.startDate||'—')+' → '+(c.endDate||'—'));line('Objectif '+fmtEuro(c.objective)+' · réalisé '+fmtEuro(c.realized)+' · '+fmtPct(c.progress));if(c.monthsRemaining!=null&&typeof c.monthsRemaining==='number')line('Temps restant : '+c.monthsRemaining+' mois');if(c.products&&c.products.length)line('Produits expo : '+c.products.map(p=>p.info?(p.ref+' · '+[p.info.family,p.info.segment].filter(Boolean).join(' / ')):p.ref).join(' · '));line('Signal : '+x.urgency.reason)}old.append(btn('Ouvrir le suivi contrats expo',open));followupSection(storeId);return true}
+function renderStoreCard(){if(!root.document)return false;const sh=root.document.getElementById('storeQuickSheet'),start=root.document.getElementById('srQuickStart');if(!sh||!start||!start.dataset)return false;const storeId=text(start.dataset.srStart);let old=root.document.getElementById(STORE_CARD_ID);if(!storeId){if(old)old.remove();followupSection(null);return false}const x=briefingForStore(storeId);if(!x){if(old)old.remove();followupSection(storeId);return false}const anchor=root.document.getElementById('sqPerformance')||root.document.getElementById('sqVisitCredit')||root.document.getElementById('sqAddress');if(!anchor)return false;if(!old){ensureStyle();old=el('section');old.id=STORE_CARD_ID;old.setAttribute('aria-label','Contrat expo du magasin');anchor.insertAdjacentElement('afterend',old)}old.replaceChildren();const c=x.activeContract||x.lastContract,badge=el('span',x.activeContract?(c.status||'Contrat expo'):'Historique','srCuisineBadge'+(/alerte/i.test(c&&c.status||'')?' srCuisineAlert':''));old.append(badge,el('b','Contrat Expo · '+siteLabel(x)));const identity=siteIdentityLine(x);if(identity)old.append(el('span',identity,'srCuisineMeta'));if(c){const line=t=>old.append(el('span',t,'srCuisineMeta'));line(x.activeContract?'Contrat actif':'Aucun contrat actif trouvé · dernier contrat '+(c.status||''));line('Période '+(c.startDate||'—')+' → '+(c.endDate||'—'));line('Objectif '+fmtEuro(c.objective)+' · réalisé '+fmtEuro(c.realized)+' · '+fmtPct(c.progress));if(c.monthsRemaining!=null&&typeof c.monthsRemaining==='number')line('Temps restant : '+c.monthsRemaining+' mois');if(c.products&&c.products.length)line('Produits expo : '+c.products.map(p=>p.info?(p.ref+' · '+[p.info.family,p.info.segment].filter(Boolean).join(' / ')):p.ref).join(' · '));line('Signal : '+x.urgency.reason)}old.append(btn('Ouvrir le suivi contrats expo',open));followupSection(storeId);return true}
 function createBriefing(storeId){const x=briefingForStore(storeId);if(!x||!root.document)return null;ensureStyle();const s=el('section',undefined,'srCuisineBrief193');s.dataset.storeId=String(storeId);s.setAttribute('aria-label','Brief contrat expo');const c=x.activeContract||x.lastContract,b=el('span',x.activeContract?(c.status||'Contrat expo'):'Historique','srCuisineBadge'+(/alerte/i.test(c&&c.status||'')?' srCuisineAlert':''));s.append(b,el('b','Contrat expo · '+siteLabel(x)));if(c){const g=el('div',undefined,'srCuisineGrid'),cell=(l,v)=>{const x=el('div',undefined,'srCuisineCell');x.append(el('span',l),el('b',v));g.append(x)};cell('Progression',fmtPct(c.progress));cell('Objectif',fmtEuro(c.objective));cell('Réalisé',fmtEuro(c.realized));cell('Temps restant',c.monthsRemaining!=null&&typeof c.monthsRemaining==='number'?c.monthsRemaining+' mois':'—');s.append(g);if(c.products&&c.products.length)s.append(el('span','Produits expo : '+c.products.map(p=>p.ref).join(' · '),'srCuisineMeta'));s.append(el('span','À vérifier : '+visitTips(x).slice(0,3).join(' '),'srCuisineMeta'))}else s.append(el('span','Aucun contrat retrouvé dans le dernier import.','srCuisineMeta'));return s}
 function activeVisitStoreId(){try{const id=root.StoreRunnerVisits&&typeof root.StoreRunnerVisits.activeVisitId==='function'?root.StoreRunnerVisits.activeVisitId():null;if(!id)return null;const vs=(root.state&&root.state.businessV2&&root.state.businessV2.visits)||[],v=vs.find(x=>String(x.id)===String(id));return v&&v.storeId!=null?String(v.storeId):null}catch(e){return null}}
 function renderVisitBriefing(){if(!root.document)return false;const dialog=root.document.getElementById('srVisitDialog');if(!dialog||!dialog.open)return false;const intro=dialog.querySelector('.sr-terrainIntro');if(!intro)return false;const storeId=activeVisitStoreId();if(!storeId)return false;const old=dialog.querySelector('.srCuisineBrief193');if(old&&old.dataset.storeId===String(storeId))return true;if(old)old.remove();const box=createBriefing(storeId);if(!box)return false;intro.insertAdjacentElement('beforebegin',box);return true}
@@ -403,7 +504,7 @@ function attachObservers(){if(!root.document)return;if(!visitObserver){const d=r
 function install(){ensureStyle();ensureMenuEntry();attachObservers();renderStoreCard();queueVisitRender();return true}
 function scheduleInstall(){setTimeout(install,0);setTimeout(install,350);setTimeout(install,1200)}
 
-const api={STORE_KEY,HITLIST_COLUMNS,TRACKING_COLUMNS,sectorsIn,unzip,workbookSheets,sheetRows,readSheetByColumns,isCuisinisteStore,cuisinisteStores,matchSite,norm,cityKey,parseHitLabel,extractHitlist,parseTrackingWorkbook,parseTariffWorkbook,saveTracking,saveTariff,latestTracking,latestTariff,readStore,writeStore,siteForStore,db,siteLabel,rememberMatch,resolveSites,appStoreScore,productInfo,urgency,briefingForStore,planningSignal,compactContext,answer,visitTips,open,install,importTracking,importTariff,renderStoreCard,renderSheet,createBriefing};
+const api={STORE_KEY,HITLIST_COLUMNS,TRACKING_COLUMNS,MAX_RESERVE_SITES,buildTrackingReserve,trackingIdentity,siteIdentityLine,siteCompany,siteClient,sectorsIn,unzip,workbookSheets,sheetRows,readSheetByColumns,isCuisinisteStore,cuisinisteStores,matchSite,norm,cityKey,parseHitLabel,extractHitlist,parseTrackingWorkbook,parseTariffWorkbook,saveTracking,saveTariff,latestTracking,latestTariff,readStore,writeStore,siteForStore,db,siteLabel,rememberMatch,resolveSites,appStoreScore,productInfo,urgency,briefingForStore,planningSignal,compactContext,answer,visitTips,open,install,importTracking,importTariff,renderStoreCard,renderSheet,createBriefing};
 root.StoreRunnerCuisinisteV193=api;
 if(typeof root.storeRunnerRegisterAssistantResolver==='function')root.storeRunnerRegisterAssistantResolver(answer,25);
 if(typeof root.storeRunnerRegisterAssistantContextTransform==='function')root.storeRunnerRegisterAssistantContextTransform(compactContext,75);

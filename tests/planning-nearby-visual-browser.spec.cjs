@@ -49,6 +49,21 @@ test('Bloc « À proximité » : un seul cadre, aucun débordement, cibles tacti
   await expect(zone).toHaveCount(1);
   await expect(zone.locator('.pmvSuggestRow')).toHaveCount(3);
 
+  /* Sur mobile, la visite réelle doit apparaître avant les suggestions et les pavés d'aide. */
+  const densite=await page.evaluate(()=>{
+    const shell=document.querySelector('#planPanel .timelineShell');
+    const timeline=shell&&shell.querySelector('.appleTimeline');
+    const suggestions=shell&&shell.querySelector('.pmvSuggest');
+    const hint=document.querySelector('#planPanel .pmvHint');
+    const legend=document.getElementById('planningHoursLegend');
+    const follows=!!(timeline&&suggestions&&(timeline.compareDocumentPosition(suggestions)&Node.DOCUMENT_POSITION_FOLLOWING));
+    return {follows,hintHidden:!!hint&&(hint.hidden||getComputedStyle(hint).display==='none'),legend:legend&&legend.textContent||'',head:(document.querySelector('#planPanel .pmvHead span')||{}).textContent||''};
+  });
+  expect(densite.follows).toBe(true);
+  expect(densite.hintHidden).toBe(true);
+  expect(densite.legend).toContain('Touchez l’heure');
+  expect(densite.head).toBe('Visites');
+
   /* --- un seul encadrement ---------------------------------------------- */
   const cadres=await page.evaluate(()=>{
     const bordé=el=>{

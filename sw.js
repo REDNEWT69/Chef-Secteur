@@ -1,4 +1,4 @@
-const BUILD_REV = "20260920-hotfix1-cuisinistes229";
+const BUILD_REV = "20260920-hotfix2-cuisinistes229";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",

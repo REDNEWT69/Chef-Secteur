@@ -134,8 +134,8 @@ function patchLegacyBrief(){
   const stats=currentPlanStats();setText(value,stats.visits+' visites');setText(sub,stats.stores+' magasins planifiés · objectif '+Number((state.settings&&state.settings.target)||20)+' magasins');
 }
 function patchPremiumHome(){
-  const card=document.querySelector('#premiumHomeV2 .phGrid .phCard:first-child');if(!card)return;
-  const value=card.querySelector('.phValue'),sub=card.querySelector('.phSub'),stats=currentPlanStats();setText(value,stats.visits+' visites');setText(sub,stats.stores+' magasins planifiés · objectif '+Number((state.settings&&state.settings.target)||20)+' magasins');
+  const card=document.querySelector('#premiumHomeV2 .phGrid .phCard[data-home-card="week"]');if(!card)return;
+  const value=card.querySelector('.phValue'),sub=card.querySelector('.phSub'),stats=currentPlanStats();setText(value,stats.visits+' visites comptabilisées');setText(sub,stats.stores+' magasins planifiés · objectif '+Number((state.settings&&state.settings.target)||20)+' magasins');
 }
 function visibleMonth(){
   const head=document.querySelector('#proMonthBody .proMonthHead b');if(!head)return null;const text=norm(head.textContent),months=['janvier','fevrier','mars','avril','mai','juin','juillet','aout','septembre','octobre','novembre','decembre'];let month=-1;for(let i=0;i<months.length;i++)if(text.includes(months[i])){month=i;break}const m=text.match(/\b(20\d{2})\b/);return month>=0&&m?{year:Number(m[1]),month}:null;

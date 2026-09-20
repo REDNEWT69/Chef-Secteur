@@ -299,7 +299,13 @@ function renderSuggestions(win){
     line.appendChild(textBox);line.appendChild(add);
     host.appendChild(line);
   }
-  if(!existing)head.insertAdjacentElement('afterend',host);
+  /* Les magasins réellement planifiés passent avant les suggestions de proximité :
+     la timeline d'abord, « À proximité de cette journée » ensuite. */
+  if(!existing){
+    const timeline=shell.querySelector('.appleTimeline');
+    if(timeline)timeline.insertAdjacentElement('afterend',host);
+    else head.insertAdjacentElement('afterend',host);
+  }
   return true;
 }
 async function acceptSuggestion(win,id,day){
@@ -354,7 +360,8 @@ function bindRow(win,row){if(!row||row.classList.contains('calendarEvent')||row.
  row.addEventListener('touchmove',e=>{if(!armed)return;const t=e.touches&&e.touches[0];if(!t)return;const dx=t.clientX-sx,dy=t.clientY-sy;lx=t.clientX;if(!drag&&Math.abs(dx)>9&&Math.abs(dx)>Math.abs(dy)*1.2)drag=true;if(!drag)return;if(e.cancelable)e.preventDefault();row.classList.add('pmvSwiping');const shift=Math.max(-92,Math.min(92,dx));main.style.transform='translateX('+shift+'px)'},{passive:false});
  row.addEventListener('touchend',async e=>{if(!armed)return;armed=false;row.classList.remove('pmvDragging');const dx=lx-sx;main.style.transform='';row.classList.remove('pmvSwiping');if(!drag)return;suppressUntil=Date.now()+450;if(Math.abs(dx)<68)return;const day=currentDay(win),store=findStore(win.state,id),label=store?((store.enseigne||'Magasin')+' '+(store.ville||'')):'ce magasin';const accepted=win.confirm('Retirer '+label+' de '+day+' ?\n\nLe magasin reste dans ton secteur. Tu pourras le rajouter avec le bouton +.');if(!accepted)return;e.stopPropagation();await removeStore(win,id,day)},{passive:true});
  row.addEventListener('touchcancel',()=>{armed=false;drag=false;row.classList.remove('pmvDragging','pmvSwiping');main.style.transform=''},{passive:true});row.addEventListener('click',e=>{if(Date.now()<suppressUntil){e.preventDefault();e.stopPropagation();if(typeof e.stopImmediatePropagation==='function')e.stopImmediatePropagation()}},true)}
-function enhance(win){const doc=win.document,shell=doc.querySelector('#planPanel .timelineShell');if(!shell)return false;let head=shell.querySelector('.pmvHead');if(!head){head=doc.createElement('div');head.className='pmvHead';head.innerHTML='<span>Visites du jour</span><button class="pmvAdd" type="button">＋ Ajouter</button>';const timeline=shell.querySelector('.appleTimeline');shell.insertBefore(head,timeline||shell.firstChild);const hint=doc.createElement('div');hint.className='pmvHint';hint.textContent='Astuce : glisse une visite à gauche ou à droite pour la retirer.';head.insertAdjacentElement('afterend',hint);head.querySelector('.pmvAdd').addEventListener('click',()=>openDialog(win))}shell.querySelectorAll('.timelineRow:not(.calendarEvent)').forEach(r=>bindRow(win,r));renderSuggestions(win);installRadiusField(win);return true}
+function enhance(win){const doc=win.document,shell=doc.querySelector('#planPanel .timelineShell');if(!shell)return false;let head=shell.querySelector('.pmvHead');if(!head){head=doc.createElement('div');head.className='pmvHead';head.innerHTML='<span>Visites</span><button class="pmvAdd" type="button">＋ Ajouter</button>';const timeline=shell.querySelector('.appleTimeline');shell.insertBefore(head,timeline||shell.firstChild);/* Le swipe reste actif, mais son mode d'emploi n'a pas à occuper l'écran en permanence :
+   l'élément reste en place, masqué, pour rester disponible à la demande. */const hint=doc.createElement('div');hint.className='pmvHint';hint.hidden=true;hint.textContent='Astuce : glisse une visite à gauche ou à droite pour la retirer.';head.insertAdjacentElement('afterend',hint);head.querySelector('.pmvAdd').addEventListener('click',()=>openDialog(win))}shell.querySelectorAll('.timelineRow:not(.calendarEvent)').forEach(r=>bindRow(win,r));renderSuggestions(win);installRadiusField(win);return true}
 function install(win){if(installed)return;installed=true;ensureCss(win.document);ensureDialog(win);const run=()=>setTimeout(()=>enhance(win),0);run();win.document.addEventListener('store-runner:planning-updated',run);win.document.addEventListener('store-runner:data-restored',run);if(typeof win.MutationObserver!=='undefined'){const panel=win.document.getElementById('planPanel');if(panel){observer=new win.MutationObserver(run);observer.observe(panel,{childList:true,subtree:true})}}}
 return{DAYS,clonePlan,currentWeekKey,plannedDay,addToPlan,removeFromPlan,currentDay,addStore,removeStore,capacityWarning,parseRowStoreId,install,enhance,DEFAULT_RADIUS_KM,MAX_SUGGESTIONS,MAX_WITH_PRIORITY,PRIO_BADGE,radiusKm,coords,dateOfDay,haversine,computeSuggestions,suggestionsFor,suggestionLabel,visitLabel,renderSuggestions,acceptSuggestion,installRadiusField};
 });
