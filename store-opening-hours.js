@@ -134,7 +134,53 @@ function installQuickButton(){
   if(!root.document)return false;const actions=root.document.querySelector('#storeQuickSheet .sheetActions');if(!actions)return false;if(root.document.getElementById('openingHoursQuickBtn'))return true;
   const b=root.document.createElement('button');b.type='button';b.id='openingHoursQuickBtn';b.className='secondary';b.textContent='🕘 Horaires';b.title='Renseigner les horaires connus de ce magasin';b.onclick=()=>{const start=root.document.getElementById('srQuickStart'),id=start&&start.dataset&&start.dataset.srStart;if(!id)return;try{openHoursDialog(id)}catch(e){if(typeof root.showError==='function')root.showError(e.message||String(e))}};actions.appendChild(b);return true;
 }
-function dayNow(){try{return root.selectedPlanningDay||((root.state.settings&&root.state.settings.days)||DAYS)[0]||'Lundi'}catch(e){return 'Lundi'}}
+/* Le jour réellement affiché ne vit pas sur window : `selectedPlanningDay` est une
+   variable privée de l'IIFE du planning (script v37-apple-planning-js). `root.selectedPlanningDay`
+   valait donc toujours undefined et ce module retombait sur le premier jour travaillé :
+   decorateTimeline réécrivait les heures de la timeline avec l'horaire du lundi quel que
+   soit le jour consulté, en face des bons magasins. On lit le jour affiché dans les
+   onglets réellement rendus, qui sont la seule source fiable exposée au DOM. */
+function dayFromRows(){
+  /* Source la plus sûre : renderWeek() écrit le jour rendu dans le onclick de chaque
+     ligne. Il ne peut donc jamais diverger des lignes que l'on s'apprête à décorer,
+     contrairement aux onglets, dont la bande de période tient son propre état. */
+  try{
+    const doc=root.document;if(!doc)return null;
+    const main=doc.querySelector('#week .timelineRow:not(.calendarEvent) .tlMain[onclick]');
+    if(!main)return null;
+    const m=String(main.getAttribute('onclick')||'').match(/openStoreQuick\('[^']*','([^']*)'/);
+    if(!m)return null;
+    const wanted=norm(m[1]);
+    for(const name of DAYS)if(norm(name)===wanted)return name;
+  }catch(e){}
+  return null;
+}
+function dayFromTabs(){
+  try{
+    const doc=root.document;if(!doc)return null;
+    const dated=doc.querySelector('#dayTabs .periodDayTab.active[data-date]');
+    if(dated&&dated.dataset){
+      const d=parseISO(dated.dataset.date);
+      if(d){const name=DAYS[(d.getDay()+6)%7];if(name)return name}
+    }
+    const legacy=doc.querySelector('#dayTabs .dayTab.active');
+    if(legacy){
+      const text=norm(legacy.textContent);
+      for(const name of DAYS)if(text.indexOf(norm(name))===0)return name;
+    }
+  }catch(e){}
+  return null;
+}
+function dayNow(){
+  try{
+    if(typeof root.selectedPlanningDay==='string'&&root.selectedPlanningDay)return root.selectedPlanningDay;
+    const rendered=dayFromRows();
+    if(rendered)return rendered;
+    const shown=dayFromTabs();
+    if(shown)return shown;
+    return ((root.state.settings&&root.state.settings.days)||DAYS)[0]||'Lundi';
+  }catch(e){return 'Lundi'}
+}
 function hintText(row){if(row.status==='closed')return '⛔ Aucun créneau disponible';if(row.status==='appointment-conflict')return '⚠ RDV incompatible avec la tournée, l’ouverture ou l’Agenda';if(row.status==='unknown')return '🕘 Horaire à vérifier';if(row.status==='wait-opening'&&row.arrival!=null)return '🕘 ouvre avant la visite · '+clock(row.arrival);return ''}
 function summaryText(s){
   if(!s||!s.rows.length)return '';
@@ -162,6 +208,6 @@ function decorateTimeline(){
 function scheduleDecorate(){if(scheduled)return;scheduled=true;setTimeout(()=>{scheduled=false;decorateTimeline()},70)}
 function observe(){if(observer||!root.document||typeof MutationObserver==='undefined')return;const host=root.document.getElementById('planPanel');if(!host)return;observer=new MutationObserver(records=>{if(decorating)return;for(const r of records){if(r.addedNodes&&r.addedNodes.length){scheduleDecorate();break}}});observer.observe(host,{childList:true,subtree:true})}
 function boot(){ensureDialog();installQuickButton();decorateTimeline();observe()}
-const api={parseDayHours,serializeDayHours,intervalsFor,openingLabel,fitOpening,fitWithBlocks,scheduleRoute,routeFits,openHoursDialog,decorateTimeline};root.StoreOpeningHoursV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={parseDayHours,serializeDayHours,intervalsFor,openingLabel,fitOpening,fitWithBlocks,scheduleRoute,routeFits,openHoursDialog,decorateTimeline,dayNow};root.StoreOpeningHoursV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();root.document.addEventListener('store-runner:planning-updated',()=>{installQuickButton();scheduleDecorate()});root.document.addEventListener('store-runner:data-restored',()=>{installQuickButton();scheduleDecorate()});root.addEventListener('chef-range-generated',scheduleDecorate);root.document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('#dayTabs,.periodDayTab,.dayTab'))scheduleDecorate()},true)}
 })(typeof window!=='undefined'?window:globalThis);
