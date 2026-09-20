@@ -15,7 +15,6 @@
 
   const TYPE = 'Horaire manuel';
   const DIALOG_ID = 'manualHoursDialog';
-  const BUTTON_ID = 'manualHoursQuickBtn';
   const STYLE_ID = 'planning-manual-hours-css';
   const MIN_MINUTES = 15;
 
@@ -140,6 +139,7 @@
       `#${DIALOG_ID} .mhReadout b{color:#1d2939}` +
       `#${DIALOG_ID} .mhWarn{margin:9px 0 0;padding:9px 11px;border-radius:13px;background:#fff4f3;border:1px solid #f4c9c3;color:#b42318;font-size:12px;line-height:1.4;font-weight:700}` +
       `#${DIALOG_ID} .mhWarn[hidden]{display:none}` +
+      `#${DIALOG_ID} .mhWarn.mhNote{background:#f4f8ff;border-color:#cbdcf7;color:#1f3c74;font-weight:650}` +
       `#${DIALOG_ID} .mhActions{display:grid;gap:8px;margin-top:13px}` +
       `#${DIALOG_ID} .mhActions button{min-height:48px;border:0;border-radius:15px;font-size:14px;font-weight:850}` +
       `#${DIALOG_ID} .mhSave{background:#1428a0;color:#fff}` +
@@ -209,6 +209,7 @@
     if (context.mode !== 'manual') {
       const arrival = row && row.arrival != null ? clock(row.arrival) : '—';
       readout.innerHTML = `Arrivée estimée <b>${arrival}</b>, durée prévue <b>${context.plannedDuration} min</b>${travelText}.`;
+      warn.classList.remove('mhNote');
       warn.hidden = true;
       return;
     }
@@ -218,6 +219,7 @@
     const derived = deriveDuration(arrival, departure, context.plannedDuration);
     if (!derived.ok) {
       readout.textContent = derived.error;
+      warn.classList.remove('mhNote');
       warn.hidden = true;
       return;
     }
@@ -225,10 +227,29 @@
     readout.innerHTML = `Arrivée <b>${arrival}</b> · départ <b>${clock(end)}</b> · <b>${derived.duration} min</b> sur place`
       + (derived.derived ? ' (déduits du départ)' : ' (durée prévue conservée)') + travelText + '.';
 
-    // Ne jamais laisser croire qu'une arrivée plus tôt que le trajet est tenable.
-    const earliest = row && Number.isFinite(Number(row.nominalArrival)) ? Math.round(Number(row.nominalArrival)) : null;
     const wanted = minutes(arrival);
-    if (earliest != null && wanted < earliest) {
+
+    /* Premier arrêt : rien ne le précède, donc rien n'est impossible de ce seul fait.
+       Vouloir y être plus tôt revient à partir plus tôt de la base — une information,
+       pas une alerte. Les magasins suivants, eux, gardent l'avertissement : une visite
+       et un trajet réels les précèdent. */
+    if (row && Number(row.index) === 0 && travel != null && wanted != null) {
+      const departure = wanted - travel;
+      let text = `Départ conseillé depuis la base : ${clock(departure)} pour arriver à ${arrival}.`;
+      if (context.dayStart != null && departure < Number(context.dayStart)) {
+        text += ` Votre journée est habituellement réglée à partir de ${clock(context.dayStart)}.`;
+      }
+      warn.classList.add('mhNote');
+      warn.hidden = false;
+      warn.textContent = text;
+      return;
+    }
+
+    warn.classList.remove('mhNote');
+    // Ne jamais laisser croire qu'une arrivée plus tôt que la visite et le trajet
+    // précédents est tenable.
+    const earliest = row && Number.isFinite(Number(row.nominalArrival)) ? Math.round(Number(row.nominalArrival)) : null;
+    if (earliest != null && wanted != null && wanted < earliest) {
       warn.hidden = false;
       warn.textContent = `Impossible à tenir : au plus tôt ${clock(earliest)} compte tenu des visites et trajets précédents.`;
     } else {
@@ -253,7 +274,8 @@
       return false;
     }
 
-    const row = rowFor(resolvedDay, storeId, state);
+    const schedule = scheduleFor(resolvedDay, state);
+    const row = schedule ? schedule.rows.find(item => String(item.store && item.store.id) === String(storeId)) || null : null;
     const existing = findManual(state, storeId, date);
     let planned = 60;
     try {
@@ -262,7 +284,8 @@
     } catch (error) { planned = 60; }
     if (existing && !existing.endTime) planned = Math.max(15, Number(existing.duration) || planned);
 
-    context = { storeId: String(storeId), day: resolvedDay, date, row, plannedDuration: Math.round(planned), mode: existing ? 'manual' : 'auto' };
+    context = { storeId: String(storeId), day: resolvedDay, date, row, dayStart: schedule ? schedule.start : null,
+      plannedDuration: Math.round(planned), mode: existing ? 'manual' : 'auto' };
 
     const el = dialog();
     el.querySelector('[data-mh-store]').textContent = `${store.enseigne} ${store.ville} · ${resolvedDay} ${date.split('-').reverse().join('/')}`;
@@ -313,37 +336,14 @@
     if (commit(state => clearManual(state, ctx.storeId, ctx.date))) close();
   }
 
-  function installQuickButton() {
-    const doc = root.document;
-    const actions = doc.querySelector('#storeQuickSheet .sheetActions');
-    if (!actions) return false;
-    if (doc.getElementById(BUTTON_ID)) return true;
-    const button = doc.createElement('button');
-    button.type = 'button';
-    button.id = BUTTON_ID;
-    button.className = 'secondary';
-    button.textContent = '◷ Horaires de la visite';
-    button.title = 'Imposer l’arrivée et le départ de cette visite';
-    button.onclick = () => {
-      const start = doc.getElementById('srQuickStart');
-      const id = start && start.dataset && start.dataset.srStart;
-      if (!id) return;
-      if (typeof root.closeStoreQuick === 'function') root.closeStoreQuick();
-      root.setTimeout(() => open(id, null), 120);
-    };
-    actions.appendChild(button);
-    return true;
-  }
-
+  /* Aucun point d'entrée dans la fiche magasin : depuis #368, le bloc ARRIVÉE de la
+     ligne de planning ouvre cet éditeur. Un second bouton ne ferait que dupliquer la
+     même action, plus loin et moins visible. L'API open() reste publique. */
   function boot() {
     css();
-    installQuickButton();
-    root.setTimeout(installQuickButton, 120);
-    root.document.addEventListener('store-runner:home-rendered', () => root.setTimeout(installQuickButton, 0));
-    root.document.addEventListener('store-runner:planning-updated', () => root.setTimeout(installQuickButton, 0));
   }
 
-  root.StoreRunnerManualHours = Object.assign({}, api, { open, close, installQuickButton });
+  root.StoreRunnerManualHours = Object.assign({}, api, { open, close });
   if (root.document.readyState === 'loading') root.document.addEventListener('DOMContentLoaded', boot, { once: true });
   else boot();
 })(typeof window !== 'undefined' ? window : globalThis);
