@@ -63,6 +63,45 @@ assert.equal(hotelRun.rows[0].travel, NEAR, 'le premier trajet part de l’hôte
 assert.equal(hotelRun.origin.type, 'hotel');
 assert.notEqual(hotelRun.rows[0].arrival, plainRun.rows[0].arrival, 'la journée ne démarre plus à la même heure');
 
+// Le retour doit viser la base habituelle, même si le matin part de l'hôtel.
+// Des durées distinctes dans les deux sens rendent la régression observable.
+const previousBaseObj = globalThis.baseObj;
+const usualBase = { id: 'BASE', ...BASE };
+globalThis.baseObj = () => usualBase;
+try {
+  const legs = [];
+  const travelMinutes = (from, to) => {
+    legs.push([from, to]);
+    if (to === usualBase) return FAR;
+    if (to && to.id === 'ORIGIN') return 7;
+    return from && from.id === 'ORIGIN' ? NEAR : 31;
+  };
+  const returned = hours.scheduleRoute(hotel.plan.Mardi, 'Mardi', hotel, {
+    date: MARDI, blocks: [], travelMinutes,
+  });
+  assert.equal(legs[0][0].lat, HOTEL.lat);
+  assert.equal(legs[0][0].lon, HOTEL.lon);
+  assert.equal(returned.rows[0].travel, NEAR, 'premier trajet depuis l’hôtel');
+  assert.strictEqual(legs[1][0], hotel.stores[0], 'deuxième trajet depuis le premier magasin');
+  assert.strictEqual(legs[1][1], hotel.stores[1]);
+  assert.equal(returned.rows[1].travel, 31);
+  assert.strictEqual(legs[2][1], usualBase, 'le retour vise la base habituelle');
+  assert.equal(returned.returnTravel, FAR, 'le retour ne vise pas l’hôtel (7 minutes)');
+  const last = returned.rows.at(-1);
+  assert.equal(returned.estimatedEnd, last.arrival + last.duration + FAR);
+
+  // Une base explicitement fournie conserve sa priorité historique aux deux bouts.
+  legs.length = 0;
+  hours.scheduleRoute(hotel.plan.Mardi, 'Mardi', hotel, {
+    date: MARDI, blocks: [], base: usualBase, travelMinutes,
+  });
+  assert.strictEqual(legs[0][0], usualBase);
+  assert.strictEqual(legs.at(-1)[1], usualBase);
+} finally {
+  if (previousBaseObj === undefined) delete globalThis.baseObj;
+  else globalThis.baseObj = previousBaseObj;
+}
+
 // --- 3. Découché sans position exacte : on demande, jamais de repli muet --------------
 const vague = state({ hotelReservations: { [LUNDI]: night() } });
 const vagueOrigin = origin.originFor(MARDI, vague);

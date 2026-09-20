@@ -99,8 +99,9 @@ function dayEnd(day,state=root.state){const s=state&&state.settings||{},raw=day=
 function scheduleRoute(route,day,state=root.state,options={}){
   const rows=[],date=options.date||dateForDay(day,state,options.weekMonday),
     origin=options.origin!==undefined?options.origin:originFor(date,state),
-    base=options.base||(origin&&origin.type!=='base'?{id:'ORIGIN',enseigne:'Départ',ville:origin.ville,adresse:origin.adresse,lat:origin.lat,lon:origin.lon}:baseOf()),blocks=options.blocks||blocksForDate(date),fallbackVisit=Math.max(15,Number(state&&state.settings&&state.settings.visitMinutes)||60),start=dayStart(day,state);
-  const travel=options.travelMinutes||travelMinutes,appt=options.appointmentFor||((id,d)=>appointmentFor(id,d,state));let current=start,prev=base,unknownCount=0,closedCount=0,appointmentConflicts=0;
+    base=options.base||baseOf(),
+    departureBase=options.base||(origin&&origin.type!=='base'?{id:'ORIGIN',enseigne:'Départ',ville:origin.ville,adresse:origin.adresse,lat:origin.lat,lon:origin.lon}:base),blocks=options.blocks||blocksForDate(date),fallbackVisit=Math.max(15,Number(state&&state.settings&&state.settings.visitMinutes)||60),start=dayStart(day,state);
+  const travel=options.travelMinutes||travelMinutes,appt=options.appointmentFor||((id,d)=>appointmentFor(id,d,state));let current=start,prev=departureBase,unknownCount=0,closedCount=0,appointmentConflicts=0;
   for(let i=0;i<(route||[]).length;i++){
     const store=(state&&state.stores||[]).find(s=>String(s.id)===String(route[i].id))||route[i],drive=Math.max(0,Number(travel(prev,store))||0),nominal=current+drive,a=appt(store.id,date),storeVisit=(()=>{try{return typeof root.storeVisitDuration==='function'?root.storeVisitDuration(store,state):fallbackVisit}catch(e){return fallbackVisit}})(),duration=a?Math.max(15,Number(a.duration)||storeVisit):storeVisit;let requested=nominal,fixed=null;
     if(a&&a.time){fixed=minute(a.time);if(fixed!=null&&fixed>requested)requested=fixed}
@@ -141,6 +142,7 @@ function scheduleRoute(route,day,state=root.state,options={}){
   const recommendedDeparture=first&&first.arrival!=null&&first.status!=='appointment-conflict'
     ?(firstIsManual?first.arrival-first.travel:Math.max(start,first.arrival-first.travel))
     :null;
+  // Le découché change seulement le départ du matin ; le retour reste à la base.
   const returnTravel=rows.length&&base?Math.max(0,Number(travel(rows[rows.length-1].store,base))||0):0;
   const estimatedEnd=rows.length&&!closedCount&&!appointmentConflicts?current+returnTravel:null;
   return{day,date,rows,start,origin,recommendedDeparture,estimatedEnd,returnTravel,unknownCount,closedCount,appointmentConflicts,endLimit:dayEnd(day,state)};
