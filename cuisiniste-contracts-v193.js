@@ -237,6 +237,19 @@ function buildTrackingReserve(contracts,knownHitSites){
     if(!g){if(groups.size>=MAX_RESERVE_SITES)continue;g={ident,rows:[]};groups.set(ident.id,g)}
     g.rows.push(c);
   }
+  /* Une ligne sans numéro client et une ligne qui en porte un peuvent décrire le même
+     magasin. On replie le groupe « ville » sur le groupe « client » de même enseigne et
+     même ville : un seul candidat, avec tout son historique contrat. */
+  const clientByBrandCity=new Map();
+  for(const g of groups.values()){
+    if(g.ident.by!=='client')continue;
+    for(const c of g.rows){const k=norm(c.brand)+'|'+cityKey(c.city);if(!clientByBrandCity.has(k))clientByBrandCity.set(k,g)}
+  }
+  for(const [id,g] of Array.from(groups)){
+    if(g.ident.by!=='ville')continue;
+    const k=norm(g.rows[0].brand)+'|'+cityKey(g.rows[0].city),target=clientByBrandCity.get(k);
+    if(target&&target!==g){target.rows=target.rows.concat(g.rows);groups.delete(id)}
+  }
   const known=Array.isArray(knownHitSites)?knownHitSites:[];
   const out=[];
   for(const g of groups.values()){
@@ -254,7 +267,10 @@ function buildTrackingReserve(contracts,knownHitSites){
 }
 async function parseTrackingWorkbook(input,sector){
   const files=await unzip(input),hit=extractHitlist(readSheetByColumns(files,HITLIST_COLUMNS,'cuisinisteHitlistSheet'),sector),rows=readSheetByColumns(files,TRACKING_COLUMNS,'cuisinisteTrackingSheet'),h=trackingHeader(rows),all=[];
-  for(let r=h.hr+1;r<rows.length;r++){const c=contractFromRow(rows[r],h.idx);if(c.brand&&c.city&&c.clientNumber)all.push(c)}
+  /* Enseigne + ville suffisent à retenir une ligne : exiger en plus un numéro client
+     rendait inatteignable le repli d'identité « enseigne + ville » de la réserve, et
+     perdait au passage des contrats réels dont la colonne N° CLIENT est vide. */
+  for(let r=h.hr+1;r<rows.length;r++){const c=contractFromRow(rows[r],h.idx);if(c.brand&&c.city)all.push(c)}
   const withContracts=site=>{const history=all.filter(c=>matchHitToContract(site,c));const active=latestByDate(history.filter(c=>activeStatus(c.status))),last=latestByDate(history);return Object.assign({},site,{activeContract:active||null,lastContract:last||null,history:history.slice().sort((a,b)=>String(b.endDate).localeCompare(String(a.endDate))).slice(0,8)})};
   const sites=hit.map(withContracts);
   /* Les sites du fichier hors périmètre au moment de l'import sont gardés en réserve, sans
@@ -273,7 +289,15 @@ async function parseTariffWorkbook(input){
 function productInfo(storage,ref){const t=latestTariff(storage),needle=norm(ref);if(!t||!needle)return null;return(t.products||[]).find(p=>[p.refSchmidt,p.refCommercial,p.refSap].some(v=>norm(v)===needle))||null}
 function appStoreScore(site,s){if(!site||!s)return 0;const brand=norm(s.enseigne||s.retailer||'');if(brand&&brand!==norm(site.brand)&&!brand.includes(norm(site.brand))&&!norm(site.brand).includes(brand))return 0;const a=cityKey(s.ville||s.city||''),b=site.cityKey;if(!a||!b)return 0;if(a===b)return 100;if(a.includes(b)||b.includes(a))return 80;const at=a.split(' ').filter(x=>x.length>2),bt=b.split(' ').filter(x=>x.length>2),hits=bt.filter(x=>at.includes(x)).length;return hits>=2?50+hits*5:0}
 function candidateLabel(s){return text(s.enseigne)+' · '+text(s.ville)}
-function siteClient(site){return text((site.activeContract&&site.activeContract.clientNumber)||(site.lastContract&&site.lastContract.clientNumber))}
+/* Le contrat le plus récent peut arriver sans numéro client. On balaie donc contrat actif,
+   dernier contrat puis historique avant de renoncer : sans ça, une ligne vide récente ferait
+   redescendre le rapprochement de « numéro client exact » à « enseigne + ville ». */
+function siteClient(site){
+  if(!site)return'';
+  const rows=[site.activeContract,site.lastContract].concat(Array.isArray(site.history)?site.history:[]);
+  for(const c of rows){const v=text(c&&c.clientNumber);if(v)return v}
+  return text(site.clientNumber);
+}
 /* Identité commerciale affichée sous le titre d'un site, uniquement si la donnée existe
    dans le fichier importé. Aucune valeur n'est écrite en dur dans le code. */
 function siteCompany(site){const c=site&&(site.activeContract||site.lastContract);return text((c&&c.client)||(site&&site.company))}

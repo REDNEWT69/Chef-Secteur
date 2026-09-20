@@ -67,7 +67,17 @@ const trackingRows=[
   contractRow('VILLE B','9000000003'),
   contractRow('VILLE C','9000000004'),
 ];
+/* Classeur dedié au repli d'identité : des lignes contrat réelles sans N° CLIENT, plus un
+   magasin dont une ligne porte un client et l'autre non. */
+const trackingSansClient=[
+  H,
+  contractRow('VILLE D','9000000001'),
+  contractRow('VILLE E',null),
+  contractRow('VILLE F','9000000010'),
+  Object.assign(contractRow('VILLE F',null),{6:'2025-06-30'}),
+];
 const SANS_D=workbook([{name:'Feuil1',rows:hitRowsSansD},{name:'Feuil2',rows:trackingRows}]);
+const SANS_CLIENT=workbook([{name:'Feuil1',rows:hitRowsSansD},{name:'Feuil2',rows:trackingSansClient}]);
 const AVEC_D=workbook([{name:'Feuil1',rows:hitRowsAvecD},{name:'Feuil2',rows:trackingRows}]);
 
 function memory(){const m=new Map();return{getItem:k=>m.has(k)?m.get(k):null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k)}}
@@ -230,6 +240,45 @@ const MES_CUISINISTES=[
   assert.equal(V193.readStore(global.__chefStorage).followups[repli],undefined,
     'la clé de repli disparaît une fois la fusion écrite');
   assert.equal(V229.reconcileKeys(global.__chefStorage,apresImport),0,'la migration est idempotente');
+
+  // --- 3.1 (chemin d'import réel). Une ligne sans N° CLIENT atteint bien la réserve ----
+  /* Régression : parseTrackingWorkbook() n'acceptait une ligne que si elle portait un
+     numéro client. Le repli d'identité « enseigne + ville » était donc inatteignable
+     depuis un vrai import, alors même que trackingIdentity() le gère. */
+  const STORE_E={id:'store-e',enseigne:'Schmidt',ville:'Ville E'};
+  const STORE_F={id:'store-f',enseigne:'Schmidt',ville:'Ville F'};
+  global.state.stores=MES_CUISINISTES.concat([STORE_E,STORE_F]);
+  const avecSansClient=JSON.stringify(global.state.stores);
+  const snapSansClient=await V193.parseTrackingWorkbook(SANS_CLIENT);
+  assert.equal(snapSansClient.scanned,3,'HITLIST reste inchangé par les lignes sans client');
+  const villeE=snapSansClient.trackingReserve.find(x=>x.city==='VILLE E');
+  assert(villeE,'une ligne contrat sans numéro client doit atteindre la réserve depuis l’import');
+  assert.equal(villeE.identityBy,'ville',
+    'parseTrackingWorkbook doit produire une identité de repli enseigne + ville');
+  assert.equal(villeE.clientNumber,'','aucun numéro client n’est inventé');
+  assert.equal(villeE.activeContract.client,'SOCIETE TEST 1','le contrat reste complet');
+  assert.equal(villeE.activeContract.objective,1000);
+
+  /* Deux lignes du même magasin, l'une avec client l'autre sans : un seul candidat complet. */
+  const villeF=snapSansClient.trackingReserve.filter(x=>x.city==='VILLE F');
+  assert.equal(villeF.length,1,'pas deux candidats appauvris pour un même magasin');
+  assert.equal(villeF[0].identityBy,'client','l’identité la plus forte est conservée');
+  assert.equal(villeF[0].clientNumber,'9000000010');
+  assert.equal(villeF[0].history.length,2,'les deux lignes contrat sont réunies dans l’historique');
+
+  V193.saveTracking(global.__chefStorage,snapSansClient);
+  const resolusSansClient=V193.resolveSites(global.__chefStorage,global.state.stores);
+  const siteE=resolusSansClient.find(x=>x.city==='VILLE E');
+  assert(siteE,'le site sans numéro client est bien rendu visible par son magasin');
+  assert.equal(siteE.storeId,'store-e','rattaché au magasin existant, jamais créé');
+  assert.equal(siteE.matchedBy,'ville','rapproché par enseigne normalisée + ville normalisée');
+  assert.equal(siteE.key,'store:store-e','clef de repli store:<storeId>');
+  const siteF=resolusSansClient.find(x=>x.city==='VILLE F');
+  assert.equal(siteF.storeId,'store-f');
+  const idsSansClient=resolusSansClient.filter(x=>x.storeId).map(x=>String(x.storeId));
+  assert.equal(new Set(idsSansClient).size,idsSansClient.length,'toujours aucun magasin attribué deux fois');
+  assert.equal(JSON.stringify(global.state.stores),avecSansClient,'aucun magasin créé ni modifié');
+  global.state.stores=MES_CUISINISTES.slice();
 
   // --- Aucun second moteur de matching, aucune création de magasin -------------------
   const SRC=require('fs').readFileSync(__dirname+'/../cuisiniste-contracts-v193.js','utf8');
