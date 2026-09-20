@@ -233,3 +233,58 @@ test('Le suivi posé avant l’import rejoint la clé de site sans rien perdre',
   await expect(page.locator('#srCuisineFollowupV229')).toContainText('Proposition présentée');
   expect(errors).toEqual([]);
 });
+
+/* Régression terrain : un cuisiniste classé dans un autre secteur du fichier, et un
+   cuisiniste ajouté après l'import. Les deux doivent compter dans « de mon secteur ». */
+test('Un cuisiniste d’un autre secteur du fichier compte dans mon périmètre',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await ready(page);
+  await page.evaluate(()=>{
+    const C=window.StoreRunnerCuisinisteV193,F=window.StoreRunnerCuisinisteFollowupV229,db=window.__chefStorage;
+    const mk=(id,ville)=>({id,enseigne:'Schmidt',ville,channel:'cuisiniste',active:true});
+    const trois=[mk('sp','Saint-Priest'),mk('vg','Ville-la-Grand'),mk('pr','Saint-Paul-les-Romans')];
+    window.state.stores=trois.slice();
+    window.state.plan={Lundi:[trois[0]],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
+    const site=(key,city,cityKey,postal,fileSector,client)=>({key,brand:'SCHMIDT',city,cityKey,postal,fileSector,
+      activeContract:{status:'En cours',clientNumber:client,client:'SOC',startDate:'2025-12-01',endDate:'2026-11-30',monthsRemaining:6},
+      lastContract:null,history:[]});
+    /* L'import a eu lieu quand Bourgoin n'était pas encore dans state.stores : il est
+       donc en réserve, exactement comme sur le terrain. */
+    C.saveTracking(db,{type:'tracking',sector:'Auvergne-Rhone-Alpes',importedAt:'2026-09-20T09:00:00Z',scanned:22,
+      sites:[site('SCH-SAINT-PRIEST FR-69800','SAINT-PRIEST','saint priest','69800','Auvergne-Rhone-Alpes','111'),
+             site('SCH-VILLE-LA-GRAND FR-74100','VILLE-LA-GRAND','ville la grand','74100','Auvergne-Rhone-Alpes','222'),
+             site('SCH-SAINT-PAUL-LES-ROMANS FR-26750','SAINT-PAUL-LES-ROMANS','saint paul les romans','26750','Auvergne-Rhone-Alpes','333')],
+      others:[site('SCH-BOURGOIN-JALLIEU FR-38300','BOURGOIN-JALLIEU','bourgoin jallieu','38300','Valence','4110006194'),
+              site('SCH-ROMANS FR-26100','ROMANS','romans','26100','Valence','555'),
+              site('SCH-VALENCE CENTRE FR-26000','VALENCE CENTRE','valence centre','26000','Valence','666')]});
+    F.setFilter('all');
+    C.open();
+  });
+  // Avant : trois magasins connus, trois au périmètre.
+  await expect(page.locator('#srCuisineSheet .srCuisineReview')).toContainText('3 de mon secteur');
+
+  // L'utilisateur ajoute enfin Schmidt Bourgoin-Jallieu.
+  await page.evaluate(()=>{
+    window.state.stores=window.state.stores.concat([{id:'bj',enseigne:'Schmidt',ville:'Bourgoin-Jallieu',channel:'cuisiniste',active:true}]);
+    window.StoreRunnerCuisinisteV193.renderSheet();
+  });
+  const review=page.locator('#srCuisineSheet .srCuisineReview');
+  await expect(review).toContainText('22 cuisinistes dans le fichier');
+  await expect(review).toContainText('4 de mon secteur');
+  await expect(review).toContainText('4 rapprochés');
+  await expect(review).toContainText('0 à vérifier');
+  await expect(page.locator('#srCuisineSheet')).toContainText('SCHMIDT BOURGOIN-JALLIEU');
+
+  const perimetre=await page.evaluate(()=>window.StoreRunnerCuisinisteV193
+    .resolveSites(window.__chefStorage,window.state.stores)
+    .map(s=>({city:s.city,storeId:s.storeId,client:s.activeContract&&s.activeContract.clientNumber})));
+  expect(perimetre).toHaveLength(4);
+  expect(perimetre.find(s=>s.city==='BOURGOIN-JALLIEU')).toEqual({city:'BOURGOIN-JALLIEU',storeId:'bj',client:'4110006194'});
+  // Les autres magasins « Valence » du fichier ne remontent jamais.
+  expect(perimetre.some(s=>/^ROMANS$|^VALENCE CENTRE$/.test(s.city))).toBe(false);
+
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  expect(errors).toEqual([]);
+});

@@ -13,6 +13,9 @@ const MENU_BTN_ID='srCuisineMenuButton';
 const SHEET_ID='srCuisineSheet';
 const STORE_CARD_ID='srCuisineContractCard';
 const MAX_ASSISTANT_ROWS=10;
+/* Réserve bornée : de quoi rattraper un magasin ajouté après l'import sans faire enfler
+   le stockage local d'un classeur qui contiendrait des milliers de lignes. */
+const MAX_RESERVE_SITES=500;
 let sheet=null,visitObserver=null,quickObserver=null,renderQueued=false,pendingSectors=null,pendingFile=null;
 
 function text(v){return String(v==null?'':v).trim()}
@@ -138,15 +141,21 @@ function cuisinisteStores(list){return(Array.isArray(list)?list:stores()).filter
 function storeClient(s){const raw=s&&(s.clientNumber!=null?s.clientNumber:s.codeClient!=null?s.codeClient:s.numeroClient);return raw==null||raw===''?'':cleanClient(raw)}
 function storePostal(s){const direct=text(s&&(s.cp||s.postal||s.codePostal));if(/^\d{5}$/.test(direct))return direct;const m=text(s&&s.adresse).match(/\b(\d{5})\b/);return m?m[1]:''}
 function sameBrand(site,s){const a=norm(s&&(s.enseigne||s.retailer)),b=norm(site&&site.brand);return !!a&&!!b&&(a===b||a.includes(b)||b.includes(a))}
-/* Un site du fichier appartient à mon périmètre s'il désigne un cuisiniste que j'ai déjà :
-   mapping confirmé, code postal identique, ou score de rapprochement V193 non nul. */
-function inMyScope(site,pool,mapping){
-  if(mapping&&mapping[site.key])return true;
-  for(const s of pool){
-    if(site.postal&&storePostal(s)===site.postal&&sameBrand(site,s))return true;
-    if(appStoreScore(site,s)>0)return true;
+/* Force du signal de rapprochement : un magasin ne peut appartenir qu'à un seul site, et
+   c'est le signal le plus fort qui l'emporte. Sans cette règle, une ville contenue dans
+   une autre (« Romans » dans « Saint-Paul-les-Romans ») fait entrer dans le périmètre un
+   magasin qui appartient déjà, plus sûrement, à un autre site. */
+const MATCH_STRENGTH={mapping:5,client:4,'ville':3,'code-postal':2,auto:1};
+function assignStores(sites,pool,mapping,all){
+  const proposals=sites.map((site,index)=>{const m=matchSite(site,pool,mapping,all);return{index,site,m,strength:m.by?MATCH_STRENGTH[m.by]||0:0}});
+  const taken=new Map(),out=new Array(sites.length).fill(null);
+  for(const p of proposals.slice().sort((a,b)=>b.strength-a.strength||a.index-b.index)){
+    if(!p.m.store)continue;
+    const id=String(p.m.store.id);
+    if(taken.has(id))continue;
+    taken.set(id,p.index);out[p.index]={store:p.m.store,by:p.m.by};
   }
-  return false;
+  return{assigned:out,proposals};
 }
 
 /* Le secteur retenu : celui des réglages s'il est renseigné, sinon le plus représenté dans
@@ -165,28 +174,27 @@ function extractHitlist(rows,wanted){
   const si=headerIndex(rows[hr],HITLIST_COLUMNS[0]),mi=headerIndex(rows[hr],HITLIST_COLUMNS[1]);
   const found=sectorsIn(rows,hr,si);
   const target=text(wanted)||setting('cuisinisteSector');
-  /* Un secteur explicite (réglage ou choix utilisateur) reste prioritaire et exclusif. */
-  if(target){
-    let current='';const out=[];
-    for(let i=hr+1;i<rows.length;i++){const s=text(rows[i][si]);if(s)current=s;if(norm(current)==='total '+norm(target))break;if(norm(current)!==norm(target))continue;const rec=parseHitLabel(rows[i][mi]);if(rec)out.push(rec)}
-    if(!out.length)throw new Error('Aucun magasin du secteur « '+target+' » trouvé dans le hitlist.');
-    out.sector=target;out.sectorsFound=found;out.scanned=out.length;return out;
-  }
-  /* Sinon on ne choisit RIEN tout seul : on retient les sites qui désignent réellement
-     un cuisiniste de state.stores, quel que soit leur secteur dans le fichier. */
-  const pool=cuisinisteStores(),mapping=readStore(db()).mapping,all=[];
-  let current='';
+  /* On lit TOUS les sites lisibles, sans jamais filtrer d'abord sur « Secteur 2026 » :
+     le secteur du fichier est une information commerciale, pas le périmètre de
+     l'utilisateur. Le périmètre, c'est state.stores. */
+  const all=[];let current='';
   for(let i=hr+1;i<rows.length;i++){
     const sec=text(rows[i][si]);if(sec)current=sec;
     if(/^total\b/i.test(norm(current)))continue;
     const rec=parseHitLabel(rows[i][mi]);
     if(rec)all.push(Object.assign(rec,{fileSector:current}));
   }
-  const out=all.filter(site=>inMyScope(site,pool,mapping));
-  out.scanned=all.length;out.sectorsFound=found;
+  const allStores=stores(),pool=cuisinisteStores(allStores),mapping=readStore(db()).mapping;
+  const{assigned}=assignStores(all,pool,mapping,allStores);
+  /* Un secteur explicite n'exclut plus rien : il ne fait qu'ÉLARGIR le périmètre quand
+     l'utilisateur a dû trancher faute de rapprochement. */
+  const inScope=all.filter((site,i)=>!!assigned[i]||(target&&norm(site.fileSector)===norm(target)));
+  const out=inScope.slice();
+  out.others=all.filter(site=>inScope.indexOf(site)<0);
+  out.scanned=all.length;out.sectorsFound=found;out.sectorScope=target||'';
   if(!out.length){
-    /* Aucun rapprochement fiable : on remonte les secteurs lisibles pour que l'utilisateur
-       tranche. Aucune sélection implicite, aucun import silencieux. */
+    /* Aucun rapprochement fiable et aucun secteur choisi : on remonte les secteurs lisibles
+       pour que l'utilisateur tranche. Aucune sélection implicite, aucun import silencieux. */
     out.sector='';out.needsChoice=true;return out;
   }
   const sectors=[...new Set(out.map(x=>text(x.fileSector)).filter(Boolean))];
@@ -206,8 +214,13 @@ function matchHitToContract(hit,c){if(!c)return false;if(norm(c.brand)!==norm(hi
 async function parseTrackingWorkbook(input,sector){
   const files=await unzip(input),hit=extractHitlist(readSheetByColumns(files,HITLIST_COLUMNS,'cuisinisteHitlistSheet'),sector),rows=readSheetByColumns(files,TRACKING_COLUMNS,'cuisinisteTrackingSheet'),h=trackingHeader(rows),all=[];
   for(let r=h.hr+1;r<rows.length;r++){const c=contractFromRow(rows[r],h.idx);if(c.brand&&c.city&&c.clientNumber)all.push(c)}
-  const sites=hit.map(site=>{const history=all.filter(c=>matchHitToContract(site,c));const active=latestByDate(history.filter(c=>activeStatus(c.status))),last=latestByDate(history);return Object.assign({},site,{activeContract:active||null,lastContract:last||null,history:history.slice().sort((a,b)=>String(b.endDate).localeCompare(String(a.endDate))).slice(0,8)})});
-  return{type:'tracking',sector:hit.sector||'',sites,scanned:hit.scanned||sites.length,sectorsFound:hit.sectorsFound||[],needsSectorChoice:!!hit.needsChoice,importedAt:nowIso()};
+  const withContracts=site=>{const history=all.filter(c=>matchHitToContract(site,c));const active=latestByDate(history.filter(c=>activeStatus(c.status))),last=latestByDate(history);return Object.assign({},site,{activeContract:active||null,lastContract:last||null,history:history.slice().sort((a,b)=>String(b.endDate).localeCompare(String(a.endDate))).slice(0,8)})};
+  const sites=hit.map(withContracts);
+  /* Les sites du fichier hors périmètre au moment de l'import sont gardés en réserve, sans
+     jamais être affichés ni comptés. C'est ce qui permet à un cuisiniste ajouté APRÈS
+     l'import d'apparaître avec son contrat, sans réimport et sans second stockage. */
+  const others=(hit.others||[]).slice(0,MAX_RESERVE_SITES).map(withContracts);
+  return{type:'tracking',sector:hit.sector||'',sites,others,scanned:hit.scanned||sites.length,sectorScope:hit.sectorScope||'',sectorsFound:hit.sectorsFound||[],needsSectorChoice:!!hit.needsChoice,importedAt:nowIso()};
 }
 function tariffHeader(rows){const hr=findHeaderRow(rows,['Famille','Segment','Référence SCHMIDT GROUPE','Référence commerciale SAMSUNG']);if(hr<0)throw new Error('Colonnes du tarif contrats expo introuvables.');const idx={};for(let i=0;i<rows[hr].length;i++)if(rows[hr][i]!=null)idx[norm(rows[hr][i])]=i;return{hr,idx}}
 async function parseTariffWorkbook(input){
@@ -246,15 +259,28 @@ function matchSite(site,pool,mapping,all){
   if(best&&best.score>=80&&(!scored[1]||scored[1].score<best.score))return{store:best.s,by:'auto',others:[],score:best.score};
   return{store:null,by:null,others:scored.map(x=>x.s),scored};
 }
+/* Le périmètre n'est jamais figé dans l'import : il est recalculé à chaque lecture sur
+   l'état courant de state.stores. Ajouter un cuisiniste fait apparaître son contrat
+   immédiatement ; en supprimer un le fait disparaître du périmètre, pas des données. */
 function resolveSites(storage,list){
   const tr=latestTracking(storage);if(!tr)return[];
   const data=readStore(storage),ss=Array.isArray(list)?list:stores(),pool=cuisinisteStores(ss);
-  return(tr.sites||[]).map(site=>{
-    const m=matchSite(site,pool,data.mapping,ss);
-    if(m.store)return Object.assign({},site,{storeId:String(m.store.id),matchedBy:m.by});
-    const others=(m.others||[]).slice(0,5).map(s=>({id:String(s.id),label:candidateLabel(s),score:appStoreScore(site,s)}));
-    return Object.assign({},site,{storeId:null,matchedBy:null,candidates:others});
+  const imported=tr.sites||[],reserve=tr.others||[],pooled=imported.concat(reserve);
+  const{assigned,proposals}=assignStores(pooled,pool,data.mapping,ss);
+  const scope=norm(tr.sectorScope||'');
+  const out=[];
+  pooled.forEach((site,i)=>{
+    const hit=assigned[i];
+    if(hit)return out.push(Object.assign({},site,{storeId:String(hit.store.id),matchedBy:hit.by}));
+    /* Sans magasin rattaché, un site n'est proposé à l'utilisateur que s'il était déjà
+       dans son périmètre : la réserve ne remonte jamais d'elle-même. */
+    const known=i<imported.length||(scope&&norm(site.fileSector)===scope);
+    if(!known)return;
+    const cands=((proposals[i]||{}).m||{}).others||[];
+    out.push(Object.assign({},site,{storeId:null,matchedBy:null,
+      candidates:cands.slice(0,5).map(s=>({id:String(s.id),label:candidateLabel(s),score:appStoreScore(site,s)}))}));
   });
+  return out;
 }
 function urgency(site){const c=site&&site.activeContract;if(!c)return{score:0,label:'À qualifier',reason:'Aucun contrat actif trouvé'};let score=0,reasons=[];if(/alerte/i.test(c.status)){score+=100;reasons.push('statut Alerte')}if(c.monthsRemaining!=null&&c.monthsRemaining<=3){score+=50+(3-c.monthsRemaining)*5;reasons.push('fin de période proche')}if(c.progress!=null&&c.monthsRemaining!=null){const elapsed=Math.max(0,12-c.monthsRemaining),expected=Math.min(1,elapsed/12);if(c.progress+0.15<expected){score+=30;reasons.push('progression à vérifier par rapport au temps écoulé')}}return{score,label:score>=100?'Prioritaire':score>=50?'À suivre':'Suivi normal',reason:reasons.join(' · ')||'contrat en cours'}}
 function siteForStore(storage,storeId){return resolveSites(storage,stores()).find(s=>String(s.storeId)===String(storeId))||null}
