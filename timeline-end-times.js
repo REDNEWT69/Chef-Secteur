@@ -63,7 +63,11 @@
     const appointment=row.appointment;
     const parts=['◷ Arrivée imposée '+appointment.time];
     if(appointment.endTime)parts.push('départ '+appointment.endTime);
-    const earliest=Number(row.nominalArrival);
+    /* L'heure réellement tenable est celle que l'ordonnanceur a retenue : elle tient
+       compte du trajet, mais aussi de l'ouverture et de l'Agenda, là où nominalArrival
+       ne couvre que le trajet. */
+    const nominal=Number(row.nominalArrival),planned=Number(row.arrival);
+    const earliest=Number.isFinite(planned)?Math.max(Number.isFinite(nominal)?nominal:planned,planned):nominal;
     const wanted=api.minutes(appointment.time);
     if(Number.isFinite(earliest)&&wanted!=null&&wanted<Math.round(earliest)){
       return {text:parts.join(' · ')+' — impossible : au plus tôt '+api.clock(earliest),impossible:true};

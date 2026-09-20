@@ -89,13 +89,21 @@ function scheduleRoute(route,day,state=root.state,options={}){
     let fitted=fitWithBlocks(store,day,requested,duration,blocks),arrival=fitted.arrival,status='ok';
     if(a&&fixed!=null){
       const atFixed=fitOpening(store,day,fixed,duration);
-      if(nominal>fixed||(blocks||[]).some(b=>overlapsBlock(fixed,duration,b))||(atFixed.known&&(atFixed.closed||atFixed.arrival!==fixed))){appointmentConflicts++;status='appointment-conflict'}
-      arrival=fixed;
+      const unreachable=nominal>fixed||(blocks||[]).some(b=>overlapsBlock(fixed,duration,b))||(atFixed.known&&(atFixed.closed||atFixed.arrival!==fixed));
+      if(unreachable){appointmentConflicts++;status='appointment-conflict'}
+      /* Un vrai rendez-vous garde son comportement historique : l'heure convenue fait
+         foi, même si la tournée ne la tient pas — c'est au chef de secteur d'arbitrer.
+         Un horaire posé à la main, lui, ne décrit que le souhait de l'utilisateur :
+         s'il est intenable, planifier la suite depuis cette heure ferait repartir la
+         journée d'un instant qui n'existe pas. On garde l'heure demandée visible dans
+         requestedArrival et on planifie sur l'heure réellement atteignable, déjà
+         calculée par fitWithBlocks (trajet, ouverture et Agenda compris). */
+      arrival=unreachable&&a.manualHours===true?fitted.arrival:fixed;
       if(!atFixed.known){unknownCount++;if(status==='ok')status='unknown'}
     }else if(fitted.closed){closedCount++;status='closed';arrival=null}
     else if(!fitted.known){unknownCount++;status='unknown'}
     else if(fitted.wait>0)status='wait-opening';
-    rows.push({store,index:i,date,day,travel:drive,nominalArrival:nominal,arrival,duration,status,openingKnown:fitted.known,wait:fitted.wait||0,opening:intervalsFor(store,day),appointment:a});
+    rows.push({store,index:i,date,day,travel:drive,nominalArrival:nominal,requestedArrival:fixed,arrival,duration,status,openingKnown:fitted.known,wait:fitted.wait||0,opening:intervalsFor(store,day),appointment:a});
     if(arrival==null)current=nominal+duration;else current=arrival+duration;prev=store;
   }
   const first=rows[0],recommendedDeparture=first&&first.arrival!=null&&first.status!=='appointment-conflict'?Math.max(start,first.arrival-first.travel):null;

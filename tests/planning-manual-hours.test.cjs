@@ -162,4 +162,56 @@ const back = schedule(cleared.appointments);
 assert.equal(back.rows[0].arrival, auto.rows[0].arrival, 'le retour en automatique restaure l’arrivée calculée');
 assert.equal(back.rows[1].arrival, auto.rows[1].arrival, 'et la propagation d’origine');
 
-console.log('horaires manuels: arrivée imposée, durée déduite, propagation, conflit et retour auto ok');
+// --- Une arrivée manuelle impossible ne fait jamais avancer la suite de la journée ----
+// scheduleRoute forçait arrival = heure demandée et repartait de là : les magasins
+// suivants étaient calculés depuis un instant qui n'existe pas. Pour une contrainte
+// posée à la main, la tournée repart désormais de l'heure réellement atteignable.
+function threeStopState() {
+  const s = baseState();
+  s.stores = s.stores.concat([{ id: 'troisieme', enseigne: 'Darty', ville: 'Chalon' }]);
+  s.plan = { Lundi: [{ id: 'boulanger' }, { id: 'carrefour' }, { id: 'troisieme' }] };
+  return s;
+}
+function threeStopSchedule(appointments) {
+  const s = threeStopState();
+  s.appointments = appointments;
+  return hours.scheduleRoute(s.plan.Lundi, 'Lundi', s, {
+    base: {}, date: DATE, blocks: [], travelMinutes: () => 18,
+    appointmentFor: (storeId, date) => appointments.find(a => String(a.storeId) === String(storeId) && a.date === date) || null,
+  });
+}
+
+const chain = threeStopSchedule([]);
+assert.equal(chain.rows[1].arrival, mins('10:06'), 'référence automatique du deuxième magasin');
+assert.equal(chain.rows[2].arrival, mins('11:24'), 'référence automatique du troisième magasin');
+
+const WANTED = '09:00';
+const tooEarly = threeStopSchedule([manual.buildEntry({ storeId: 'carrefour', date: DATE, time: WANTED, endTime: null, duration: 60 })]);
+const constrained = tooEarly.rows[1];
+assert.equal(constrained.status, 'appointment-conflict', 'le signalement de conflit est conservé');
+assert.equal(tooEarly.appointmentConflicts, 1);
+assert.equal(constrained.requestedArrival, mins(WANTED), 'l’heure demandée reste lisible pour l’annoncer');
+assert.equal(constrained.arrival, mins('10:06'), 'la visite est planifiée à l’heure réellement atteignable');
+assert(constrained.arrival >= constrained.nominalArrival, 'jamais avant ce que le trajet permet');
+assert.equal(tooEarly.rows[2].arrival, chain.rows[2].arrival,
+  'le magasin suivant n’avance pas : il repart de l’heure tenable, pas de l’heure demandée');
+assert.equal(tooEarly.rows[2].arrival, mins('11:24'));
+assert.notEqual(tooEarly.rows[2].arrival, mins(WANTED) + 60 + 18,
+  'le magasin suivant ne doit surtout pas être calculé depuis 09:00');
+assert.equal(tooEarly.rows[2].travel, 18, 'le trajet reste compté');
+
+// Une contrainte manuelle tenable, elle, fait toujours foi.
+const reachable = threeStopSchedule([manual.buildEntry({ storeId: 'carrefour', date: DATE, time: '11:00', endTime: '12:00', duration: 60 })]);
+assert.equal(reachable.rows[1].arrival, mins('11:00'), 'une heure manuelle tenable est respectée telle quelle');
+assert.notEqual(reachable.rows[1].status, 'appointment-conflict');
+assert.equal(reachable.rows[2].arrival, mins('12:18'), '12:00 + 18 min de trajet');
+
+// --- Le comportement historique des vrais rendez-vous n'est pas touché ----------------
+const realTooEarly = threeStopSchedule([{ id: 'rdv-tot', storeId: 'carrefour', date: DATE, time: WANTED, duration: 60, type: 'Formation vendeur' }]);
+assert.equal(realTooEarly.rows[1].status, 'appointment-conflict', 'un vrai rendez-vous intenable reste signalé');
+assert.equal(realTooEarly.rows[1].arrival, mins(WANTED),
+  'un vrai rendez-vous garde l’heure convenue : c’est au chef de secteur d’arbitrer');
+assert.equal(realTooEarly.rows[2].arrival, mins(WANTED) + 60 + 18,
+  'et la suite continue d’en découler, exactement comme avant ce lot');
+
+console.log('horaires manuels: arrivée imposée, durée déduite, propagation tenable, conflit, rendez-vous intacts et retour auto ok');
