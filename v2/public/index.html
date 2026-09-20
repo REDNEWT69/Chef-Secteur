@@ -18,7 +18,8 @@
   import { createPlanningFeature } from '../src/planning/planning.mjs';
   import { createPlanningRangeFeature } from '../src/planning/range-ui.mjs';
   import { createTerrainToolsFeature } from '../src/planning/terrain-tools.mjs';
-  import { loadState, saveState } from '../src/storage/persistence.mjs';
+  import { loadState, saveState, STORAGE_KEY } from '../src/storage/persistence.mjs';
+  import { createTabGuard } from '../src/storage/tab-guard.mjs';
   import { createStoresFeature } from '../src/stores/stores.mjs';
 
   async function loadDemoState() {
@@ -26,6 +27,11 @@
     if (!response.ok) throw new Error(`Fixture V2 indisponible (${response.status})`);
     return response.json();
   }
+
+  // Une seule garde par onglet : toutes les écritures locales passent par son
+  // proxy, ce qui garde sa référence à jour sans jamais se croire périmée
+  // vis-à-vis d'elle-même.
+  const tabGuard = createTabGuard({ storage: localStorage, key: STORAGE_KEY });
 
   let initialState = null;
   try {
@@ -41,7 +47,7 @@
   const store = createStore(initialState);
   store.subscribe(state => {
     try {
-      saveState(localStorage, state);
+      saveState(tabGuard.storage, state);
     } catch (error) {
       // Le store reste utilisable même si le navigateur refuse une écriture
       // locale (quota / mode privé). Ne jamais annuler une génération réussie
@@ -61,10 +67,10 @@
   const planningRangeFeature = createPlanningRangeFeature({ document, store });
   shell.mountScreen('planning', planningRangeFeature.element);
 
-  const storesFeature = createStoresFeature({ document, store, persist: next => saveState(localStorage, next) });
+  const storesFeature = createStoresFeature({ document, store, guard: tabGuard, persist: next => saveState(tabGuard.storage, next) });
   shell.mountScreen('stores', storesFeature.element);
 
-  const dataToolsFeature = createDataToolsFeature({ document, store, persist: next => saveState(localStorage, next) });
+  const dataToolsFeature = createDataToolsFeature({ document, store, guard: tabGuard, persist: next => saveState(tabGuard.storage, next) });
   shell.mountScreen('more', dataToolsFeature.element);
 </script>
 </body>

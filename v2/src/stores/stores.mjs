@@ -71,7 +71,18 @@ function appendTextElement(doc, parent, tagName, className, text) {
 
 export function createStoresFeature(options) {
   const { document: doc, store } = requireOptions(options);
-  const visits = typeof options.persist === 'function' ? createVisitsService({ store, persist: options.persist }) : null;
+  const service = typeof options.persist === 'function' ? createVisitsService({ store, persist: options.persist }) : null;
+  const guard = options.guard && typeof options.guard.run === 'function' ? options.guard : null;
+  // Chaque mutation Visites traverse la garde : verrou partagé puis refus si un
+  // autre onglet a écrit depuis la lecture de celui-ci.
+  const visits = service && guard
+    ? Object.freeze({
+      start: storeId => guard.run(() => service.start(storeId)),
+      finish: id => guard.run(() => service.finish(id)),
+      cancel: id => guard.run(() => service.cancel(id)),
+      history: id => service.history(id),
+    })
+    : service;
   let query = '';
   let selectedId = null;
   let latestState = store.getState();

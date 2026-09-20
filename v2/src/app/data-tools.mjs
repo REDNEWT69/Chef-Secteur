@@ -2,6 +2,7 @@
 // Aucun upload : File.text() -> conversion pure -> store central local.
 
 import { parseAndMigrateV1Backup, V1MigrationError } from '../migration/v1-backup.mjs';
+import { STALE_TAB_MESSAGE } from '../storage/tab-guard.mjs';
 
 export class DataToolsError extends Error {
   constructor(message) {
@@ -95,12 +96,25 @@ export function createDataToolsFeature(options) {
     }
   }
 
+  // importText reste synchrone : c'est le contrat utilisé par les tests de domaine.
+  // La protection multi-onglets vit ici, autour de l'écriture réelle, parce qu'un
+  // import écrase l'état entier — c'est la mutation la plus destructrice de la V2.
+  const guard = options.guard && typeof options.guard.run === 'function' ? options.guard : null;
+
   async function importFile(file) {
     if (!file || typeof file.text !== 'function') {
       status.textContent = 'Import refusé : sélectionne un fichier JSON.';
       return null;
     }
-    return importText(await file.text());
+    const text = await file.text();
+    if (!guard) return importText(text);
+    const outcome = await guard.run(() => importText(text));
+    if (outcome.ok === false) {
+      reportDetails.replaceChildren();
+      status.textContent = `Import refusé : ${STALE_TAB_MESSAGE}`;
+      return null;
+    }
+    return outcome.value;
   }
 
   input.addEventListener('change', async () => {

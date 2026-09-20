@@ -327,6 +327,12 @@ test('V2-08A : stockage indisponible, aucun faux succès ni perte après reload'
   expect(await readVisitsState(page)).toEqual(before);
   await page.reload(); await openVisitsStore(page);
   await page.locator('.srv2-visit-start').tap();
+  // L'écriture traverse désormais le verrou multi-onglets : elle atterrit une tâche
+  // après le geste. On attend que l'interface reflète le démarrage avant de capturer
+  // l'état — l'assertion portée par ce test (une fin refusée ne change rien de ce qui
+  // est stocké) est inchangée, seul l'instant de capture cesse de supposer une
+  // écriture synchrone.
+  await expect(page.locator('.srv2-visit-status')).toHaveText('Visite en cours');
   const inProgress = await readVisitsState(page);
   await failWrites();
   await page.locator('.srv2-visit-finish').tap();
@@ -336,6 +342,8 @@ test('V2-08A : stockage indisponible, aucun faux succès ni perte après reload'
   await page.reload(); await openVisitsStore(page);
   await expect(page.locator('.srv2-visit-status')).toHaveText('Visite en cours');
   await page.locator('.srv2-visit-cancel').tap();
+  // Même raison : on attend que l'annulation soit reflétée avant de lire le stockage.
+  await expect(page.locator('.srv2-visit-start')).toBeVisible();
   expect((await readVisitsState(page)).visits[0].status).toBe('cancelled');
   await page.reload(); await openVisitsStore(page);
   await expect(page.locator('.srv2-visit-history li')).toHaveCount(0);

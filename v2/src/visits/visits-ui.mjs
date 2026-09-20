@@ -1,3 +1,4 @@
+import { STALE_TAB_MESSAGE } from '../storage/tab-guard.mjs';
 import { historyForStore, isVisit } from './visits.mjs';
 
 // Mounted only by the owner of the store detail; no shell/global mutations.
@@ -17,7 +18,13 @@ export function appendStoreVisits(doc, host, state, storeId, service) {
     const controls = doc.createElement('div'); controls.classList.add('srv2-visit-controls');
     function button(text, className, action) {
       const el = doc.createElement('button'); el.setAttribute('type', 'button'); el.classList.add(className); el.textContent = text;
-      el.addEventListener('click', () => { try { action(); } catch (error) { status.textContent = 'Visite non enregistrée : ' + error.message; } });
+      // L'action peut passer par le verrou multi-onglets : elle est donc attendue.
+      el.addEventListener('click', async () => {
+        try {
+          const outcome = await action();
+          if (outcome && outcome.ok === false) status.textContent = STALE_TAB_MESSAGE;
+        } catch (error) { status.textContent = 'Visite non enregistrée : ' + error.message; }
+      });
       controls.appendChild(el);
     }
     if (current) {
