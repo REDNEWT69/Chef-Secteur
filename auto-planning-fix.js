@@ -133,24 +133,49 @@ function hotelReservationSummaryHtml(){
   return '<div class="srHotelSavedListV212">'+rows.map(r=>'<div class="srHotelSavedV212">✅ <b>Hôtel réservé · '+esc(dateLabel(r.fromDate))+'</b><div>'+esc(r.hotelName||'Hôtel')+(r.reference?' · Réf. '+esc(r.reference):'')+'</div></div>').join('')+'</div>'
 }
 function hotelReservationEditorHtml(o){
-  const saved=hotelReservationFor(o&&o.fromDate)||{},name=esc(saved.hotelName||''),reference=esc(saved.reference||'');
+  const saved=hotelReservationFor(o&&o.fromDate)||{},name=esc(saved.hotelName||''),reference=esc(saved.reference||''),address=esc(saved.address||'');
+  const located=!!(window.StoreRunnerDayOrigin&&window.StoreRunnerDayOrigin.located(saved));
   return '<div class="srHotelReservationV212" data-night="'+esc(o.fromDate)+'"><b>'+(saved.hotelName?'✅ Hôtel réservé':'🛏 Enregistrer mon hôtel')+'</b>'+
     (saved.hotelName?'<div class="srHotelSavedLineV212">'+esc(saved.hotelName)+(saved.reference?' · Réf. '+reference:'')+'</div>':'')+
     '<div class="srHotelReservationGridV212"><label>Nom de l’hôtel<input id="srHotelNameV212" type="text" value="'+name+'" placeholder="Ex. Hôtel du Parc"></label>'+
-    '<label>N° / référence de réservation<input id="srHotelRefV212" type="text" value="'+reference+'" placeholder="Ex. ABC123"></label></div>'+
+    '<label>N° / référence de réservation<input id="srHotelRefV212" type="text" value="'+reference+'" placeholder="Ex. ABC123"></label>'+
+    '<label>Adresse ou ville de l’hôtel<input id="srHotelAddressV212" type="text" value="'+address+'" placeholder="Ex. 12 rue de la Gare, Chambéry"></label></div>'+
+    '<p class="srHotelOriginHintV212">'+(located?'Le lendemain démarrera depuis cet hôtel.':'Sans adresse, Store Runner demandera d’où vous partez le lendemain.')+'</p>'+
     '<div class="srHotelReservationActionsV212"><button type="button" class="secondary" onclick="storeRunnerSaveHotelReservation(\''+esc(o.fromDate)+'\')">Enregistrer la réservation</button>'+
     (saved.hotelName?'<button type="button" class="linkBtn" onclick="storeRunnerClearHotelReservation(\''+esc(o.fromDate)+'\')">Effacer</button>':'')+'</div></div>'
 }
-function saveHotelReservation(date){
-  const name=document.getElementById('srHotelNameV212'),ref=document.getElementById('srHotelRefV212'),hotelName=String(name&&name.value||'').trim(),reference=String(ref&&ref.value||'').trim();
+async function saveHotelReservation(date){
+  const name=document.getElementById('srHotelNameV212'),ref=document.getElementById('srHotelRefV212'),addr=document.getElementById('srHotelAddressV212');
+  const hotelName=String(name&&name.value||'').trim(),reference=String(ref&&ref.value||'').trim(),address=String(addr&&addr.value||'').trim();
   if(!hotelName){if(typeof window.showError==='function')window.showError('Indique le nom de l’hôtel réservé.');return false}
   const candidate=futureOvernightAnalysis().candidate,key=String(date||''),previous=hotelReservationFor(key)||{};
-  hotelReservations()[key]={fromDate:key,toDate:candidate&&candidate.fromDate===key?candidate.toDate:(previous.toDate||iso(addDays(parse(key)||new Date(),1))),hotelName,reference,zone:candidate&&candidate.fromDate===key?String(candidate.last&&candidate.last.ville||''):(previous.zone||''),updatedAt:new Date().toISOString()};
+  /* L'adresse sert à situer l'hôtel pour le trajet du lendemain. On réutilise le
+     géocodeur du profil ; aucune coordonnée n'est jamais montrée à l'utilisateur, et une
+     recherche infructueuse n'empêche pas d'enregistrer la réservation. */
+  let lat=null,lon=null,resolved='';
+  if(address){
+    if(address===String(previous.address||'')&&window.StoreRunnerDayOrigin&&window.StoreRunnerDayOrigin.located(previous)){
+      lat=previous.lat;lon=previous.lon;resolved=previous.resolvedAddress||'';
+    }else{
+      try{
+        const geo=window.StoreRunnerGeocode;
+        if(geo&&typeof geo.forward==='function'){
+          const hit=await geo.forward(address);
+          lat=Number(hit.lat);lon=Number(hit.lon);resolved=String(hit.address||'');
+        }
+      }catch(e){
+        if(typeof window.storeRunnerToast==='function')window.storeRunnerToast('Adresse non localisée : le départ du lendemain sera demandé.');
+      }
+    }
+  }
+  hotelReservations()[key]={fromDate:key,address,resolvedAddress:resolved,lat,lon,toDate:candidate&&candidate.fromDate===key?candidate.toDate:(previous.toDate||iso(addDays(parse(key)||new Date(),1))),hotelName,reference,zone:candidate&&candidate.fromDate===key?String(candidate.last&&candidate.last.ville||''):(previous.zone||''),updatedAt:new Date().toISOString()};
+  try{if(window.StoreRunnerDayOrigin)window.StoreRunnerDayOrigin.pruneOrigins(window.state)}catch(e){}
   try{if(typeof window.save==='function')window.save()}catch(e){if(typeof window.showError==='function')window.showError('Réservation non enregistrée : '+(e.message||e));return false}
   renderOvernightV189();document.dispatchEvent(new CustomEvent('store-runner:hotel-reservation-updated',{detail:{date:key}}));return true
 }
 function clearHotelReservation(date){
   const key=String(date||'');if(!hotelReservationFor(key))return false;delete hotelReservations()[key];
+  try{if(window.StoreRunnerDayOrigin)window.StoreRunnerDayOrigin.pruneOrigins(window.state)}catch(e){}
   try{if(typeof window.save==='function')window.save()}catch(e){return false}
   renderOvernightV189();document.dispatchEvent(new CustomEvent('store-runner:hotel-reservation-updated',{detail:{date:key}}));return true
 }

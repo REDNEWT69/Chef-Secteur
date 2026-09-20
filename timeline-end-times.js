@@ -7,6 +7,7 @@
   const MANUAL_CLASS='tlManualHint';
   const SECONDARY_CLASS='tlSecondary';
   const IMPOSED_CLASS='tlTimeImposed';
+  const ORIGIN_ID='planningDayOrigin';
 
   function mins(t){const m=String(t||'').match(/(\d{1,2}):(\d{2})/);return m?(+m[1])*60+(+m[2]):null}
   function clock(v){v=((Math.round(v)%1440)+1440)%1440;return String(Math.floor(v/60)).padStart(2,'0')+':'+String(v%60).padStart(2,'0')}
@@ -59,7 +60,15 @@
       '@media(max-width:700px){#week .timelineRow:not(.calendarEvent){grid-template-columns:58px 14px 1fr}}'+
       '.'+TRAVEL_CLASS+'{margin-top:5px;font-size:10.5px;line-height:1.3;color:#8a919d;font-weight:650}'+
       '.'+MANUAL_CLASS+'{margin-top:5px;font-size:10.5px;line-height:1.35;font-weight:750;color:#1428a0}'+
-      '.'+MANUAL_CLASS+'.tlManualImpossible{color:#b42318}';
+      '.'+MANUAL_CLASS+'.tlManualImpossible{color:#b42318}'+
+      '#'+ORIGIN_ID+'[hidden]{display:none!important}'+
+      '#'+ORIGIN_ID+'.srOriginSet{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:8px 2px 0;padding:8px 11px;border:1px solid #e4e8f0;border-radius:13px;background:#fafbfe;color:#475467;font-size:11.5px;font-weight:700}'+
+      '#'+ORIGIN_ID+' .srOriginChange{min-height:34px;padding:0 10px;border:0;border-radius:10px;background:rgba(20,40,160,.08);color:#1428a0;font-size:11px;font-weight:800}'+
+      '#'+ORIGIN_ID+'.srOriginAsk{display:block;margin:8px 2px 0;padding:11px 12px;border:1px solid #f3d9a8;border-radius:15px;background:#fffaf1;color:#7a4b00;font-size:12px;line-height:1.45}'+
+      '#'+ORIGIN_ID+'.srOriginAsk b{display:block;font-size:13px;color:#5c3800}'+
+      '#'+ORIGIN_ID+' .srOriginActions{display:grid;gap:7px;margin-top:9px}'+
+      '#'+ORIGIN_ID+' .srOriginActions button{min-height:46px;border:1px solid #e6d3ae;border-radius:13px;background:#fff;color:#5c3800;font-size:13px;font-weight:800}'+
+      '#'+ORIGIN_ID+' .srOriginActions .srOriginPrimary{border:0;background:#1428a0;color:#fff}';
     document.head.appendChild(style);
   }
 
@@ -98,7 +107,7 @@
   }
 
   /* Lecture seule de l'ordonnanceur existant : aucun recalcul d'itinéraire ici. */
-  function scheduleRows(){
+  function currentSchedule(){
     try{
       const api=window.StoreOpeningHoursV1;
       if(!api||typeof api.scheduleRoute!=='function')return null;
@@ -106,9 +115,102 @@
       const plan=window.state&&window.state.plan;
       const route=day&&plan?plan[day]:null;
       if(!route||!route.length)return null;
-      const schedule=api.scheduleRoute(route,day,window.state);
-      return schedule&&Array.isArray(schedule.rows)?schedule.rows:null;
+      return api.scheduleRoute(route,day,window.state);
     }catch(e){return null}
+  }
+
+  /* Point de départ réel de la journée. Après une nuit sur place sans position exacte,
+     on pose la question plutôt que de repartir silencieusement de la base. */
+  function renderOrigin(week,schedule){
+    const host=week&&week.parentNode;
+    if(!host)return;
+    const api=window.StoreRunnerDayOrigin;
+    const origin=schedule&&schedule.origin;
+    let box=document.getElementById(ORIGIN_ID);
+    /* Une journée qui part de la base est la normale : on ne l'annonce pas. Le bandeau
+       ne sert qu'à dire que le départ a changé, ou à poser la question. */
+    if(!origin||!api||(!origin.pending&&origin.type==='base')){if(box)box.hidden=true;return}
+    if(!box){
+      box=document.createElement('div');
+      box.id=ORIGIN_ID;
+      box.setAttribute('role','status');
+      host.insertBefore(box,week);
+    }
+    box.hidden=false;
+    const pending=!!origin.pending;
+    const wanted=pending?'srOriginAsk':'srOriginSet';
+    if(box.className!==wanted)box.className=wanted;
+    if(!pending){
+      const text='Départ : '+api.label(origin);
+      if(box.dataset.state!=='set:'+text){
+        box.dataset.state='set:'+text;
+        box.replaceChildren();
+        const line=document.createElement('span');
+        line.textContent=text;
+        box.appendChild(line);
+        const change=document.createElement('button');
+        change.type='button';
+        change.className='srOriginChange';
+        change.textContent='Modifier';
+        change.addEventListener('click',()=>askOrigin(schedule.date,origin,true));
+        box.appendChild(change);
+      }
+      return;
+    }
+    const key='ask:'+schedule.date+':'+(origin.suggestion||'');
+    if(box.dataset.state===key)return;
+    box.dataset.state=key;
+    box.replaceChildren();
+    const title=document.createElement('b');
+    title.textContent='🌙 Nuit sur place';
+    const question=document.createElement('span');
+    question.textContent='Cette journée démarre depuis quel endroit ?';
+    const actions=document.createElement('div');
+    actions.className='srOriginActions';
+    if(origin.suggestion){
+      const use=document.createElement('button');
+      use.type='button';
+      use.className='srOriginPrimary';
+      use.textContent='Utiliser '+origin.suggestion;
+      use.addEventListener('click',()=>chooseOrigin(schedule.date,origin.suggestion,'zone'));
+      actions.appendChild(use);
+    }
+    const other=document.createElement('button');
+    other.type='button';
+    other.textContent='Autre point de départ';
+    other.addEventListener('click',()=>askOrigin(schedule.date,origin,false));
+    actions.appendChild(other);
+    box.append(title,question,actions);
+  }
+
+  function askOrigin(date,origin,isChange){
+    const suggested=isChange?'':(origin&&origin.suggestion)||'';
+    const answer=window.prompt('Ville ou adresse de départ pour cette journée :',suggested);
+    if(answer===null)return;
+    const text=String(answer).trim();
+    if(!text)return;
+    chooseOrigin(date,text,'custom');
+  }
+
+  /* Géocodage : on réutilise celui du profil, aucun second fournisseur. L'utilisateur ne
+     voit jamais de coordonnées techniques. */
+  async function chooseOrigin(date,query,type){
+    const api=window.StoreRunnerDayOrigin,geo=window.StoreRunnerGeocode;
+    if(!api||!geo||typeof geo.forward!=='function'){
+      if(typeof window.showError==='function')window.showError('Recherche d’adresse indisponible.');
+      return;
+    }
+    try{
+      const hit=await geo.forward(query);
+      api.confirmOrigin(window.state,date,{type,label:hit.city||query,ville:hit.city||query,
+        adresse:hit.address||'',lat:hit.lat,lon:hit.lon});
+      if(typeof window.save==='function')window.save();
+      if(typeof window.renderAll==='function')window.renderAll();
+      else if(typeof window.renderWeek==='function')window.renderWeek();
+      document.dispatchEvent(new CustomEvent('store-runner:planning-updated'));
+    }catch(error){
+      if(typeof window.showError==='function')window.showError(error&&error.message?error.message:String(error));
+    }
   }
 
   /* Le bloc ARRIVÉE devient une cible tactile distincte : il ouvre l'éditeur d'horaires
@@ -170,7 +272,9 @@
     }
     css();
     if(week)ensureLegend(week);
-    const rowsSchedule=scheduleRows();
+    const schedule=currentSchedule();
+    if(week)renderOrigin(week,schedule);
+    const rowsSchedule=schedule&&Array.isArray(schedule.rows)?schedule.rows:null;
     storeRows.forEach(function(row,index){
       const t=row.querySelector('.tlTime'),d=row.querySelector('.tlDuration');
       if(t&&d){

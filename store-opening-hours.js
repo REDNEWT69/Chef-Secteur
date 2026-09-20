@@ -71,6 +71,22 @@ function monday(d){const x=new Date(d),w=x.getDay()||7;x.setDate(x.getDate()-w+1
 function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
 function dateForDay(day,state=root.state,weekMonday){const mon=weekMonday instanceof Date?monday(weekMonday):monday(parseISO(state&&state.settings&&state.settings.weekDate)||new Date());return iso(addDays(mon,Math.max(0,DAYS.indexOf(day))))}
 function baseOf(){try{return typeof root.baseObj==='function'?root.baseObj():null}catch(e){return null}}
+/* Le premier trajet ne part pas toujours de la base : après une nuit sur place, il part
+   de là où l'on a dormi. Le point de départ effectif d'une date appartient à
+   StoreRunnerDayOrigin, qui sait lire l'hôtel ou le choix confirmé par l'utilisateur.
+   Module absent ou date inconnue : on retombe sur la base, comme avant. */
+function originFor(date,state){
+  try{
+    const api=root.StoreRunnerDayOrigin;
+    if(api&&typeof api.originFor==='function')return api.originFor(date,state);
+  }catch(e){}
+  return null;
+}
+function originBase(date,state){
+  const origin=originFor(date,state);
+  if(!origin||origin.type==='base')return null;
+  return{id:'ORIGIN',enseigne:'Départ',ville:origin.ville,adresse:origin.adresse,lat:origin.lat,lon:origin.lon};
+}
 function travelMinutes(a,b){
   try{if(typeof root.roadMinutes==='function')return Math.max(0,Number(root.roadMinutes(a,b))||0)}catch(e){}
   try{if(typeof root.hav==='function')return Math.max(0,(Number(root.hav(a,b))||0)*1.22/55*60)}catch(e){}
@@ -81,7 +97,9 @@ function blocksForDate(date){try{return typeof root.calendarEventsForDate==='fun
 function dayStart(day,state=root.state){const s=state&&state.settings||{},raw=day==='Samedi'?(s.saturdayStart||'08:00'):(s.startTime||'08:30');return minute(raw)??510}
 function dayEnd(day,state=root.state){const s=state&&state.settings||{},raw=day==='Samedi'?(s.saturdayEnd||'12:00'):(s.endTime||'18:00');return minute(raw)??1080}
 function scheduleRoute(route,day,state=root.state,options={}){
-  const rows=[],date=options.date||dateForDay(day,state,options.weekMonday),base=options.base||baseOf(),blocks=options.blocks||blocksForDate(date),fallbackVisit=Math.max(15,Number(state&&state.settings&&state.settings.visitMinutes)||60),start=dayStart(day,state);
+  const rows=[],date=options.date||dateForDay(day,state,options.weekMonday),
+    origin=options.origin!==undefined?options.origin:originFor(date,state),
+    base=options.base||(origin&&origin.type!=='base'?{id:'ORIGIN',enseigne:'Départ',ville:origin.ville,adresse:origin.adresse,lat:origin.lat,lon:origin.lon}:baseOf()),blocks=options.blocks||blocksForDate(date),fallbackVisit=Math.max(15,Number(state&&state.settings&&state.settings.visitMinutes)||60),start=dayStart(day,state);
   const travel=options.travelMinutes||travelMinutes,appt=options.appointmentFor||((id,d)=>appointmentFor(id,d,state));let current=start,prev=base,unknownCount=0,closedCount=0,appointmentConflicts=0;
   for(let i=0;i<(route||[]).length;i++){
     const store=(state&&state.stores||[]).find(s=>String(s.id)===String(route[i].id))||route[i],drive=Math.max(0,Number(travel(prev,store))||0),nominal=current+drive,a=appt(store.id,date),storeVisit=(()=>{try{return typeof root.storeVisitDuration==='function'?root.storeVisitDuration(store,state):fallbackVisit}catch(e){return fallbackVisit}})(),duration=a?Math.max(15,Number(a.duration)||storeVisit):storeVisit;let requested=nominal,fixed=null;
@@ -125,7 +143,7 @@ function scheduleRoute(route,day,state=root.state,options={}){
     :null;
   const returnTravel=rows.length&&base?Math.max(0,Number(travel(rows[rows.length-1].store,base))||0):0;
   const estimatedEnd=rows.length&&!closedCount&&!appointmentConflicts?current+returnTravel:null;
-  return{day,date,rows,start,recommendedDeparture,estimatedEnd,returnTravel,unknownCount,closedCount,appointmentConflicts,endLimit:dayEnd(day,state)};
+  return{day,date,rows,start,origin,recommendedDeparture,estimatedEnd,returnTravel,unknownCount,closedCount,appointmentConflicts,endLimit:dayEnd(day,state)};
 }
 function routeFits(route,day,state=root.state,options={}){const s=scheduleRoute(route,day,state,options);return s.closedCount===0&&s.appointmentConflicts===0&&(s.estimatedEnd==null||s.estimatedEnd<=s.endLimit+0.001)}
 function byId(id){return (root.state&&root.state.stores||[]).find(s=>String(s.id)===String(id))||null}
@@ -232,6 +250,6 @@ function decorateTimeline(){
 function scheduleDecorate(){if(scheduled)return;scheduled=true;setTimeout(()=>{scheduled=false;decorateTimeline()},70)}
 function observe(){if(observer||!root.document||typeof MutationObserver==='undefined')return;const host=root.document.getElementById('planPanel');if(!host)return;observer=new MutationObserver(records=>{if(decorating)return;for(const r of records){if(r.addedNodes&&r.addedNodes.length){scheduleDecorate();break}}});observer.observe(host,{childList:true,subtree:true})}
 function boot(){ensureDialog();installQuickButton();decorateTimeline();observe()}
-const api={parseDayHours,serializeDayHours,intervalsFor,openingLabel,fitOpening,fitWithBlocks,scheduleRoute,routeFits,openHoursDialog,decorateTimeline,dayNow,dateForDay};root.StoreOpeningHoursV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={parseDayHours,serializeDayHours,intervalsFor,openingLabel,fitOpening,fitWithBlocks,scheduleRoute,routeFits,openHoursDialog,decorateTimeline,dayNow,dateForDay,originFor,originBase};root.StoreOpeningHoursV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();root.document.addEventListener('store-runner:planning-updated',()=>{installQuickButton();scheduleDecorate()});root.document.addEventListener('store-runner:data-restored',()=>{installQuickButton();scheduleDecorate()});root.addEventListener('chef-range-generated',scheduleDecorate);root.document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('#dayTabs,.periodDayTab,.dayTab'))scheduleDecorate()},true)}
 })(typeof window!=='undefined'?window:globalThis);
