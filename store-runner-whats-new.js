@@ -32,7 +32,8 @@
         'Notez en deux gestes ce que vous venez de faire (visite, appel, relance, devis, signature) et ce que vous prévoyez ensuite, avec une date.',
         'Store Runner vous alerte quand une relance est en retard ou quand un contrat approche de sa fin.',
         'L’espace Cuisinistes regroupe tous vos magasins avec un filtre par situation pour voir d’un coup d’œil ce qui demande une action.',
-        'Les contrats importés depuis vos fichiers restent intacts : le suivi commercial s’ajoute à côté sans jamais les modifier.'
+        'Les contrats importés depuis vos fichiers restent intacts : le suivi commercial s’ajoute à côté sans jamais les modifier.',
+        'Importez directement votre fichier contrats .xlsx ou .xlsm : Store Runner ne garde que les magasins de votre secteur et ne vous demande de trancher que les cas douteux.'
       ]
     },
     {

@@ -145,3 +145,91 @@ test('L’écran Contrats expo filtre les cuisinistes sans seconde liste',async(
   expect(await page.locator('#srCuisineSheet').count()).toBe(1);
   expect(errors).toEqual([]);
 });
+
+/* Revue d'import : l'utilisateur ne voit que ce qui demande une décision. On sème un site
+   non rapproché et un site ambigu, sans passer par un vrai classeur. */
+test('La revue d’import résume et ne montre que les cas à vérifier',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await ready(page);
+  await page.evaluate(()=>{
+    const C=window.StoreRunnerCuisinisteV193,F=window.StoreRunnerCuisinisteFollowupV229,db=window.__chefStorage;
+    const a={id:'imp-a',enseigne:'Schmidt',ville:'Ville Suivi',channel:'cuisiniste',active:true};
+    const b={id:'imp-b',enseigne:'Schmidt',ville:'Ville Double',channel:'cuisiniste',active:true};
+    const c={id:'imp-c',enseigne:'Schmidt',ville:'Ville Double',channel:'cuisiniste',active:true};
+    const r={id:'imp-r',enseigne:'Boulanger',ville:'Ville Suivi',channel:'retail',active:true};
+    window.state.stores=[a,b,c,r];
+    window.state.plan={Lundi:[a],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
+    C.saveTracking(db,{type:'tracking',sector:'Secteur Suivi',importedAt:'2026-09-19T10:00:00Z',scanned:9,sites:[
+      {key:'SCH-VILLE SUIVI FR-00001',brand:'SCHMIDT',city:'Ville Suivi',cityKey:'ville suivi',postal:'00001',
+       activeContract:{status:'En cours',endDate:'2027-06-30',monthsRemaining:9},lastContract:null,history:[]},
+      {key:'SCH-VILLE DOUBLE FR-00002',brand:'SCHMIDT',city:'Ville Double',cityKey:'ville double',postal:'00002',
+       activeContract:{status:'En cours',endDate:'2027-06-30',monthsRemaining:9},lastContract:null,history:[]}
+    ]});
+    F.setFilter('all');
+    C.open();
+  });
+  const review=page.locator('#srCuisineSheet .srCuisineReview');
+  await expect(review).toBeVisible();
+  await expect(review).toContainText('9 cuisinistes dans le fichier');
+  await expect(review).toContainText('2 de mon secteur');
+  await expect(review).toContainText('1 rapprochés');
+  await expect(review).toContainText('1 à vérifier');
+  // Seul le cas ambigu est proposé, et il propose un choix, jamais une confirmation.
+  await expect(review.locator('.srCuisineReviewRow')).toHaveCount(1);
+  await expect(review.locator('.srCuisineReviewRow')).toContainText('2 magasins possibles');
+  await expect(review.locator('.srCuisineReviewRow select option')).toHaveCount(3);
+
+  await review.locator('.srCuisineReviewRow select').selectOption('imp-c');
+  await expect(page.locator('#srCuisineSheet .srCuisineReview')).toContainText('2 rapprochés');
+  await expect(page.locator('#srCuisineSheet .srCuisineReview')).toContainText('0 à vérifier');
+
+  // Le choix est persisté : il doit être reconnu sans nouvelle intervention.
+  const kept=await page.evaluate(()=>window.StoreRunnerCuisinisteV193.resolveSites(window.__chefStorage,window.state.stores)
+    .find(s=>s.city==='Ville Double'));
+  expect(kept.storeId).toBe('imp-c');
+  expect(kept.matchedBy).toBe('mapping');
+
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  expect(errors).toEqual([]);
+});
+
+/* Le suivi saisi avant l'arrivée du fichier doit rejoindre la vraie clé de site. */
+test('Le suivi posé avant l’import rejoint la clé de site sans rien perdre',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await ready(page);
+  await page.evaluate(()=>{
+    const F=window.StoreRunnerCuisinisteFollowupV229,db=window.__chefStorage;
+    const s={id:'mig-a',enseigne:'Schmidt',ville:'Ville Migrée',channel:'cuisiniste',active:true};
+    window.state.stores=[s];
+    window.state.plan={Lundi:[s],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
+    F.setStatus(db,F.fallbackKey('mig-a'),'proposition-presentee');
+    F.addAction(db,F.fallbackKey('mig-a'),{type:'rdv',date:'2026-08-01',note:'Visite avant import'});
+    F.setNextAction(db,F.fallbackKey('mig-a'),{label:'Repasser',dueDate:'2026-11-05',type:'relance'});
+  });
+  await openStore(page,'mig-a');
+  await expect(page.locator('#srCuisineFollowupV229')).toContainText('Proposition présentée');
+
+  // Le fichier arrive ensuite et nomme enfin ce magasin.
+  await page.evaluate(()=>{
+    window.StoreRunnerCuisinisteV193.saveTracking(window.__chefStorage,{type:'tracking',sector:'Secteur Suivi',
+      importedAt:'2026-09-20T10:00:00Z',sites:[{key:'SCH-VILLE MIGREE FR-00007',brand:'SCHMIDT',city:'Ville Migrée',
+        cityKey:'ville migree',postal:'00007',activeContract:{status:'En cours',endDate:'2027-06-30',monthsRemaining:9},
+        lastContract:null,history:[]}]});
+  });
+  await openStore(page,'mig-a');
+  const migrated=await page.evaluate(()=>{
+    const F=window.StoreRunnerCuisinisteFollowupV229,V=window.StoreRunnerCuisinisteV193,db=window.__chefStorage;
+    const f=F.followupFor(db,'SCH-VILLE MIGREE FR-00007');
+    return{status:f.workflowStatus,next:f.nextAction&&f.nextAction.label,history:f.history.length,
+      orphan:V.readStore(db).followups[F.fallbackKey('mig-a')]||null};
+  });
+  expect(migrated.status).toBe('proposition-presentee');
+  expect(migrated.next).toBe('Repasser');
+  expect(migrated.history).toBeGreaterThanOrEqual(2);
+  expect(migrated.orphan).toBeNull();
+  await expect(page.locator('#srCuisineFollowupV229')).toContainText('Proposition présentée');
+  expect(errors).toEqual([]);
+});

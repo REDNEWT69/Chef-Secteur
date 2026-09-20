@@ -177,6 +177,69 @@
 
   /* Le statut affiché : celui choisi par l'utilisateur, sinon « aucun contrat » déduit
      quand V193 ne connaît aucun contrat pour ce site. Rien n'est écrit pour autant. */
+  /* Clé de repli : tant qu'aucun contrat importé ne désigne le magasin, le suivi vit sous
+     « store:<id> ». Dès qu'un import ou un rapprochement manuel révèle la vraie clé de
+     site, on fusionne — l'utilisateur ne doit jamais perdre son historique parce que le
+     fichier est arrivé après ses notes. */
+  const FALLBACK_PREFIX = 'store:';
+  function fallbackKey(storeId) { return FALLBACK_PREFIX + String(storeId); }
+
+  function sameEntry(a, b) {
+    if (!a || !b) return false;
+    if (a.id && b.id && a.id === b.id) return true;
+    return a.type === b.type && text(a.label) === text(b.label)
+      && String(a.date || '') === String(b.date || '') && text(a.note) === text(b.note);
+  }
+
+  function mergeHistory(target, source) {
+    const out = target.slice();
+    for (const row of source) if (!out.some(x => sameEntry(x, row))) out.push(row);
+    return out.sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))).slice(-HISTORY_LIMIT);
+  }
+
+  function newer(a, b) {
+    const da = a && (a.date || a.dueDate), db2 = b && (b.date || b.dueDate);
+    if (!a) return b; if (!b) return a;
+    return String(db2 || '') > String(da || '') ? b : a;
+  }
+
+  /* Fusion non destructive : le statut déjà posé par l'utilisateur sur la vraie clé gagne,
+     l'historique est réuni sans doublon, la prochaine action la plus récente est gardée. */
+  function mergeFollowups(into, from) {
+    const out = normalize(into);
+    const old = normalize(from);
+    out.workflowStatus = out.workflowStatus || old.workflowStatus;
+    out.history = mergeHistory(out.history, old.history);
+    out.lastAction = newer(out.lastAction, old.lastAction);
+    out.nextAction = newer(out.nextAction, old.nextAction);
+    out.reminderDate = out.reminderDate || old.reminderDate;
+    out.updatedAt = String(old.updatedAt || '') > String(out.updatedAt || '') ? old.updatedAt : out.updatedAt;
+    return out;
+  }
+
+  function migrateKey(storage, fromKey, toKey) {
+    const from = text(fromKey), to = text(toKey);
+    if (!from || !to || from === to) return false;
+    const data = readAll(storage);
+    if (!Object.prototype.hasOwnProperty.call(data.followups, from)) return false;
+    data.followups[to] = mergeFollowups(data.followups[to], data.followups[from]);
+    /* La clé de repli ne disparaît qu'une fois la fusion écrite. */
+    delete data.followups[from];
+    writeAll(storage, data);
+    return true;
+  }
+
+  /* Appelé après chaque import et à chaque rendu : les sites rapprochés récupèrent le
+     suivi saisi avant que le fichier ne les nomme. */
+  function reconcileKeys(storage, sites) {
+    let moved = 0;
+    for (const site of Array.isArray(sites) ? sites : []) {
+      if (!site || !site.storeId || !site.key) continue;
+      if (migrateKey(storage, fallbackKey(site.storeId), site.key)) moved++;
+    }
+    return moved;
+  }
+
   function statusFor(followup, site) {
     if (followup && followup.workflowStatus) return followup.workflowStatus;
     const hasContract = !!(site && (site.activeContract || site.lastContract));
@@ -244,7 +307,8 @@
   const api = { STATUSES, STATUS_IDS, ACTIONS, ACTION_IDS, FILTERS, HISTORY_LIMIT,
     statusLabel, actionLabel, suggestedStatus, emptyFollowup, normalize, followupFor,
     addAction, setStatus, setNextAction, clearNextAction, completeNextAction,
-    statusFor, alerts, matchesFilter, summary, isoDay, today };
+    statusFor, alerts, matchesFilter, summary, isoDay, today,
+    fallbackKey, mergeFollowups, migrateKey, reconcileKeys };
 
   // ------------------------------------------------------------------ interface
 
@@ -434,7 +498,8 @@
 
     css();
     const site = siteFor(storeId);
-    const siteKey = site && site.key ? site.key : 'store:' + String(storeId);
+    if (site && site.key) { try { reconcileKeys(storage(), [site]); } catch (e) {} }
+    const siteKey = site && site.key ? site.key : fallbackKey(storeId);
     const followup = followupFor(storage(), siteKey);
     const status = statusFor(followup, site);
     const rows = alerts(site, followup, new Date());
@@ -514,6 +579,7 @@
     if (!d || !body) return null;
     css();
     const rows = Array.isArray(sites) ? sites : [];
+    try { reconcileKeys(storage(), rows); } catch (e) {}
     const now = new Date();
     const counts = summary(storage(), rows, now);
 

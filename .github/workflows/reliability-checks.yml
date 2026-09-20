@@ -35,6 +35,7 @@ jobs:
       - run: node tests/cuisiniste-contracts-v193.test.cjs
       - run: node tests/cuisiniste-contract-proposal-v225.test.cjs
       - run: node tests/cuisiniste-followup-v229.test.cjs
+      - run: node tests/cuisiniste-import-xlsm.test.cjs
       - run: node tests/default-stores-seed.test.cjs
       - run: node tests/calendar.test.cjs
       - run: node tests/google-oauth-production.test.cjs
