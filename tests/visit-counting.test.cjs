@@ -25,6 +25,13 @@ assert.equal(V.credit({enseigne:'Darty',visitCreditOverride:1}),1,'un Darty pré
 assert.equal(V.routeCredits([{enseigne:'BUT'},{enseigne:'Conforama'}]),4,'BUT + Conforama doivent produire quatre visites comptabilisées pour deux passages physiques');
 assert.equal(V.planStores(state.plan),3,'les trois arrêts restent trois magasins physiques');
 assert.equal(V.planCredits(state.plan),5,'Darty + Boulanger + Carrefour doivent produire cinq visites métier avec Carrefour simple');
+const tenStoresPlan={Lundi:[
+  {id:'d1',enseigne:'Darty'},{id:'d2',enseigne:'Darty'},{id:'d3',enseigne:'Darty'},{id:'d4',enseigne:'Darty'},
+  {id:'d5',enseigne:'Darty'},{id:'d6',enseigne:'Darty'},{id:'d7',enseigne:'Darty'},
+  {id:'s1',enseigne:'Carrefour'},{id:'s2',enseigne:'Leclerc'},{id:'s3',enseigne:'Carrefour'}
+],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
+assert.equal(V.planStores(tenStoresPlan),10,'dix magasins planifiés restent dix passages physiques');
+assert.equal(V.planCredits(tenStoresPlan),17,'sept magasins x2 + trois magasins x1 doivent afficher dix-sept visites comptabilisées');
 const candidate={plan:state.plan,weekDate:'2026-09-07',archive,range:{start:'2026-09-07',end:'2026-09-08',weeks:1,totalVisits:2,uniqueStores:2}};
 V.normalizeCandidate(candidate);
 assert.equal(candidate.storeCount,3,'la proposition hebdomadaire doit conserver le nombre physique de magasins');
@@ -59,4 +66,7 @@ assert.match(source,/detail\.reason==='day-store-recenter'/,'le recalcul de pér
 assert.doesNotMatch(source,/observe\(document\.body/,'le module de comptage ne doit jamais observer tout document.body');
 assert.match(source,/OBSERVED_UI_IDS=\['summary','smartBrief','premiumHomeV2','proMonthBody','storeQuickSheet'\]/,'les zones observées doivent rester explicitement limitées aux vues de comptage utiles');
 assert.match(source,/attributeFilter:\['class','aria-hidden','data-sr-start'\]/,'la fiche rapide doit rester rafraîchie quand le magasin affiché change');
+assert.match(source,/\.phCard\[data-home-card="week"\]/,'l’accueil doit corriger la carte Cette semaine elle-même, pas la première carte arbitraire');
+assert.doesNotMatch(source,/premiumHomeV2 \.phGrid \.phCard:first-child/,'une priorité ou opportunité classée avant la semaine ne doit jamais être écrasée par le compteur');
+assert.match(source,/stats\.visits\+' visites comptabilisées'/,'la carte semaine doit afficher explicitement les crédits de visite');
 console.log('PASS: V189 donne la main par magasin, Carrefour vaut 1 par défaut et les statistiques suivent les crédits réels.');
