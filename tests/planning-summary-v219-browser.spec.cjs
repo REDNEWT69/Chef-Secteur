@@ -3,7 +3,7 @@ const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
 
 test.use({viewport:{width:390,height:844},hasTouch:true,isMobile:true,serviceWorkers:'block'});
 
-test('V219 garde Planning opérationnel et déplace le résumé mensuel vers Pilotage à 390 px',async({page})=>{
+test('Planning masque les résumés redondants et garde le détail dans Pilotage à 390 px',async({page})=>{
   const errors=[];
   page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
@@ -33,30 +33,29 @@ test('V219 garde Planning opérationnel et déplace le résumé mensuel vers Pil
 
   const planningTop=page.locator('#planningProTop');
   await expect(planningTop).toBeVisible();
-  await expect(planningTop).not.toContainText('Résumé du mois');
-  await expect(planningTop).toContainText('Cette semaine');
+
+  /* Les alertes opérationnelles restent dans Planning. Seul le duo de reporting
+     « Qualité du planning / Cette semaine » disparaît, car ces infos existent déjà
+     dans les tuiles d'accueil et dans le détail d'activité. */
+  const alerts=page.locator('#planningProTop>.proAlertCard');
+  await expect(alerts).toBeVisible();
+  const redundant=page.locator('#planningProTop>.proTop');
+  await expect(redundant).toHaveCount(1);
+  await expect(redundant).not.toBeVisible();
 
   const week=page.locator('#proWeekMetricsV219');
-  await expect(week).toBeVisible();
-  await expect(week.locator('.proWeekMetricV219')).toHaveCount(5);
-  const weekText=await week.innerText();
-  expect(weekText).not.toContain('NaN');
-  expect(weekText).toContain('visites');
-  expect(weekText).toContain('priorités hors planning');
+  await expect(week).toHaveCount(1);
+  await expect(week).not.toBeVisible();
 
   const quality=page.locator('#planningProTop .proQualityCardV219');
-  await expect(quality).toBeVisible();
-  await expect(quality).toHaveAttribute('aria-expanded','false');
-  const compactBox=await quality.boundingBox();
-  if(!compactBox)throw new Error('Carte qualité V219 introuvable');
-  expect(compactBox.height).toBeLessThan(150);
-  await quality.tap();
-  await expect(quality).toHaveAttribute('aria-expanded','true');
-  await expect(quality.locator('#proQualityDetailV219')).toBeVisible();
+  await expect(quality).toHaveCount(1);
+  await expect(quality).not.toBeVisible();
 
   let overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 
+  /* Le reporting détaillé n'est pas supprimé : il reste accessible dans l'écran
+     d'activité / Pilotage, qui est précisément sa bonne place. */
   await page.evaluate(()=>window.StoreRunnerSectorPilotage.open(window));
   const panel=page.locator('#pilotagePanel');
   await expect(panel).toBeVisible();
