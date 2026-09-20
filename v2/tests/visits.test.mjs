@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import { createEmptyState } from '../src/core/state.mjs';
 import { createStore } from '../src/core/store.mjs';
+import { validateState } from '../src/core/validate.mjs';
+import { importStateJson } from '../src/storage/json-transfer.mjs';
 import { loadState, saveState, STORAGE_KEY } from '../src/storage/persistence.mjs';
 import { createVisitsService, historyForStore, validateVisits } from '../src/visits/visits.mjs';
 
@@ -98,9 +101,9 @@ for (const operation of ['start', 'finish', 'cancel']) {
   for (const patch of [{ visitVersion: 2 }, { status: 'unknown' }, { source: 'v1-date' },
     { startedAt: '2026-02-30T12:00:00.000Z' }, { completedAt: 'yesterday' },
     { completedDate: '2026-02-30' }, { completedAt: '2026-09-17T12:00:00.000Z' }]) {
-    assert.throws(() => validateVisits([{ ...completed, ...patch }]), /visits:/);
+    assert.throws(() => validateVisits([{ ...completed, ...patch }], store.getState().stores), /visits:/);
   }
-  assert.throws(() => validateVisits([completed, completed]), /dupliqué/);
+  assert.throws(() => validateVisits([completed, completed], store.getState().stores), /dupliqué/);
   const before = store.getState(), disk = storage.getItem(STORAGE_KEY);
   const collision = createVisitsService({ store, persist, makeId: () => '1' });
   assert.throws(() => collision.start('two'), /dupliqué/);
@@ -125,3 +128,66 @@ for (const operation of ['start', 'finish', 'cancel']) {
   assert.throws(() => collision.start('two'), /dupliqué/);
 }
 console.log('v2 visits domain, persistence and reload: ok');
+
+function assertRejectedAtEveryEntryPoint(mutate) {
+  const { store, storage, service } = setup();
+  service.start('one');
+  const before = store.getState(), diskBefore = storage.getItem(STORAGE_KEY);
+  const invalid = structuredClone(before);
+  mutate(invalid);
+  let notifications = 0;
+  store.subscribe(() => { notifications += 1; });
+  assert.throws(() => validateState(invalid), /visits:/);
+  assert.throws(() => store.replace(invalid), /visits:/);
+  assert.deepEqual(store.getState(), before);
+  assert.equal(notifications, 0);
+  assert.throws(() => importStateJson(JSON.stringify(invalid)), /visits:/);
+  assert.throws(() => saveState(storage, invalid), /visits:/);
+  assert.equal(storage.getItem(STORAGE_KEY), diskBefore);
+  const corruptText = JSON.stringify(invalid);
+  const injected = new Map([[STORAGE_KEY, corruptText]]);
+  const corruptStorage = {
+    getItem: key => injected.get(key) ?? null,
+    setItem: (key, value) => injected.set(key, String(value)),
+    removeItem: key => injected.delete(key),
+  };
+  assert.throws(() => loadState(corruptStorage), /visits:/);
+  assert.equal(injected.get(STORAGE_KEY), corruptText);
+  assert.equal(injected.size, 1);
+  assert.deepEqual(store.getState(), before);
+  assert.equal(storage.getItem(STORAGE_KEY), diskBefore);
+  assert.equal(notifications, 0);
+}
+
+test('P2: une visite native ne peut référencer un magasin absent', () => {
+  assertRejectedAtEveryEntryPoint(state => {
+    state.visits[0].storeId = 'synthetic-missing-store';
+  });
+  assertRejectedAtEveryEntryPoint(state => {
+    state.stores = state.stores.filter(row => row.id !== 'one');
+  });
+});
+
+test('P2: deux visites en cours du même magasin sont refusées', () => {
+  assertRejectedAtEveryEntryPoint(state => {
+    state.visits.push({ ...state.visits[0], id: 'synthetic-second-visit' });
+  });
+});
+
+test('Les références existantes et historiques compatibles restent valides', () => {
+  const { store, storage, service } = setup();
+  service.finish(service.start('one').id);
+  service.cancel(service.start('one').id);
+  service.start('one');
+  service.start('two');
+  const accepted = store.getState();
+  const active = accepted.visits.find(row => row.status === 'in_progress');
+  accepted.visits.push({ ...active, id: 'synthetic-inactive-visit', storeId: 'inactive' });
+  accepted.visits.unshift(null, { id: 'synthetic-opaque', note: 'legacy placeholder' });
+  assert.doesNotThrow(() => validateState(accepted));
+  assert.doesNotThrow(() => store.replace(accepted));
+  assert.deepEqual(importStateJson(JSON.stringify(accepted)), accepted);
+  saveState(storage, accepted);
+  assert.deepEqual(loadState(storage), accepted);
+  assert.deepEqual(store.getState(), accepted);
+});

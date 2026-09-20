@@ -13,9 +13,11 @@ function isInstant(value) {
     && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 }
 
-export function validateVisits(rows) {
+export function validateVisits(rows, stores) {
   if (!Array.isArray(rows)) throw Error('visits: tableau attendu');
+  const storeIds = new Set(stores.filter(store => store?.id != null).map(store => String(store.id)));
   const ids = new Set();
+  const inProgressStores = new Set();
   for (const row of rows) {
     // Pre-existing opaque placeholders remain readable, never interpreted as visits.
     if (!row || !Object.hasOwn(row, 'visitVersion')) continue;
@@ -23,6 +25,11 @@ export function validateVisits(rows) {
       || ids.has(row.id) || rows.filter(other => other?.id === row.id).length !== 1 || !['in_progress', 'completed', 'cancelled'].includes(row.status)) throw Error('visits: visite invalide ou identifiant dupliqué');
     ids.add(row.id);
     if (row.source === 'native') {
+      if (!storeIds.has(row.storeId)) throw Error('visits: magasin introuvable');
+      if (row.status === 'in_progress') {
+        if (inProgressStores.has(row.storeId)) throw Error('visits: plusieurs visites en cours pour un magasin');
+        inProgressStores.add(row.storeId);
+      }
       if (!isInstant(row.startedAt)) throw Error('visits: début invalide');
       if (row.status === 'completed') {
         if (!isInstant(row.completedAt) || row.completedAt < row.startedAt || !isDate(row.completedDate)) throw Error('visits: fin invalide');
@@ -44,7 +51,7 @@ export function createVisitsService({ store, persist, now = () => new Date(), ma
   function commit(mutate) {
     const next = store.getState();
     const result = mutate(next);
-    validateVisits(next.visits);
+    validateVisits(next.visits, next.stores);
     const saved = persist(next); // An unavailable disk must not turn a visit into a false success.
     if (saved && typeof saved.then === 'function') throw new TypeError('persist: sauvegarde synchrone obligatoire');
     store.replace(next);
