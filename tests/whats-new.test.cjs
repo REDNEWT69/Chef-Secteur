@@ -39,7 +39,7 @@ for(const release of MODULE.RELEASES){
 }
 assert(MODULE.releaseFor('226'),'la V226 doit être décrite');
 assert.equal(MODULE.releaseFor('999'),null,'une version inconnue ne doit rien inventer');
-assert.equal(MODULE.displayVersion('20260919-whatsnew226'),'226','la version lisible se déduit du build');
+assert.equal(MODULE.displayVersion('20260919-fixture226'),'226','la version lisible se déduit du build');
 
 // --- DOM de fortune : uniquement ce dont le module se sert ----------------------------
 function makeEl(tag,doc){
@@ -87,8 +87,8 @@ function makeDocument(){
   return doc;
 }
 
-const BUILD='20260919-whatsnew226';
-const BUILD_PRECEDENT='20260919-planning226';
+const BUILD='20260919-fixture226';
+const BUILD_PRECEDENT='20260918-fixture225';
 
 function makeStorage(seed){
   const map=new Map(Object.entries(seed||{}));
