@@ -1,4 +1,5 @@
 import { STATE_VERSION } from './state.mjs';
+import { validateVisits } from '../visits/visits.mjs';
 
 export class V2ValidationError extends Error {
   constructor(path, message) {
@@ -31,6 +32,7 @@ export function validateState(state) {
   requirePlainObject(state, 'profile');
   requireArray(state, 'stores');
   requireArray(state, 'visits');
+  validateVisits(state.visits, state.stores);
   requireArray(state, 'actions');
   requireArray(state, 'appointments');
   requirePlainObject(state, 'planning');

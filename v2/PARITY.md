@@ -15,7 +15,7 @@ Cette matrice décrit l’état réellement présent dans le dépôt. Elle sert 
 | Multi-semaines | oui | `src/planning/range.mjs`, `range-ui.mjs` | livré | consolider les contraintes métier finales |
 | Tournée 3 semaines / rotation | oui | moteur V2 planning | livré | validation terrain |
 | Outils terrain planning | oui | `terrain-tools.mjs`, `teamhaven.mjs` | livré en test | vérifier la parité d’usage réelle |
-| Visites | oui | conteneur `visits` dans le schéma seulement | manquant | reconstruire le workflow utilisé en V1 |
+| Visites | oui | `src/visits/*`, fiche magasin, stockage local | socle natif V2-08A (#355) | observer un export V1 peuplé avant sa migration ; validation terrain |
 | 6P / Actions | oui | conteneur `actions` dans le schéma seulement | manquant | reconstruire après Visit |
 | Opportunités | oui | non migrées depuis `businessV2` | manquant | décider du modèle V2 après Visit / Action |
 | Rendez-vous / historique | oui | conteneur `appointments` seulement | manquant | construire UI + persistance + migration |
@@ -37,7 +37,7 @@ Actuellement migrés :
 
 Actuellement non migrés et signalés dans le rapport :
 
-- visites ;
+- visites V1 peuplées ou ambiguës (seul `{}` est reconnu, avec zéro visite) ;
 - notes ;
 - inclusions / locks ;
 - rendez-vous ;
@@ -45,6 +45,8 @@ Actuellement non migrés et signalés dans le rapport :
 - `businessV2` ;
 - cache Google Agenda ;
 - archive / range / catalog lorsque présents.
+
+Le réimport conserve les visites V2 existantes sans doublons ; il refuse un secteur qui omet un magasin lié à ces visites. Aucun historique V1 n’est inféré de `lastVisit` ou `history`.
 
 Le convertisseur doit rester conservateur : aucune donnée non comprise ne doit être transformée par approximation.
 

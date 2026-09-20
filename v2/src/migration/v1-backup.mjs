@@ -7,6 +7,7 @@
 
 import { createEmptyState } from '../core/state.mjs';
 import { validateState } from '../core/validate.mjs';
+import { isVisit } from '../visits/visits.mjs';
 
 export class V1MigrationError extends Error {
   constructor(path, message) {
@@ -111,7 +112,6 @@ const SETTINGS_FIELDS = Object.freeze([
 // exactement ce qui reste uniquement dans V1. L'exclusion planning est, elle,
 // migrée vers planning.excludedStoreIds car elle modifie directement le vivier.
 const UNSUPPORTED_STATE_FIELDS = Object.freeze([
-  'visits',
   'notes',
   'included',
   'locks',
@@ -185,7 +185,7 @@ function unsupportedWarnings(state, backup) {
   return warnings;
 }
 
-export function migrateV1Backup(backup) {
+export function migrateV1Backup(backup, currentState = null) {
   if (!isPlainObject(backup)) throw new V1MigrationError('$', 'objet de sauvegarde attendu');
   if (backup.format !== 'ChefSecteurBackup') {
     throw new V1MigrationError('format', '"ChefSecteurBackup" attendu');
@@ -203,16 +203,31 @@ export function migrateV1Backup(backup) {
   const excludedStoreIds = migrateExcludedStoreIds(backup.state, next.stores);
   next.planning = { weeks: {}, excludedStoreIds };
 
+  // No populated V1 visit format has been observed/documented. Preserve V2
+  // visits verbatim and report V1 content; never infer dates from legacy code.
+  if (currentState) {
+    validateState(currentState);
+    const known = new Set(next.stores.map(row => String(row.id)));
+    if (currentState.visits.some(row => isVisit(row) && !known.has(row.storeId))) {
+      throw new V1MigrationError('state.stores', 'un magasin avec visites V2 conservées manque dans cette sauvegarde');
+    }
+    next.visits = clone(currentState.visits);
+  }
+  const rawVisits = backup.state.visits;
+  const visitStatus = rawVisits === undefined ? 'absent'
+    : isPlainObject(rawVisits) && Object.keys(rawVisits).length === 0 ? 'empty' : 'not_migrated';
   const state = validateState(next);
   const activeStores = state.stores.filter(store => store.active !== false).length;
   const gpsStores = state.stores.filter(store =>
     finiteCoordinate(store.lat, -90, 90) !== null && finiteCoordinate(store.lon, -180, 180) !== null
   ).length;
   const warnings = unsupportedWarnings(backup.state, backup);
+  if (visitStatus === 'not_migrated') warnings.push('state.visits non migré : format peuplé ou ambigu non documenté');
 
   return Object.freeze({
     state: clone(state),
     report: Object.freeze({
+      visits: Object.freeze({ status: visitStatus, migrated: 0, preservedV2Entries: next.visits.length }),
       totalStores: state.stores.length,
       activeStores,
       excludedStores: excludedStoreIds.length,
@@ -223,7 +238,7 @@ export function migrateV1Backup(backup) {
   });
 }
 
-export function parseAndMigrateV1Backup(text) {
+export function parseAndMigrateV1Backup(text, currentState = null) {
   if (typeof text !== 'string') throw new V1MigrationError('$', 'texte JSON attendu');
   let parsed;
   try {
@@ -231,5 +246,5 @@ export function parseAndMigrateV1Backup(text) {
   } catch (error) {
     throw new V1MigrationError('$', 'JSON invalide');
   }
-  return migrateV1Backup(parsed);
+  return migrateV1Backup(parsed, currentState);
 }

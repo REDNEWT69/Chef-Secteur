@@ -35,7 +35,7 @@
       "maxVisitsPerDay": 2,
       "visitCreditsByBrand": {"Import Alpha":1}
     },
-    "visits": [],
+    "visits": {},
     "actions": [],
     "appointments": [],
     "notes": [{"id":"legacy-note","text":"Reste volontairement dans V1"}],

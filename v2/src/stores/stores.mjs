@@ -1,3 +1,6 @@
+import { createVisitsService } from '../visits/visits.mjs';
+import { appendStoreVisits } from '../visits/visits-ui.mjs';
+
 // Store Runner V2 — feature Magasins.
 // Propriétaire unique de la liste, de la recherche et de la fiche magasin.
 // Le shell reste propriétaire de la structure globale et reçoit simplement
@@ -68,6 +71,18 @@ function appendTextElement(doc, parent, tagName, className, text) {
 
 export function createStoresFeature(options) {
   const { document: doc, store } = requireOptions(options);
+  const service = typeof options.persist === 'function' ? createVisitsService({ store, persist: options.persist }) : null;
+  const guard = options.guard && typeof options.guard.run === 'function' ? options.guard : null;
+  // Chaque mutation Visites traverse la garde : verrou partagé puis refus si un
+  // autre onglet a écrit depuis la lecture de celui-ci.
+  const visits = service && guard
+    ? Object.freeze({
+      start: storeId => guard.run(() => service.start(storeId)),
+      finish: id => guard.run(() => service.finish(id)),
+      cancel: id => guard.run(() => service.cancel(id)),
+      history: id => service.history(id),
+    })
+    : service;
   let query = '';
   let selectedId = null;
   let latestState = store.getState();
@@ -152,6 +167,7 @@ export function createStoresFeature(options) {
     if (selected.adresse) appendTextElement(doc, body, 'p', 'srv2-store-detail-address', String(selected.adresse));
     if (selected.active === false) appendTextElement(doc, body, 'p', 'srv2-store-detail-status', 'Magasin inactif');
 
+    appendStoreVisits(doc, body, state, selected.id, visits);
     detailPanel.replaceChildren(head, body);
     detail.hidden = false;
   }
