@@ -662,7 +662,7 @@ setTimeout(function(){try{applyAppointmentsToPlan();save();renderAll();decorateW
           '<div><div class="tlName">'+esc(st.enseigne+' '+st.ville)+'</div>'+
           '<div class="tlMeta">'+esc(st.adresse||'')+(st.dept?' · '+esc(st.dept):'')+'</div>'+
           (appt?'<div class="tlAppointment">◷ '+esc(appt.type||'Rendez-vous')+' · '+esc(appt.time)+'</div>':'')+
-          (pinned?'<div class="tlPinned" title="Visite posée à la main : la génération automatique ne la déplacera pas.">📌 Posé à la main</div>':'')+
+          (pinned?'<div class="tlPinned" title="Visite posée à la main : la génération automatique ne la déplacera pas.">📌 Visite placée manuellement</div>':'')+
           '</div>'+
           '<div class="tlRight"><span class="tlBadge '+bc+'">'+esc(st.enseigne)+'</span><span class="tlDuration">'+x.duration+' min</span><span class="tlChevron">›</span></div>'+
         '</div></div>'

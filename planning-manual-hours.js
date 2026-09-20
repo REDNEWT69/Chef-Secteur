@@ -144,9 +144,7 @@
       `#${DIALOG_ID} .mhActions button{min-height:48px;border:0;border-radius:15px;font-size:14px;font-weight:850}` +
       `#${DIALOG_ID} .mhSave{background:#1428a0;color:#fff}` +
       `#${DIALOG_ID} .mhAuto{background:rgba(235,238,244,.9);color:#1d1d1f}` +
-      `#${DIALOG_ID} .mhClose{background:#111217;color:#fff}` +
-      `.tlManualHint{margin-top:5px;font-size:10.5px;line-height:1.35;font-weight:750;color:#1428a0}` +
-      `.tlManualHint.tlManualImpossible{color:#b42318}`;
+      `#${DIALOG_ID} .mhClose{background:#111217;color:#fff}`;
     doc.head.appendChild(style);
   }
 
