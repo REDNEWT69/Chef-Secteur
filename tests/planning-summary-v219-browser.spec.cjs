@@ -34,6 +34,12 @@ test('Planning masque les résumés redondants et garde le détail dans Pilotage
   const planningTop=page.locator('#planningProTop');
   await expect(planningTop).toBeVisible();
 
+  /* Le point de départ reste éditable dans le header / Secteur mais sa grande carte
+     n'a plus de raison de prendre de la hauteur dans le Planning. */
+  const departureCard=page.locator('#planPanel .departureCard');
+  await expect(departureCard).toHaveCount(1);
+  await expect(departureCard).not.toBeVisible();
+
   /* Les alertes opérationnelles restent dans Planning. Seul le duo de reporting
      « Qualité du planning / Cette semaine » disparaît, car ces infos existent déjà
      dans les tuiles d'accueil et dans le détail d'activité. */
