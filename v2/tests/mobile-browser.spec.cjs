@@ -179,6 +179,67 @@ test('V2-03 Magasins : liste, recherche et fiche restent tactiles à 390 px', as
 // V2-08A stays in the mobile entry point already selected by the full CI.
 const visitsFixture = require('../fixtures/v1-backup-demo.json');
 const visitsStorageKey = 'store_runner_v2_state';
+
+test('V2-08A : un onglet périmé ne peut écraser une visite ni par import', async ({ page, context }) => {
+  await page.goto(V2_URL); await importVisitsFixture(page); await openVisitsStore(page);
+  const other = await context.newPage();
+  await other.goto(V2_URL); await openVisitsStore(other);
+  await page.locator('.srv2-visit-start').tap();
+  await page.locator('.srv2-visit-finish').tap();
+  await expect(page.locator('.srv2-visit-history li')).toHaveCount(1);
+  const completed = await readVisitsState(page);
+
+  await other.locator('.srv2-visit-start').tap();
+  await expect(other.locator('.srv2-visit-status')).toContainText('autre onglet');
+  expect(await readVisitsState(other)).toEqual(completed);
+  await expect(other.locator('.srv2-visit-finish')).toHaveCount(0);
+  await other.reload(); await openVisitsStore(other);
+  await expect(other.locator('.srv2-visit-history li')).toHaveCount(1);
+  await other.locator('.srv2-visit-start').tap();
+  await expect(other.locator('.srv2-visit-finish')).toBeVisible();
+  const newer = await readVisitsState(other);
+  expect(newer.visits).toHaveLength(2);
+  expect(newer.visits[0]).toEqual(completed.visits[0]);
+
+  await page.locator('.srv2-store-detail-close').tap();
+  await page.locator('.srv2-tab[data-tab="more"]').tap();
+  await page.locator('.srv2-data-import-input').setInputFiles({
+    name: 'synthetic-stale-import.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(visitsFixture)),
+  });
+  await expect(page.locator('.srv2-data-tools-status')).toContainText('autre onglet');
+  expect(await readVisitsState(page)).toEqual(newer);
+  await page.reload(); await openVisitsStore(page);
+  await expect(page.locator('.srv2-visit-status')).toHaveText('Visite en cours');
+  await expect(page.locator('.srv2-visit-history li')).toHaveCount(1);
+});
+
+test('V2-08A : deux écritures simultanées attendent le même verrou', async ({ page, context }) => {
+  await page.goto(V2_URL); await importVisitsFixture(page); await openVisitsStore(page);
+  const other = await context.newPage();
+  await other.goto(V2_URL); await openVisitsStore(other);
+  const before = await readVisitsState(page);
+  await page.evaluate(key => new Promise(acquired => {
+    navigator.locks.request(key, () => new Promise(release => {
+      window.releaseVisitTestLock = release; acquired();
+    }));
+  }), visitsStorageKey);
+  try {
+    await Promise.all([page.locator('.srv2-visit-start').tap(), other.locator('.srv2-visit-start').tap()]);
+    await expect.poll(() => page.evaluate(async key =>
+      (await navigator.locks.query()).pending.filter(lock => lock.name === key).length, visitsStorageKey)).toBe(2);
+    expect(await readVisitsState(page)).toEqual(before);
+  } finally {
+    await page.evaluate(() => window.releaseVisitTestLock());
+  }
+  await expect.poll(async () => {
+    const statuses = await Promise.all([page, other].map(tab => tab.locator('.srv2-visit-status').textContent()));
+    return statuses.filter(status => status.includes('autre onglet')).length;
+  }).toBe(1);
+  const persisted = await readVisitsState(page);
+  expect(persisted.visits).toHaveLength(1);
+  expect(persisted.visits[0].status).toBe('in_progress');
+});
 async function importVisitsFixture(page, visits = {}) {
   await page.locator('.srv2-tab[data-tab="more"]').tap();
   const backup = JSON.parse(JSON.stringify(visitsFixture)); backup.state.visits = visits;
