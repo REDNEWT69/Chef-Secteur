@@ -25,6 +25,17 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'229',
+      title:'Suivre vos contrats cuisinistes du premier contact à la signature',
+      items:[
+        'Chaque magasin cuisiniste affiche où en est votre démarche commerciale : à proposer, proposition présentée, contrat envoyé, en attente de signature, signé ou à renouveler.',
+        'Notez en deux gestes ce que vous venez de faire (visite, appel, relance, devis, signature) et ce que vous prévoyez ensuite, avec une date.',
+        'Store Runner vous alerte quand une relance est en retard ou quand un contrat approche de sa fin.',
+        'L’espace Cuisinistes regroupe tous vos magasins avec un filtre par situation pour voir d’un coup d’œil ce qui demande une action.',
+        'Les contrats importés depuis vos fichiers restent intacts : le suivi commercial s’ajoute à côté sans jamais les modifier.'
+      ]
+    },
+    {
       version:'228',
       title:'Ajouter et retrouver un magasin devient simple',
       items:[

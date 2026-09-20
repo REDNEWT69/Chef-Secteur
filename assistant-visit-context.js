@@ -58,13 +58,22 @@ if(typeof module!=='undefined')module.exports=api;
   'use strict';
   if(!root.document)return;
   const rev=String(root.__STORE_RUNNER_BUILD_REV||'v225');
+  function loadFollowupV229(){
+    if(root.StoreRunnerCuisinisteFollowupV229||root.document.getElementById('sr-cuisiniste-followup-v229-script'))return;
+    const f=root.document.createElement('script');
+    f.id='sr-cuisiniste-followup-v229-script';
+    f.src='./cuisiniste-followup-v229.js?rev='+encodeURIComponent(rev);
+    f.async=false;
+    root.document.head.appendChild(f);
+  }
   function loadProposalV225(){
-    if(root.StoreRunnerCuisinisteProposalV225||root.document.getElementById('sr-cuisiniste-proposal-v225-script'))return;
+    if(root.StoreRunnerCuisinisteProposalV225||root.document.getElementById('sr-cuisiniste-proposal-v225-script')){loadFollowupV229();return}
     const p=root.document.createElement('script');
     p.id='sr-cuisiniste-proposal-v225-script';
     p.src='./cuisiniste-contract-proposal-v225.js?rev='+encodeURIComponent(rev);
     p.async=false;
     root.document.head.appendChild(p);
+    loadFollowupV229();
   }
   function loadCuisinisteV193(){
     if(root.StoreRunnerCuisinisteV193){loadProposalV225();return}

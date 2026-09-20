@@ -210,7 +210,7 @@ function attachObservers(){if(!root.document)return;if(!visitObserver){const d=r
 function install(){ensureStyle();ensureMenuEntry();attachObservers();renderStoreCard();queueVisitRender();return true}
 function scheduleInstall(){setTimeout(install,0);setTimeout(install,350);setTimeout(install,1200)}
 
-const api={STORE_KEY,HITLIST_COLUMNS,TRACKING_COLUMNS,sectorsIn,readSheetByColumns,norm,cityKey,parseHitLabel,extractHitlist,parseTrackingWorkbook,parseTariffWorkbook,saveTracking,saveTariff,latestTracking,latestTariff,readStore,writeStore,siteForStore,db,siteLabel,rememberMatch,resolveSites,appStoreScore,productInfo,urgency,briefingForStore,planningSignal,compactContext,answer,visitTips,open,install,importTracking,importTariff,renderStoreCard,createBriefing};
+const api={STORE_KEY,HITLIST_COLUMNS,TRACKING_COLUMNS,sectorsIn,readSheetByColumns,norm,cityKey,parseHitLabel,extractHitlist,parseTrackingWorkbook,parseTariffWorkbook,saveTracking,saveTariff,latestTracking,latestTariff,readStore,writeStore,siteForStore,db,siteLabel,rememberMatch,resolveSites,appStoreScore,productInfo,urgency,briefingForStore,planningSignal,compactContext,answer,visitTips,open,install,importTracking,importTariff,renderStoreCard,renderSheet,createBriefing};
 root.StoreRunnerCuisinisteV193=api;
 if(typeof root.storeRunnerRegisterAssistantResolver==='function')root.storeRunnerRegisterAssistantResolver(answer,25);
 if(typeof root.storeRunnerRegisterAssistantContextTransform==='function')root.storeRunnerRegisterAssistantContextTransform(compactContext,75);

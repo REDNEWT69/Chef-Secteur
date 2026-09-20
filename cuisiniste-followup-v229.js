@@ -375,10 +375,49 @@
     catch (error) { if (typeof root.showError === 'function') root.showError(error.message || String(error)); }
   }
 
-  function proposalFor(site) {
+  /* V225 possède les règles de proposition (2 à 5 références, « pas d'expo », objectif
+     présent, groupement). On ne les réécrit pas : on lui fournit une allocation et on
+     affiche telle quelle l'erreur qu'il renvoie. */
+  function proposalEngine() {
     const p = root.StoreRunnerCuisinisteProposalV225;
-    if (!p || typeof p.buildProposal !== 'function' || !site) return null;
-    try { return p.buildProposal(site.storeId || site.key); } catch (e) { return null; }
+    return p && typeof p.buildProposal === 'function' && typeof p.eligibleProducts === 'function' ? p : null;
+  }
+
+  function proposalAvailable(site) {
+    const p = proposalEngine();
+    if (!p || !site || !site.storeId) return false;
+    try { return p.eligibleProducts(storage()).length >= (p.MIN_PRODUCTS || 2); } catch (e) { return false; }
+  }
+
+  function askProposal(siteKey, site) {
+    const p = proposalEngine();
+    if (!p || !site || !site.storeId) return;
+    let eligible = [];
+    try { eligible = p.eligibleProducts(storage()); } catch (e) { eligible = []; }
+    const refs = eligible.map(x => p.productRef(x)).filter(Boolean);
+    if (!refs.length) return;
+    const min = p.MIN_PRODUCTS || 2, max = p.MAX_PRODUCTS || 5;
+    const answer = root.prompt(
+      'Références expo à proposer (' + min + ' à ' + max + '), séparées par une virgule.\n' +
+      'Disponibles : ' + refs.slice(0, 12).join(', ') + (refs.length > 12 ? '…' : ''),
+      refs.slice(0, min).join(', '));
+    if (answer === null) return;
+    const chosen = String(answer).split(',').map(x => x.trim()).filter(Boolean);
+    let built = null;
+    try { built = p.buildProposal(storage(), [{ storeId: site.storeId, refs: chosen }], (root.state && root.state.stores) || []); }
+    catch (error) {
+      const message = (error && error.message) || String(error);
+      if (typeof root.showError === 'function') root.showError(message);
+      else if (typeof root.alert === 'function') root.alert(message);
+      return;
+    }
+    const lines = (built.products || []).map(x => x.ref).filter(Boolean);
+    try {
+      addAction(storage(), siteKey, { type: 'proposition', note: 'Proposition préparée : ' + lines.join(' · ') });
+      refresh();
+    } catch (e) {}
+    if (typeof root.storeRunnerToast === 'function') root.storeRunnerToast('Proposition prête : ' + lines.join(' · '));
+    else if (typeof root.alert === 'function') root.alert('Proposition prête : ' + lines.join(' · '));
   }
 
   /* Bloc de suivi commercial, posé juste avant la carte contrat de V193 pour respecter
@@ -436,16 +475,11 @@
     const remind = el('button', 'Programmer une relance', 'fuWide'); remind.type = 'button';
     remind.addEventListener('click', () => askReminder(siteKey));
     actions.append(add, statusBtn, remind);
-    if (proposalFor(site)) {
+    if (proposalAvailable(site)) {
       const propose = el('button', 'Préparer une proposition', 'fuWide');
       propose.type = 'button';
-      propose.addEventListener('click', () => {
-        const built = proposalFor(site);
-        if (!built) return;
-        const lines = (built.products || built.lines || []).map(x => x.ref || x.reference || '').filter(Boolean);
-        if (typeof root.storeRunnerToast === 'function') root.storeRunnerToast('Proposition prête : ' + (lines.join(' · ') || 'voir Contrats expo'));
-        else if (typeof root.alert === 'function') root.alert('Proposition : ' + (lines.join(' · ') || 'voir Contrats expo'));
-      });
+      propose.id = 'srCuisineFollowupPropose';
+      propose.addEventListener('click', () => askProposal(siteKey, site));
       actions.appendChild(propose);
     }
     section.appendChild(actions);

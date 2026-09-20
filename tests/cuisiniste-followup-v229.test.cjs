@@ -153,6 +153,20 @@ for (const forbidden of ['store.type', 'trackingImports=', 'tariffImports=', 'ma
 const V193SRC = fs.readFileSync(__dirname + '/../cuisiniste-contracts-v193.js', 'utf8');
 assert(/followups:p\.followups/.test(V193SRC), 'readStore doit préserver followups, sinon un import l’efface');
 assert(/writeStore,siteForStore/.test(V193SRC), 'V193 expose sa porte d’écriture au suivi');
+assert(/,renderSheet,/.test(V193SRC), 'l’écran central doit pouvoir se redessiner quand le filtre change');
+
+// --- 12. Proposition V225 : on lui délègue les règles, on ne les réécrit pas ---------
+const V225SRC = fs.readFileSync(__dirname + '/../cuisiniste-contract-proposal-v225.js', 'utf8');
+assert(/function buildProposal\(db=storage\(\),allocation,list=stores\(\)\)/.test(V225SRC),
+  'signature V225 de référence : (stockage, allocation, magasins)');
+assert(/p\.buildProposal\(storage\(\), \[\{ storeId: site\.storeId, refs: chosen \}\], \(root\.state && root\.state\.stores\)/.test(CODE),
+  'V229 appelle buildProposal avec une vraie allocation, sinon le bouton ne produirait jamais rien');
+assert(/p\.eligibleProducts\(storage\(\)\)/.test(CODE), 'les références proposables viennent du tarif V225, pas d’une liste recopiée');
+for (const rule of ['pas d’expo', 'MIN_PRODUCTS =', 'MAX_PRODUCTS =', 'contractObjective']) {
+  assert(!CODE.includes(rule), 'la règle de proposition reste chez V225 : ' + rule);
+}
+assert(/addAction\(storage\(\), siteKey, \{ type: 'proposition'/.test(CODE),
+  'une proposition préparée entre dans l’historique commercial');
 
 // --- 3, 6, 7, 8. Canal magasin : on réutilise le helper V228 -------------------------
 const RUNTIME = fs.readFileSync(__dirname + '/../src/chef-secteur.html', 'utf8');
