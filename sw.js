@@ -1,4 +1,4 @@
-const BUILD_REV = "20260920-hours226";
+const BUILD_REV = "20260920-visithours226";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -63,6 +63,7 @@ const OPTIONAL_SHELL = [
   "./connection-ui.js",
   "./update-manager.js",
   "./store-runner-whats-new.js",
+  "./planning-manual-hours.js",
   "./reliability-core.js",
   "./glass-theme.css",
   "./reliability-ui.js",

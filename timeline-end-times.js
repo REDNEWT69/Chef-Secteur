@@ -4,6 +4,7 @@
   const STYLE_ID='timeline-hours-clarity-css';
   const LEGEND_ID='planningHoursLegend';
   const TRAVEL_CLASS='tlTravelHint';
+  const MANUAL_CLASS='tlManualHint';
 
   function mins(t){const m=String(t||'').match(/(\d{1,2}):(\d{2})/);return m?(+m[1])*60+(+m[2]):null}
   function clock(v){v=((Math.round(v)%1440)+1440)%1440;return String(Math.floor(v/60)).padStart(2,'0')+':'+String(v%60).padStart(2,'0')}
@@ -53,8 +54,29 @@
     return legend;
   }
 
+  /* Un horaire imposé est écrit dans state.appointments et appliqué par le même
+     ordonnanceur : on ne fait que le nommer, avec l'heure au plus tôt quand il ne
+     peut pas être tenu. */
+  function manualLabel(row){
+    const api=window.StoreRunnerManualHours;
+    if(!api||!row||!api.isManual(row.appointment))return null;
+    const appointment=row.appointment;
+    const parts=['◷ Arrivée imposée '+appointment.time];
+    if(appointment.endTime)parts.push('départ '+appointment.endTime);
+    /* L'heure réellement tenable est celle que l'ordonnanceur a retenue : elle tient
+       compte du trajet, mais aussi de l'ouverture et de l'Agenda, là où nominalArrival
+       ne couvre que le trajet. */
+    const nominal=Number(row.nominalArrival),planned=Number(row.arrival);
+    const earliest=Number.isFinite(planned)?Math.max(Number.isFinite(nominal)?nominal:planned,planned):nominal;
+    const wanted=api.minutes(appointment.time);
+    if(Number.isFinite(earliest)&&wanted!=null&&wanted<Math.round(earliest)){
+      return {text:parts.join(' · ')+' — impossible : au plus tôt '+api.clock(earliest),impossible:true};
+    }
+    return {text:parts.join(' · '),impossible:false};
+  }
+
   /* Lecture seule de l'ordonnanceur existant : aucun recalcul d'itinéraire ici. */
-  function travelByRow(){
+  function scheduleRows(){
     try{
       const api=window.StoreOpeningHoursV1;
       if(!api||typeof api.scheduleRoute!=='function')return null;
@@ -63,7 +85,7 @@
       const route=day&&plan?plan[day]:null;
       if(!route||!route.length)return null;
       const schedule=api.scheduleRoute(route,day,window.state);
-      return schedule&&Array.isArray(schedule.rows)?schedule.rows.map(r=>r&&r.travel):null;
+      return schedule&&Array.isArray(schedule.rows)?schedule.rows:null;
     }catch(e){return null}
   }
 
@@ -78,7 +100,7 @@
     }
     css();
     if(week)ensureLegend(week);
-    const travels=travelByRow();
+    const rowsSchedule=scheduleRows();
     storeRows.forEach(function(row,index){
       const t=row.querySelector('.tlTime'),d=row.querySelector('.tlDuration');
       if(t&&d){
@@ -90,19 +112,25 @@
           if(d.textContent!==label)d.textContent=label;
         }
       }
-      if(!travels)return;
-      const text=travelLabel(travels[index],index===0);
-      let hint=row.querySelector('.'+TRAVEL_CLASS);
-      if(!text){if(hint&&!hint.hidden)hint.hidden=true;return}
-      if(!hint){
-        const target=row.querySelector('.tlMain>div:first-child')||row.querySelector('.tlMain');
-        if(!target)return;
-        hint=document.createElement('div');
-        hint.className=TRAVEL_CLASS;
-        target.appendChild(hint);
+      if(!rowsSchedule)return;
+      const target=row.querySelector('.tlMain>div:first-child')||row.querySelector('.tlMain');
+      if(!target)return;
+      const item=rowsSchedule[index];
+
+      function line(className,text,impossible){
+        let hint=row.querySelector('.'+className);
+        if(!text){if(hint&&!hint.hidden)hint.hidden=true;return}
+        if(!hint){hint=document.createElement('div');hint.className=className;target.appendChild(hint)}
+        if(hint.textContent!==text)hint.textContent=text;
+        if(hint.hidden)hint.hidden=false;
+        const flagged=className+' tlManualImpossible';
+        const wanted=impossible?flagged:className;
+        if(hint.className!==wanted)hint.className=wanted;
       }
-      if(hint.textContent!==text)hint.textContent=text;
-      if(hint.hidden)hint.hidden=false;
+
+      const manual=manualLabel(item);
+      line(MANUAL_CLASS,manual?manual.text:'',!!(manual&&manual.impossible));
+      line(TRAVEL_CLASS,travelLabel(item&&item.travel,index===0),false);
     });
   }
 
