@@ -28,7 +28,25 @@ function ensureRules(){
   try{if(typeof window.save==='function')window.save()}catch(e){console.warn('Crédits de visite non persistés',e)}
   return true;
 }
-function visitCredit(store){
+/* Un élément de state.plan n'est pas toujours une copie complète du magasin : selon le
+   chemin qui l'a écrit (génération, archive relue, transfert JSON), il peut être réduit
+   à { id }. Lire l'enseigne ou l'override sur cette copie donne alors 1 crédit pour un
+   Darty. La source de vérité est state.stores : on y retrouve le magasin par son id avant
+   tout calcul. Sans magasin canonique, on garde l'objet reçu — jamais d'exception, jamais
+   de crédit inventé. */
+function canonicalStore(entry){
+  if(!entry||typeof entry!=='object')return entry||null;
+  const id=entry.id;
+  if(id==null||id==='')return entry;
+  try{
+    const list=(window.state&&Array.isArray(state.stores))?state.stores:null;
+    if(!list||!list.length)return entry;
+    const found=list.find(s=>s&&String(s.id)===String(id));
+    return found||entry;
+  }catch(e){return entry}
+}
+function visitCredit(entry){
+  const store=canonicalStore(entry);
   if(!store)return 0;
   const own=Number(store.visitCreditOverride);
   if(own===1||own===2)return own;
@@ -42,7 +60,9 @@ function visitCredit(store){
   return 1;
 }
 function routeCredits(route){return (route||[]).reduce((n,s)=>n+visitCredit(s),0)}
-function visitDuration(store,stateArg){
+function visitDuration(entry,stateArg){
+  /* Même raison que pour le crédit : une copie partielle a perdu visitMinutes. */
+  const store=canonicalStore(entry);
   const own=Number(store&&store.visitMinutes);
   if(Number.isFinite(own)&&own>=15&&own<=480)return Math.round(own);
   let fallback=60;
@@ -50,7 +70,7 @@ function visitDuration(store,stateArg){
   return Math.max(15,Math.min(480,Math.round(fallback)))
 }
 function routeVisitMinutes(route,stateArg){return (route||[]).reduce((n,s)=>n+visitDuration(s,stateArg),0)}
-function isBoulanger(store){const brand=norm(store&&store.enseigne);return /(^| )boulanger( |$)/.test(brand)}
+function isBoulanger(entry){const store=canonicalStore(entry),brand=norm(store&&store.enseigne);return /(^| )boulanger( |$)/.test(brand)}
 /*
  * Boulanger garde sa réserve de capacité uniquement quand CE magasin compte réellement
  * double. Si l'utilisateur règle un Boulanger précis à 1 visite, le planificateur respecte
@@ -71,7 +91,9 @@ function planningVisitCredit(store){
 }
 function planStores(plan,days){return (days||DAYS).reduce((n,d)=>n+((plan&&Array.isArray(plan[d]))?plan[d].length:0),0)}
 function planCredits(plan,days){return (days||DAYS).reduce((n,d)=>n+routeCredits((plan&&plan[d])||[]),0)}
-function storeKey(s){const b=norm((s&&s.enseigne)||''),v=norm((s&&s.ville)||''),a=norm((s&&s.adresse)||'');return (b||v||a)?b+'|'+v+'|'+a:'id|'+String((s&&s.id)||'')}
+/* Un magasin ne doit pas compter pour deux magasins distincts selon que l'archive en a
+   gardé une copie complète ou seulement l'id. */
+function storeKey(entry){const s=canonicalStore(entry),b=norm((s&&s.enseigne)||''),v=norm((s&&s.ville)||''),a=norm((s&&s.adresse)||'');return (b||v||a)?b+'|'+v+'|'+a:'id|'+String((s&&s.id)||'')}
 function parse(v){const d=new Date(String(v||'')+'T12:00:00');return isNaN(d)?null:d}
 function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
 function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
@@ -186,7 +208,7 @@ window.storeVisitDuration=visitDuration;
 window.storeVisitMinutesForRoute=routeVisitMinutes;
 window.storeVisitCreditsForPlan=planCredits;
 window.storeVisitStoresForPlan=planStores;
-window.StoreVisitCounting={credit:visitCredit,planningCredit:planningVisitCredit,duration:visitDuration,routeVisitMinutes,routeCredits,planCredits,planStores,archiveStats,normalizeCandidate,reconcileStoredRangeStats,monthArchiveStats,rules};
+window.StoreVisitCounting={canonicalStore,credit:visitCredit,planningCredit:planningVisitCredit,duration:visitDuration,routeVisitMinutes,routeCredits,planCredits,planStores,archiveStats,normalizeCandidate,reconcileStoredRangeStats,monthArchiveStats,rules};
 document.addEventListener('store-runner:reliability-propose-ready',hookReliability);
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();

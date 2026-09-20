@@ -72,6 +72,7 @@ jobs:
       - run: node tests/whats-new.test.cjs
       - run: node tests/visit-counting.test.cjs
       - run: node tests/visit-credits-planning.test.cjs
+      - run: node tests/visit-credits-real-v229.test.cjs
       - run: node tests/planning-manual-pins.test.cjs
       - run: node tests/planning-pin-week-scope.test.cjs
       - run: node tests/stores-reach-count.test.cjs

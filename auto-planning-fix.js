@@ -6,7 +6,6 @@
    sur les événements Store Runner et sur les deux actions de la fiche magasin. */
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 const CREDIT_OVERRIDES_KEY='store-runner-visit-credit-overrides-v189';
-const DEFAULT_CREDITS={darty:2,boulanger:2,but:2,conforama:2,carrefour:1};
 const REMOTE_MIN_KM=55;
 const MIN_USEFUL_OVERNIGHT_KM=20;
 let editingStoreId='';
@@ -31,6 +30,24 @@ function saveCreditOverride(store,credit){
   try{const s=storage();if(s)s.setItem(CREDIT_OVERRIDES_KEY,JSON.stringify(map))}catch(e){}
   return true
 }
+/* « Automatique » n'est pas une troisième valeur stockée : c'est l'ABSENCE d'override.
+   On retire donc la propriété du magasin ET l'entrée persistée, sinon restoreCreditOverrides()
+   la réécrirait au prochain rendu. Les empreintes sont effacées avant et après édition :
+   renommer le magasin dans la même sauvegarde change son empreinte. */
+function clearCreditOverride(store,previousFingerprints){
+  if(!store)return false;
+  delete store.visitCreditOverride;
+  const map=loadCreditOverrides(),keys=[storeFingerprint(store)].concat(previousFingerprints||[]);
+  let touched=false;
+  for(const key of keys)if(Object.prototype.hasOwnProperty.call(map,key)){delete map[key];touched=true}
+  if(touched){try{const s=storage();if(s)s.setItem(CREDIT_OVERRIDES_KEY,JSON.stringify(map))}catch(e){}}
+  return true;
+}
+/* Un seul point d'entrée depuis la fiche magasin : 1, 2, ou null pour la règle enseigne. */
+function applyCreditChoice(store,choice,previousFingerprints){
+  if(choice===1||choice===2)return saveCreditOverride(store,choice);
+  return clearCreditOverride(store,previousFingerprints);
+}
 function restoreCreditOverrides(){
   const map=loadCreditOverrides();let changed=false;
   for(const store of stores()){
@@ -45,58 +62,47 @@ function ensureCarrefourDefault(){
   if(Number(state.settings.visitCreditsByBrand.carrefour)===1)return false;
   state.settings.visitCreditsByBrand.carrefour=1;return true
 }
-function configuredRules(){const configured=(window.state&&state.settings&&state.settings.visitCreditsByBrand)||{},map=Object.assign({},DEFAULT_CREDITS,configured);map.carrefour=1;return map}
-function brandCredit(store){
-  if(!store)return 0;const brand=norm(store.enseigne),map=configuredRules();
-  if(Object.prototype.hasOwnProperty.call(map,brand))return Math.max(1,Number(map[brand])||1);
-  for(const key of Object.keys(map)){const k=norm(key);if(!k)continue;const safe=k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');if(new RegExp('(^| )'+safe+'( |$)').test(brand))return Math.max(1,Number(map[key])||1)}
-  return 1
+/* Le moteur de comptage appartient à visit-counting.js. Ce module n'en garde AUCUNE
+   copie : il délègue. Deux implémentations des mêmes règles finissaient par diverger —
+   c'est ainsi qu'un élément partiel de state.plan restait compté 1 ici après avoir été
+   corrigé là-bas. Le repli ci-dessous ne rejoue aucune table de règles : il sert seulement
+   à ne pas planter si le propriétaire n'est pas chargé. */
+function counting(){try{const V=window.StoreVisitCounting;return V&&typeof V.credit==='function'?V:null}catch(e){return null}}
+function visitCredit(entry){
+  const V=counting();if(V)return V.credit(entry);
+  if(!entry)return 0;const own=Number(entry.visitCreditOverride);return own===1||own===2?own:1;
 }
-function visitCredit(store){if(!store)return 0;const own=Number(store.visitCreditOverride);return own===1||own===2?own:brandCredit(store)}
-function planningCapacityActive(){try{if(window.__storeRunnerPlanningGenerationActive)return true;const b=document.getElementById('generateRangeBtn');return!!(b&&b.disabled)}catch(e){return false}}
-function planningCredit(store){
-  const actual=visitCredit(store),brand=norm(store&&store.enseigne);
-  if(actual<=1||!/(^| )boulanger( |$)/.test(brand)||!planningCapacityActive())return actual;
-  const max=Math.max(1,Math.min(8,Number(window.state&&state.settings&&state.settings.maxVisitsPerDay)||4));return Math.max(actual,Math.max(1,max-1))
-}
-function routeCredits(route){return(route||[]).reduce((n,s)=>n+visitCredit(s),0)}
-function planStores(plan,days){return(days||DAYS).reduce((n,d)=>n+((plan&&Array.isArray(plan[d]))?plan[d].length:0),0)}
-function planCredits(plan,days){return(days||DAYS).reduce((n,d)=>n+routeCredits((plan&&plan[d])||[]),0)}
-function storeKey(s){const b=norm(s&&s.enseigne),v=norm(s&&s.ville),a=norm(s&&s.adresse);return(b||v||a)?b+'|'+v+'|'+a:'id|'+String(s&&s.id||'')}
-function archiveStats(archive,start,end){
-  let count=0,visits=0;const unique=new Set(),from=String(start||'').slice(0,10),to=String(end||'').slice(0,10);
-  for(const [key,snap] of Object.entries(archive||{})){const mon=parse((snap&&snap.weekMonday)||key);if(!mon||!snap||!snap.plan)continue;for(let i=0;i<DAYS.length;i++){const date=iso(addDays(mon,i));if((from&&date<from)||(to&&date>to))continue;for(const s of(snap.plan[DAYS[i]]||[])){count++;visits+=visitCredit(s);unique.add(storeKey(s))}}}
-  return{stores:count,visits,uniqueStores:unique.size}
-}
-function normalizeCandidate(candidate){
-  if(!candidate||!candidate.plan)return candidate;candidate.storeCount=planStores(candidate.plan);candidate.visitCredits=planCredits(candidate.plan);
-  if(candidate.range){const stats=candidate.archive?archiveStats(candidate.archive,candidate.range.start,candidate.range.end):{stores:candidate.storeCount,visits:candidate.visitCredits,uniqueStores:candidate.range.uniqueStores||0};candidate.range.totalStores=stats.stores;candidate.range.totalVisits=stats.visits;candidate.range.uniqueStores=stats.uniqueStores||candidate.range.uniqueStores||0;candidate.range.visitCreditRules=configuredRules()}
-  return candidate
-}
-function reconcileStoredRangeStats(){
-  const db=storage();if(!db)return null;let archive={},range=null;try{archive=JSON.parse(db.getItem('chef_sector_plan_archive_v1')||'{}')||{};range=JSON.parse(db.getItem('chef_sector_range_v1')||'null')}catch(e){return null}
-  if(!range||!range.start||!range.end)return null;const stats=archiveStats(archive,range.start,range.end);range.totalStores=stats.stores;range.totalVisits=stats.visits;range.uniqueStores=stats.uniqueStores;range.visitCreditRules=configuredRules();range.updatedAt=new Date().toISOString();
-  try{db.setItem('chef_sector_range_v1',JSON.stringify(range));if(typeof db.flush==='function'){const p=db.flush();if(p&&typeof p.catch==='function')p.catch(()=>{})}}catch(e){return null}return range
-}
-function monthArchiveStats(year,month){
-  const db=storage();let archive={};try{archive=db?JSON.parse(db.getItem('chef_sector_plan_archive_v1')||'{}')||{}:{}}catch(e){}let count=0,visits=0;const unique=new Set();
-  for(const [key,snap] of Object.entries(archive)){const mon=parse((snap&&snap.weekMonday)||key);if(!mon||!snap||!snap.plan)continue;for(let i=0;i<DAYS.length;i++){const date=addDays(mon,i);if(date.getFullYear()!==year||date.getMonth()!==month)continue;for(const s of(snap.plan[DAYS[i]]||[])){count++;visits+=visitCredit(s);unique.add(storeKey(s))}}}return{stores:count,visits,uniqueStores:unique.size}
-}
+function planningCredit(entry){const V=counting();return V&&typeof V.planningCredit==='function'?V.planningCredit(entry):visitCredit(entry)}
+function routeCredits(route){const V=counting();return V?V.routeCredits(route):(route||[]).reduce((n,s)=>n+visitCredit(s),0)}
+function planStores(plan,days){const V=counting();return V?V.planStores(plan,days):(days||DAYS).reduce((n,d)=>n+((plan&&Array.isArray(plan[d]))?plan[d].length:0),0)}
+function planCredits(plan,days){const V=counting();return V?V.planCredits(plan,days):(days||DAYS).reduce((n,d)=>n+routeCredits((plan&&plan[d])||[]),0)}
+function normalizeCandidate(candidate){const V=counting();return V&&typeof V.normalizeCandidate==='function'?V.normalizeCandidate(candidate):candidate}
 function patchCountingApi(){
-  ensureCarrefourDefault();restoreCreditOverrides();window.storeVisitCredit=planningCredit;window.storeVisitCreditsForRoute=routeCredits;window.storeVisitCreditsForPlan=planCredits;window.storeVisitStoresForPlan=planStores;
-  const V=window.StoreVisitCounting;if(V){V.credit=visitCredit;V.planningCredit=planningCredit;V.routeCredits=routeCredits;V.planCredits=planCredits;V.planStores=planStores;V.archiveStats=archiveStats;V.normalizeCandidate=normalizeCandidate;V.reconcileStoredRangeStats=reconcileStoredRangeStats;V.monthArchiveStats=monthArchiveStats;V.rules=configuredRules}return true
+  /* Ce module possède les overrides par magasin, pas le comptage : il prépare l'état
+     (défaut Carrefour, overrides persistés restaurés) et laisse visit-counting.js
+     propriétaire de StoreVisitCounting et des globales storeVisitCredit*. */
+  ensureCarrefourDefault();restoreCreditOverrides();return true
 }
 
 function ensureStoreRulesUi(){
   const dlg=document.getElementById('storeDlg'),note=document.getElementById('fNote');if(!dlg||!note)return false;if(document.getElementById('srStoreRulesV189'))return true;
   const box=document.createElement('section');box.id='srStoreRulesV189';box.style.cssText='margin:14px 0;padding:13px;border:1px solid #dfe5ef;border-radius:16px;background:#f8fafc';
-  box.innerHTML='<div style="font-weight:850;margin-bottom:7px">Règles de ce magasin</div><label>Ce passage compte pour</label><select id="fVisitCreditOverride"><option value="1">1 visite</option><option value="2">2 visites</option></select><p class="tiny" style="margin:6px 0 12px">Ce choix est propre à ce magasin et remplace la règle de l’enseigne.</p><label>Familles suivies dans ce magasin</label><div class="checkgrid" id="srStoreProductsV189"><label class="checkitem"><input type="checkbox" data-fproduct value="Blanc"> Blanc</label><label class="checkitem"><input type="checkbox" data-fproduct value="Brun"> Brun</label><label class="checkitem"><input type="checkbox" data-fproduct value="Encastrable"> Encastrable</label><label class="checkitem"><input type="checkbox" data-fproduct value="Mobile"> Mobile</label><label class="checkitem"><input type="checkbox" data-fproduct value="TV / Audio"> TV / Audio</label></div><p class="tiny" style="margin:7px 0 0">Blanc et Brun sont indépendants : décoche simplement la famille que le magasin ne travaille pas.</p>';
+  box.innerHTML='<div style="font-weight:850;margin-bottom:7px">Règles de ce magasin</div><label>Ce passage compte pour</label><select id="fVisitCreditOverride"><option value="auto">Automatique · règle enseigne</option><option value="1">1 visite</option><option value="2">2 visites</option></select><p class="tiny" style="margin:6px 0 12px">Automatique suit la règle de l’enseigne. Choisir 1 ou 2 ne vaut que pour ce magasin.</p><label>Familles suivies dans ce magasin</label><div class="checkgrid" id="srStoreProductsV189"><label class="checkitem"><input type="checkbox" data-fproduct value="Blanc"> Blanc</label><label class="checkitem"><input type="checkbox" data-fproduct value="Brun"> Brun</label><label class="checkitem"><input type="checkbox" data-fproduct value="Encastrable"> Encastrable</label><label class="checkitem"><input type="checkbox" data-fproduct value="Mobile"> Mobile</label><label class="checkitem"><input type="checkbox" data-fproduct value="TV / Audio"> TV / Audio</label></div><p class="tiny" style="margin:7px 0 0">Blanc et Brun sont indépendants : décoche simplement la famille que le magasin ne travaille pas.</p>';
   const label=note.previousElementSibling&&note.previousElementSibling.tagName==='LABEL'?note.previousElementSibling:note;dlg.insertBefore(box,label);return true
 }
-function fillStoreRules(id){ensureStoreRulesUi();const store=id?findStore(id):null,select=document.getElementById('fVisitCreditOverride');if(select)select.value=String(store?visitCredit(store):1)}
+/* Absence d'override = Automatique. On ne présélectionne jamais « 1 visite » pour un
+   magasin qui suit simplement sa règle enseigne : ce défaut écrivait un override à la
+   première sauvegarde et faisait tomber un Darty à 1 visite. */
+function fillStoreRules(id){
+  ensureStoreRulesUi();
+  const store=id?findStore(id):null,select=document.getElementById('fVisitCreditOverride');
+  if(!select)return;
+  const own=Number(store&&store.visitCreditOverride);
+  select.value=(own===1||own===2)?String(own):'auto';
+}
 function patchStoreFunctions(){
   if(typeof window.openStore==='function'&&!window.openStore.__v189StoreRules){const original=window.openStore;const wrapped=function(id){editingStoreId=id==null?'':String(id);ensureStoreRulesUi();restoreCreditOverrides();const out=original.apply(this,arguments);fillStoreRules(id);return out};wrapped.__v189StoreRules=true;wrapped.__original=original;window.openStore=wrapped}
-  if(typeof window.saveStore==='function'&&!window.saveStore.__v189StoreRules){const original=window.saveStore;const wrapped=function(){ensureStoreRulesUi();const select=document.getElementById('fVisitCreditOverride'),credit=select&&Number(select.value)===2?2:1,before=new Set(stores().map(s=>String(s.id))),targetId=editingStoreId;const out=original.apply(this,arguments);let store=targetId?findStore(targetId):stores().find(s=>!before.has(String(s.id)))||null;if(store){saveCreditOverride(store,credit);try{if(typeof window.save==='function')window.save()}catch(e){}try{if(typeof window.renderStores==='function')window.renderStores()}catch(e){}refreshCountingUi()}editingStoreId='';return out};wrapped.__v189StoreRules=true;wrapped.__original=original;window.saveStore=wrapped}
+  if(typeof window.saveStore==='function'&&!window.saveStore.__v189StoreRules){const original=window.saveStore;const wrapped=function(){ensureStoreRulesUi();const select=document.getElementById('fVisitCreditOverride'),raw=select?String(select.value):'auto',choice=raw==='1'?1:raw==='2'?2:null,before=new Set(stores().map(s=>String(s.id))),targetId=editingStoreId,edited=targetId?findStore(targetId):null,previousFingerprints=edited?[storeFingerprint(edited)]:[];const out=original.apply(this,arguments);let store=targetId?findStore(targetId):stores().find(s=>!before.has(String(s.id)))||null;if(store){applyCreditChoice(store,choice,previousFingerprints);try{if(typeof window.save==='function')window.save()}catch(e){}try{if(typeof window.renderStores==='function')window.renderStores()}catch(e){}refreshCountingUi()}editingStoreId='';return out};wrapped.__v189StoreRules=true;wrapped.__original=original;window.saveStore=wrapped}
   return true
 }
 function productsLabel(store){return(store&&Array.isArray(store.products)?store.products:[]).filter(x=>x&&x!=='À confirmer').join(' + ')}
@@ -215,5 +221,5 @@ document.addEventListener('store-runner:planning-updated',()=>{repair();refreshC
 document.addEventListener('store-runner:home-rendered',()=>{restoreCreditOverrides();refreshCountingUi();decorateOvernightDay(futureOvernightAnalysis().candidate)});
 window.storeRunnerSaveHotelReservation=saveHotelReservation;
 window.storeRunnerClearHotelReservation=clearHotelReservation;
-window.StoreRunnerStoreControlsV189={visitCredit,planningCredit,saveCreditOverride,restoreCreditOverrides,futureOvernightAnalysis,renderOvernight:renderOvernightV189,saveHotelReservation,clearHotelReservation,hotelReservationFor,repair};
+window.StoreRunnerStoreControlsV189={visitCredit,planningCredit,saveCreditOverride,clearCreditOverride,applyCreditChoice,restoreCreditOverrides,futureOvernightAnalysis,renderOvernight:renderOvernightV189,saveHotelReservation,clearHotelReservation,hotelReservationFor,repair};
 })();
