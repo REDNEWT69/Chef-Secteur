@@ -31,12 +31,31 @@ function selectedDay(){const a=document.querySelector('#dayTabs .dayTab.active')
 function brandClass(v){const n=norm(v);for(const b of ['boulanger','darty','fnac','carrefour','conforama','cuisinella'])if(n.includes(b))return b;return'other'}
 function monthEntries(){const target=currentMonth(),a=archive(),out=[];for(const key of Object.keys(a)){const w=a[key];if(!w||!w.plan)continue;const mon=parseDate(w.weekMonday||key);if(!mon)continue;for(let i=0;i<DAYS.length;i++){const d=addDays(mon,i);if(d.getFullYear()===target.year&&d.getMonth()===target.month)out.push({date:d,day:DAYS[i],route:w.plan[DAYS[i]]||[]})}}return out.sort((a,b)=>a.date-b.date)}
 function monthStats(){const entries=monthEntries();let visits=0,km=0,minutes=0;const unique=new Set();for(const e of entries){visits+=e.route.length;km+=routeKm(e.route);minutes+=routeMinutes(e.route);e.route.forEach(s=>unique.add(String(s.id||s.enseigne+'|'+s.ville)))}let hotels=0;try{for(const r of (state.awayRanges||[])){const d=parseDate(r.start||r.date),m=currentMonth();if(d&&d.getFullYear()===m.year&&d.getMonth()===m.month)hotels++}}catch(e){}return{entries,visits,km,minutes,unique:unique.size,hotels}}
-/* Ordre de priorité : 1 dépassement horaire réel · 2 conflit d'horaire réel · 3 magasin
-   réellement en retard · 4 information secondaire. */
+/* Ordre de priorité : 1 dépassement horaire réel · 2 conflit réel lu chez l'ordonnanceur
+   (rendez-vous intenable, magasin fermé) · 3 journée presque pleine · 4 magasin
+   réellement en retard · 5 information secondaire. */
+/* Lecture seule de l'ordonnanceur existant : c'est lui qui sait qu'un rendez-vous est
+   intenable (trajet, horaires d'ouverture, blocage Agenda) ou qu'un magasin est fermé.
+   routeFinish() ne le voit pas — une journée peut finir largement dans les temps et
+   contenir un vrai conflit. Aucun recalcul d'itinéraire ici, aucun écrit. */
+function dayScheduleIssues(day){
+  try{
+    const api=window.StoreOpeningHoursV1;
+    if(!api||typeof api.scheduleRoute!=='function')return null;
+    const route=(state.plan&&state.plan[day])||[];
+    if(!route.length)return null;
+    const s=api.scheduleRoute(route,day,state);
+    if(!s)return null;
+    return{conflicts:Number(s.appointmentConflicts)||0,closed:Number(s.closedCount)||0};
+  }catch(e){return null}
+}
 function alerts(){const out=[],days=(state.settings&&state.settings.days)||DAYS.slice(0,5);
   for(const day of days){const r=(state.plan&&state.plan[day])||[];if(!r.length)continue;const f=routeFinish(r,day),l=limitForDay(day);
     if(f>l)out.push({type:'bad',rank:1,text:day+' finit vers '+clock(f)+' alors que ta limite est '+clock(l)+'.'});
-    else if(l-f<30)out.push({type:'warn',rank:2,text:day+' est presque plein : fin estimée '+clock(f)+'.'})}
+    const issues=dayScheduleIssues(day);
+    if(issues&&issues.conflicts>0)out.push({type:'bad',rank:2,text:day+' : '+issues.conflicts+' rendez-vous incompatible'+(issues.conflicts>1?'s':'')+' avec la tournée, l’ouverture ou l’Agenda.'});
+    if(issues&&issues.closed>0)out.push({type:'bad',rank:2,text:day+' : '+issues.closed+' magasin'+(issues.closed>1?'s fermés':' fermé')+' à l’heure prévue.'});
+    if(f<=l&&l-f<30)out.push({type:'warn',rank:3,text:day+' est presque plein : fin estimée '+clock(f)+'.'})}
   const planned=new Set();for(const d of DAYS)((state.plan&&state.plan[d])||[]).forEach(s=>planned.add(String(s.id)));
   const late=[],never=[];
   for(const s of allStores()){
@@ -45,9 +64,10 @@ function alerts(){const out=[],days=(state.settings&&state.settings.days)||DAYS.
     if(info.never){never.push(s);continue}
     if(info.late>14)late.push({s,n:info.late});
   }
-  late.sort((a,b)=>b.n-a.n).slice(0,4).forEach(x=>out.push({type:'warn',rank:3,text:storeLabel(x.s)+' est en retard d’environ '+x.n+' jours et n’est pas dans la semaine.'}));
+  late.sort((a,b)=>b.n-a.n).slice(0,4).forEach(x=>out.push({type:'warn',rank:4,text:storeLabel(x.s)+' est en retard d’environ '+x.n+' jours et n’est pas dans la semaine.'}));
   /* Jamais visité : aucun retard n'est calculable, c'est une information secondaire. */
-  never.slice(0,2).forEach(s=>out.push({type:'info',rank:4,text:storeLabel(s)+' · Jamais visité · hors planning cette semaine'}));
+  never.slice(0,2).forEach(s=>out.push({type:'info',rank:5,text:storeLabel(s)+' · Jamais visité · hors planning cette semaine'}));
+  /* Ordre stable : à rang égal, l'ordre d'émission (jour par jour) est conservé. */
   return out.sort((a,b)=>(a.rank||9)-(b.rank||9))}
 function storeLabel(s){return String((s&&s.enseigne)||'Magasin')+' '+String((s&&s.ville)||'').trim()}
 function quality(){let score=100;for(const x of alerts())score-=x.type==='bad'?12:x.type==='info'?0:5;score=Math.max(0,score);return{score,label:score>=85?'Très bon':score>=70?'Correct':score>=50?'À optimiser':'Trop chargé'}}

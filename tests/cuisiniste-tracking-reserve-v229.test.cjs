@@ -135,6 +135,35 @@ const MES_CUISINISTES=[
   assert.equal(V193.buildTrackingReserve(trop,[]).length,V193.MAX_RESERVE_SITES,
     'la réserve du suivi reste bornée à '+V193.MAX_RESERVE_SITES+' groupes');
 
+  /* Régression : la borne était appliquée PENDANT le regroupement. Dans un gros classeur
+     dont les 500 premiers groupes sont déjà nommés par HITLIST, le magasin tracking-only
+     tardif — celui que cette réserve existe pour rattraper — tombait avant l'exclusion,
+     et la réserve sortait vide. */
+  const pad=n=>String(n).padStart(4,'0'),gros=[];
+  for(let i=0;i<V193.MAX_RESERVE_SITES+100;i++)
+    gros.push({brand:'SCHMIDT',city:'VILLEA'+pad(i),clientNumber:String(9200000000+i),endDate:'2025-12-31',status:'En cours'});
+  gros.push({brand:'SCHMIDT',city:'ZZTARDIVE',clientNumber:'9300000001',endDate:'2025-12-31',status:'En cours'});
+  const connus=gros.slice(0,V193.MAX_RESERVE_SITES+100).map(c=>({brand:c.brand,city:c.city,cityKey:V193.cityKey(c.city)}));
+  const rattrape=V193.buildTrackingReserve(gros,connus);
+  assert(rattrape.some(x=>x.city==='ZZTARDIVE'),
+    'la borne doit s’appliquer après l’exclusion HITLIST, sinon le magasin tardif est perdu');
+  assert(rattrape.length<=V193.MAX_RESERVE_SITES,'la réserve rendue reste bornée');
+
+  /* Régression : deux numéros client distincts sous une seule étiquette HITLIST étaient
+     tous les deux écartés, rendant le contrat du second magasin introuvable. */
+  const uneEtiquette=[{brand:'SCHMIDT',city:'VILLE G',cityKey:V193.cityKey('VILLE G'),key:'SCH-VILLE-G FR-00007'}];
+  const deuxClients=V193.buildTrackingReserve([
+    {brand:'SCHMIDT',city:'VILLE G',clientNumber:'9000000020',endDate:'2025-12-31',status:'En cours'},
+    {brand:'SCHMIDT',city:'VILLE G',clientNumber:'9000000021',endDate:'2025-12-31',status:'En cours'}],uneEtiquette);
+  assert.equal(deuxClients.length,2,
+    'deux clients distincts sous une seule étiquette HITLIST restent deux candidats');
+  assert.deepEqual(deuxClients.map(x=>x.clientNumber).sort(),['9000000020','9000000021']);
+  /* Un groupe seul à correspondre à son site HITLIST reste bien écarté : la réserve ne
+     doit pas doubler ce que HITLIST porte déjà. */
+  const seul=V193.buildTrackingReserve([
+    {brand:'SCHMIDT',city:'VILLE G',clientNumber:'9000000020',endDate:'2025-12-31',status:'En cours'}],uneEtiquette);
+  assert.equal(seul.length,0,'un site HITLIST déjà porteur de son unique groupe n’est pas doublé');
+
   // --- 3.5. Résultat attendu du scénario complet -------------------------------------
   V193.saveTracking(global.__chefStorage,snap);
   const sites=V193.resolveSites(global.__chefStorage,global.state.stores);

@@ -230,11 +230,16 @@ function trackingIdentity(c){
    d'être la seule source de candidats. Les groupes déjà lisibles dans HITLIST sont écartés :
    la réserve ne sert qu'aux sites que HITLIST ne nomme pas. Bornée à MAX_RESERVE_SITES. */
 function buildTrackingReserve(contracts,knownHitSites){
+  /* Le regroupement n'est pas borné : la borne s'applique à la SORTIE, après l'exclusion
+     des groupes déjà nommés par HITLIST. Couper ici ferait tomber, dans un gros classeur,
+     exactement le magasin tracking-only que cette réserve existe pour rattraper : les 500
+     premiers groupes peuvent tous être connus de HITLIST. Le nombre de groupes reste borné
+     par les lignes réellement lues (MAX_USEFUL_ROWS). */
   const groups=new Map();
   for(const c of contracts||[]){
     const ident=trackingIdentity(c);if(!ident)continue;
     let g=groups.get(ident.id);
-    if(!g){if(groups.size>=MAX_RESERVE_SITES)continue;g={ident,rows:[]};groups.set(ident.id,g)}
+    if(!g){g={ident,rows:[]};groups.set(ident.id,g)}
     g.rows.push(c);
   }
   /* Une ligne sans numéro client et une ligne qui en porte un peuvent décrire le même
@@ -250,10 +255,21 @@ function buildTrackingReserve(contracts,knownHitSites){
     const k=norm(g.rows[0].brand)+'|'+cityKey(g.rows[0].city),target=clientByBrandCity.get(k);
     if(target&&target!==g){target.rows=target.rows.concat(g.rows);groups.delete(id)}
   }
+  /* Un groupe n'est écarté que lorsqu'il est le SEUL à correspondre à un site HITLIST :
+     c'est alors bien ce site-là, déjà pris en charge. Quand deux numéros client distincts
+     partagent enseigne et ville et que HITLIST ne porte qu'une étiquette, les écarter tous
+     les deux rendrait le contrat du second magasin introuvable. Le site HITLIST garde son
+     magasin (candidat non tracking-only, prioritaire), le groupe en trop ne peut que
+     rattraper un AUTRE magasin réel, ou disparaître. */
   const known=Array.isArray(knownHitSites)?knownHitSites:[];
+  const list=Array.from(groups.values()),claimed=new Set();
+  for(const site of known){
+    const hits=list.filter(g=>g.rows.some(c=>matchHitToContract(site,c)));
+    if(hits.length===1)claimed.add(hits[0]);
+  }
   const out=[];
-  for(const g of groups.values()){
-    if(known.some(site=>g.rows.some(c=>matchHitToContract(site,c))))continue;
+  for(const g of list){
+    if(claimed.has(g))continue;
     const history=g.rows.slice().sort((a,b)=>String(b.endDate).localeCompare(String(a.endDate)));
     const active=latestByDate(history.filter(c=>activeStatus(c.status))),last=latestByDate(history),ref=active||last||history[0]||null;
     if(!ref)continue;
@@ -263,7 +279,7 @@ function buildTrackingReserve(contracts,knownHitSites){
       fileSector:text(ref.sector),label:'',
       activeContract:active||null,lastContract:last||null,history:history.slice(0,8)});
   }
-  return out;
+  return out.slice(0,MAX_RESERVE_SITES);
 }
 async function parseTrackingWorkbook(input,sector){
   const files=await unzip(input),hit=extractHitlist(readSheetByColumns(files,HITLIST_COLUMNS,'cuisinisteHitlistSheet'),sector),rows=readSheetByColumns(files,TRACKING_COLUMNS,'cuisinisteTrackingSheet'),h=trackingHeader(rows),all=[];

@@ -19,17 +19,17 @@ function load(){
     addEventListener:noop,createElement:()=>({style:{},setAttribute:noop,addEventListener:noop}),
     head:{appendChild:noop},body:{},createTreeWalker(){throw new Error('pas de DOM')}
   };
-  const win={addEventListener:noop,matchMedia:()=>({matches:env.compact})};
+  const win={addEventListener:noop,matchMedia:()=>({matches:env.compact}),StoreOpeningHoursV1:null};
   const store={};
   const storage={getItem:k=>(k in store?store[k]:null),setItem:(k,v)=>{store[k]=String(v)}};
   const state={stores:[],plan:{},settings:{},awayRanges:[]};
   const factory=new Function('window','document','state','localStorage','setTimeout','clearTimeout','MutationObserver','NodeFilter',
     body+'\nreturn{alerts,daysSince,visitDelay,renderAlerts,isCompact,syncOptimizeLabel,quality,storeLabel};');
   const api=factory(win,doc,state,storage,()=>0,noop,function(){this.observe=noop},{SHOW_TEXT:4});
-  return{api,state,env,doc};
+  return{api,state,env,doc,win};
 }
 
-const {api,state,env,doc}=load();
+const {api,state,env,doc,win}=load();
 
 // --- 4. Un magasin jamais visité n'a pas un retard calculable -------------------------
 assert.strictEqual(api.daysSince(null),null,'aucune date : aucune sentinelle');
@@ -87,7 +87,34 @@ liste=api.alerts();
 const rangs=liste.map(x=>x.rank);
 assert.deepEqual(rangs.slice().sort((a,b)=>a-b),rangs,'les alertes sortent triées par priorité · '+rangs.join(','));
 assert.strictEqual(liste[0].rank,1,'un dépassement horaire réel passe en premier · '+JSON.stringify(liste[0]));
-assert.strictEqual(liste[liste.length-1].rank,4,'l’information secondaire reste en dernier');
+assert.strictEqual(liste[liste.length-1].rank,5,'l’information secondaire reste en dernier');
+assert(liste.some(x=>x.rank===4&&/est en retard d’environ/.test(x.text)),'le retard réel garde son rang');
+
+// --- 5. Le rang « conflit réel » lit vraiment l'ordonnanceur ------------------------
+/* Régression : le rang 2 était attribué à une simple journée presque pleine. Un rendez-vous
+   intenable ou un magasin fermé n'était jamais remonté, alors que scheduleRoute() le sait.
+   Ici la journée finit largement dans les temps : seul l'ordonnanceur voit le conflit. */
+state.settings={days:['Lundi'],startTime:'08:30',endTime:'18:00',visitMinutes:60};
+state.plan={Lundi:[{id:'p1',enseigne:'Enseigne Test',ville:'Ville Onze'}],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
+state.stores=[];
+assert.deepEqual(api.alerts(),[],'sans ordonnanceur chargé, aucune alerte inventée');
+let vuParOrdonnanceur=null;
+win.StoreOpeningHoursV1={scheduleRoute(route,day){vuParOrdonnanceur={day,n:route.length};return{appointmentConflicts:1,closedCount:1}}};
+const avecConflit=api.alerts();
+assert.deepEqual(vuParOrdonnanceur,{day:'Lundi',n:1},'l’ordonnanceur existant est interrogé en lecture seule');
+assert(avecConflit.some(x=>x.rank===2&&/rendez-vous incompatible/.test(x.text)),
+  'un rendez-vous intenable remonte au rang conflit · '+JSON.stringify(avecConflit));
+assert(avecConflit.some(x=>x.rank===2&&/magasin fermé/.test(x.text)),
+  'un magasin fermé à l’heure prévue remonte aussi · '+JSON.stringify(avecConflit));
+assert.strictEqual(avecConflit[0].rank,2,'le conflit passe avant tout le reste ici');
+win.StoreOpeningHoursV1={scheduleRoute(){throw new Error('ordonnanceur indisponible')}};
+assert.deepEqual(api.alerts(),[],'un ordonnanceur en erreur ne casse jamais les alertes');
+win.StoreOpeningHoursV1=null;
+assert(/scheduleRoute\(route,day,state\)/.test(SRC),'lecture seule via scheduleRoute');
+/* Le détecteur de conflit lit l'ordonnanceur existant et n'en réécrit aucun morceau. */
+const detecteur=SRC.slice(SRC.indexOf('function dayScheduleIssues'),SRC.indexOf('function alerts('));
+for(const interdit of ['optimize(','twoOpt(','regenerateDay','state.plan[day]='])
+  assert(!detecteur.includes(interdit),'le détecteur de conflit ne doit rien recalculer ni écrire: '+interdit);
 
 // --- 5. Sur mobile, deux alertes puis « + N autres » ----------------------------------
 function fakeZone(){
@@ -150,6 +177,23 @@ for(const garde of ['proMonthPrev','proMonthNext','data-pro-date','loadMonthDay'
 assert(/@media\(max-width:700px\)\{\.proSwipeHint\{display:none\}/.test(SRC),
   'le texte permanent de swipe est masqué sur mobile, le geste reste actif');
 assert(/box\.ontouchend=function/.test(SRC),'le geste de changement de mois reste branché');
+
+// --- AGENTS.md : la hiérarchie d'affichage du planning a un seul propriétaire ---------
+const VISUAL=fs.readFileSync(__dirname+'/../visual-refresh-v1.js','utf8');
+const UIFIX=fs.readFileSync(__dirname+'/../planning-ui-fixes.js','utf8');
+assert(!/#planningProTop>\.proTop\{display:none/.test(VISUAL),
+  'visual-refresh-v1.js ne décide pas de la hiérarchie d’affichage du planning');
+assert(/#planningProTop>\.proTop\{display:none!important\}/.test(UIFIX),
+  'planning-ui-fixes.js, propriétaire désigné, porte la règle');
+
+// --- Le compteur de la carte semaine : plus aucun écrivain en :first-child -----------
+const AUTOFIX=fs.readFileSync(__dirname+'/../auto-planning-fix.js','utf8');
+for(const [nom,src] of [['auto-planning-fix.js',AUTOFIX],['visit-counting.js',fs.readFileSync(__dirname+'/../visit-counting.js','utf8')]]){
+  assert(!/premiumHomeV2 \.phGrid \.phCard:first-child/.test(src),
+    nom+' ne doit plus écrire dans la première carte venue');
+  assert(/phCard\[data-home-card="week"\]/.test(src),
+    nom+' doit désigner la carte semaine par son rôle');
+}
 
 // --- Carte d'alertes identifiable et observateurs inchangés ---------------------------
 assert(/class="proCard proAlertCard" id="proAlertCard"/.test(SRC),'la carte d’alertes est identifiable');
