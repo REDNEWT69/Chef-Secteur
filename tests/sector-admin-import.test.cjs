@@ -21,7 +21,7 @@ class Element {
 function fixture() {
   const old = {id: 'old', enseigne: 'Darty', sourceName: 'Fiche synthétique ancienne',
     adresse: '1 rue Fictive', codePostal: '99001', ville: 'Ville-Test A', dept: '99', lat: 42.9, lon: -1.5,
-    freq: 3, intervalDays: 21, priority: 4, active: false, products: ['Produit synthétique']};
+    freq: 3, intervalDays: 21, priority: 4, active: false, products: ['Produit synthétique'], type:'Gros', channel:'cuisiniste'};
   const state = {schemaVersion: 5, stores: [old], profile: {}, settings: {},
     visits: {old: {history: ['2026-09-01']}}, notes: {old: 'Note synthétique'},
     included: {old: true}, excluded: {old: false}, locks: {old: 'Lundi'},
@@ -51,7 +51,7 @@ async function importFile(f, row) {
 }
 function assertBusiness(f, id, before) {
   const row = f.root.state.stores.find(s => s.id === id);
-  for (const key of ['freq', 'intervalDays', 'priority', 'active', 'products'])
+  for (const key of ['freq', 'intervalDays', 'priority', 'active', 'products', 'type', 'channel'])
     assert.deepEqual(copy(row[key]), f.old[key], key);
   for (const key of ['visits', 'notes', 'included', 'excluded', 'locks'])
     assert.deepEqual(copy(f.root.state[key][id]), before[key].old, key);
@@ -61,7 +61,7 @@ async function scenario(byFingerprint) {
   const storedBefore = [...f.data];
   const imported = {...f.old, id: byFingerprint ? 'imported' : 'old', lat: 44.4, lon: 0,
     sourceName: 'Fiche synthétique corrigée', freq: 1, intervalDays: 7, priority: 1,
-    active: true, products: ['Autre produit']};
+    active: true, products: ['Autre produit'], type:'Petit', channel:'retail'};
   if (byFingerprint) {
     // Accents, case and punctuation normalize to the same current fp().
     imported.adresse = '1 RUE Fictive!'; imported.ville = 'VILLE-TEST A';
