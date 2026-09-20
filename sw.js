@@ -1,4 +1,4 @@
-const BUILD_REV = "20260920-dayorigin227";
+const BUILD_REV = "20260920-stores228";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",

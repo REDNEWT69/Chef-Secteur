@@ -82,6 +82,7 @@
   function removeRedundantStoreActions(toolbar) {
     if (!toolbar) return;
     Array.prototype.slice.call(toolbar.querySelectorAll('button')).forEach(function (button) {
+      if (button.id === 'addStoreBtn') return;
       var label = normalizeLabel(button.textContent);
       var isRegionButton = button.id === 'regionDiscover' || label === '+ ajouter une région' || label === '＋ ajouter une région' || label === 'ajouter une région';
       var isLegacyAddButton = label === '+ ajouter' || label === '＋ ajouter' || label === 'ajouter';
@@ -124,18 +125,16 @@
   }
 
   function regionBrands() {
-    if (window.RegionStores && Array.isArray(window.RegionStores.BRANDS)) return window.RegionStores.BRANDS.slice();
-    return ['Boulanger', 'Darty', 'Fnac', 'Conforama', 'Cuisinella', 'Carrefour'];
+    var labels = new Map();
+    document.querySelectorAll('.regionDialog .regionResult').forEach(function(card) {
+      var label = String(card.dataset.brand || '').trim().replace(/\s+/g, ' ');
+      var key = normalizeLabel(label);
+      if (key && !labels.has(key)) labels.set(key, key === 'schmidt' ? 'Schmidt' : label);
+    });
+    return Array.from(labels.values()).sort(function(a,b){return a.localeCompare(b,'fr')});
   }
 
-  function cardBrand(card) {
-    var text = normalizeLabel(card && card.textContent);
-    var brands = regionBrands();
-    for (var i = 0; i < brands.length; i += 1) {
-      if (text.indexOf(normalizeLabel(brands[i])) !== -1) return brands[i];
-    }
-    return '';
-  }
+  function cardBrand(card) { return normalizeLabel(card && card.dataset.brand); }
 
   function dispatchSelectionChange(input) {
     if (!input) return;
@@ -148,6 +147,14 @@
     var results = document.querySelector('.regionDialog .regionResults');
     if (!chooser || !results) return;
     var select = chooser.querySelector('#regionResultBrandFilter');
+    var previous = select ? select.value : 'all';
+    var brands = regionBrands();
+    if (select && select.dataset.brands !== JSON.stringify(brands)) {
+      select.replaceChildren(new Option('Toutes les enseignes', 'all'));
+      brands.forEach(function(brand){select.add(new Option(brand, normalizeLabel(brand)))});
+      select.dataset.brands = JSON.stringify(brands);
+      select.value = brands.some(function(b){return normalizeLabel(b) === previous}) ? previous : 'all';
+    }
     var wanted = select ? select.value : 'all';
     var cards = Array.prototype.slice.call(results.querySelectorAll('.regionResult'));
     var visible = 0;
