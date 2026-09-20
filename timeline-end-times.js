@@ -87,14 +87,12 @@
     const appointment=row.appointment;
     const parts=['◷ Arrivée imposée '+appointment.time];
     if(appointment.endTime)parts.push('départ '+appointment.endTime);
-    /* L'heure réellement tenable est celle que l'ordonnanceur a retenue : elle tient
-       compte du trajet, mais aussi de l'ouverture et de l'Agenda, là où nominalArrival
-       ne couvre que le trajet. */
-    const nominal=Number(row.nominalArrival),planned=Number(row.arrival);
-    const earliest=Number.isFinite(planned)?Math.max(Number.isFinite(nominal)?nominal:planned,planned):nominal;
-    const wanted=api.minutes(appointment.time);
-    if(Number.isFinite(earliest)&&wanted!=null&&wanted<Math.round(earliest)){
-      return {text:parts.join(' · ')+' — impossible : au plus tôt '+api.clock(earliest),impossible:true};
+    /* C'est l'ordonnanceur qui tranche : lui seul sait qu'un premier arrêt plus tôt que
+       « début de journée + trajet » est un départ avancé, pas une impossibilité. On ne
+       redéduit rien, on lit son statut. */
+    if(row.status==='appointment-conflict'){
+      const earliest=Number.isFinite(Number(row.arrival))?Number(row.arrival):Number(row.nominalArrival);
+      return {text:parts.join(' · ')+(Number.isFinite(earliest)?' — impossible : au plus tôt '+api.clock(earliest):' — impossible à tenir'),impossible:true};
     }
     return {text:parts.join(' · '),impossible:false};
   }

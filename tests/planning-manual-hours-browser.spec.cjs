@@ -32,10 +32,9 @@ async function planning(page){
   });
   await page.waitForTimeout(400);
 }
+// Depuis le retrait du bouton redondant, le bloc ARRIVÉE est le point d'entrée.
 async function openEditor(page,index){
-  await page.locator('#week .timelineRow:not(.calendarEvent) .tlMain').nth(index).tap();
-  await expect(page.locator('#storeQuickSheet')).toHaveClass(/open/);
-  await page.locator('#manualHoursQuickBtn').tap();
+  await page.locator('#week .timelineRow:not(.calendarEvent) .tlTime').nth(index).tap();
   await expect(page.locator('#manualHoursDialog')).toHaveClass(/open/);
 }
 const expected=page=>page.evaluate(()=>{
@@ -77,7 +76,11 @@ test('Une visite peut recevoir une arrivée et un départ imposés, qui se propa
   await dialog.locator('[data-mh-arrival]').fill('10:30');
   await dialog.locator('[data-mh-departure]').fill('12:00');
   await expect(dialog.locator('[data-mh-readout]')).toContainText('90 min');
-  await expect(dialog.locator('[data-mh-warn]')).toBeHidden();
+  // Premier arrêt : l'encart informe du départ depuis la base, il n'alerte pas.
+  const note=dialog.locator('[data-mh-warn]');
+  await expect(note).toHaveClass(/mhNote/);
+  await expect(note).toContainText('Départ conseillé depuis la base');
+  await expect(note).not.toContainText('Impossible');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await dialog.locator('[data-mh-save]').tap();
   await expect(dialog).not.toHaveClass(/open/);

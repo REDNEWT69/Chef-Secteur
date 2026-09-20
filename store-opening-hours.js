@@ -89,7 +89,15 @@ function scheduleRoute(route,day,state=root.state,options={}){
     let fitted=fitWithBlocks(store,day,requested,duration,blocks),arrival=fitted.arrival,status='ok';
     if(a&&fixed!=null){
       const atFixed=fitOpening(store,day,fixed,duration);
-      const unreachable=nominal>fixed||(blocks||[]).some(b=>overlapsBlock(fixed,duration,b))||(atFixed.known&&(atFixed.closed||atFixed.arrival!==fixed));
+      /* Le premier arrêt part de la base, pas d'une visite précédente : `nominal` n'y
+         est que « début de journée + trajet ». Vouloir y être plus tôt ne décrit donc
+         aucune impossibilité de trajet, seulement un départ avancé — que l'utilisateur
+         a le droit de choisir. Pour ce cas, et lui seul, `nominal > fixed` cesse de
+         rendre l'arrivée impossible. Magasin fermé, horaires d'ouverture et blocages
+         Agenda restent des contraintes réelles, et les vrais rendez-vous gardent leur
+         comportement historique sur toute la tournée. */
+      const canLeaveBaseEarlier=i===0&&a.manualHours===true;
+      const unreachable=(nominal>fixed&&!canLeaveBaseEarlier)||(blocks||[]).some(b=>overlapsBlock(fixed,duration,b))||(atFixed.known&&(atFixed.closed||atFixed.arrival!==fixed));
       if(unreachable){appointmentConflicts++;status='appointment-conflict'}
       /* Un vrai rendez-vous garde son comportement historique : l'heure convenue fait
          foi, même si la tournée ne la tient pas — c'est au chef de secteur d'arbitrer.
@@ -106,7 +114,15 @@ function scheduleRoute(route,day,state=root.state,options={}){
     rows.push({store,index:i,date,day,travel:drive,nominalArrival:nominal,requestedArrival:fixed,arrival,duration,status,openingKnown:fitted.known,wait:fitted.wait||0,opening:intervalsFor(store,day),appointment:a});
     if(arrival==null)current=nominal+duration;else current=arrival+duration;prev=store;
   }
-  const first=rows[0],recommendedDeparture=first&&first.arrival!=null&&first.status!=='appointment-conflict'?Math.max(start,first.arrival-first.travel):null;
+  /* Le plancher au début de journée reste la règle d'un planning automatique. Quand le
+     premier arrêt porte un horaire posé à la main, le départ conseillé est exactement
+     ce que ce choix implique — 09:30 moins 119 min de trajet = 07:31 — même si cela
+     précède le début de journée habituel. */
+  const first=rows[0];
+  const firstIsManual=!!(first&&first.appointment&&first.appointment.manualHours===true);
+  const recommendedDeparture=first&&first.arrival!=null&&first.status!=='appointment-conflict'
+    ?(firstIsManual?first.arrival-first.travel:Math.max(start,first.arrival-first.travel))
+    :null;
   const returnTravel=rows.length&&base?Math.max(0,Number(travel(rows[rows.length-1].store,base))||0):0;
   const estimatedEnd=rows.length&&!closedCount&&!appointmentConflicts?current+returnTravel:null;
   return{day,date,rows,start,recommendedDeparture,estimatedEnd,returnTravel,unknownCount,closedCount,appointmentConflicts,endLimit:dayEnd(day,state)};
