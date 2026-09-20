@@ -25,6 +25,17 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'228',
+      title:'Ajouter et retrouver un magasin devient simple',
+      items:[
+        'Ajoutez un magasin avec seulement son enseigne, son nom, sa ville et éventuellement son adresse.',
+        'Store Runner localise le magasin et vous demande de confirmer avant de l’ajouter.',
+        'Les coordonnées techniques restent invisibles et sont gérées automatiquement.',
+        'La liste Magasins peut maintenant afficher Tous, Retail ou Cuisinistes, avec les enseignes du secteur comme Schmidt.',
+        'Les magasins compris par l’IA passent par le même contrôle avant enregistrement.'
+      ]
+    },
+    {
       version:'227',
       title:'Le bon départ après une nuit sur place',
       items:[
