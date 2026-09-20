@@ -235,7 +235,11 @@
        et un trajet réels les précèdent. */
     if (row && Number(row.index) === 0 && travel != null && wanted != null) {
       const departure = wanted - travel;
-      let text = `Départ conseillé depuis la base : ${clock(departure)} pour arriver à ${arrival}.`;
+      /* Le départ ne vient pas toujours de la base : après une nuit sur place il vient
+         de l'hôtel ou du point de départ confirmé. On nomme le vrai lieu. */
+      const from = root.StoreRunnerDayOrigin && typeof root.StoreRunnerDayOrigin.label === 'function'
+        ? root.StoreRunnerDayOrigin.label(context.origin) : 'la base';
+      let text = `Départ conseillé depuis ${from} : ${clock(departure)} pour arriver à ${arrival}.`;
       if (context.dayStart != null && departure < Number(context.dayStart)) {
         text += ` Votre journée est habituellement réglée à partir de ${clock(context.dayStart)}.`;
       }
@@ -285,6 +289,7 @@
     if (existing && !existing.endTime) planned = Math.max(15, Number(existing.duration) || planned);
 
     context = { storeId: String(storeId), day: resolvedDay, date, row, dayStart: schedule ? schedule.start : null,
+      origin: schedule ? schedule.origin : null,
       plannedDuration: Math.round(planned), mode: existing ? 'manual' : 'auto' };
 
     const el = dialog();

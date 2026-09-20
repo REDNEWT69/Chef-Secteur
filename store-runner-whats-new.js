@@ -25,6 +25,15 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'227',
+      title:'Le bon départ après une nuit sur place',
+      items:[
+        'Après un découché, le premier trajet part de votre hôtel localisé.',
+        'Si le lieu manque, le planning vous demande de confirmer votre point de départ.',
+        'Le retour du soir et la fin estimée de journée restent calculés vers votre base habituelle.'
+      ]
+    },
+    {
       version:'226',
       title:'Un planning qui tient sur le terrain',
       items:[

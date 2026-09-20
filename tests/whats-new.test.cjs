@@ -38,6 +38,8 @@ for(const release of MODULE.RELEASES){
   }
 }
 assert(MODULE.releaseFor('226'),'la V226 doit être décrite');
+const currentVersion=JSON.parse(fs.readFileSync(__dirname+'/../version.json','utf8')).displayVersion;
+assert(MODULE.releaseFor(currentVersion),'la version publiée doit avoir ses nouveautés');
 assert.equal(MODULE.releaseFor('999'),null,'une version inconnue ne doit rien inventer');
 assert.equal(MODULE.displayVersion('20260919-fixture226'),'226','la version lisible se déduit du build');
 

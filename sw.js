@@ -1,4 +1,4 @@
-const BUILD_REV = "20260920-firststop226";
+const BUILD_REV = "20260920-dayorigin227";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -41,6 +41,7 @@ const OPTIONAL_SHELL = [
   "./timeline-end-times.js",
   "./visit-counting.js",
   "./range-planner-v2.js",
+  "./planning-day-origin.js",
   "./store-opening-hours.js",
   "./boulanger-default-hours.js",
   "./store-photos.js",
