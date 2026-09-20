@@ -1,4 +1,4 @@
-const BUILD_REV = "20260919-planning226";
+const BUILD_REV = "20260920-hours226";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -62,6 +62,7 @@ const OPTIONAL_SHELL = [
   "./auto-planning-fix.js",
   "./connection-ui.js",
   "./update-manager.js",
+  "./store-runner-whats-new.js",
   "./reliability-core.js",
   "./glass-theme.css",
   "./reliability-ui.js",
