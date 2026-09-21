@@ -112,6 +112,31 @@ self.addEventListener('fetch', event => {
     return;
   }
   if (event.request.method !== 'GET' || !url.href.startsWith(SCOPE)) return;
+
+  // V234 : les assets explicitement rattachés au BUILD_REV courant sont immuables pour
+  // cette version. Le nouveau SW les a déjà préchargés pendant install(), donc les
+  // reprendre immédiatement du cache évite de refaire des dizaines d'allers-retours
+  // réseau au démarrage Android. Un asset absent du cache retombe proprement sur le réseau.
+  if (url.searchParams.get('rev') === BUILD_REV) {
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE_NAME);
+      let cached = await cache.match(event.request);
+      if (!cached) cached = await cache.match(event.request, {ignoreSearch:true});
+      if (cached) return cached;
+      try {
+        const response = await fetch(event.request, {cache:'no-store'});
+        if (!response.ok) throw new Error('HTTP '+response.status);
+        await cache.put(event.request,response.clone());
+        return response;
+      } catch (error) {
+        return new Response('Fichier indisponible hors ligne', {status:503,headers:{'Content-Type':'text/plain; charset=utf-8'}});
+      }
+    })());
+    return;
+  }
+
+  // Les requêtes non versionnées restent network-first : cela préserve le comportement
+  // historique pour les pages et données dont la fraîcheur n'est pas garantie par BUILD_REV.
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
     try {
