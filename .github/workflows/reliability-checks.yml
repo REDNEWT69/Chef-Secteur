@@ -68,6 +68,7 @@ jobs:
       - run: node tests/planning-period-date.test.cjs
       - run: node tests/mobile-compatibility.test.cjs
       - run: node tests/build-revision.test.cjs
+      - run: node tests/pwa-cache-contract.test.cjs
       - run: node tests/update-manager.test.cjs
       - run: node tests/update-manager-reload.test.cjs
       - run: node tests/whats-new.test.cjs
