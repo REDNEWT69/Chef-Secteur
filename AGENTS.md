@@ -81,8 +81,11 @@ Déjà intégré dans `main` et protégé par Reliability — **à ne pas redév
 - **Visit + Action + workflow 6P**, avec sauvegarde/reprise et historique. L’assistant lit un contexte Visit/Action sans mutation métier.
 - **Opportunity**, livré en V200 (priorité décidée le 17/09/2026, PR #275). Il reste neutre pour la planification : aucune opportunité ne déplace un magasin, ne change `store.priority` ni ne fabrique une performance. L'assistant le lit en lecture seule ; les mutations passent par `store-runner-opportunities.js`.
 - **Espace Cuisinistes** (V193 → V229) et **pilotage performance** (V190 → V192).
+- **Appointment**. `state.appointments` existe et est déjà consommé par le planning, la priorisation et l'accueil. Le noyau possède l'écran Rendez-vous complet : `renderAppointments`, `saveAppointment`, `openAppointment`, `deleteAppointment`, `ensureAppointments`, `appointmentStore`. Un rendez-vous stocké porte `id`, `storeId`, `date`, `time`, `duration`, `type` et `note`.
 
-Chantier métier suivant : **Appointment**, en prolongeant `state.appointments` au lieu de créer un second registre concurrent.
+**Il n'y a donc pas de module Appointment à construire.** Ne créer en aucun cas un second registre de rendez-vous à côté de `state.appointments` : tout complément prolonge le registre existant et son propriétaire.
+
+Complément vérifié encore manquant, et seul point ouvert à ce jour : **un rendez-vous n'est pas relié à sa visite source.** `saveAppointment` ne stocke aucun `visitId`, et les modules visite (`store-runner-visits.js`, `store-runner-visit-store.js`, `store-runner-visit-model.js`) n'écrivent jamais dans `state.appointments`. C'est le « prochain rendez-vous éventuel » de la clôture de visite décrit par `PLAN_METIER_STORE_RUNNER.md`. Si ce lien est demandé un jour, il s'ajoute aux enregistrements existants sans changer leur forme pour les rendez-vous déjà saisis.
 
 Ne pas développer KitchenCRM, ServiceCase ou des workflows spécialisés tant qu’ils ne sont pas explicitement demandés.
 

@@ -25,7 +25,9 @@ Statut à la rédaction : plan de réalisation terminé ; développement fonctio
 >
 > Livré en plus de ce plan : pilotage performance (V190 → V192), photos magasin, horaires par enseigne (V230), correcteur de notes terrain, comptes rendus BLANC / BRUN.
 >
-> **Ne pas redévelopper ces lots** depuis ce document, depuis une ancienne branche ou depuis un ancien résumé. Le chantier métier restant est **Appointment**, en prolongeant `state.appointments`.
+> **Ne pas redévelopper ces lots** depuis ce document, depuis une ancienne branche ou depuis un ancien résumé.
+>
+> **Appointment non plus n'est pas un module à construire.** `state.appointments` existe et l'écran Rendez-vous du noyau couvre création, modification, suppression et affichage ; le planning, la priorisation, l'accueil et les horaires le consomment. Le §4 ci-dessous décrit la forme *cible* d'un `Appointment`, pas un reste à faire. Le seul écart vérifié entre cette cible et la V1 est le champ de liaison à la visite source : `saveAppointment` ne stocke pas de `visitId`, et les modules visite n'écrivent pas dans `state.appointments`. Tout complément prolonge le registre existant — jamais un second registre.
 >
 > Les paragraphes ci-dessous conservent leur rédaction d'origine, y compris les mentions « suspendu » et le point de reprise Git de septembre : ils décrivent le contexte de rédaction, pas l'état courant. L'état courant fait foi dans `ARCHITECTURE_CLEANUP_STATUS.md` et `AGENTS.md`.
 >

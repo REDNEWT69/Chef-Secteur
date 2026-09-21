@@ -80,7 +80,9 @@ Le parcours cible est :
 
 Ce parcours **est en place dans la V1 de production** : Visit, Action et le workflow 6P sont intégrés dans `main`, avec sauvegarde/reprise, historique et protections Reliability. Opportunity a suivi en V200 et l'Espace Cuisinistes en V193 → V229.
 
-Ne pas redévelopper Visit / Action / 6P / Opportunity depuis une ancienne branche ou un ancien résumé. Le chantier métier restant est **Appointment**, en prolongeant `state.appointments` au lieu de créer un second registre concurrent. Buying Group et SAV viennent après, sans inventer de règles absentes des supports métier.
+**Appointment aussi est en place** : `state.appointments` existe, l'écran Rendez-vous permet de créer, modifier et supprimer un rendez-vous, et le planning, la priorisation, l'accueil et le calcul des horaires le consomment déjà.
+
+Ne pas redévelopper Visit / Action / 6P / Opportunity / Appointment depuis une ancienne branche ou un ancien résumé, et ne jamais créer un second registre de rendez-vous à côté de `state.appointments`. Le seul complément vérifié encore manquant est le lien entre un rendez-vous et sa visite source. Buying Group et SAV viennent ensuite, sans inventer de règles absentes des supports métier.
 
 ## `/v2/`
 

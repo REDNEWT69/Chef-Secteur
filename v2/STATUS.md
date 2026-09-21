@@ -37,7 +37,7 @@ Cette étape ne constitue pas une parité Visites V1 ni une bascule de productio
 ## Ce qui manque encore avant une bascule
 
 - parité complète Visites V1, puis 6P / actions ;
-- rendez-vous + historique ;
+- rendez-vous + historique **côté V2** — la V1 de production les a déjà, cette ligne ne parle que du chantier `/v2/` ;
 - Google Calendar / OAuth ;
 - assistant IA ;
 - migration complète des domaines V1 encore non convertis ;

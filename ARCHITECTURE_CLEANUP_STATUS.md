@@ -38,7 +38,7 @@ Le domaine Visit/Action ajoute son contexte à l’assistant en lecture seule sa
 - `PLAN_METIER_STORE_RUNNER.md` est versionné dans `main` et constitue la référence du **modèle métier cible**. Ce n'est pas un état d'avancement : l'avancement réel est décrit ici et dans `AGENTS.md`.
 - `AGENTS.md` fixe les règles de travail pour Codex et les autres agents : repartir du dernier `main`, préserver la stack actuelle, respecter les propriétaires, éviter les anciennes branches/prototypes appliqués aveuglément et valider chaque lot.
 - **Ne pas recréer Visit + Action + 6P depuis un ancien résumé ou une branche locale** : ce lot est déjà intégré.
-- **Opportunity est livré** (V200). Le chantier métier suivant est **Appointment**.
+- **Opportunity est livré** (V200). **Appointment est livré lui aussi** : `state.appointments` et l'écran Rendez-vous existent dans le noyau. Aucun des deux n'est à reconstruire.
 - `tests/business-v2-architecture.test.cjs` empêche les modules métier V2 de reprendre des fonctions globales qui appartiennent déjà à un autre domaine.
 - `tests/runtime-ownership.test.cjs` contrôle les modules réellement chargés par `index.html` et verrouille les propriétaires critiques du runtime.
 - `tests/assistant-architecture.test.cjs` verrouille les contrats d’extension assistant, les dates relatives et les cycles de vie événementiels nettoyés.
@@ -70,7 +70,7 @@ Opportunity doit rester neutre pour la planification : aucune création ou mise 
 
 1. Conserver le checkpoint architecture vert avant chaque lot.
 2. **Opportunity est livré** (V200, PR #275) : création depuis magasin/visite, suivi des statuts, mémoire magasin, vue secteur et contexte assistant, sans effet automatique sur le planning. Ce lot ne doit pas être redéveloppé.
-3. Le chantier métier suivant est **Appointment**, en prolongeant `state.appointments` et sans créer de registre concurrent.
+3. **Appointment existe déjà en V1** : `state.appointments` est consommé par le planning, la priorisation et l'accueil, et le noyau porte l'écran Rendez-vous (`renderAppointments`, `saveAppointment`, `openAppointment`, `deleteAppointment`). Ne pas le reconstruire et ne jamais ouvrir un second registre concurrent. Le seul complément vérifié encore manquant est le lien entre un rendez-vous et sa visite source : `saveAppointment` ne stocke pas de `visitId` et les modules visite n'écrivent pas dans `state.appointments`.
 4. Conserver KitchenCRM et ServiceCase hors priorité tant qu’ils ne sont pas explicitement demandés.
 5. Valider mobile 390 px, hors ligne/PWA, sauvegarde/restauration et absence de régression à chaque lot.
 6. Extraire ensuite les derniers wrappers assistant du noyau historique quand les points d’extension sont suffisamment stabilisés.
