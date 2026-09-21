@@ -25,6 +25,17 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'231',
+      title:'Corriger une visite enregistrée par erreur',
+      items:[
+        'Une visite saisie sur le mauvais magasin peut maintenant être supprimée depuis sa fiche de visite, en deux gestes volontaires.',
+        'La confirmation rappelle l’enseigne, la ville et la date avant de supprimer quoi que ce soit.',
+        'La visite disparaît partout à la fois : mémoire magasin, historique, compteurs et comptes rendus, sans laisser de visite fantôme.',
+        'Si deux visites du même magasin ont eu lieu le même jour, la date reste dans l’historique.',
+        'Les opportunités notées pendant la visite sont conservées sur le magasin.'
+      ]
+    },
+    {
       version:'230',
       title:'Les horaires de vos magasins, par enseigne',
       items:[

@@ -11,7 +11,7 @@ function current(){return domain().visits.find(x=>x.id===activeId)}
 function storeFor(storeId,state=window.state){const key=String(storeId);const stores=state&&Array.isArray(state.stores)?state.stores:[];return stores.find(x=>String(x.id)===key)||(state&&state.businessV2&&state.businessV2.storeSnapshots&&state.businessV2.storeSnapshots[key])||null}
 function name(storeId){const s=storeFor(storeId);return s?s.enseigne+' · '+s.ville:'Magasin archivé'}
 function message(text,error=false){status.textContent=text||'';status.classList.toggle('sr-error',!!error)}
-async function save(change,after){try{await session.edit(change);if(after)after();return true}catch(e){message('Non enregistré : '+e.message,true);return false}}
+async function save(change,after,intent){try{await session.edit(change,intent);if(after)after();return true}catch(e){message('Non enregistré : '+e.message,true);return false}}
 function field(host,label,value,onChange,type='textarea',disabled=false){const wrap=element('label',label,'sr-field'),input=element(type==='textarea'?'textarea':'input');if(type!=='textarea')input.type=type;else input.rows=2;input.value=value||'';input.disabled=disabled;input.addEventListener(type==='date'?'change':'input',()=>onChange(input.value));wrap.append(input);host.append(wrap);return input}
 function storeFamiliesFor(storeId,state=window.state){
  const store=storeFor(storeId,state),products=store&&Array.isArray(store.products)?store.products:[];
@@ -93,7 +93,73 @@ function report(host,v){
  }else{
   host.append(element('p','Visite terminée le '+v.completedDate,'sr-completed'));
   if(v.completedDate===localDay()){const reopen=button('↩ Réouvrir cette visite',()=>reopenVisit(v,true),'secondary');reopen.dataset.srReopenVisit=v.id;host.append(reopen)}
+  dangerZone(host,v);
  }
+}
+/* V231 — supprimer une visite enregistrée par erreur.
+   Le bouton est destructif : il vit dans un repli fermé, donc il faut deux gestes
+   délibérés pour l'atteindre. Sur mobile un tap malheureux ouvre au pire le repli.
+   La confirmation nomme l'enseigne, la ville et la date : on ne supprime jamais
+   « la visite du dessus », on supprime celle qu'on vient de lire.
+   Toute la mécanique métier reste chez StoreRunnerVisitModel.removeVisit. */
+function visitIdentity(v){const s=storeFor(v&&v.storeId);return{enseigne:(s&&s.enseigne)||'Magasin archivé',ville:(s&&s.ville)||'',date:(v&&v.completedDate)||''}}
+function dangerZone(host,v){
+ const box=element('details',undefined,'sr-dangerZone');box.dataset.srDangerZone=v.id;
+ box.append(element('summary','Cette visite est une erreur ?'));
+ box.append(element('p','La supprimer retire définitivement la visite, ses actions liées et son jour dans l’historique du magasin. Les opportunités notées ici sont conservées sur le magasin.','sr-dangerHint'));
+ const b=button('🗑 Supprimer cette visite',()=>deleteVisit(v.id),'sr-dangerBtn');
+ b.dataset.srDeleteVisit=v.id;box.append(b);host.append(box);
+}
+function deletionSummary(result){
+ if(!result)return 'Visite supprimée.';
+ const parts=['Visite supprimée.'];
+ if(result.actions)parts.push(result.actions+(result.actions>1?' actions liées supprimées.':' action liée supprimée.'));
+ if(result.opportunities)parts.push(result.opportunities+(result.opportunities>1?' opportunités conservées':' opportunité conservée')+' sur le magasin.');
+ return parts.join(' ');
+}
+function announceDeletion(detail){try{document.dispatchEvent(new CustomEvent('store-runner:visit-deleted',{detail}))}catch(e){}}
+async function deleteVisit(visitId){
+ const key=String(visitId||''),v=domain().visits.find(x=>x.id===key);
+ if(!v){message('Visite introuvable.',true);return false}
+ const who=visitIdentity(v),storeId=String(v.storeId);
+ const label=who.enseigne+(who.ville?' · '+who.ville:'');
+ if(!window.confirm('Supprimer définitivement cette visite ?\n\n'+label+'\nVisite du '+(who.date||'jour non enregistré')+'\n\nElle disparaîtra de la mémoire magasin, de l’historique et des rapports. Les opportunités du magasin sont conservées. Cette action est irréversible.')){message('Visite conservée.');return false}
+ let result=null;
+ return save(s=>{result=M.removeVisit(s,key)},()=>{
+  activeId=null;previewFamily='';viewStep=3;render();
+  if(typeof window.renderAll==='function')window.renderAll();
+  renderQuickMemory();
+  if(window.StoreRunnerOpportunities&&typeof window.StoreRunnerOpportunities.refreshButtons==='function')window.StoreRunnerOpportunities.refreshButtons();
+  announceDeletion({visitId:key,storeId,completedDate:who.date});
+  message(deletionSummary(result));
+ },{checkpoint:'Avant suppression d’une visite'});
+}
+/* Point d'entrée unique de l'écran Historique : la même opération, jamais une seconde
+   implémentation. Une date qui porte plusieurs visites terminées n'est jamais tranchée
+   à notre place — on ouvre le hub pour que la bonne visite soit choisie. */
+async function deleteHistoryEntry(storeId,date){
+ const key=String(storeId||''),day=String(date||'');
+ const matches=domain().visits.filter(v=>v.status==='completed'&&String(v.storeId)===key&&String(v.completedDate)===day);
+ if(matches.length>1){show();activeId=null;render();message('Plusieurs visites ont été terminées le '+day+' dans ce magasin : ouvre celle à supprimer.',true);return false}
+ if(matches.length===1)return deleteVisit(matches[0].id);
+ return deleteLegacyDay(key,day);
+}
+/* Un jour d'historique sans visite détaillée vient d'un import antérieur au modèle
+   Visit : il n'existe aucun visitId à cibler, et state.visits en reste le seul
+   propriétaire. La suppression passe quand même par la même écriture atomique. */
+async function deleteLegacyDay(storeId,day){
+ const legacy=(window.state&&window.state.visits||{})[storeId];
+ if(!legacy||!Array.isArray(legacy.history)||!legacy.history.some(x=>String(x)===day)){message('Entrée d’historique introuvable.',true);return false}
+ const s=storeFor(storeId),label=((s&&s.enseigne)||'Magasin')+((s&&s.ville)?' · '+s.ville:'');
+ if(!window.confirm('Supprimer l’entrée d’historique du '+day+' ?\n\n'+label+'\n\nAucune visite détaillée n’est rattachée à ce jour.'))return false;
+ return save(next=>{
+  const row=next.visits&&next.visits[storeId];if(!row||!Array.isArray(row.history))return;
+  row.history=row.history.filter(x=>String(x)!==day);row.history.sort();row.lastVisit=row.history[row.history.length-1]||'';
+ },()=>{
+  if(typeof window.renderAll==='function')window.renderAll();
+  renderQuickMemory();announceDeletion({visitId:'',storeId,completedDate:day});
+  message('Entrée d’historique supprimée.');
+ },{checkpoint:'Avant suppression d’une entrée d’historique'});
 }
 function completionText(v){const d=M.reportOf(v),choices=[d.brun.team,d.blanc.team,d.brun.training,d.blanc.training,d.shared.context];return choices.map(x=>String(x||'').trim()).find(Boolean)||'Visite terrain enregistrée'}
 async function completeVisit(v){
@@ -143,6 +209,6 @@ function ensureMemoryHost(){const sheet=document.getElementById('storeQuickSheet
 function actionLabel(a){return (a.status==='in_progress'?'En cours':'À faire')+(a.dueDate?' · '+a.dueDate:'')+(a.owner?' · '+a.owner:'')}
 function renderQuickMemory(){const sheet=document.getElementById('storeQuickSheet');if(!sheet||!sheet.classList.contains('open'))return;const startButton=document.getElementById('srQuickStart'),storeId=String(startButton&&startButton.dataset?(startButton.dataset.srStart||''):'');if(!storeId)return;ensureMemoryStyle();const host=ensureMemoryHost();if(!host)return;const data=memoryFor(storeId),expanded=expandedMemoryStore===storeId,shown=expanded?data.visits:data.visits.slice(0,3);host.replaceChildren();const head=element('div',undefined,'sr-memoryHead'),headText=element('div');headText.append(element('h3','Mémoire terrain'),element('div',data.visits.length+' visite'+(data.visits.length>1?'s':'')+' enregistrée'+(data.visits.length>1?'s':'')+' · '+data.actions.length+' action'+(data.actions.length>1?'s':'')+' en cours','sr-memoryMeta'));head.append(headText);host.append(head);const list=element('div',undefined,'sr-memoryList');list.id='srStoreHistoryList';if(!shown.length)list.append(element('div','Aucune visite terminée pour ce magasin.','sr-memoryMeta'));for(const v of shown){const row=button('',()=>{if(typeof window.closeStoreQuick==='function')window.closeStoreQuick();openVisit(v.id)},'sr-memoryRow');row.dataset.srHistoryVisit=v.id;row.append(element('b',v.completedDate||'Visite terminée'),element('span',v.conclusion||'Visite terrain'));list.append(row)}host.append(list);if(data.visits.length>3){const toggle=button(expanded?'Réduire l’historique':'Voir tout l’historique ('+data.visits.length+')',()=>{expandedMemoryStore=expanded?'':storeId;renderQuickMemory()},'sr-memoryToggle');toggle.dataset.srHistoryToggle='1';host.append(toggle)}if(data.actions.length){const wrap=element('div',undefined,'sr-memoryActions');wrap.append(element('h3','Actions en cours'));const actionList=element('div',undefined,'sr-memoryList');for(const a of data.actions.slice(0,3)){const row=button('',()=>{if(typeof window.closeStoreQuick==='function')window.closeStoreQuick();openVisit(a.visitId)},'sr-memoryRow');row.dataset.srOpenAction=a.id;row.append(element('b',a.description||'Action'),element('span',actionLabel(a)));actionList.append(row)}wrap.append(actionList);host.append(wrap)}}
 function installQuickMemory(){const sheet=document.getElementById('storeQuickSheet');if(!sheet||quickMemoryObserver)return;ensureMemoryStyle();ensureMemoryHost();quickMemoryObserver=new MutationObserver(renderQuickMemory);quickMemoryObserver.observe(sheet,{attributes:true,attributeFilter:['class','aria-hidden']});document.addEventListener('store-runner:data-restored',renderQuickMemory);document.addEventListener('store-runner:planning-updated',renderQuickMemory)}
-function boot(){if(document.getElementById('srVisitDialog'))return;dialog=element('dialog');dialog.id='srVisitDialog';dialog.className='sr-visit';dialog.setAttribute('aria-labelledby','srVisitTitle');const header=element('div',undefined,'sr-head');title=element('h2','Visites');title.id='srVisitTitle';header.append(title,button('Fermer',close));status=element('p',undefined,'sr-status');status.setAttribute('role','status');body=element('div');dialog.append(header,status,button('Réessayer l’enregistrement',()=>save()),body);document.body.append(dialog);session=window.StoreRunnerVisitStore.create({model:M,reliability:window.ChefReliability,db:window.__chefStorage||window.storage||window.localStorage,getState:()=>window.state,setState:s=>{window.state=s},onStatus:(phase,error)=>{if(phase==='saving')message('Enregistrement…');else if(phase==='error')message('Non enregistré : '+error,true);else message(window.__chefStorageMode==='memory'?'Stockage temporaire : exporte tes données avant de fermer.':'Enregistré localement · '+new Date().toLocaleTimeString('fr-FR'),window.__chefStorageMode==='memory')}});window.StoreRunnerVisits={start,openVisit,openHub,memoryFor,renderQuickMemory,activeVisitId:()=>activeId};installQuickMemory();dialog.addEventListener('cancel',e=>{e.preventDefault();close()});document.addEventListener('click',e=>{const b=e.target.closest('[data-sr-start],[data-sr-current],[data-sr-terrain],[data-sr-hub]');if(!b)return;e.preventDefault();e.stopPropagation();if(b.hasAttribute('data-sr-hub'))openHub();else if(b.hasAttribute('data-sr-current')){if(window.currentEditId)start(window.currentEditId)}else if(b.hasAttribute('data-sr-terrain')){const t=window.terrainCurrent();if(t)start(t.store.id);else{show();hub();message('Aucune visite de tournée en attente.')}}else start(b.dataset.srStart)},true);document.addEventListener('store-runner:data-restored',()=>{session.invalidate();if(dialog.open){hub();message('Sauvegarde restaurée.')}});window.addEventListener('beforeunload',e=>{if(session.hasPending()){e.preventDefault();e.returnValue=''}});document.addEventListener('visibilitychange',()=>{if(document.hidden)save()})}
+function boot(){if(document.getElementById('srVisitDialog'))return;dialog=element('dialog');dialog.id='srVisitDialog';dialog.className='sr-visit';dialog.setAttribute('aria-labelledby','srVisitTitle');const header=element('div',undefined,'sr-head');title=element('h2','Visites');title.id='srVisitTitle';header.append(title,button('Fermer',close));status=element('p',undefined,'sr-status');status.setAttribute('role','status');body=element('div');dialog.append(header,status,button('Réessayer l’enregistrement',()=>save()),body);document.body.append(dialog);session=window.StoreRunnerVisitStore.create({model:M,reliability:window.ChefReliability,db:window.__chefStorage||window.storage||window.localStorage,getState:()=>window.state,setState:s=>{window.state=s},onStatus:(phase,error)=>{if(phase==='saving')message('Enregistrement…');else if(phase==='error')message('Non enregistré : '+error,true);else message(window.__chefStorageMode==='memory'?'Stockage temporaire : exporte tes données avant de fermer.':'Enregistré localement · '+new Date().toLocaleTimeString('fr-FR'),window.__chefStorageMode==='memory')}});window.StoreRunnerVisits={start,openVisit,openHub,memoryFor,renderQuickMemory,deleteVisit,deleteHistoryEntry,activeVisitId:()=>activeId};installQuickMemory();dialog.addEventListener('cancel',e=>{e.preventDefault();close()});document.addEventListener('click',e=>{const b=e.target.closest('[data-sr-start],[data-sr-current],[data-sr-terrain],[data-sr-hub]');if(!b)return;e.preventDefault();e.stopPropagation();if(b.hasAttribute('data-sr-hub'))openHub();else if(b.hasAttribute('data-sr-current')){if(window.currentEditId)start(window.currentEditId)}else if(b.hasAttribute('data-sr-terrain')){const t=window.terrainCurrent();if(t)start(t.store.id);else{show();hub();message('Aucune visite de tournée en attente.')}}else start(b.dataset.srStart)},true);document.addEventListener('store-runner:data-restored',()=>{session.invalidate();if(dialog.open){hub();message('Sauvegarde restaurée.')}});window.addEventListener('beforeunload',e=>{if(session.hasPending()){e.preventDefault();e.returnValue=''}});document.addEventListener('visibilitychange',()=>{if(document.hidden)save()})}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();

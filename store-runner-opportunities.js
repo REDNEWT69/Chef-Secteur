@@ -62,6 +62,19 @@ function updateOpportunity(state,id,patch,opts){
   if(patch.status!==undefined){const v=String(patch.status);if(!Object.hasOwn(STATUSES,v))throw Error('Statut invalide.');row.status=v;row.closedAt=OPEN_STATUSES.has(v)?null:String(opts.now||now())}
   row.updatedAt=String(opts.now||now());validateOpportunity(row,state);return row;
 }
+/* V231 — une visite supprimée ne doit jamais laisser un `visitId` orphelin : la
+   validation métier refuse une opportunité qui pointe une visite absente. L'opportunité,
+   elle, appartient au magasin et non au passage : elle survit, rattachée au seul magasin.
+   Unique implémentation du détachement ; le modèle Visit l'appelle, il ne le recopie pas. */
+function detachVisit(state,visitId,opts){
+  opts=opts||{};const id=String(visitId==null?'':visitId);if(!id)return 0;
+  const stamp=String(opts.now||now());let count=0;
+  for(const row of rows(state)){
+    if(!row||row.visitId==null||String(row.visitId)!==id)continue;
+    row.visitId=null;row.source='store';row.updatedAt=stamp;count++;
+  }
+  return count;
+}
 function list(state,filter){filter=filter||{};let out=rows(state).slice();if(filter.storeId!==undefined)out=out.filter(x=>String(x.storeId)===String(filter.storeId));if(filter.visitId!==undefined)out=out.filter(x=>String(x.visitId||'')===String(filter.visitId||''));if(filter.openOnly)out=out.filter(x=>OPEN_STATUSES.has(x.status));return out.sort((a,b)=>{const ao=OPEN_STATUSES.has(a.status)?0:1,bo=OPEN_STATUSES.has(b.status)?0:1;return ao-bo||String(a.dueDate||'9999-12-31').localeCompare(String(b.dueDate||'9999-12-31'))||String(b.updatedAt).localeCompare(String(a.updatedAt))})}
 function storeName(state,storeId){const id=String(storeId),live=(state.stores||[]).find(s=>String(s.id)===id),snap=domain(state)&&domain(state).storeSnapshots&&domain(state).storeSnapshots[id],s=live||snap;return s?[s.enseigne,s.ville].filter(Boolean).join(' · '):'Magasin'}
 function persist(reason,mutator){
@@ -96,7 +109,7 @@ function refreshVisitButton(){if(!root.document)return false;const head=root.doc
 function refreshSectorButton(){if(!root.document)return false;const grid=root.document.querySelector('#moreSheetV2 .moreSheetGrid');if(!grid)return false;let b=root.document.getElementById('srOpportunitySectorBtn');if(!b){b=el('button');b.type='button';b.id='srOpportunitySectorBtn';b.addEventListener('click',()=>open('',''));grid.insertBefore(b,grid.firstChild)}const count=list(root.state,{openOnly:true}).length,label='💼 Opportunités'+(count?' · '+count:'');if(b.textContent!==label)b.textContent=label;return true}
 function refreshButtons(){refreshQuickButton();refreshVisitButton();refreshSectorButton()}
 function install(){if(!root.document)return;ensureStyle();ensureDialog();refreshButtons();const sheet=root.document.getElementById('storeQuickSheet');if(sheet&&root.MutationObserver&&!quickObserver){quickObserver=new root.MutationObserver(refreshQuickButton);quickObserver.observe(sheet,{attributes:true,attributeFilter:['class','aria-hidden']})}const visit=root.document.getElementById('srVisitDialog');if(visit&&root.MutationObserver&&!visitObserver){visitObserver=new root.MutationObserver(refreshVisitButton);visitObserver.observe(visit,{attributes:true,attributeFilter:['open'],childList:true,subtree:true})}root.document.addEventListener('store-runner:data-restored',refreshButtons);root.document.addEventListener('store-runner:planning-updated',refreshButtons);root.document.addEventListener('store-runner:opportunities-updated',refreshButtons);root.document.addEventListener('store-runner:home-rendered',refreshSectorButton)}
-const api={CATEGORIES,STATUSES,OPEN_STATUSES,dateValid,rows,ensure,validate,createOpportunity,updateOpportunity,list,storeName,open,refreshButtons};
+const api={CATEGORIES,STATUSES,OPEN_STATUSES,dateValid,rows,ensure,validate,createOpportunity,updateOpportunity,detachVisit,list,storeName,open,refreshButtons};
 root.StoreRunnerOpportunities=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',install,{once:true});else install()}
 })(typeof window!=='undefined'?window:globalThis);

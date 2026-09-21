@@ -75,6 +75,50 @@ function complete(s,visitId,day){const v=getVisit(s,visitId);if(v.status==='comp
  v.status='completed';v.completedDate=day;v.completedAt=now();touch(v);
  if(s.stores.some(x=>String(x.id)===v.storeId)){if(!s.visits)s.visits={};const history=s.visits[v.storeId]||(s.visits[v.storeId]={lastVisit:'',history:[]});if(!Array.isArray(history.history))history.history=[];if(!history.history.includes(day))history.history.push(day);history.history.sort();history.lastVisit=history.history[history.history.length-1]||''}return v.id;
 }
+/* V231 — suppression d'une visite enregistrée par erreur.
+   Propriétaire unique de l'opération : aucun autre module ne retire une visite de
+   `businessV2`. La cible est toujours un `visitId`, jamais une date.
+
+   Objets liés, et pourquoi :
+   - Les actions appartiennent structurellement à leur visite. validate() exige que
+     chaque action pointe une visite existante ET la ligne 6P / 360° qui l'a créée :
+     une action orpheline est invalide par construction, et la ligne qui la décrit
+     disparaît avec la visite. Elles sont donc supprimées avec elle. Une action
+     indépendante d'un autre magasin ou d'une autre visite n'est jamais touchée.
+   - Les opportunités survivent au magasin : elles décrivent un potentiel commercial,
+     pas le passage. Leur propriétaire (`store-runner-opportunities.js`) les détache
+     — `visitId = null`, `source = 'store'`. Si ce propriétaire est introuvable alors
+     qu'une opportunité est rattachée, on échoue plutôt que de laisser un identifiant
+     orphelin qui ferait échouer la validation métier.
+   - L'historique legacy `state.visits[storeId]` est recalculé de façon ciblée : le jour
+     n'est retiré que si plus aucune visite terminée du même magasin ne le porte. Un
+     historique importé avant `businessV2` n'est donc jamais réécrit. */
+function opportunityOwner(){
+ if(root.StoreRunnerOpportunities)return root.StoreRunnerOpportunities;
+ try{return typeof require==='function'?require('./store-runner-opportunities.js'):null}catch(e){return null}
+}
+function removeVisit(s,visitId,options){
+ options=options||{};const b=data(s),key=String(visitId==null?'':visitId);
+ const index=b.visits.findIndex(x=>x.id===key);if(index<0)fail('Visite introuvable.');
+ const v=b.visits[index],storeId=String(v.storeId),day=v.status==='completed'?v.completedDate:'';
+ const opportunities=Array.isArray(b.opportunities)?b.opportunities:[];
+ const linked=opportunities.filter(o=>o&&o.visitId!=null&&String(o.visitId)===key);
+ const owner=options.opportunities!==undefined?options.opportunities:opportunityOwner();
+ if(linked.length&&!(owner&&typeof owner.detachVisit==='function'))fail('Module Opportunité indisponible : suppression annulée.');
+ const detached=linked.length?owner.detachVisit(s,key):0;
+ const actions=b.actions.filter(a=>String(a.visitId)===key).map(a=>a.id);
+ b.actions=b.actions.filter(a=>String(a.visitId)!==key);
+ b.visits.splice(index,1);
+ if(day){
+  const stillUsed=b.visits.some(x=>x.status==='completed'&&String(x.storeId)===storeId&&x.completedDate===day);
+  const legacy=s.visits&&s.visits[storeId];
+  if(legacy&&Array.isArray(legacy.history)&&!stillUsed){
+   legacy.history=legacy.history.filter(x=>String(x)!==String(day));legacy.history.sort();
+   legacy.lastVisit=legacy.history[legacy.history.length-1]||'';
+  }
+ }
+ return {visitId:key,storeId,completedDate:day,actions:actions.length,opportunities:detached};
+}
 /* Compatibilité ascendante : ces clés sont arrivées après des visites déjà enregistrées en
    production. Aucune n'est obligatoire — on ne contrôle que ce qui est présent, et on ne
    réécrit jamais une visite à la lecture. */
@@ -96,6 +140,6 @@ function validate(s){const b=s.businessV2;if(b===undefined)return s;if(!object(b
   const parts=a.source.split(':');if(parts[0]==='6p'){const rows=v.sixP[parts[1]],row=rows&&rows[Number(parts[2])];if(!row||row.actionId!==a.id||a.category!==SIX_P[parts[1]].label)fail('Source 6P invalide.')}else if(parts[0]==='360'){if(!v.arrival.anomalies.some(x=>x.id===parts.slice(1).join(':')&&x.actionId===a.id)||a.category!=='360°')fail('Source anomalie invalide.')}else fail('Source action inconnue.');
  }return s;
 }
-const api={SIX_P,CHECKS,PREP,FAMILIES,FAMILY_LABELS,FAMILY_VALUES,REPORT_SHARED,REPORT_FIELDS,clone,empty,data,start,getVisit,editVisit,edit6P,addAnomaly,editAnomaly,setAnomalyFamily,editReport,reportOf,actionFrom6P,actionFromAnomaly,editAction,complete,validate,dateValid};
+const api={SIX_P,CHECKS,PREP,FAMILIES,FAMILY_LABELS,FAMILY_VALUES,REPORT_SHARED,REPORT_FIELDS,clone,empty,data,start,getVisit,editVisit,edit6P,addAnomaly,editAnomaly,setAnomalyFamily,editReport,reportOf,actionFrom6P,actionFromAnomaly,editAction,complete,removeVisit,validate,dateValid};
 root.StoreRunnerVisitModel=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

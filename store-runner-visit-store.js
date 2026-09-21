@@ -5,7 +5,10 @@ function create(options){
  const M=options.model,R=options.reliability,db=options.db;
  let queue=Promise.resolve(),draft=null,baseRevision=null,allowedRaw=null,epoch=0,pending=0,historyChanges={};
  const revision=s=>s.businessV2?s.businessV2.revision:0;
- function edit(change){const generation=epoch;pending++;const result=queue.then(async()=>{
+ /* `intent.checkpoint` : une mutation destructive exige un point de restauration daté
+    avant écriture. R.save() n'en pose un que toutes les 15 minutes ; ici on le force,
+    à partir de l'état encore en place, donc réellement antérieur à la suppression. */
+ function edit(change,intent){const generation=epoch,reason=intent&&intent.checkpoint?String(intent.checkpoint):'';pending++;const result=queue.then(async()=>{
   if(generation!==epoch)throw Error('Les données ont été restaurées. Rouvre la visite.');
   const current=options.getState(),raw=db.getItem(R.keys.MAIN),disk=raw?JSON.parse(raw):null;
   if(draft){if(revision(current)!==baseRevision||(raw!==allowedRaw&&revision(disk||{})!==baseRevision))throw Error('Les données ont changé dans une autre fenêtre. Recharge avant de poursuivre.');}
@@ -19,7 +22,7 @@ function create(options){
   draft=next;baseRevision=revision(current);allowedRaw=raw;
   options.onStatus('saving');
   try{
-   R.validateState(next);R.save(next,db);allowedRaw=db.getItem(R.keys.MAIN);
+   R.validateState(next);if(reason)R.checkpoint(reason,db,R.capture(options.getState(),db));R.save(next,db);allowedRaw=db.getItem(R.keys.MAIN);
    if(typeof db.flush==='function')await db.flush();
    if(generation!==epoch)throw Error('Les données ont été restaurées pendant la sauvegarde.');
    // Preserve unrelated profile/calendar changes made while IndexedDB was committing.
