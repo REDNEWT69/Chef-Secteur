@@ -1,6 +1,6 @@
 # V231-D — audit de la dette runtime Store Runner V1
 
-Audit du 21/09/2026, base `main` = V230 (`BUILD_REV` `20260921-brand-opening-hours230`).
+Audit du 21/09/2026, base `main` = V230 (`BUILD_REV` `20260921-brand-opening-hours230`), remis à jour après la fusion du lot V231-B (#378).
 Issue de référence : #377. **Audit : aucun comportement métier n'est modifié par ce document.**
 
 Il porte sur la **V1 de production** (`index.html` + `src/chef-secteur.html` + modules racine).
@@ -170,8 +170,8 @@ sans jamais tourner.
 
 `tests/reliability-coverage.test.cjs` (livré dans ce sous-lot) ferme la question : il exige
 que chaque fichier de test du dépôt soit soit nommé dans le workflow, soit tiré en cascade
-par un fichier qui l'est. Il affiche la répartition (aujourd'hui 148 nommés + 5 chaînés) et
-échoue sur tout test ajouté sans être exécuté.
+par un fichier qui l'est. Il affiche la répartition (après la fusion de #378 : 149 nommés + 5 chaînés,
+soit 154 fichiers) et échoue sur tout test ajouté sans être exécuté.
 
 ## 7. Ce qui reste volontairement en place, et pourquoi
 
