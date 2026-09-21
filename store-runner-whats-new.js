@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'233',
+      title:'Une seule visite par magasin et par jour',
+      items:[
+        'Revenir sur un magasin déjà visité aujourd’hui ouvre la visite existante au lieu d’en créer une nouvelle.',
+        'La visite du jour peut être consultée sans modifier vos données.',
+        'Pour continuer la saisie, « Réouvrir cette visite » reprend exactement le même passage.',
+        'Fermer puis rouvrir plusieurs fois la fiche ne crée plus de doublon dans l’historique.'
+      ]
+    },
+    {
       version:'232',
       title:'Des comptes rendus IA qui aboutissent',
       items:[
