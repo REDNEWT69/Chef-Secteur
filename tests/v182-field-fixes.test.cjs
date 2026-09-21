@@ -20,6 +20,7 @@ assert(index.includes('<img src="./app-icon.svg?rev='+version.latestBuild+'" alt
 assert(sw.includes('"./v182-fixes.js"'),'les correctifs terrain doivent fonctionner hors ligne après installation');
 assert(sw.includes('"./priority-campaign-v187.js"'),'le moteur de priorités V188 doit fonctionner hors ligne');
 assert(source.includes('removeHomePilotageShortcut'),'Pilotage doit rester retiré de l’accueil');
+assert(!source.includes('srRuntimeBoot'),'V234 : le voile de démarrage n’appartient plus à ce module');
 
 /* V184 reste en place : le flux 3 semaines utilise la capacité planning Boulanger,
    l'enregistrement Secteur reste neutre pour le planning et le GPS interne est masqué. */
@@ -39,7 +40,6 @@ const grid={
 const homeShortcut={removed:false,remove(){this.removed=true}};
 const elements={
   premiumHomeV2:{},
-  srRuntimeBoot:{classList:{add(){}},parentNode:{},remove(){}},
   overnightBox:{innerHTML:''}
 };
 const document={
