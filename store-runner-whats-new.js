@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'232',
+      title:'Des comptes rendus IA qui aboutissent',
+      items:[
+        'La génération du compte rendu de visite fonctionne de nouveau, pour le BRUN comme pour le BLANC.',
+        'Quand la réponse revient mal formée, Store Runner la fait corriger une seule fois avant d’abandonner.',
+        'En cas d’échec, votre rapport local, vos notes et vos photos sont conservés tels quels.',
+        'Le bouton redevient utilisable immédiatement et un appui répété ne lance plus deux générations.'
+      ]
+    },
+    {
       version:'231',
       title:'Corriger une visite enregistrée par erreur',
       items:[

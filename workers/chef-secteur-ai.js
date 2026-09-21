@@ -247,6 +247,44 @@ function proofreadRetryTokens(input) {
   return Math.min(900, Math.max(520, proofreadMaxTokens(input) + 220));
 }
 
+// V232 — route dédiée au compte rendu de visite.
+//
+// Cette requête passait par la branche `assistant`, avec trois effets cumulés qui la
+// rendaient systématiquement inexploitable :
+//   1. ASSISTANT_SYSTEM décrit un assistant de planning qui doit répondre « brièvement » ;
+//      le message, lui, exige un objet JSON nu. Le modèle ajoutait de la prose.
+//   2. le plafond de sortie était 1000 tokens, alors qu'un compte rendu réellement rempli
+//      pèse ~970 tokens pour BRUN — moins de 4 % de marge — et dépasse 1000 tokens pour
+//      BLANC, plus long de deux rubriques.
+//   3. `max_completion_tokens` couvre la réponse ET le raisonnement, et le raisonnement
+//      n'était coupé que pour la relecture. Sur le repli gpt-oss il consommait donc une
+//      part du budget avant le premier caractère de JSON : la marge de BRUN disparaissait
+//      et la troncature devenait certaine sur les deux familles.
+// Le schéma étant plat, une sortie coupée ne contient plus aucune accolade fermante : le
+// client ne pouvait que lever « JSON de compte rendu invalide ».
+//
+// La route ci-dessous corrige le contrat, et rien d'autre : CORS, origines autorisées et
+// authentification sont inchangés.
+const VISIT_REPORT_SYSTEM = `Tu structures des notes de visite terrain en JSON.
+Règles impératives :
+- Réponds UNIQUEMENT par un objet JSON valide, complet, refermé. Aucun markdown, aucun préambule, aucun commentaire.
+- N'invente aucune information absente des notes fournies.
+- Respecte exactement le schéma demandé dans le message, y compris le nom des champs.
+- Pour toute donnée absente : chaîne vide "" ou tableau vide [].
+- Reste concis pour que la réponse tienne entièrement dans la limite de tokens.`;
+
+// Un compte rendu rempli mesure ~3 100 caractères, soit ~980 tokens en français. La marge
+// couvre la famille BLANC, plus longue de deux rubriques, et la réponse de réparation.
+const VISIT_REPORT_MAX_TOKENS = 2600;
+
+// Le raisonnement est facturé sur le même budget que la réponse : sur gpt-oss il doit être
+// coupé, sinon il consomme les tokens destinés au JSON.
+const VISIT_REPORT_OPTIONS = {
+  userOnly: false,
+  reasoningEffort: 'low',
+  includeReasoning: false
+};
+
 async function handlePing(env, origin) {
   const workersReady = hasWorkersAI(env);
   const groqReady = Boolean(env && env.GROQ_API_KEY);
@@ -345,6 +383,26 @@ export default {
           provider: result.provider,
           fallbackFrom: result.fallbackFrom || null,
           mode: 'proofread'
+        }, 200, origin);
+      }
+
+      if (mode === 'visit_report') {
+        const message = String(body.message || '').trim().slice(0, 24000);
+        if (!message) return json({ error: 'Message vide.' }, 400, origin);
+
+        const result = await callAI(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, VISIT_REPORT_OPTIONS);
+        if (!result.text) throw new Error('Réponse IA vide.');
+
+        // finishReason est renvoyé au client : une réponse coupée doit être reconnaissable
+        // comme telle, jamais confondue avec une réponse absurde.
+        return json({
+          text: result.text,
+          model: result.model,
+          provider: result.provider,
+          fallbackFrom: result.fallbackFrom || null,
+          finishReason: result.finishReason || '',
+          truncated: String(result.finishReason || '').toLowerCase() === 'length',
+          mode: 'visit_report'
         }, 200, origin);
       }
 
