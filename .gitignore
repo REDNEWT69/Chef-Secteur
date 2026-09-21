@@ -11,3 +11,9 @@ __pycache__/
 # Les fixtures de tests sont fabriquées en mémoire par le code des tests : aucune n'est un
 # fichier de données. Si un jour une fixture inventée doit être versionnée en .csv, elle
 # s'ajoute ici explicitement par une ligne « !tests/fixtures/<nom>.csv ».
+
+# Résidus d'exécution des tests : installés par Reliability (--no-save) ou produits
+# par Playwright en cas d'échec. Jamais versionnés.
+node_modules/
+test-results/
+playwright-report/
