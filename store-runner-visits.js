@@ -211,10 +211,21 @@ function steps(host,v){
 function render(){const v=current();if(!v){hub();return}body.replaceChildren();title.textContent=name(v.storeId)+' · '+(v.status==='draft'?'Visite en cours':'Visite terminée');steps(body,v);familySwitch(body,v);report(body,v)}
 function hub(){activeId=null;title.textContent='Visites';body.replaceChildren();const rows=domain().visits.slice().sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));if(!rows.length)body.append(element('p','Démarre une visite depuis une fiche magasin, le planning ou la tournée.'));for(const v of rows){const box=element('section',undefined,'sr-item');box.append(element('h3',name(v.storeId)),element('p',v.status==='draft'?'Visite en cours':('Terminée le '+v.completedDate)),button(v.status==='draft'?'Reprendre la visite':'Consulter la visite',()=>{activeId=v.id;previewFamily=activeFamily(v);viewStep=3;render()}));body.append(box)}}
 function show(){if(!dialog.open){opener=document.activeElement;dialog.showModal()}}
+/* V233 — une visite terminée aujourd'hui est consultée par défaut.
+   Aucune annulation de dialogue ne peut désormais tomber dans M.start() et créer un
+   doublon silencieux. Pour continuer la saisie, l'utilisateur passe explicitement par
+   « Réouvrir cette visite », qui réutilise le même visitId. */
 async function start(storeId){
  show();
  const key=String(storeId),draft=domain().visits.find(v=>String(v.storeId)===key&&v.status==='draft');
- if(!draft){const recent=sameDayCompleted(key);if(recent&&window.confirm('Une visite de ce magasin a déjà été terminée aujourd’hui.\n\nOK : reprendre cette visite\nAnnuler : créer une nouvelle visite'))return reopenVisit(recent,false)}
+ if(!draft){
+  const recent=sameDayCompleted(key);
+  if(recent){
+   activeId=recent.id;previewFamily=activeFamily(recent);viewStep=3;render();
+   message('Une visite a déjà été terminée aujourd’hui. Consulte-la ou utilise « Réouvrir cette visite » pour continuer la saisie.');
+   return recent.id;
+  }
+ }
  let id;await save(s=>{id=M.start(s,key);const v=M.getVisit(s,id);if(v.status==='draft'&&v.step!==3)M.editVisit(s,id,'step',null,3);normalizeVisitFamily(s,v)},()=>{activeId=id;previewFamily=activeFamily(current());viewStep=3;render()});return id
 }
 function openVisit(visitId){const v=domain().visits.find(x=>x.id===String(visitId));if(!v)return false;show();activeId=v.id;previewFamily=activeFamily(v);viewStep=3;render();if(v.status==='draft'&&v.activeFamily!==activeFamily(v))save(s=>normalizeVisitFamily(s,M.getVisit(s,v.id)),()=>{previewFamily=activeFamily(current());render()});return true}
