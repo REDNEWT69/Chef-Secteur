@@ -254,9 +254,12 @@ function proofreadRetryTokens(input) {
 //   1. ASSISTANT_SYSTEM décrit un assistant de planning qui doit répondre « brièvement » ;
 //      le message, lui, exige un objet JSON nu. Le modèle ajoutait de la prose.
 //   2. le plafond de sortie était 1000 tokens, alors qu'un compte rendu réellement rempli
-//      pèse ~980 tokens pour BRUN et davantage pour BLANC : la sortie était coupée.
-//   3. sur le repli gpt-oss, les tokens de raisonnement mangeaient ce même budget avant le
-//      premier caractère de JSON.
+//      pèse ~970 tokens pour BRUN — moins de 4 % de marge — et dépasse 1000 tokens pour
+//      BLANC, plus long de deux rubriques.
+//   3. `max_completion_tokens` couvre la réponse ET le raisonnement, et le raisonnement
+//      n'était coupé que pour la relecture. Sur le repli gpt-oss il consommait donc une
+//      part du budget avant le premier caractère de JSON : la marge de BRUN disparaissait
+//      et la troncature devenait certaine sur les deux familles.
 // Le schéma étant plat, une sortie coupée ne contient plus aucune accolade fermante : le
 // client ne pouvait que lever « JSON de compte rendu invalide ».
 //

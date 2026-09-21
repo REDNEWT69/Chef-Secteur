@@ -25,6 +25,7 @@ jobs:
       - run: node tests/visit-report-slack.test.cjs
       - run: node tests/visit-report-ai-json-v225.test.cjs
       - run: node tests/visit-report-ai-v232.test.cjs
+      - run: node tests/visit-report-worker-v232.test.cjs
       - run: node tests/visit-storage.test.cjs
       - run: node tests/visit-delete-v231.test.cjs
       - run: node tests/note-proofreader-v221.test.cjs
