@@ -1,6 +1,8 @@
 # Store Runner — architecture cleanup status
 
-Checkpoint architecture actualisé après les consolidations des 10 et 11/09/2026 et la reprise Opportunity du 17/09/2026.
+Checkpoint architecture actualisé au 21/09/2026, base `main` = V230 (`version.json` : `displayVersion` `230`).
+
+Ce document décrit la **V1 de production**. `/v2/` est un chantier parallèle isolé, décrit par `v2/STATUS.md` : aucun fichier de `v2/` n'est chargé par `index.html` ni mis en cache par `sw.js`.
 
 ## Propriétaires actuels
 
@@ -15,7 +17,7 @@ Checkpoint architecture actualisé après les consolidations des 10 et 11/09/202
 - `assistant-upgrade.js` : propriétaire transitoire de l’enrichissement de l’assistant. Il expose une API d’extensions pour les résolveurs locaux et les transformations de contexte.
 - `ai-context-limit.js` : transformation pure qui limite le contexte IA ; il ne remplace plus `sectorContext`.
 - `assistant-store-lookup.js` : résolveur de planning magasin et archivage des semaines par événements/observer ; il ne remplace plus `assistantSend`, `renderAll` ni `generateWeek` et ne se réveille plus globalement au focus/retour de visibilité.
-- Le domaine métier V2 **Visit + Action + workflow 6P** est intégré dans `main` et protégé par les suites Reliability dédiées.
+- Le domaine métier **Visit + Action + workflow 6P** est intégré dans la V1 de `main` et protégé par les suites Reliability dédiées.
 - `store-runner-opportunities.js` est propriétaire de l’interface et des mutations Opportunity V200. Il ne doit pas écrire le planning, `store.priority` ni les performances.
 
 ## Contrats d’extension assistant
@@ -33,10 +35,10 @@ Le domaine Visit/Action ajoute son contexte à l’assistant en lecture seule sa
 
 ## Références de travail pour les agents
 
-- `PLAN_METIER_STORE_RUNNER.md` est versionné dans `main` et constitue la référence du métier V2.
+- `PLAN_METIER_STORE_RUNNER.md` est versionné dans `main` et constitue la référence du **modèle métier cible**. Ce n'est pas un état d'avancement : l'avancement réel est décrit ici et dans `AGENTS.md`.
 - `AGENTS.md` fixe les règles de travail pour Codex et les autres agents : repartir du dernier `main`, préserver la stack actuelle, respecter les propriétaires, éviter les anciennes branches/prototypes appliqués aveuglément et valider chaque lot.
 - **Ne pas recréer Visit + Action + 6P depuis un ancien résumé ou une branche locale** : ce lot est déjà intégré.
-- **Opportunity passe avant Appointment** depuis la décision produit du 17/09/2026.
+- **Opportunity est livré** (V200). Le chantier métier suivant est **Appointment**.
 - `tests/business-v2-architecture.test.cjs` empêche les modules métier V2 de reprendre des fonctions globales qui appartiennent déjà à un autre domaine.
 - `tests/runtime-ownership.test.cjs` contrôle les modules réellement chargés par `index.html` et verrouille les propriétaires critiques du runtime.
 - `tests/assistant-architecture.test.cjs` verrouille les contrats d’extension assistant, les dates relatives et les cycles de vie événementiels nettoyés.
@@ -57,14 +59,17 @@ Opportunity doit rester neutre pour la planification : aucune création ou mise 
 
 - `assistant-upgrade.js` remplace encore transitoirement `sectorContext` et `assistantHandle`. La suppression de ces deux derniers wrappers demandera d’ajouter les points d’extension directement dans le propriétaire historique de l’assistant, avec validation complète avant publication.
 - `src/chef-secteur.html` reste le noyau historique et contient encore beaucoup de logique globale, notamment des couches historiques autour du planning et des rendez-vous. Les extractions doivent rester progressives, ciblées et sans migration de framework.
-- La dette documentaire liée à l’ancien statut « Visit + Action à faire » est désormais supprimée. Les agents doivent considérer ce lot comme acquis.
+- La dette documentaire liée aux anciens statuts « Visit + Action à faire » et « Opportunity à faire » est supprimée. Les agents doivent considérer ces deux lots comme acquis.
+- `visit-report-ai-json-v225.js` est chargé à la demande par `ai-gateway-config.js` mais **absent de la liste de cache de `sw.js`** : hors ligne, le compte rendu structuré retombe sur le rendu local. Corriger cet écart touche `sw.js` et impose donc un bump `BUILD_REV` complet.
+- `store-runner-logo.jpg` n'est chargé par aucune surface (`index.html`, `manifest.webmanifest` et le noyau utilisent tous `app-icon.svg`) : sa seule référence est la liste `OPTIONAL_SHELL` de `sw.js`.
+- Cinq tests existent mais ne sont pas exécutés par Reliability : `tests/performance-store-reconcile-v209.test.cjs`, `tests/planning-consolidation.test.cjs`, `v2/tests/visits.test.mjs`, `tests/performance-store-reconcile-v209-browser.spec.cjs`, `tests/visit-reopen-v214-browser.spec.cjs`. Ce sont des protections écrites puis jamais branchées.
 - Le garde-fou `branding-relics.test.cjs` dépend actuellement de la liste des modules découverte depuis `index.html`. Si le bootloader V1 change, ce test devra être adapté afin de ne pas devenir silencieusement aveugle.
 
 ## État métier et ordre de reprise recommandé
 
 1. Conserver le checkpoint architecture vert avant chaque lot.
-2. **Opportunity** est la priorité métier décidée le 17/09/2026. V200 doit stabiliser création magasin/visite, suivi des statuts, mémoire magasin, vue secteur et contexte assistant sans effet automatique sur le planning.
-3. Une fois Opportunity stabilisé, poursuivre avec **Appointment** en prolongeant `state.appointments` et sans créer de registre concurrent.
+2. **Opportunity est livré** (V200, PR #275) : création depuis magasin/visite, suivi des statuts, mémoire magasin, vue secteur et contexte assistant, sans effet automatique sur le planning. Ce lot ne doit pas être redéveloppé.
+3. Le chantier métier suivant est **Appointment**, en prolongeant `state.appointments` et sans créer de registre concurrent.
 4. Conserver KitchenCRM et ServiceCase hors priorité tant qu’ils ne sont pas explicitement demandés.
 5. Valider mobile 390 px, hors ligne/PWA, sauvegarde/restauration et absence de régression à chaque lot.
 6. Extraire ensuite les derniers wrappers assistant du noyau historique quand les points d’extension sont suffisamment stabilisés.

@@ -1,5 +1,12 @@
 # Statut V2
 
+## À ne pas confondre
+
+- **Store Runner V1 = la production.** `index.html`, `src/chef-secteur.html` et les modules racine, publiés sur `https://store-runner.fr/`. Version courante **V230**. Visit, Action, 6P, Opportunity, Espace Cuisinistes et pilotage performance y sont **livrés**.
+- **`/v2/` = ce document.** Chantier parallèle **incomplet**, isolé du runtime V1 : aucun fichier de `v2/` n'est chargé par `index.html` ni mis en cache par `sw.js`. Aucune date de bascule n'est décidée.
+
+Un lot V1 ne touche pas `v2/`, et un lot V2 ne touche pas le runtime V1.
+
 État réel du chantier #115 sur `main` :
 
 - V2-01 — socle + stockage : livré
@@ -13,7 +20,7 @@
 - V2-07 — import local d’une sauvegarde V1 + persistance : livré
 - Outils terrain du planning (départ, préparation TeamHaven, workflow mobile) : livrés dans l’environnement V2 de test
 
-La V2 reste isolée sous `/v2/` et ne remplace pas la V1 de production.
+La V2 reste isolée sous `/v2/` et ne remplace pas la V1 de production. Les lots livrés côté V2 le sont **dans l'environnement V2**, pas en production : un lot marqué « livré » ci-dessus ne dit rien de la V1, qui possède déjà ses propres versions de ces fonctions.
 
 ## Lot V2-08A — #355 / PR #364
 
