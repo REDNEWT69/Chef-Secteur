@@ -218,3 +218,78 @@ test('Une visite avec photos liées refuse la suppression, et la libère après 
   expect(apres.photos,'les photos déplacées survivent à la suppression').toEqual(['photo-a','photo-b']);
   expect(pageErrors,'Le garde-fou photo ne doit produire aucune erreur JavaScript').toEqual([]);
 });
+
+test('V233 — revenir sur une visite terminée aujourd’hui ne crée jamais de doublon, à 390 px', async ({ page }) => {
+  const pageErrors=[];
+  let unexpectedDialogs=0;
+  page.on('pageerror', e => pageErrors.push(String(e && e.message || e)));
+  page.on('dialog', async d => { unexpectedDialogs++; await d.dismiss(); });
+
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(() => window.StoreRunnerVisits && window.StoreRunnerVisitModel && typeof window.save==='function');
+
+  const seeded=await page.evaluate(() => {
+    const st=window.state,M=window.StoreRunnerVisitModel,d=new Date(),p=n=>String(n).padStart(2,'0'),day=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+    st.stores=[
+      {id:'same',enseigne:'Darty',ville:'Ville-Test Même Jour',adresse:'1 rue Test',dept:'69',lat:45.75,lon:4.85,active:true,priority:4},
+      {id:'other',enseigne:'Fnac',ville:'Ville-Test Autre',adresse:'2 rue Test',dept:'69',lat:45.76,lon:4.86,active:true,priority:3}
+    ];
+    st.notes={};st.visits={};st.included={};st.excluded={};st.locks={};st.plan={};st.appointments=[];st.calendarEvents=[];st.businessV2=M.empty();
+    const id=M.start(st,'same');M.editVisit(st,id,'conclusion',null,'Passage unique du jour');M.complete(st,id,day);save();
+    return {id,day};
+  });
+
+  const first=await page.evaluate(async () => {
+    const before=state.businessV2.visits.length,result=await window.StoreRunnerVisits.start('same');
+    return {before,after:state.businessV2.visits.length,result,active:window.StoreRunnerVisits.activeVisitId(),status:document.querySelector('#srVisitDialog .sr-status').textContent};
+  });
+  expect(first.before).toBe(1);
+  expect(first.after).toBe(1);
+  expect(first.result).toBe(seeded.id);
+  expect(first.active).toBe(seeded.id);
+  expect(first.status).toContain('déjà été terminée aujourd’hui');
+  expect(unexpectedDialogs,'revenir sur une visite du jour ne doit plus ouvrir le vieux confirm OK/Annuler').toBe(0);
+
+  const dialog=page.locator('#srVisitDialog');
+  await expect(dialog).toBeVisible();
+  await expect(page.locator('#srVisitTitle')).toContainText('Visite terminée');
+  const reopen=dialog.locator('[data-sr-reopen-visit]');
+  await expect(reopen).toBeVisible();
+  const reopenBox=await reopen.boundingBox();
+  if(!reopenBox)throw new Error('Bouton de réouverture introuvable');
+  expect(reopenBox.height).toBeGreaterThanOrEqual(44);
+
+  // Plusieurs retours successifs restent de simples consultations du même visitId.
+  for(let i=0;i<3;i++)await page.evaluate(()=>window.StoreRunnerVisits.start('same'));
+  const repeated=await page.evaluate(()=>({count:state.businessV2.visits.length,ids:state.businessV2.visits.map(v=>v.id),active:window.StoreRunnerVisits.activeVisitId()}));
+  expect(repeated.count).toBe(1);
+  expect(repeated.ids).toEqual([seeded.id]);
+  expect(repeated.active).toBe(seeded.id);
+  expect(unexpectedDialogs).toBe(0);
+
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+
+  // Persistance + reload : aucun doublon fantôme n'apparaît après rechargement.
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(() => window.StoreRunnerVisits && window.StoreRunnerVisitModel && window.state && window.state.businessV2);
+  const afterReload=await page.evaluate(async () => {
+    const before=state.businessV2.visits.length,result=await window.StoreRunnerVisits.start('same');
+    return {before,after:state.businessV2.visits.length,result,ids:state.businessV2.visits.map(v=>v.id)};
+  });
+  expect(afterReload.before).toBe(1);
+  expect(afterReload.after).toBe(1);
+  expect(afterReload.result).toBe(seeded.id);
+  expect(afterReload.ids).toEqual([seeded.id]);
+
+  // Un autre magasin reste libre de démarrer sa première visite.
+  const other=await page.evaluate(async () => {
+    const id=await window.StoreRunnerVisits.start('other');
+    const visits=state.businessV2.visits.map(v=>({id:v.id,storeId:v.storeId,status:v.status}));
+    return {id,visits};
+  });
+  expect(other.visits).toHaveLength(2);
+  expect(other.visits.find(v=>v.storeId==='same').id).toBe(seeded.id);
+  expect(other.visits.find(v=>v.storeId==='other')).toMatchObject({id:other.id,status:'draft'});
+  expect(pageErrors,'V233 ne doit produire aucune erreur JavaScript').toEqual([]);
+});
