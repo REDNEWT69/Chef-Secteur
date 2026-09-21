@@ -1,4 +1,4 @@
-const BUILD_REV = "20260921-repo-cleanup230";
+const BUILD_REV = "20260921-brand-opening-hours230";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -22,6 +22,7 @@ const OPTIONAL_SHELL = [
   "./data/official-stores.json",
   "./manifest.webmanifest",
   "./app-icon.svg",
+  "./store-runner-logo.jpg",
   "./store-runner-branding.js",
   "./navigation-controller.js",
   "./profile-controller.js",
