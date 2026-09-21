@@ -14,7 +14,8 @@ assert(index.includes("const BUILD_REV='"+version.latestBuild+"'"),'index doit p
 assert(sw.includes('const BUILD_REV = "'+version.latestBuild+'"'),'sw doit publier le même build que version.json');
 assert(index.includes("'./v182-fixes.js'"),'le runtime de fiabilisation doit rester chargé');
 assert(index.includes("'./priority-campaign-v187.js'"),'le moteur de priorités V188 doit être chargé');
-assert(index.includes('id="srRuntimeBoot"'),'le boot historique doit être masqué pendant le rendu moderne');
+assert(index.includes('id="storeRunnerBoot" data-store-runner-boot'),'V234 doit garder un loader unique devant le rendu moderne');
+assert(!index.includes('id="srRuntimeBoot"'),'l’ancien loader srRuntimeBoot ne doit plus être injecté');
 assert(index.includes('<img src="./app-icon.svg?rev='+version.latestBuild+'" alt="S-RUNNER">'),'le loader doit afficher le vrai logo S-RUNNER avec le build courant');
 assert(sw.includes('"./v182-fixes.js"'),'les correctifs terrain doivent fonctionner hors ligne après installation');
 assert(sw.includes('"./priority-campaign-v187.js"'),'le moteur de priorités V188 doit fonctionner hors ligne');
