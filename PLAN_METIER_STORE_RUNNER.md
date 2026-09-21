@@ -4,7 +4,34 @@ Date : 10 septembre 2026
 Dépôt : REDNEWT69/Chef-Secteur  
 Base de rédaction vérifiée : `main`, commit `44deaca4f2fa101e0396463a76f54dae91618a85`  
 Complément vérifié pendant la rédaction : `52206719be3604a22f46f3df7489918d417df184` (garde architecture assistant)  
-Statut : plan de réalisation terminé ; développement fonctionnel suspendu à la demande de l’utilisateur.
+Statut à la rédaction : plan de réalisation terminé ; développement fonctionnel suspendu à la demande de l’utilisateur.
+
+> **Mise à jour du 21/09/2026 — lire ceci avant d'utiliser ce document.**
+>
+> Ce document décrit le **modèle métier cible**. Il a été figé au 10/09/2026 et **il n'est pas un état d'avancement** : le développement a repris depuis, et la V1 de production est aujourd'hui en **V230**.
+>
+> État réel des lots du §7 dans la V1 de production :
+>
+> | Lot | État réel au 21/09/2026 |
+> | --- | --- |
+> | 0 — Plan métier | livré (ce document) |
+> | 1 — Contrats et fiabilité | livré : modèle Visit/Action, migration additive, sauvegardes et restauration couvertes par Reliability |
+> | 2 — Préparation et reprise | livré |
+> | 3 — 360° | livré |
+> | 4 — Six P | livré |
+> | 5 — Entretien et clôture | livré |
+> | 6 — Suivi terrain | livré : actions, **Opportunity (V200)**, historique et préparation suivante |
+> | 7 — Spécificités documentées | partiel : **Espace Cuisinistes livré (V193 → V229)**. KitchenCRM, Buying Group et ServiceCase restent hors priorité. |
+>
+> Livré en plus de ce plan : pilotage performance (V190 → V192), photos magasin, horaires par enseigne (V230), correcteur de notes terrain, comptes rendus BLANC / BRUN.
+>
+> **Ne pas redévelopper ces lots** depuis ce document, depuis une ancienne branche ou depuis un ancien résumé.
+>
+> **Appointment non plus n'est pas un module à construire.** `state.appointments` existe et l'écran Rendez-vous du noyau couvre création, modification, suppression et affichage ; le planning, la priorisation, l'accueil et les horaires le consomment. Le §4 ci-dessous décrit la forme *cible* d'un `Appointment`, pas un reste à faire. Le seul écart vérifié entre cette cible et la V1 est le champ de liaison à la visite source : `saveAppointment` ne stocke pas de `visitId`, et les modules visite n'écrivent pas dans `state.appointments`. Tout complément prolonge le registre existant — jamais un second registre.
+>
+> Les paragraphes ci-dessous conservent leur rédaction d'origine, y compris les mentions « suspendu » et le point de reprise Git de septembre : ils décrivent le contexte de rédaction, pas l'état courant. L'état courant fait foi dans `ARCHITECTURE_CLEANUP_STATUS.md` et `AGENTS.md`.
+>
+> Ce plan porte sur le **métier de la V1 de production**. Le chantier `/v2/` est un sujet distinct, suivi par l'issue #115 et `v2/STATUS.md`.
 
 ## 1. Point de reprise et travail conservé
 
@@ -237,7 +264,8 @@ Sur iPhone : vérifier Safari et l’application ajoutée à l’écran d’accu
 
 ## 7. Lots futurs, dépendances et critères de sortie
 
-**Seul le lot 0 est exécuté par la présente reprise. Les lots fonctionnels restent suspendus jusqu’à une nouvelle instruction.**
+**Rédaction d'origine (10/09/2026) : seul le lot 0 était exécuté par cette reprise, les lots fonctionnels restaient suspendus.**
+**Dépassé depuis.** Les lots 1 à 6 sont livrés dans la V1 de production et le lot 7 l'est partiellement — voir le tableau d'état en tête de document. Ce tableau décrit le contenu cible de chaque lot, pas un reste à faire.
 
 | Lot | Contenu | Critère de sortie |
 | --- | --- | --- |

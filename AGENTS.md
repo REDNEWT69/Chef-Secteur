@@ -6,8 +6,8 @@ Ce dépôt est l’application **Store Runner**. Le dépôt historique s’appel
 
 1. Travailler sur le `main` GitHub le plus récent, ou sur une branche créée depuis ce `main`.
 2. Vérifier l’état du dépôt avant d’écrire. Ne jamais réappliquer aveuglément un ancien prototype, un ancien diff ou une branche `v3-premium`.
-3. Lire au minimum `ARCHITECTURE_CLEANUP_STATUS.md` et, pour le métier V2, `PLAN_METIER_STORE_RUNNER.md`.
-4. Vérifier les PR déjà fusionnées avant de reprendre un ancien lot : **Visit + Action + workflow 6P sont déjà intégrés** et ne doivent pas être recréés depuis une ancienne branche locale.
+3. Lire au minimum `ARCHITECTURE_CLEANUP_STATUS.md` pour l'état réel, et `PLAN_METIER_STORE_RUNNER.md` pour le modèle métier cible.
+4. Vérifier les PR déjà fusionnées avant de reprendre un ancien lot : **Visit + Action + workflow 6P, Opportunity, l'Espace Cuisinistes et le pilotage performance sont déjà intégrés** et ne doivent pas être recréés depuis une ancienne branche locale.
 5. Conserver les fonctionnalités existantes et les données locales. Les changements doivent être progressifs et réversibles.
 
 ## Architecture à respecter
@@ -72,15 +72,31 @@ Ne pas remplacer une fonction globale métier appartenant à un autre module. Pr
   déjà installés ne le reçoivent jamais par le gestionnaire de mise à jour.
   C'est le défaut qui a produit les décalages 188/189 et 193/194.
 
-## Métier V2
+## Métier
 
-Le plan de référence est `PLAN_METIER_STORE_RUNNER.md`.
+Le plan de référence est `PLAN_METIER_STORE_RUNNER.md`. Attention : ce document décrit le **modèle cible**, il n'est pas un état d'avancement. L'état réel est ci-dessous.
 
-État actuel : **Visit + Action + workflow 6P sont intégrés dans `main`** avec sauvegarde/reprise, historique et protections Reliability. L’assistant peut également lire un contexte Visit/Action sans mutation métier.
+Déjà intégré dans `main` et protégé par Reliability — **à ne pas redévelopper** depuis une ancienne branche ou un ancien résumé Codex :
 
-Priorité métier décidée le 17/09/2026 : **Opportunity avant Appointment**. Opportunity doit suivre les opportunités commerciales magasin sans modifier automatiquement le planning, `store.priority` ou les performances. Une fois Opportunity stabilisé, reprendre **Appointment** en prolongeant `state.appointments` au lieu de créer un second registre concurrent.
+- **Visit + Action + workflow 6P**, avec sauvegarde/reprise et historique. L’assistant lit un contexte Visit/Action sans mutation métier.
+- **Opportunity**, livré en V200 (priorité décidée le 17/09/2026, PR #275). Il reste neutre pour la planification : aucune opportunité ne déplace un magasin, ne change `store.priority` ni ne fabrique une performance. L'assistant le lit en lecture seule ; les mutations passent par `store-runner-opportunities.js`.
+- **Espace Cuisinistes** (V193 → V229) et **pilotage performance** (V190 → V192).
+- **Appointment**. `state.appointments` existe et est déjà consommé par le planning, la priorisation et l'accueil. Le noyau possède l'écran Rendez-vous complet : `renderAppointments`, `saveAppointment`, `openAppointment`, `deleteAppointment`, `ensureAppointments`, `appointmentStore`. Un rendez-vous stocké porte `id`, `storeId`, `date`, `time`, `duration`, `type` et `note`.
 
-Ne pas redévelopper Visit/Action/6P depuis une ancienne branche ou un ancien résumé Codex. Ne pas développer KitchenCRM, ServiceCase ou des workflows spécialisés tant qu’ils ne sont pas explicitement demandés.
+**Il n'y a donc pas de module Appointment à construire.** Ne créer en aucun cas un second registre de rendez-vous à côté de `state.appointments` : tout complément prolonge le registre existant et son propriétaire.
+
+Complément vérifié encore manquant, et seul point ouvert à ce jour : **un rendez-vous n'est pas relié à sa visite source.** `saveAppointment` ne stocke aucun `visitId`, et les modules visite (`store-runner-visits.js`, `store-runner-visit-store.js`, `store-runner-visit-model.js`) n'écrivent jamais dans `state.appointments`. C'est le « prochain rendez-vous éventuel » de la clôture de visite décrit par `PLAN_METIER_STORE_RUNNER.md`. Si ce lien est demandé un jour, il s'ajoute aux enregistrements existants sans changer leur forme pour les rendez-vous déjà saisis.
+
+Ne pas développer KitchenCRM, ServiceCase ou des workflows spécialisés tant qu’ils ne sont pas explicitement demandés.
+
+## V1 de production et `/v2/`
+
+Ce sont deux choses distinctes et elles ne se mélangent pas.
+
+- **V1 = la production.** `index.html` + `src/chef-secteur.html` + les modules racine, publiés sur `https://store-runner.fr/`. Version courante V230 (`version.json`).
+- **`/v2/` = chantier parallèle incomplet** (issue #115), isolé : aucun fichier de `v2/` n'est chargé par `index.html` ni mis en cache par `sw.js`. Il a son propre point d'entrée `v2/public/index.html` et ses propres tests, exécutés par Reliability. Aucune bascule n'est décidée.
+
+Un lot V1 ne touche pas `v2/`, et un lot V2 ne touche pas le runtime V1. L'état réel du chantier V2 est dans `v2/STATUS.md`.
 
 ## Validation obligatoire
 
