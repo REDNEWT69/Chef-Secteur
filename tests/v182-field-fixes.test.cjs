@@ -14,11 +14,13 @@ assert(index.includes("const BUILD_REV='"+version.latestBuild+"'"),'index doit p
 assert(sw.includes('const BUILD_REV = "'+version.latestBuild+'"'),'sw doit publier le même build que version.json');
 assert(index.includes("'./v182-fixes.js'"),'le runtime de fiabilisation doit rester chargé');
 assert(index.includes("'./priority-campaign-v187.js'"),'le moteur de priorités V188 doit être chargé');
-assert(index.includes('id="srRuntimeBoot"'),'le boot historique doit être masqué pendant le rendu moderne');
+assert(index.includes('id="storeRunnerBoot" data-store-runner-boot'),'V234 doit garder un loader unique devant le rendu moderne');
+assert(!index.includes('id="srRuntimeBoot"'),'l’ancien loader srRuntimeBoot ne doit plus être injecté');
 assert(index.includes('<img src="./app-icon.svg?rev='+version.latestBuild+'" alt="S-RUNNER">'),'le loader doit afficher le vrai logo S-RUNNER avec le build courant');
 assert(sw.includes('"./v182-fixes.js"'),'les correctifs terrain doivent fonctionner hors ligne après installation');
 assert(sw.includes('"./priority-campaign-v187.js"'),'le moteur de priorités V188 doit fonctionner hors ligne');
 assert(source.includes('removeHomePilotageShortcut'),'Pilotage doit rester retiré de l’accueil');
+assert(!source.includes('srRuntimeBoot'),'V234 : le voile de démarrage n’appartient plus à ce module');
 
 /* V184 reste en place : le flux 3 semaines utilise la capacité planning Boulanger,
    l'enregistrement Secteur reste neutre pour le planning et le GPS interne est masqué. */
@@ -38,7 +40,6 @@ const grid={
 const homeShortcut={removed:false,remove(){this.removed=true}};
 const elements={
   premiumHomeV2:{},
-  srRuntimeBoot:{classList:{add(){}},parentNode:{},remove(){}},
   overnightBox:{innerHTML:''}
 };
 const document={

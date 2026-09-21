@@ -36,19 +36,15 @@ function removeHomePilotageShortcut(){
   try{document.querySelectorAll('#premiumHomeV2 .phPilotageShortcut').forEach(node=>{if(node&&typeof node.remove==='function'){node.remove();removed=true}})}catch(e){}
   return removed;
 }
-function removeRuntimeBoot(){
-  const boot=document.getElementById('srRuntimeBoot');if(!boot)return false;
-  boot.classList.add('srRuntimeBootOut');
-  window.setTimeout(()=>{if(boot&&boot.parentNode)boot.remove()},140);
-  return true;
-}
+/* V234 : le voile de démarrage a un seul propriétaire, le chargeur de index.html.
+   Ce module ne le touche plus : deux modules qui retirent le même écran à des moments
+   différents, c'est exactement ce qui laissait apparaître l'ancienne interface. */
 function repairMobileRuntime(){
   if(repairing)return false;repairing=true;
   try{
     const ready=!!document.getElementById('premiumHomeV2');
     ensurePilotageShortcut();
     removeHomePilotageShortcut();
-    if(ready)removeRuntimeBoot();
     return ready;
   }finally{repairing=false}
 }
