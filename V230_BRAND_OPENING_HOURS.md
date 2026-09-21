@@ -120,6 +120,12 @@ rejoint le cache essentiel. Aucun stockage parallèle ni nouvel asset runtime.
 - `tests/opening-hours-browser.spec.cjs` : toutes les assertions historiques
   conservées ; attente du démarrage complet et clé de reload du build courant
   pour éviter de poser la fixture avant le chargement de l’état.
+- `tests/store-photos-browser.spec.cjs` : même correction que la suite horaires
+  historique. La clé de garde du rechargement figeait encore une ancienne
+  révision, donc le `controllerchange` du service worker rechargeait la page
+  pendant la fixture et détruisait son contexte. Elle suit maintenant
+  `version.json` et attend le démarrage complet ; ses assertions
+  Boulanger/Darty sont inchangées.
 - Les deux suites V230 sont ajoutées à Reliability.
 
 Les essais navigateur utilisent Chromium avec émulation mobile. Ils ne constituent
