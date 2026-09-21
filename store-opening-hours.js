@@ -4,6 +4,8 @@
 (function(root){
 'use strict';
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+const MODEL_DAYS=[...DAYS,'Dimanche'];
+const own=(value,key)=>!!value&&Object.prototype.hasOwnProperty.call(value,key);
 let observer=null,scheduled=false,decorating=false;
 
 function pad(n){return String(n).padStart(2,'0')}
@@ -37,32 +39,85 @@ function normalizeIntervals(value){
   out.sort((a,b)=>minute(a.open)-minute(b.open));for(let i=1;i<out.length;i++)if(minute(out[i].open)<minute(out[i-1].close))return undefined;return out;
 }
 function serializeDayHours(value){const rows=normalizeIntervals(value);if(rows===undefined)return '';if(!rows.length)return 'fermé';return rows.map(x=>x.open+'-'+x.close).join(',')}
-function intervalsFor(store,day){
+// V230 : un modèle est stocké une seule fois dans l'état, jamais dans ses héritiers.
+function brandKey(value){return norm(value).replace(/[\s\p{P}]+/gu,'')}
+function brandModel(store,state=root.state){
+  const key=brandKey(store&&store.enseigne),models=state&&state.brandOpeningHours;
+  return key&&own(models,key)?models[key]:undefined;
+}
+function validateBrandModels(models){
+  if(!models||typeof models!=='object'||Array.isArray(models))throw new Error('Modèles enseigne invalides.');
+  for(const [key,hours] of Object.entries(models)){
+    if(!key||key!==brandKey(key)||['__proto__','constructor','prototype'].includes(key)||!hours||typeof hours!=='object'||Array.isArray(hours))throw new Error('Modèle enseigne invalide.');
+    for(const [day,rows] of Object.entries(hours))if(!MODEL_DAYS.includes(day)||!Array.isArray(rows)||normalizeIntervals(rows)===undefined)throw new Error('Horaire enseigne invalide : '+day+'.');
+  }
+  return models;
+}
+function setBrandModel(brand,hours,state=root.state){
+  const key=brandKey(brand),models={...(state.brandOpeningHours||{}),[key]:copy(hours)};
+  validateBrandModels(models);state.brandOpeningHours=models;return models[key];
+}
+function clearStoreOverride(store){
+  for(const key of ['openingHours','openingHoursSource','openingHoursUpdatedAt','openTime','closeTime'])delete store[key];
+}
+// Compatibilité V229 : les anciens défauts matérialisés restent des fallbacks.
+// L'adaptateur Boulanger/Darty délègue ici ; il ne possède plus aucune règle horaire.
+const LEGACY_OPEN='09:30',LEGACY_CLOSE='19:30',LEGACY_SOURCE='brand-default';
+function isBoulanger(store){return !!store&&norm(store.enseigne)==='boulanger'}
+function isDarty(store){return !!store&&norm(store.enseigne)==='darty'}
+function isSupportedBrand(store){return isBoulanger(store)||isDarty(store)}
+function brandLabel(store){return isBoulanger(store)?'Boulanger':isDarty(store)?'Darty':''}
+function defaultHours(){const hours={};for(const day of DAYS)hours[day]=[{open:LEGACY_OPEN,close:LEGACY_CLOSE}];return hours}
+function hasExplicitLegacy(store){return !!(String(store&&store.openTime||'').trim()||String(store&&store.closeTime||'').trim())}
+function shouldApplyLegacy(store,state=root.state){
+  if(!isSupportedBrand(store)||brandModel(store,state)!==undefined)return false;
+  const source=String(store.openingHoursSource||'');
+  return source!=='manual'&&(!source||source===LEGACY_SOURCE)&&(!store.openingHours||source===LEGACY_SOURCE)&&(!hasExplicitLegacy(store)||source===LEGACY_SOURCE);
+}
+function sameDefault(hours){return !!hours&&typeof hours==='object'&&DAYS.every(day=>Array.isArray(hours[day])&&hours[day].length===1&&hours[day][0]&&hours[day][0].open===LEGACY_OPEN&&hours[day][0].close===LEGACY_CLOSE)}
+function applyLegacyStore(store,state=root.state){
+  if(!shouldApplyLegacy(store,state)||store.openingHoursSource===LEGACY_SOURCE&&sameDefault(store.openingHours))return false;
+  store.openingHours=defaultHours();store.openingHoursSource=LEGACY_SOURCE;delete store.openingHoursUpdatedAt;return true;
+}
+const legacyBrandDefaults={DAYS,OPEN:LEGACY_OPEN,CLOSE:LEGACY_CLOSE,SOURCE:LEGACY_SOURCE,isBoulanger,isDarty,isSupportedBrand,brandLabel,defaultHours,shouldApply:shouldApplyLegacy,sameDefault,applyStore:applyLegacyStore};
+function intervalsFor(store,day,state=root.state){
   if(!store)return undefined;
+  const model=brandModel(store,state);
+  if(model!==undefined){
+    if(store.openingHoursSource!==LEGACY_SOURCE){
+      if(own(store.openingHours,day))return normalizeIntervals(store.openingHours[day]);
+      // Les anciens champs quotidiens explicites sont aussi un override magasin.
+      if(!store.openingHours&&store.openingHoursSource!=='manual'){
+        const open=minute(store.openTime),close=minute(store.closeTime);
+        if(open!=null&&close!=null&&close>open)return [{open:clock(open),close:clock(close)}];
+      }
+    }
+    return normalizeIntervals(model[day]);
+  }
   if(store.openingHours&&typeof store.openingHours==='object')return normalizeIntervals(store.openingHours[day]);
   if(store.openingHoursSource==='manual')return undefined;
   const open=minute(store.openTime),close=minute(store.closeTime);
   return open!=null&&close!=null&&close>open?[{open:clock(open),close:clock(close)}]:undefined;
 }
-function openingLabel(store,day){const rows=intervalsFor(store,day);return rows===undefined?'Horaire à vérifier':(!rows.length?'Fermé':rows.map(x=>x.open+'–'+x.close).join(' · '))}
-function fitOpening(store,day,arrival,duration){
-  const rows=intervalsFor(store,day),a=Number(arrival),dur=Math.max(1,Number(duration)||1);
+function openingLabel(store,day,state=root.state){const rows=intervalsFor(store,day,state);return rows===undefined?'Horaire à vérifier':(!rows.length?'Fermé':rows.map(x=>x.open+'–'+x.close).join(' · '))}
+function fitOpening(store,day,arrival,duration,state=root.state){
+  const rows=intervalsFor(store,day,state),a=Number(arrival),dur=Math.max(1,Number(duration)||1);
   if(rows===undefined)return{known:false,closed:false,arrival:a,wait:0,interval:null};
   if(!rows.length)return{known:true,closed:true,arrival:null,wait:null,interval:null};
   for(const row of rows){const open=minute(row.open),close=minute(row.close),candidate=Math.max(a,open);if(candidate+dur<=close)return{known:true,closed:false,arrival:candidate,wait:Math.max(0,candidate-a),interval:{open,close}}}
   return{known:true,closed:true,arrival:null,wait:null,interval:null};
 }
 function overlapsBlock(start,duration,block){return !!(block&&!block.allDay&&Number.isFinite(Number(block.startMin))&&Number.isFinite(Number(block.endMin))&&start<Number(block.endMin)&&start+duration>Number(block.startMin))}
-function fitWithBlocks(store,day,arrival,duration,blocks){
-  let current=Number(arrival),first=current,opening=fitOpening(store,day,current,duration),loops=0;
+function fitWithBlocks(store,day,arrival,duration,blocks,state=root.state){
+  let current=Number(arrival),first=current,opening=fitOpening(store,day,current,duration,state),loops=0;
   if(opening.closed)return{...opening,original:first};if(opening.arrival!=null)current=opening.arrival;
   while(loops++<=(blocks||[]).length){
     let shifted=false;
     for(const block of (blocks||[])){if(overlapsBlock(current,duration,block)){current=Number(block.endMin);shifted=true;break}}
     if(!shifted)break;
-    opening=fitOpening(store,day,current,duration);if(opening.closed)return{...opening,original:first};current=opening.arrival;
+    opening=fitOpening(store,day,current,duration,state);if(opening.closed)return{...opening,original:first};current=opening.arrival;
   }
-  const finalOpen=fitOpening(store,day,current,duration);if(finalOpen.closed)return{...finalOpen,original:first};
+  const finalOpen=fitOpening(store,day,current,duration,state);if(finalOpen.closed)return{...finalOpen,original:first};
   return{...finalOpen,arrival:current,wait:Math.max(0,current-first),original:first};
 }
 function iso(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
@@ -105,9 +160,9 @@ function scheduleRoute(route,day,state=root.state,options={}){
   for(let i=0;i<(route||[]).length;i++){
     const store=(state&&state.stores||[]).find(s=>String(s.id)===String(route[i].id))||route[i],drive=Math.max(0,Number(travel(prev,store))||0),nominal=current+drive,a=appt(store.id,date),storeVisit=(()=>{try{return typeof root.storeVisitDuration==='function'?root.storeVisitDuration(store,state):fallbackVisit}catch(e){return fallbackVisit}})(),duration=a?Math.max(15,Number(a.duration)||storeVisit):storeVisit;let requested=nominal,fixed=null;
     if(a&&a.time){fixed=minute(a.time);if(fixed!=null&&fixed>requested)requested=fixed}
-    let fitted=fitWithBlocks(store,day,requested,duration,blocks),arrival=fitted.arrival,status='ok';
+    let fitted=fitWithBlocks(store,day,requested,duration,blocks,state),arrival=fitted.arrival,status='ok';
     if(a&&fixed!=null){
-      const atFixed=fitOpening(store,day,fixed,duration);
+      const atFixed=fitOpening(store,day,fixed,duration,state);
       /* Le premier arrêt part de la base, pas d'une visite précédente : `nominal` n'y
          est que « début de journée + trajet ». Vouloir y être plus tôt ne décrit donc
          aucune impossibilité de trajet, seulement un départ avancé — que l'utilisateur
@@ -130,7 +185,7 @@ function scheduleRoute(route,day,state=root.state,options={}){
     }else if(fitted.closed){closedCount++;status='closed';arrival=null}
     else if(!fitted.known){unknownCount++;status='unknown'}
     else if(fitted.wait>0)status='wait-opening';
-    rows.push({store,index:i,date,day,travel:drive,nominalArrival:nominal,requestedArrival:fixed,arrival,duration,status,openingKnown:fitted.known,wait:fitted.wait||0,opening:intervalsFor(store,day),appointment:a});
+    rows.push({store,index:i,date,day,travel:drive,nominalArrival:nominal,requestedArrival:fixed,arrival,duration,status,openingKnown:fitted.known,wait:fitted.wait||0,opening:intervalsFor(store,day,state),appointment:a});
     if(arrival==null)current=nominal+duration;else current=arrival+duration;prev=store;
   }
   /* Le plancher au début de journée reste la règle d'un planning automatique. Quand le
@@ -151,28 +206,129 @@ function routeFits(route,day,state=root.state,options={}){const s=scheduleRoute(
 function byId(id){return (root.state&&root.state.stores||[]).find(s=>String(s.id)===String(id))||null}
 function escapeHtml(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
+function hasStoreOverride(store,state=root.state){
+  if(store.openingHoursSource===LEGACY_SOURCE)return false;
+  if(brandModel(store,state)!==undefined)return MODEL_DAYS.some(day=>own(store.openingHours,day))||!store.openingHours&&store.openingHoursSource!=='manual'&&hasExplicitLegacy(store);
+  return !!(store.openingHours||store.openingHoursSource==='manual'||hasExplicitLegacy(store));
+}
+function brands(state=root.state){
+  const rows=new Map();
+  for(const store of state&&state.stores||[]){const key=brandKey(store.enseigne);if(!key)continue;if(!rows.has(key))rows.set(key,{key,label:String(store.enseigne).trim(),count:0,custom:0});const row=rows.get(key);row.count++;if(hasStoreOverride(store,state))row.custom++}
+  for(const key of Object.keys(state&&state.brandOpeningHours||{}))if(!rows.has(key))rows.set(key,{key,label:key,count:0,custom:0});
+  return [...rows.values()].sort((a,b)=>a.label.localeCompare(b.label,'fr'));
+}
+function closeDialog(d){if(typeof d.close==='function')d.close();else d.removeAttribute('open')}
+function refreshHours(reason,storeId){
+  if(typeof root.renderAll==='function')root.renderAll();
+  root.document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{reason,storeId}}));scheduleDecorate();
+}
+async function persistHours(){
+  if(typeof root.save!=='function')throw new Error('Sauvegarde indisponible.');
+  if(root.__chefStorageMode==='memory')throw new Error('Stockage temporaire : les horaires ne peuvent pas être conservés.');
+  root.save();const db=root.__chefStorage;if(db&&typeof db.flush==='function')await db.flush();
+}
+async function saveHoursChange(d,change,rollback,reason,storeId){
+  if(d.dataset.saving==='true')return false;
+  const error=d.querySelector('[data-hours-error]');
+  if(d.hoursState!==root.state){error.textContent='Les données ont changé. Ferme puis rouvre les horaires.';return false}
+  d.dataset.saving='true';const buttons=[...d.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
+  try{change();await persistHours()}
+  catch(e){
+    rollback();
+    // Une transaction IndexedDB peut échouer après l'écriture dans le cache mémoire.
+    // Réenregistrer le précédent état évite que le prochain flush ressuscite l'essai.
+    try{await persistHours()}catch(_){}
+    error.textContent=e.message||String(e);return false;
+  }
+  finally{delete d.dataset.saving;buttons.forEach(b=>b.disabled=false)}
+  closeDialog(d);refreshHours(reason,storeId);return true;
+}
+function styleHoursDialog(d){
+  d.addEventListener('cancel',e=>{if(d.dataset.saving==='true')e.preventDefault()});
+  const cancel=d.querySelector('button[value="cancel"]');cancel.type='button';cancel.onclick=()=>closeDialog(d);cancel.setAttribute('aria-label','Fermer');
+  d.querySelector('form').onsubmit=e=>{e.preventDefault();d.querySelector('button.primary').click()};
+  d.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('input[type="text"]')){e.preventDefault();d.querySelector('button.primary').click()}});
+  d.style.cssText='box-sizing:border-box;width:min(480px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:auto';
+  d.querySelectorAll('input[type="text"],select').forEach(el=>{el.style.cssText='min-height:44px;min-width:0;max-width:100%;width:100%;box-sizing:border-box;font-size:16px'});
+  d.querySelectorAll('button').forEach(el=>{el.style.minHeight='44px';el.style.minWidth='44px';el.style.whiteSpace='normal'});
+}
+function ensureBrandDialog(){
+  let d=root.document.getElementById('brandHoursDialog');if(d)return d;
+  d=root.document.createElement('dialog');d.id='brandHoursDialog';d.setAttribute('aria-labelledby','brandHoursHeading');
+  d.innerHTML='<form method="dialog" style="min-width:0"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><h2 id="brandHoursHeading" style="margin:0">🕘 Horaires par enseigne</h2><button value="cancel" class="secondary" aria-label="Fermer">×</button></div><label for="brandHoursSelect">Enseigne</label><select id="brandHoursSelect"></select><p id="brandHoursCount" class="tiny" role="status"></p><p class="tiny">09:00-19:00 ou 09:00-12:30,14:00-19:00. « fermé » = fermé ; vide = inconnu. Les horaires personnalisés des magasins sont conservés.</p><div id="brandHoursFields" style="display:grid;gap:9px"></div><fieldset style="min-width:0;margin:14px 0;padding:8px"><legend>Copier le lundi vers</legend><div id="brandHoursCopyDays" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr))"></div><button type="button" id="copyBrandMondayHours" class="secondary" style="width:100%">Copier vers les jours cochés</button></fieldset><button type="button" id="saveBrandHours" class="primary" style="width:100%">Enregistrer le modèle</button><p id="brandHoursError" data-hours-error role="alert" class="tiny" style="color:#b42318"></p></form>';
+  for(const day of MODEL_DAYS){
+    const label=root.document.createElement('label');label.style.cssText='display:grid;gap:4px;margin:0;min-width:0';label.innerHTML='<span>'+day+'</span><input type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-brand-hours-day="'+day+'" placeholder="Inconnu">';d.querySelector('#brandHoursFields').appendChild(label);
+    if(day==='Lundi')continue;
+    const target=root.document.createElement('label');target.style.cssText='display:flex;align-items:center;gap:8px;min-height:44px;margin:0';target.innerHTML='<input type="checkbox" data-copy-hours-day="'+day+'" '+(day==='Dimanche'?'':'checked')+' style="width:22px;height:22px;margin:0"><span>'+day+'</span>';d.querySelector('#brandHoursCopyDays').appendChild(target);
+  }
+  d.querySelector('#brandHoursSelect').onchange=()=>fillBrandDialog(d);
+  d.querySelector('#copyBrandMondayHours').onclick=()=>{const value=d.querySelector('[data-brand-hours-day="Lundi"]').value;d.querySelectorAll('[data-copy-hours-day]:checked').forEach(el=>{d.querySelector('[data-brand-hours-day="'+el.dataset.copyHoursDay+'"]').value=value})};
+  d.querySelector('#saveBrandHours').onclick=()=>{
+    const error=d.querySelector('#brandHoursError');error.textContent='';
+    try{
+      const hours={},key=d.querySelector('#brandHoursSelect').value;if(!key)throw new Error('Ajoute un magasin pour choisir une enseigne.');
+      for(const day of MODEL_DAYS){const parsed=parseDayHours(d.querySelector('[data-brand-hours-day="'+day+'"]').value);if(parsed!==undefined)hours[day]=parsed}
+      const state=root.state,previous=state.brandOpeningHours,had=own(state,'brandOpeningHours');
+      return saveHoursChange(d,()=>setBrandModel(key,hours,state),()=>{if(had)state.brandOpeningHours=previous;else delete state.brandOpeningHours},'brand-opening-hours');
+    }catch(e){error.textContent=e.message||String(e);return false}
+  };
+  styleHoursDialog(d);root.document.body.appendChild(d);return d;
+}
+function fillBrandDialog(d){
+  const key=d.querySelector('#brandHoursSelect').value,row=brands().find(x=>x.key===key),model=brandModel({enseigne:key});
+  d.querySelector('#brandHoursCount').textContent=row?row.count+' magasin'+(row.count>1?'s':'')+' · '+row.custom+' avec horaires personnalisés'+(model===undefined?' · Nouveau modèle':' · Modèle enregistré'):'Aucune enseigne disponible.';
+  d.querySelector('#saveBrandHours').disabled=!row;d.querySelector('#brandHoursError').textContent='';
+  for(const day of MODEL_DAYS)d.querySelector('[data-brand-hours-day="'+day+'"]').value=model===undefined&&day==='Dimanche'?'fermé':serializeDayHours(model&&model[day]);
+}
+function openBrandHoursDialog(brand){
+  const d=ensureBrandDialog(),rows=brands();d.hoursState=root.state;
+  d.querySelector('#brandHoursSelect').innerHTML=rows.map(x=>'<option value="'+escapeHtml(x.key)+'">'+escapeHtml(x.label)+'</option>').join('');
+  if(brand&&rows.some(x=>x.key===brandKey(brand)))d.querySelector('#brandHoursSelect').value=brandKey(brand);
+  fillBrandDialog(d);if(typeof d.showModal==='function')d.showModal();else d.setAttribute('open','');return true;
+}
+function installBrandButton(){
+  const host=root.document.querySelector('#planningSettings .settingsInner');if(!host||root.document.getElementById('brandOpeningHoursBtn'))return;
+  const button=root.document.createElement('button');button.id='brandOpeningHoursBtn';button.type='button';button.className='secondary full';button.textContent='🕘 Horaires par enseigne';button.style.cssText='min-height:44px;max-width:100%;white-space:normal';button.onclick=()=>openBrandHoursDialog();host.prepend(button);
+}
 function ensureDialog(){
   if(!root.document)return null;let d=root.document.getElementById('storeHoursDialog');if(d)return d;
-  d=root.document.createElement('dialog');d.id='storeHoursDialog';d.style.cssText='box-sizing:border-box;width:min(480px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:auto';d.innerHTML='<form method="dialog" style="min-width:0"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><h2 style="margin:0">🕘 Horaires du magasin</h2><p id="storeHoursTitle" class="tiny" style="margin:5px 0 0"></p></div><button value="cancel" class="secondary" style="min-width:44px;min-height:44px">×</button></div><p class="tiny" style="margin-top:12px">Laisse vide si l’horaire est inconnu. Exemples : <b>09:00-19:00</b>, <b>09:00-12:30,14:00-19:00</b> ou <b>fermé</b>.</p><div id="storeHoursFields" style="display:grid;gap:9px;margin-top:12px"></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px"><button type="button" id="copyMondayHours" class="secondary" style="min-height:44px">Copier lundi → ven.</button><button type="button" id="saveStoreHours" class="primary" style="min-height:44px">Enregistrer</button></div><p id="storeHoursError" class="tiny" style="color:#b42318;margin:9px 0 0"></p></form>';
+  d=root.document.createElement('dialog');d.id='storeHoursDialog';d.style.cssText='box-sizing:border-box;width:min(480px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:auto';d.innerHTML='<form method="dialog" style="min-width:0"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><h2 style="margin:0">🕘 Horaires du magasin</h2><p id="storeHoursTitle" class="tiny" style="margin:5px 0 0"></p></div><button value="cancel" class="secondary" style="min-width:44px;min-height:44px">×</button></div><p class="tiny" style="margin-top:12px">Formats acceptés : <b>09:00-19:00</b>, <b>09:00-12:30,14:00-19:00</b> ou <b>fermé</b>.</p><div id="storeHoursFields" style="display:grid;gap:9px;margin-top:12px"></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px"><button type="button" id="copyMondayHours" class="secondary" style="min-height:44px">Copier lundi → ven.</button><button type="button" id="saveStoreHours" class="primary" style="min-height:44px">Enregistrer</button></div><p id="storeHoursError" data-hours-error role="alert" class="tiny" style="color:#b42318;margin:9px 0 0"></p></form>';
   root.document.body.appendChild(d);
-  const fields=d.querySelector('#storeHoursFields');for(const day of DAYS){const row=root.document.createElement('label');row.style.cssText='display:grid;grid-template-columns:90px 1fr;gap:8px;align-items:center;margin:0';row.innerHTML='<span>'+day+'</span><input type="text" inputmode="text" autocomplete="off" data-hours-day="'+day+'" placeholder="Inconnu" style="min-height:44px;min-width:0;width:100%;box-sizing:border-box">';fields.appendChild(row)}
+  const fields=d.querySelector('#storeHoursFields');for(const day of MODEL_DAYS){const row=root.document.createElement('label');row.style.cssText='display:grid;grid-template-columns:minmax(0,1fr);gap:4px;margin:0';row.innerHTML='<span>'+day+'</span><input type="text" inputmode="text" autocomplete="off" data-hours-day="'+day+'" placeholder="Inconnu" style="min-height:44px;min-width:0;width:100%;box-sizing:border-box">';fields.appendChild(row)}
   d.querySelector('#copyMondayHours').onclick=()=>{const value=d.querySelector('[data-hours-day="Lundi"]').value;for(const day of ['Mardi','Mercredi','Jeudi','Vendredi'])d.querySelector('[data-hours-day="'+day+'"]').value=value};
+  const status=root.document.createElement('p');status.id='storeHoursInheritance';status.className='tiny';status.setAttribute('role','status');fields.before(status);
+  const reset=root.document.createElement('button');reset.id='resetStoreHours';reset.type='button';reset.className='secondary full';reset.textContent='Revenir aux horaires de l’enseigne';reset.style.cssText='margin-top:12px;width:100%';
+  reset.onclick=()=>{
+    const store=byId(d.dataset.storeId);if(!store)return;const previous=copy(store);
+    return saveHoursChange(d,()=>clearStoreOverride(store),()=>restoreStoreHours(store,previous),'store-opening-hours',String(store.id));
+  };
+  d.querySelector('form').appendChild(reset);d.setAttribute('aria-label','Horaires du magasin');styleHoursDialog(d);
   d.querySelector('#saveStoreHours').onclick=saveDialogHours;return d;
 }
 function openHoursDialog(storeId){
-  const store=byId(storeId);if(!store)throw new Error('Magasin introuvable.');const d=ensureDialog();d.dataset.storeId=String(store.id);d.querySelector('#storeHoursTitle').textContent=store.enseigne+' '+store.ville;d.querySelector('#storeHoursError').textContent='';
-  for(const day of DAYS)d.querySelector('[data-hours-day="'+day+'"]').value=serializeDayHours(store.openingHours&&store.openingHours[day]);
+  const store=byId(storeId);if(!store)throw new Error('Magasin introuvable.');const d=ensureDialog(),model=brandModel(store);d.hoursState=root.state;d.dataset.storeId=String(store.id);d.querySelector('#storeHoursTitle').textContent=store.enseigne+' '+store.ville;d.querySelector('#storeHoursError').textContent='';
+  const custom=hasStoreOverride(store);
+  d.querySelector('#storeHoursInheritance').textContent=(custom?'Horaires personnalisés. ':model!==undefined?'Hérite de l’enseigne '+store.enseigne+'. ':'Horaires historiques ou inconnus. ')+(model!==undefined?'Les jours laissés vides héritent du modèle ; un jour absent du modèle est inconnu.':'Sans modèle enseigne, un champ vide reste inconnu.');
+  d.querySelector('#resetStoreHours').hidden=!custom;
+  for(const day of MODEL_DAYS){
+    const input=d.querySelector('[data-hours-day="'+day+'"]');
+    input.value=serializeDayHours(model!==undefined&&store.openingHoursSource===LEGACY_SOURCE?undefined:store.openingHours&&store.openingHours[day]);
+    input.placeholder=model!==undefined?'Enseigne : '+(serializeDayHours(model[day])||'inconnu'):'Inconnu';
+    let hint=input.parentNode.querySelector('.hoursResolved');if(!hint){hint=root.document.createElement('small');hint.className='hoursResolved';hint.style.cssText='grid-column:1 / -1;overflow-wrap:anywhere;color:#667085';input.parentNode.appendChild(hint)}
+    hint.textContent='Actuellement : '+openingLabel(store,day);
+  }
   if(typeof d.showModal==='function')d.showModal();else d.setAttribute('open','');return true;
 }
+function restoreStoreHours(store,previous){for(const key of ['openingHours','openingHoursSource','openingHoursUpdatedAt','openTime','closeTime']){if(own(previous,key))store[key]=previous[key];else delete store[key]}}
 function saveDialogHours(){
-  const d=root.document.getElementById('storeHoursDialog'),store=d&&byId(d.dataset.storeId);if(!d||!store)return false;const error=d.querySelector('#storeHoursError'),hours={};
+  const d=root.document.getElementById('storeHoursDialog'),store=d&&byId(d.dataset.storeId);if(!d||!store)return false;const error=d.querySelector('#storeHoursError'),hours={};error.textContent='';
   try{
-    for(const day of DAYS){const parsed=parseDayHours(d.querySelector('[data-hours-day="'+day+'"]').value);if(parsed!==undefined)hours[day]=parsed}
+    for(const day of MODEL_DAYS){const parsed=parseDayHours(d.querySelector('[data-hours-day="'+day+'"]').value);if(parsed!==undefined)hours[day]=parsed}
     const previous=copy(store);
-    if(Object.keys(hours).length)store.openingHours=hours;else delete store.openingHours;store.openingHoursSource='manual';store.openingHoursUpdatedAt=new Date().toISOString();
-    try{if(typeof root.save!=='function')throw new Error('Sauvegarde indisponible.');root.save()}catch(e){for(const key of ['openingHours','openingHoursSource','openingHoursUpdatedAt']){if(Object.prototype.hasOwnProperty.call(previous,key))store[key]=previous[key];else delete store[key]}throw e}if(typeof d.close==='function')d.close();else d.removeAttribute('open');
-    if(typeof root.renderAll==='function')root.renderAll();root.document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{reason:'store-opening-hours',storeId:String(store.id)}}));scheduleDecorate();return true;
-  }catch(e){if(error)error.textContent=e.message||String(e);return false}
+    return saveHoursChange(d,()=>{
+      if(Object.keys(hours).length)store.openingHours=hours;else delete store.openingHours;store.openingHoursSource='manual';store.openingHoursUpdatedAt=new Date().toISOString();
+    },()=>restoreStoreHours(store,previous),'store-opening-hours',String(store.id));
+  }catch(e){error.textContent=e.message||String(e);return false}
 }
 function installQuickButton(){
   if(!root.document)return false;const actions=root.document.querySelector('#storeQuickSheet .sheetActions');if(!actions)return false;if(root.document.getElementById('openingHoursQuickBtn'))return true;
@@ -251,7 +407,7 @@ function decorateTimeline(){
 }
 function scheduleDecorate(){if(scheduled)return;scheduled=true;setTimeout(()=>{scheduled=false;decorateTimeline()},70)}
 function observe(){if(observer||!root.document||typeof MutationObserver==='undefined')return;const host=root.document.getElementById('planPanel');if(!host)return;observer=new MutationObserver(records=>{if(decorating)return;for(const r of records){if(r.addedNodes&&r.addedNodes.length){scheduleDecorate();break}}});observer.observe(host,{childList:true,subtree:true})}
-function boot(){ensureDialog();installQuickButton();decorateTimeline();observe()}
-const api={parseDayHours,serializeDayHours,intervalsFor,openingLabel,fitOpening,fitWithBlocks,scheduleRoute,routeFits,openHoursDialog,decorateTimeline,dayNow,dateForDay,originFor,originBase};root.StoreOpeningHoursV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
-if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();root.document.addEventListener('store-runner:planning-updated',()=>{installQuickButton();scheduleDecorate()});root.document.addEventListener('store-runner:data-restored',()=>{installQuickButton();scheduleDecorate()});root.addEventListener('chef-range-generated',scheduleDecorate);root.document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('#dayTabs,.periodDayTab,.dayTab'))scheduleDecorate()},true)}
+function boot(){ensureDialog();installQuickButton();installBrandButton();decorateTimeline();observe()}
+const api={MODEL_DAYS,brandKey,brandModel,validateBrandModels,setBrandModel,clearStoreOverride,legacyBrandDefaults,openBrandHoursDialog,parseDayHours,serializeDayHours,intervalsFor,openingLabel,fitOpening,fitWithBlocks,scheduleRoute,routeFits,openHoursDialog,decorateTimeline,dayNow,dateForDay,originFor,originBase};root.StoreOpeningHoursV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();root.document.addEventListener('store-runner:planning-updated',()=>{installQuickButton();scheduleDecorate()});root.document.addEventListener('store-runner:data-restored',()=>{for(const id of ['brandHoursDialog','storeHoursDialog']){const d=root.document.getElementById(id);if(d&&d.open)closeDialog(d)}installQuickButton();installBrandButton();scheduleDecorate()});root.addEventListener('chef-range-generated',scheduleDecorate);root.document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('#dayTabs,.periodDayTab,.dayTab'))scheduleDecorate()},true)}
 })(typeof window!=='undefined'?window:globalThis);
