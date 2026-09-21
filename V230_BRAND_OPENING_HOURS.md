@@ -3,7 +3,7 @@
 Base GitHub vérifiée avant création de `codex/v230-brand-opening-hours` :
 `a3c160944523ea63e13bbb62be156571196d782e` (hotfix V229).
 
-Version visible : **230**. BUILD_REV : **20260921-brand-opening-hours230**.
+Version visible : **230**. BUILD_REV **au moment de cette livraison** : `20260921-brand-opening-hours230`. La révision courante fait foi dans `version.json` : elle change à chaque publication, cette ligne reste un repère historique.
 Cette livraison attend la revue finale de Leia ; **ne pas fusionner**.
 
 ## Stockage et résolution
