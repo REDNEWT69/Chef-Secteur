@@ -1,4 +1,5 @@
 const {test,expect}=require('@playwright/test');
+const {latestBuild}=require('../version.json');
 
 const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
 const PNG=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=','base64');
@@ -19,9 +20,9 @@ async function reopenQuickAndTapPhotos(page){
 test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA FMT',async({page,context})=>{
   test.setTimeout(90000);
   const pageErrors=[];page.on('pageerror',e=>pageErrors.push(String(e&&e.message||e)));
-  await page.addInitScript(()=>sessionStorage.setItem('store-runner-sw-reload:20260915-ai-report172','1'));
+  await page.addInitScript(build=>sessionStorage.setItem('store-runner-sw-reload:'+build,'1'),latestBuild);
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>window.StorePhotosV1&&window.StoreRunnerVisitReport&&window.BoulangerDefaultHoursV1&&window.StoreOpeningHoursV1&&window.StoreRunnerVisitModel&&window.ChefReliability&&window.state&&typeof window.openStoreQuick==='function');
+  await page.waitForFunction(()=>document.readyState==='complete'&&window.StorePhotosV1&&window.StoreRunnerVisitReport&&window.BoulangerDefaultHoursV1&&window.StoreOpeningHoursV1&&window.StoreRunnerVisitModel&&window.ChefReliability&&window.state&&typeof window.openStoreQuick==='function');
   await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
   await page.evaluate(()=>{
     Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});

@@ -25,6 +25,17 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'230',
+      title:'Les horaires de vos magasins, par enseigne',
+      items:[
+        'Dans les réglages du planning, renseignez une seule fois les horaires d’une enseigne, du lundi au dimanche.',
+        'Les magasins utilisent automatiquement ce modèle et suivent ses modifications.',
+        'Les horaires personnalisés d’un magasin gardent la priorité. Vous pouvez revenir aux horaires de son enseigne en un geste.',
+        'Les fermetures et les pauses de midi sont prises en compte dans les heures d’arrivée et de fin estimées.',
+        'Vos modèles restent disponibles hors ligne et sont inclus dans vos sauvegardes.'
+      ]
+    },
+    {
       version:'229',
       title:'Suivre vos contrats cuisinistes du premier contact à la signature',
       items:[

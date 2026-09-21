@@ -286,17 +286,19 @@
     if(week)renderOrigin(week,schedule);
     const rowsSchedule=schedule&&Array.isArray(schedule.rows)?schedule.rows:null;
     storeRows.forEach(function(row,index){
+      const item=rowsSchedule?rowsSchedule[index]:null;
       const t=row.querySelector('.tlTime'),d=row.querySelector('.tlDuration');
       if(t&&d){
-        const start=mins(t.textContent),dm=String(d.dataset.baseDuration||d.textContent||'').match(/(\d+)\s*min/i);
+        // La durée réellement ordonnancée peut différer du rendu historique (horaire
+        // imposé avec départ). Elle vient du même moteur que l'ouverture et l'arrivée.
+        const start=item?item.arrival:mins(t.textContent),dm=String(item?item.duration+' min':d.dataset.baseDuration||d.textContent||'').match(/(\d+)\s*min/i);
         if(start!=null&&dm){
           const duration=+dm[1],end=clock(start+duration);
-          if(!d.dataset.baseDuration)d.dataset.baseDuration=duration+' min';
+          d.dataset.baseDuration=duration+' min';
           const label=d.dataset.baseDuration+' sur place · fin '+end;
           if(d.textContent!==label)d.textContent=label;
         }
       }
-      const item=rowsSchedule?rowsSchedule[index]:null;
       wireArrival(row,item);
       const target=secondary(row);
       if(!target||!rowsSchedule)return;

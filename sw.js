@@ -1,4 +1,4 @@
-const BUILD_REV = "20260920-hotfix3-credits229";
+const BUILD_REV = "20260921-brand-opening-hours230";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -9,6 +9,7 @@ const CORE_SHELL = [
   "./store-runner-visits.js",
   "./note-proofreader-v221.js",
   "./store-runner-visits.css",
+  "./store-opening-hours.js",
   "./reliability-core.js"
 ];
 const OPTIONAL_SHELL = [
@@ -42,7 +43,6 @@ const OPTIONAL_SHELL = [
   "./visit-counting.js",
   "./range-planner-v2.js",
   "./planning-day-origin.js",
-  "./store-opening-hours.js",
   "./boulanger-default-hours.js",
   "./store-photos.js",
   "./terrain-planning-v1.js",

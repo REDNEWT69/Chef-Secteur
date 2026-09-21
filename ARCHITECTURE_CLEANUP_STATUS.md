@@ -11,6 +11,7 @@ Checkpoint architecture actualisé après les consolidations des 10 et 11/09/202
 - `planning-ui-fixes.js` : hiérarchie et compatibilité d’affichage du planning.
 - `store-runner-branding.js` : branding Store Runner uniquement.
 - `calendar-enhancements.js` : enrichissements Agenda et horaires magasins sans réécrire les fonctions métier principales.
+- `store-opening-hours.js` : propriétaire unique de la résolution, du parseur et de l’ordonnancement des horaires. V230 ajoute `state.brandOpeningHours` (facultatif) et les éditeurs enseigne/magasin : magasin > enseigne > fallback historique. `boulanger-default-hours.js` délègue ses règles historiques à ce propriétaire. Voir `V230_BRAND_OPENING_HOURS.md`.
 - `assistant-upgrade.js` : propriétaire transitoire de l’enrichissement de l’assistant. Il expose une API d’extensions pour les résolveurs locaux et les transformations de contexte.
 - `ai-context-limit.js` : transformation pure qui limite le contexte IA ; il ne remplace plus `sectorContext`.
 - `assistant-store-lookup.js` : résolveur de planning magasin et archivage des semaines par événements/observer ; il ne remplace plus `assistantSend`, `renderAll` ni `generateWeek` et ne se réveille plus globalement au focus/retour de visibilité.

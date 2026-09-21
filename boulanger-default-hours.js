@@ -3,39 +3,12 @@
    Les horaires manuels/officiels restent prioritaires. */
 (function(root){
 'use strict';
-const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-const OPEN='09:30',CLOSE='19:30',SOURCE='brand-default';
+const hours=root.StoreOpeningHoursV1||(typeof require==='function'?require('./store-opening-hours.js'):null);
+const legacy=hours.legacyBrandDefaults;
+const {DAYS,OPEN,CLOSE,SOURCE,isBoulanger,isDarty,isSupportedBrand,brandLabel,defaultHours,shouldApply,sameDefault,applyStore}=legacy;
 let dialogObserver=null;
 
-function norm(v){return String(v==null?'':v).trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
-function isBoulanger(store){return !!store&&norm(store.enseigne)==='boulanger'}
-function isDarty(store){return !!store&&norm(store.enseigne)==='darty'}
-function isSupportedBrand(store){return isBoulanger(store)||isDarty(store)}
-function brandLabel(store){if(isBoulanger(store))return'Boulanger';if(isDarty(store))return'Darty';return''}
-function defaultHours(){const hours={};for(const day of DAYS)hours[day]=[{open:OPEN,close:CLOSE}];return hours}
-function hasExplicitLegacy(store){return !!(String(store&&store.openTime||'').trim()||String(store&&store.closeTime||'').trim())}
-function shouldApply(store){
-  if(!isSupportedBrand(store))return false;
-  const source=String(store.openingHoursSource||'');
-  if(source==='manual')return false;
-  if(source&&source!==SOURCE)return false;
-  if(store.openingHours&&source!==SOURCE)return false;
-  if(hasExplicitLegacy(store)&&source!==SOURCE)return false;
-  return true;
-}
-function sameDefault(hours){
-  if(!hours||typeof hours!=='object')return false;
-  return DAYS.every(day=>Array.isArray(hours[day])&&hours[day].length===1&&hours[day][0]&&hours[day][0].open===OPEN&&hours[day][0].close===CLOSE);
-}
-function applyStore(store){
-  if(!shouldApply(store))return false;
-  if(store.openingHoursSource===SOURCE&&sameDefault(store.openingHours))return false;
-  store.openingHours=defaultHours();
-  store.openingHoursSource=SOURCE;
-  delete store.openingHoursUpdatedAt;
-  return true;
-}
-function apply(state=root.state){let changed=0;for(const store of state&&state.stores||[])if(applyStore(store))changed++;return changed}
+function apply(state=root.state){let changed=0;for(const store of state&&state.stores||[])if(applyStore(store,state))changed++;return changed}
 function byId(id){return (root.state&&root.state.stores||[]).find(s=>String(s.id)===String(id))||null}
 function ensureDialogHint(){
   if(!root.document)return null;const d=root.document.getElementById('storeHoursDialog');if(!d)return null;
@@ -45,7 +18,7 @@ function ensureDialogHint(){
 }
 function decorateDialog(){
   const d=root.document&&root.document.getElementById('storeHoursDialog'),hint=ensureDialogHint();if(!d||!hint)return false;
-  const store=byId(d.dataset.storeId),active=!!(store&&isSupportedBrand(store)&&store.openingHoursSource===SOURCE&&sameDefault(store.openingHours));
+  const store=byId(d.dataset.storeId),active=!!(store&&hours.brandModel(store)===undefined&&isSupportedBrand(store)&&store.openingHoursSource===SOURCE&&sameDefault(store.openingHours));
   hint.hidden=!active;
   if(active)hint.textContent=brandLabel(store)+' : 09:30–19:30 appliqué par défaut du lundi au samedi. Tu n’as rien à saisir sauf si ce magasin est une exception.';
   return active;
