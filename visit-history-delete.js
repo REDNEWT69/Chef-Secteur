@@ -1,5 +1,10 @@
 (function(){
   'use strict';
+  /* Écran Historique : liste les jours enregistrés et donne accès à la suppression.
+     Ce module n'est PAS un second moteur de suppression. Depuis la V231, il délègue
+     intégralement à StoreRunnerVisits.deleteHistoryEntry, qui est le point d'entrée
+     unique : ciblage par visitId, confirmation nommée, checkpoint, validation,
+     sauvegarde atomique et recalcul de l'historique legacy y vivent une seule fois. */
   var historyObserver=null,observedHistoryList=null;
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function rows(){
@@ -15,15 +20,13 @@
   }
   window.deleteRecordedVisit=function(storeId,date){
     try{
-      var s=byId(storeId);if(!s)return;
-      var v=storeVisit(s),h=(v.history||[]).slice();
-      var idx=-1;for(var i=h.length-1;i>=0;i--)if(String(h[i])===String(date)){idx=i;break}
-      if(idx<0)return;
-      if(!confirm('Supprimer la visite de '+(s.enseigne||'ce magasin')+' '+(s.ville||'')+' du '+date+' ?'))return;
-      h.splice(idx,1);v.history=h;v.lastVisit=h.length?h[h.length-1]:'';state.visits[storeId]=v;
-      if(typeof save==='function')save();
-      if(typeof renderAll==='function')renderAll();
-      setTimeout(render,20);
+      var owner=window.StoreRunnerVisits;
+      if(!owner||typeof owner.deleteHistoryEntry!=='function'){
+        window.alert('Le module Visites n’est pas encore prêt : réessaie dans un instant.');
+        return;
+      }
+      var result=owner.deleteHistoryEntry(storeId,date);
+      if(result&&typeof result.then==='function')result.then(function(){setTimeout(render,20)},function(e){console.warn(e)});
     }catch(e){console.warn(e)}
   };
   function render(){
@@ -53,7 +56,7 @@
     return true;
   }
   function install(){render();observeHistory();return !!observedHistoryList}
-  var st=document.createElement('style');st.textContent='.historyRow{align-items:center}.visitDeleteBtn{border:1px solid #ffd0cb;background:#fff8f7;color:#b42318;border-radius:10px;padding:7px 9px;font-size:10.5px;font-weight:750}.visitDeleteBtn:active{transform:scale(.98)}@media(max-width:650px){.historyRow{grid-template-columns:auto 1fr auto}.historyTag{display:none}.visitDeleteBtn{grid-column:3}}';document.head.appendChild(st);
+  var st=document.createElement('style');st.textContent='.historyRow{align-items:center}.visitDeleteBtn{border:1px solid #ffd0cb;background:#fff8f7;color:#b42318;border-radius:10px;padding:7px 9px;font-size:10.5px;font-weight:750;min-height:44px}.visitDeleteBtn:active{transform:scale(.98)}@media(max-width:650px){.historyRow{grid-template-columns:auto 1fr auto}.historyTag{display:none}.visitDeleteBtn{grid-column:3}}';document.head.appendChild(st);
   function boot(){
     if(install())return;
     [100,250,600,1200,2400].forEach(function(delay){setTimeout(install,delay)});
@@ -62,4 +65,6 @@
   window.addEventListener('load',install,{once:true});
   window.addEventListener('focus',install);
   document.addEventListener('visibilitychange',function(){if(!document.hidden)install()});
+  document.addEventListener('store-runner:visit-deleted',function(){setTimeout(render,20)});
+  document.addEventListener('store-runner:data-restored',function(){setTimeout(render,20)});
 })();
