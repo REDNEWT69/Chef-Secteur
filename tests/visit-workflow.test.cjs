@@ -29,7 +29,9 @@ assert(ui.includes("window.confirm('Terminer cette visite maintenant ?"),'Termin
 assert(ui.includes("Visite conservée en cours."),'annuler la confirmation doit laisser le brouillon intact');
 assert(ui.includes("↩ Réouvrir cette visite"),'une visite clôturée aujourd’hui doit pouvoir être réouverte');
 assert(ui.includes("otherSameDay"),'la réouverture doit préserver un jour réellement utilisé par une autre visite terminée');
-assert(ui.includes("Une visite de ce magasin a déjà été terminée aujourd’hui."),'redémarrer le même magasin le même jour doit proposer de reprendre la visite existante');
+// V233 : revenir sur un magasin déjà terminé aujourd'hui doit consulter la même visite,
+// jamais interpréter Cancel comme « créer une deuxième visite ».
+const startAt=ui.indexOf('async function start(storeId){'),openAt=ui.indexOf('\nfunction openVisit',startAt);assert(startAt>=0&&openAt>startAt,'start() doit rester identifiable');const startBlock=ui.slice(startAt,openAt);const recentAt=startBlock.indexOf('if(recent){'),returnRecentAt=startBlock.indexOf('return recent.id;'),modelStartAt=startBlock.indexOf('M.start(s,key)');assert(recentAt>=0&&returnRecentAt>recentAt,'une visite terminée aujourd’hui doit être interceptée avant toute création');assert(modelStartAt>returnRecentAt,'le chemin même jour doit sortir avant M.start()');const recentBlock=startBlock.slice(recentAt,returnRecentAt+'return recent.id;'.length);assert(!recentBlock.includes('save('),'consulter la visite du jour ne doit déclencher aucune écriture');assert(!recentBlock.includes('M.start'),'consulter la visite du jour ne doit créer aucune visite');assert(!startBlock.includes('Annuler : créer une nouvelle visite'),'Cancel ne doit plus être une action métier de création');assert(startBlock.includes('Réouvrir cette visite'),'le message doit orienter vers la réouverture volontaire du même visitId');
 assert(ui.includes("document.addEventListener('visibilitychange',()=>{if(document.hidden)save()})"),'le passage en arrière-plan doit seulement sauvegarder, jamais terminer');
 assert(!/visibilitychange[^\n]{0,220}completeVisit/.test(ui),'aucun chemin de visibilité/rechargement ne doit clôturer une visite');
 // Le modèle 6P reste testé ci-dessus pour la compatibilité des anciennes visites, mais le
@@ -50,4 +52,4 @@ assert(ui.includes('Famille active : '),'le changement BLANC / BRUN doit donner 
 assert(ui.includes("'Note terrain '+family.toUpperCase()"),'une grande note terrain remplace les sous-options');
 assert(ui.includes("'Prochain passage / formation '+family.toUpperCase()"),'le prochain passage reste directement saisissable');
 assert(ui.includes('api.open(v.storeId)'),'les photos restent accessibles directement depuis la visite');
-console.log('PASS: Visit/Action model legacy, carnet terrain V170, V214 visit close guard/reopen, history compatibility, store memory surface, V2 backup/restore, invalid data and module ownership.');
+console.log('PASS: Visit/Action model legacy, carnet terrain V170, V214 visit close guard/reopen, V233 same-day duplicate guard, history compatibility, store memory surface, V2 backup/restore, invalid data and module ownership.');
