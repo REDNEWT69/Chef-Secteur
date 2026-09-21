@@ -158,11 +158,24 @@ test('La famille BLANC génère son propre résumé et un double tap ne lance qu
     window.StoreRunnerVisitReportJSONV225.install();
   }, JSON.stringify(blanc));
 
+  // La lecture des photos est ralentie : c'est pendant CE délai que le second tap tombait,
+  // à l'époque où le verrou n'était posé qu'après le premier await.
+  await page.evaluate(()=>{
+    const api=window.StorePhotosV1;
+    for(const key of ['list','listByFamily']){
+      const original=api[key].bind(api);
+      api[key]=async(...args)=>{await new Promise(r=>setTimeout(r,600));return original(...args)};
+    }
+  });
+
   const sheet=await openReport(page);
   await sheet.locator('.sr-reportTab[data-family="blanc"]').tap();
   const button=sheet.locator('#srReportAI');
-  await button.tap();
-  await page.evaluate(()=>document.getElementById('srReportAI').click());
+  // Deux clics dans le MÊME tour de boucle : aucun await ne s'intercale entre eux.
+  await page.evaluate(()=>{
+    const b=document.getElementById('srReportAI');
+    b.click();b.click();
+  });
 
   await expect(sheet.locator('#srReportText')).toHaveValue(/^⚪ Résumé BLANC – Enseigne-Test Ville-Test/,{timeout:10000});
   await expect(button).toBeEnabled();

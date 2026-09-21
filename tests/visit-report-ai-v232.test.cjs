@@ -166,6 +166,18 @@ function counting(answers){
   assert.match(SLACK,/Le rapport local est conservé/,'le repli doit conserver le rapport local');
   assert.match(SLACK,/finally\{generating=false;if\(button\)\{button\.disabled=false/,'le bouton doit être réactivé quoi qu’il arrive');
   assert.match(SLACK,/if\(generating\)\{say\('Génération déjà en cours/,'un double tap ne doit pas lancer deux générations');
+  /* Le verrou doit être posé AVANT le premier await. Posé après la lecture des photos, il
+     laissait deux taps rapprochés franchir le contrôle pendant que la première lecture
+     IndexedDB était encore en vol : deux appels IA partaient. */
+  const generateAI=SLACK.slice(SLACK.indexOf('async function generateAI'),SLACK.indexOf('async function copy('));
+  const lock=generateAI.indexOf('generating=true'),firstAwait=generateAI.indexOf('await'),tryBlock=generateAI.indexOf('try{');
+  assert(lock>0&&firstAwait>0,'le verrou et le premier await doivent exister');
+  assert(lock<firstAwait,'le verrou generating=true doit précéder le premier await de generateAI');
+  assert(tryBlock<generateAI.indexOf('photosFor'),'la lecture des photos doit vivre dans le try protégé par le verrou');
+  assert(tryBlock<generateAI.indexOf('buildAIPayload'),'la construction de la charge utile doit vivre dans le même try');
+  // Le contrôle de disponibilité de la passerelle est synchrone et reste avant le verrou :
+  // on cible donc l'appel lui-même, pas la première mention du nom.
+  assert(tryBlock<generateAI.indexOf('await root.callAIGateway({'),'l’appel IA doit vivre dans le même try');
   assert.match(SLACK,/response&&response\.repaired\?' généré après une réparation automatique\.'/,'le retour doit distinguer une réparation');
   assert(!/console\.(log|warn|info)\([^)]*noteTerrain/.test(SLACK+MODULE),'aucune note terrain brute journalisée');
   console.log('PASS 6 · aucune invention, rapport local conservé, bouton réactivé, pas de double appel');
