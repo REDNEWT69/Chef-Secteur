@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'234',
+      title:'Un démarrage plus rapide et plus fluide',
+      items:[
+        'Démarrage plus rapide et plus fluide : un seul écran de chargement, sans flash de l’ancienne interface.',
+        'L’écran de chargement reste affiché jusqu’à ce que l’accueil soit vraiment prêt, puis laisse la main immédiatement.',
+        'Les lancements suivants réutilisent les fichiers déjà installés : moins d’attente avant d’arriver sur l’accueil.',
+        'Si l’accueil met du temps à se construire, l’application redevient utilisable au lieu de rester bloquée derrière le chargement.'
+      ]
+    },
+    {
       version:'233',
       title:'Une seule visite par magasin et par jour',
       items:[
