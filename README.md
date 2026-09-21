@@ -111,7 +111,8 @@ Le workflow `.github/workflows/reliability-checks.yml` vérifie notamment :
 - magasins par région et parseurs du catalogue officiel ;
 - séparation des responsabilités de navigation, profil, planning et assistant ;
 - architecture du futur métier V2 ;
-- propriétaires globaux des modules réellement chargés au runtime.
+- propriétaires globaux des modules réellement chargés au runtime ;
+- hygiène du dépôt : aucun reliquat non référencé ne peut revenir.
 
 Chaque lot fonctionnel doit conserver ces contrôles au vert.
 
