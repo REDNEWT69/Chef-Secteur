@@ -108,6 +108,7 @@ jobs:
       - run: node tests/working-hours-architecture.test.cjs
       - run: node tests/daily-capacity-architecture.test.cjs
       - run: node tests/ci-policy.test.cjs
+      - run: node tests/repo-hygiene.test.cjs
       - run: node tests/nominatim-compliance.test.cjs
       - run: node tests/branding.test.cjs
       - run: node tests/titlesub-ownership.test.cjs
