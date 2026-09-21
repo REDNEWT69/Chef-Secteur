@@ -206,3 +206,86 @@ function withAction(s,visitId,text){
   assert(sw.includes('"./'+asset+'"'),'ressource absente du cache hors ligne : '+asset);
  console.log('PASS 5 · un seul moteur de suppression, délégation de l’écran Historique, cible tactile mobile');
 })().catch(e=>{console.error(e);process.exitCode=1});
+
+/* ------------------------------- 6. photos liées : la suppression est bloquée, jamais
+   les photos supprimées. Les photos vivent dans IndexedDB, hors de `state` : le modèle
+   métier reste pur et c'est l'orchestration qui refuse. Stockage de fortune, fixtures
+   inventées (le dépôt est public). */
+(async()=>{
+ const PHOTOS=path.join(ROOT,'store-photos.js');
+ function loadPhotos(){delete require.cache[require.resolve(PHOTOS)];return require(PHOTOS)}
+
+ function fakeIndexedDB(rows,journal){
+  const data=new Map(rows.map(r=>[String(r.id),Object.assign({},r)]));
+  function makeTx(){
+   const tx={oncomplete:null,onerror:null,onabort:null,abort(){if(tx.onabort)tx.onabort()}};
+   let pending=0;
+   function settle(fn){pending++;queueMicrotask(()=>{fn();pending--;if(!pending)setTimeout(()=>{if(!pending&&tx.oncomplete)tx.oncomplete()},0)})}
+   function cursor(matching){
+    const req={};let i=0;
+    const step=()=>settle(()=>{
+     if(i>=matching.length){req.result=null;if(req.onsuccess)req.onsuccess();return}
+     req.result={value:matching[i++],continue:step};if(req.onsuccess)req.onsuccess();
+    });
+    step();return req;
+   }
+   const os={
+    put(r){if(journal)journal.puts.push(String(r.id));data.set(String(r.id),r);const req={};settle(()=>{if(req.onsuccess)req.onsuccess()});return req},
+    delete(id){if(journal)journal.deletes.push(String(id));data.delete(String(id));const req={};settle(()=>{if(req.onsuccess)req.onsuccess()});return req},
+    get(id){const req={};settle(()=>{req.result=data.get(String(id));if(req.onsuccess)req.onsuccess()});return req},
+    openCursor(){return cursor([...data.values()])},
+    index(){return{openCursor(range){return cursor([...data.values()].filter(r=>String(r.storeId)===String(range.only)))}}}
+   };
+   tx.objectStore=()=>os;return tx;
+  }
+  return {open(){const req={};setTimeout(()=>{req.result={transaction:()=>makeTx(),objectStoreNames:{contains:()=>true}};if(req.onsuccess)req.onsuccess()},0);return req},__data:data};
+ }
+
+ const journal={puts:[],deletes:[]};
+ const cliches=[
+  {id:'p1',storeId:'autre',visitId:'visit-erronee',createdAt:'2026-09-15T09:00:00.000Z',note:''},
+  {id:'p2',storeId:'autre',visitId:'visit-erronee',createdAt:'2026-09-15T09:05:00.000Z',note:''},
+  {id:'p3',storeId:'ste',visitId:'visit-gardee',createdAt:'2026-09-16T09:00:00.000Z',note:''},
+  {id:'p4',storeId:'ste',visitId:null,createdAt:'2026-09-16T10:00:00.000Z',note:''}
+ ];
+ const idb=fakeIndexedDB(cliches,journal);
+ global.indexedDB=idb;global.IDBKeyRange={only:v=>({only:v})};
+ global.state={stores:[{id:'ste',enseigne:'Boulanger',ville:'Saint-Étienne Villard'},{id:'autre',enseigne:'Darty',ville:'Ville-Test B'}],businessV2:{visits:[]}};
+ const photos=loadPhotos();
+
+ // Détection : toutes les photos portant ce visitId, quel que soit leur magasin.
+ const liees=await photos.listByVisitId('visit-erronee');
+ assert.deepEqual(liees.map(r=>r.id).sort(),['p1','p2'],'toutes les photos du visitId doivent être détectées');
+ assert.deepEqual((await photos.listByVisitId('visit-gardee')).map(r=>r.id),['p3']);
+ assert.deepEqual(await photos.listByVisitId('visit-sans-photo'),[],'une visite sans photo n’est pas bloquée');
+ assert.deepEqual(await photos.listByVisitId(''),[],'un identifiant vide ne bloque rien');
+ assert.deepEqual(journal,{puts:[],deletes:[]},'la détection est en lecture seule : aucune photo écrite ni supprimée');
+
+ // Déplacement vers le bon magasin : le lien de visite est coupé, la suppression redevient possible.
+ global.state.businessV2.visits=[{id:'visit-erronee',storeId:'autre',status:'completed'}];
+ await photos.moveRecords(['p1','p2'],'ste');
+ assert.deepEqual((await photos.listByVisitId('visit-erronee')).map(r=>r.id),[],'après déplacement, plus aucune photo ne retient la visite');
+ assert.equal(idb.__data.get('p1').storeId,'ste');
+ assert.equal(idb.__data.get('p2').storeId,'ste');
+ assert.equal(idb.__data.get('p1').visitId,null,'le déplacement coupe le lien de visite');
+ assert.deepEqual(journal.deletes,[],'aucune photo n’est supprimée par le déplacement');
+ assert.equal(idb.__data.size,4,'les quatre photos sont toujours là');
+
+ // Sans stockage photo, aucune photo ne peut exister : rien ne bloque.
+ delete global.indexedDB;
+ const sansStockage=loadPhotos();
+ assert.deepEqual(await sansStockage.listByVisitId('visit-erronee'),[],'sans IndexedDB, la détection ne bloque pas');
+
+ // Architecture : le contrôle est dans l'orchestration, jamais dans le modèle métier.
+ const ui=fs.readFileSync(path.join(ROOT,'store-runner-visits.js'),'utf8');
+ const modele=fs.readFileSync(path.join(ROOT,'store-runner-visit-model.js'),'utf8');
+ assert(ui.includes('api.listByVisitId(visitId)'),'l’orchestration doit interroger StorePhotosV1');
+ assert(/photos=await linkedPhotos\(key\)[\s\S]{0,400}?if\(photos\.length\)\{message\(photoBlockMessage/.test(ui),
+  'le contrôle photo doit précéder toute suppression');
+ assert(ui.indexOf('linkedPhotos(key)')<ui.indexOf('M.removeVisit(s,key)'),'le contrôle doit passer avant M.removeVisit');
+ assert(ui.includes("'Cette visite contient '+count+' photo'+(count>1?'s':'')+'. Déplace ou supprime ces photos avant de supprimer la visite.'"),
+  'le message de blocage doit être explicite');
+ assert(!/removeRecord|StorePhotosV1\.removeRecord/.test(ui.split('function dangerZone')[1]||''),'aucune suppression de photo automatique');
+ assert(!/listByVisitId|indexedDB|StorePhotos/i.test(modele),'le modèle métier ne doit pas dépendre du stockage photo');
+ console.log('PASS 6 · photos liées détectées, suppression bloquée, aucune photo supprimée, déplacement débloque');
+})().catch(e=>{console.error(e);process.exitCode=1});

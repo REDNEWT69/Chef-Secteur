@@ -118,11 +118,28 @@ function deletionSummary(result){
  return parts.join(' ');
 }
 function announceDeletion(detail){try{document.dispatchEvent(new CustomEvent('store-runner:visit-deleted',{detail}))}catch(e){}}
+/* Garde-fou V231 — les photos ne vivent pas dans `state` : elles sont dans IndexedDB,
+   hors de l'écriture atomique qui supprime une visite. Supprimer la visite sans elles
+   les abandonnerait sur leur magasin actuel — le mauvais magasin dans le cas qui a
+   motivé ce lot — et les comptes rendus les rechargeraient par magasin. On refuse donc
+   la suppression tant qu'une photo porte ce visitId, et on ne supprime JAMAIS une photo
+   automatiquement : le déplacement (StorePhotosV1.moveRecords) coupe déjà le lien de
+   visite vers un autre magasin, et c'est à l'utilisateur de trancher. */
+async function linkedPhotos(visitId){
+ const api=window.StorePhotosV1;
+ if(!api||typeof api.listByVisitId!=='function')return [];
+ return api.listByVisitId(visitId);
+}
+function photoBlockMessage(count){return 'Cette visite contient '+count+' photo'+(count>1?'s':'')+'. Déplace ou supprime ces photos avant de supprimer la visite.'}
 async function deleteVisit(visitId){
  const key=String(visitId||''),v=domain().visits.find(x=>x.id===key);
  if(!v){message('Visite introuvable.',true);return false}
  const who=visitIdentity(v),storeId=String(v.storeId);
  const label=who.enseigne+(who.ville?' · '+who.ville:'');
+ let photos;
+ try{photos=await linkedPhotos(key)}
+ catch(e){message('Photos illisibles : suppression annulée. '+(e.message||String(e)),true);return false}
+ if(photos.length){message(photoBlockMessage(photos.length),true);return false}
  if(!window.confirm('Supprimer définitivement cette visite ?\n\n'+label+'\nVisite du '+(who.date||'jour non enregistré')+'\n\nElle disparaîtra de la mémoire magasin, de l’historique et des rapports. Les opportunités du magasin sont conservées. Cette action est irréversible.')){message('Visite conservée.');return false}
  let result=null;
  return save(s=>{result=M.removeVisit(s,key)},()=>{

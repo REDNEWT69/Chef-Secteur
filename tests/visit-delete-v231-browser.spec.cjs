@@ -146,3 +146,75 @@ test('L’écran Historique délègue la suppression et cible la bonne visite', 
   expect(overflow).toBeLessThanOrEqual(1);
   expect(pageErrors,'L’écran Historique ne doit produire aucune erreur JavaScript').toEqual([]);
 });
+
+test('Une visite avec photos liées refuse la suppression, et la libère après déplacement, à 390 px', async ({ page }) => {
+  const pageErrors=[];
+  page.on('pageerror', e => pageErrors.push(String(e && e.message || e)));
+  page.on('dialog', d => d.accept());
+
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(() => window.StoreRunnerVisits && window.StoreRunnerVisitModel && window.StoreRunnerOpportunities && window.StorePhotosV1 && typeof window.save==='function');
+  await seed(page);
+
+  const erronee=await page.evaluate(()=>state.businessV2.visits.find(v=>v.storeId==='autre').id);
+
+  // Deux photos prises pendant la visite erronée, donc posées sur le mauvais magasin.
+  await page.evaluate(async id => {
+    const api=window.StorePhotosV1,db=await api.openDb();
+    const rows=[
+      {id:'photo-a',storeId:'autre',visitId:id,createdAt:'2026-09-15T09:00:00.000Z',updatedAt:'2026-09-15T09:00:00.000Z',note:'',family:'',moment:'',type:'image/jpeg',width:10,height:10,blob:new Blob(['a'],{type:'image/jpeg'})},
+      {id:'photo-b',storeId:'autre',visitId:id,createdAt:'2026-09-15T09:05:00.000Z',updatedAt:'2026-09-15T09:05:00.000Z',note:'',family:'',moment:'',type:'image/jpeg',width:10,height:10,blob:new Blob(['b'],{type:'image/jpeg'})}
+    ];
+    const tx=db.transaction(api.STORE,'readwrite');
+    for(const r of rows)tx.objectStore(api.STORE).put(r);
+    await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=tx.onabort=()=>reject(tx.error)});
+  },erronee);
+
+  await page.evaluate(id=>window.StoreRunnerVisits.openVisit(id),erronee);
+  const dialog=page.locator('#srVisitDialog');
+  await expect(dialog).toBeVisible();
+  await dialog.locator('.sr-dangerZone summary').tap();
+  await dialog.locator('[data-sr-delete-visit]').tap();
+
+  // Blocage explicite, et la visite est toujours là.
+  await expect(dialog.locator('.sr-status')).toContainText('Cette visite contient 2 photos. Déplace ou supprime ces photos avant de supprimer la visite.');
+  const bloque=await page.evaluate(async ({id,store})=>({
+    visits:state.businessV2.visits.length,
+    existe:state.businessV2.visits.some(v=>v.id===id),
+    actions:state.businessV2.actions.length,
+    legacy:JSON.parse(JSON.stringify(state.visits)),
+    photos:(await window.StorePhotosV1.list(store)).map(r=>r.id).sort()
+  }),{id:erronee,store:'autre'});
+  expect(bloque.existe).toBe(true);
+  expect(bloque.visits).toBe(2);
+  expect(bloque.actions).toBe(1);
+  expect(bloque.legacy.autre.history).toEqual(['2026-09-15']);
+  expect(bloque.photos,'aucune photo ne doit être supprimée automatiquement').toEqual(['photo-a','photo-b']);
+
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+
+  // L'utilisateur déplace les photos vers le bon magasin : le lien de visite est coupé.
+  const deplacees=await page.evaluate(async ()=>{
+    await window.StorePhotosV1.moveRecords(['photo-a','photo-b'],'ste');
+    return {
+      surSte:(await window.StorePhotosV1.list('ste')).map(r=>r.id).sort(),
+      surAutre:(await window.StorePhotosV1.list('autre')).map(r=>r.id)
+    };
+  });
+  expect(deplacees.surSte).toEqual(['photo-a','photo-b']);
+  expect(deplacees.surAutre).toEqual([]);
+
+  // La suppression redevient possible.
+  await dialog.locator('[data-sr-delete-visit]').tap();
+  await expect(dialog.locator('.sr-status')).toContainText('Visite supprimée');
+  const apres=await page.evaluate(async ()=>({
+    visits:state.businessV2.visits.map(v=>v.storeId),
+    legacy:JSON.parse(JSON.stringify(state.visits)),
+    photos:(await window.StorePhotosV1.list('ste')).map(r=>r.id).sort()
+  }));
+  expect(apres.visits).toEqual(['ste']);
+  expect(apres.legacy.autre.history).toEqual([]);
+  expect(apres.photos,'les photos déplacées survivent à la suppression').toEqual(['photo-a','photo-b']);
+  expect(pageErrors,'Le garde-fou photo ne doit produire aucune erreur JavaScript').toEqual([]);
+});

@@ -133,6 +133,24 @@ async function addPhoto(storeId,file,visitId){
 }
 /* Une photo non étiquetée est volontairement rendue pour les deux familles : mieux vaut une
    photo en trop dans un compte rendu qu'une photo manquante. */
+/* V231 — lecture seule : quelles photos portent encore ce lien de visite ?
+   Les photos vivent dans IndexedDB, hors de `state` et donc hors de la transaction
+   atomique qui supprime une visite : elles ne peuvent pas être nettoyées avec elle.
+   Le balayage complet est volontaire — une photo prise pendant une visite peut se
+   trouver sur n'importe quel magasin, et c'est exactement le cas qu'on veut détecter.
+   Cette fonction ne supprime ni ne réécrit jamais un enregistrement. */
+async function listByVisitId(visitId){
+  const id=String(visitId==null?'':visitId);if(!id)return [];
+  if(!root.indexedDB)return [];
+  const db=await openDb(),tx=db.transaction(STORE,'readonly'),rows=[];
+  await new Promise((resolve,reject)=>{
+    const req=tx.objectStore(STORE).openCursor();
+    req.onsuccess=()=>{const cur=req.result;if(!cur){resolve();return}if(String(cur.value&&cur.value.visitId||'')===id)rows.push(cur.value);cur.continue()};
+    req.onerror=()=>reject(req.error||new Error('Lecture des photos impossible.'));
+  });
+  rows.sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+  return rows;
+}
 async function listByFamily(storeId,family){const rows=await list(storeId);return rows.filter(r=>{const f=String(r&&r.family||'');return !f||f===String(family||'')})}
 function clearUrls(){for(const url of objectUrls)try{URL.revokeObjectURL(url)}catch(e){}objectUrls=[]}
 function blobUrl(blob){const url=URL.createObjectURL(blob);objectUrls.push(url);return url}
@@ -315,7 +333,7 @@ function installQuickButton(){
 }
 function boot(){ensureDialog();installQuickButton()}
 
-const api={DB_NAME,STORE,MAX_EDGE,safePart,scaleSize,defaultSelection,shareFileName,openDb,list,listByFamily,addPhoto,removeRecord,updateNote,updateTags,open,render,shareRecords,installQuickButton,moveRecords,visitStoreId,keepsVisitLink,movableStores,openMoveDialog,closeMoveDialog,confirmMove,renderMoveList,syncMoveButton};
+const api={DB_NAME,STORE,MAX_EDGE,safePart,scaleSize,defaultSelection,shareFileName,openDb,list,listByFamily,listByVisitId,addPhoto,removeRecord,updateNote,updateTags,open,render,shareRecords,installQuickButton,moveRecords,visitStoreId,keepsVisitLink,movableStores,openMoveDialog,closeMoveDialog,confirmMove,renderMoveList,syncMoveButton};
 root.StorePhotosV1=api;
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();root.document.addEventListener('store-runner:data-restored',installQuickButton);root.document.addEventListener('store-runner:planning-updated',installQuickButton)}
