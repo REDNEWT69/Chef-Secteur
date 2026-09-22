@@ -106,6 +106,7 @@ Avant de proposer une fusion ou un push fonctionnel :
 - vérifier syntaxe JavaScript ;
 - vérifier sauvegarde/restauration des données touchées ;
 - vérifier mobile à 390 px lorsque l’UI change ;
+- lancer la suite navigateur avec `node tools/run-browser-tests.mjs`, jamais `python -m http.server` : ce dernier est en HTTP/1.0 avec une file d’écoute de 5 et produit de faux `Failed to fetch` ;
 - vérifier PWA/hors ligne lorsque le runtime ou le stockage change ;
 - contrôler qu’aucun propriétaire de fonction critique n’a été contourné.
 
