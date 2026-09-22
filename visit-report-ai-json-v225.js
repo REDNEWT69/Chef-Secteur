@@ -1,11 +1,30 @@
 /* Store Runner V225 — sortie magasin BRUN / BLANC via JSON structuré.
    V232 : chaîne appel initial → extraction robuste → validation → réparation unique → repli local.
-   Le modèle structure, Store Runner rend le texte Slack localement. Deux appels IA au maximum. */
+   V238 : une réponse réellement VIDE est rejouée une fois, par le Worker, et n'est plus
+   confondue avec une panne de transport.
+   Le modèle structure, Store Runner rend le texte Slack localement.
+
+   BUDGET MAXIMAL, pour un seul appui sur « Générer avec l'IA » :
+     · 2 appels HTTP passerelle au plus — 1 génération + 1 réparation V232. Inchangé.
+     · la génération vaut au plus 2 tentatives logiques côté Worker : la première, puis un
+       unique second essai réservé au cas « réponse vide » (V238).
+     · la réparation vaut exactement 1 tentative logique : le client lui interdit le second
+       essai via `retryEmpty:false`. Une réponse revenue puis mal formée relève de la
+       réparation, pas du cas vide ; les deux mécanismes ne se cumulent jamais.
+     · chaque tentative logique vaut au plus 2 appels fournisseur — moteur principal puis
+       repli Groq.
+   Soit un plafond dur de 3 tentatives logiques et 6 appels fournisseur, atteint seulement
+   si tout échoue dans l'ordre le plus défavorable. Aucune boucle, aucun troisième essai. */
 (function(root){
 'use strict';
 
 const MODE='visit_report';
 const REPAIR_INSTRUCTION='Répare cette réponse pour produire exactement le JSON attendu. N’ajoute aucune information.';
+/* Code interne du Worker pour « les moteurs ont répondu sans produire un caractère ».
+   Il est écrit en tête du corps de réponse : `callAIGateway` n'en conserve que les 180
+   premiers caractères, le code survit donc toujours à cette troncature. */
+const EMPTY_RESPONSE_CODE='ai_empty_response';
+const EMPTY_RESPONSE_MESSAGE='Le résumé IA n’a pas pu être généré après deux tentatives. Le compte rendu local est conservé.';
 /* Champs par lesquels une passerelle ou un provider peut livrer le texte. Le Worker Store
    Runner renvoie `text` et duplique dans reply/answer/message ; les enveloppes providers
    connues passent par result.response ou choices[].message.content. On ne devine rien
@@ -227,6 +246,18 @@ function transportFailure(error){
   if(!message)return true;
   return /HTTP\s*\d{3}|passerelle ia|abort|timeout|délai|network|networkerror|failed to fetch|charge utile|origine non autorisée|moteur ia|indisponible|réponse ia invalide/i.test(message)
 }
+/* Une réponse vide n'est PAS une panne de transport, même si elle arrive par un code HTTP.
+   Les moteurs ONT répondu ; ils n'ont simplement rien produit, et le Worker a déjà dépensé
+   son unique second essai. Le client n'en ajoute aucun : il traduit, c'est tout. C'est
+   cette distinction qui empêche de confondre un vrai 500 réseau, un timeout ou un
+   « Failed to fetch » avec un moteur muet. */
+function emptyResponseFailure(error){
+  return text(error&&error.message||error).indexOf(EMPTY_RESPONSE_CODE)>=0
+}
+/* Message terrain, sans rien de technique. Vide si l'échec n'est pas un cas « vide ». */
+function failureMessage(error){
+  return emptyResponseFailure(error)?EMPTY_RESPONSE_MESSAGE:''
+}
 function repairPrompt(visit,faulty){
   return REPAIR_INSTRUCTION+'\n\nSCHÉMA JSON STRICT ATTENDU :\n'+schemaFor(familyOf(visit))+
     '\n\nRÉPONSE À RÉPARER :\n'+text(faulty).slice(0,8000)
@@ -245,7 +276,9 @@ function wrapGateway(original){
   const wrapped=async function(options){
     const opts=options&&typeof options==='object'?options:{},context=opts.context&&typeof opts.context==='object'?opts.context:{},visit=context.visit;
     if(context.task!=='visit_report'||!visit||visit.skeleton!=='grands-magasins')return original.apply(this,arguments);
-    const base={...opts,mode:MODE,context:{...context,outputFormat:'visit_report_json_v225'}};
+    /* `retryEmpty` dit au Worker si le cas « réponse vide » a droit à son second essai.
+       Vrai pour la génération, faux pour la réparation : le budget reste borné. */
+    const base={...opts,mode:MODE,retryEmpty:true,context:{...context,outputFormat:'visit_report_json_v225'}};
     /* Appel initial. Une erreur ici est une erreur de transport : elle remonte telle quelle,
        sans consommer le second appel. */
     const response=await original.call(this,{...base,message:buildPrompt(visit)});
@@ -258,7 +291,7 @@ function wrapGateway(original){
        Une réponse vide n'a rien à réparer, un échec de transport non plus. */
     if(!text(payload.text))throw firstError||new Error('réponse JSON vide');
     let repairResponse;
-    try{repairResponse=await original.call(this,{...base,message:repairPrompt(visit,payload.text)})}
+    try{repairResponse=await original.call(this,{...base,retryEmpty:false,message:repairPrompt(visit,payload.text)})}
     catch(e){throw transportFailure(e)?e:(firstError||e)}
     const repaired=responsePayload(repairResponse);
     const repairedDoc=validateDoc(repaired.doc||parseStructured(repaired.text),visit);
@@ -277,7 +310,7 @@ function installEventually(attempt){
   return false
 }
 
-const api={MODE,REPAIR_INSTRUCTION,cleanJsonText,jsonSpan,looksTruncated,responsePayload,parseStructured,list,scalar,schemaFor,buildPrompt,repairPrompt,transportFailure,validateDoc,renderStructured,renderBrun,renderBlanc,hasUsefulContent,wrapGateway,install,installEventually};
+const api={MODE,REPAIR_INSTRUCTION,EMPTY_RESPONSE_CODE,EMPTY_RESPONSE_MESSAGE,emptyResponseFailure,failureMessage,cleanJsonText,jsonSpan,looksTruncated,responsePayload,parseStructured,list,scalar,schemaFor,buildPrompt,repairPrompt,transportFailure,validateDoc,renderStructured,renderBrun,renderBlanc,hasUsefulContent,wrapGateway,install,installEventually};
 root.StoreRunnerVisitReportJSONV225=api;
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root&&root.document)installEventually(0);else if(root&&typeof root.callAIGateway==='function')install();
