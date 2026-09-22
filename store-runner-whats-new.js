@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'240',
+      title:'Plus de blocage « quota dépassé »',
+      items:[
+        'Le message « quota exceeded » qui bloquait la génération du planning a disparu : Store Runner ne recopie plus tes données entières à chaque enregistrement.',
+        'Seul ce qui change réellement est mis de côté le temps de l’enregistrement, au lieu de tout le carnet magasins et des imports cuisinistes.',
+        'L’historique des sauvegardes ne peut plus occuper presque toute la place disponible sur le téléphone.',
+        'Si la place vient vraiment à manquer, tu lis une phrase claire et tes données restent intactes, au lieu d’une erreur technique.'
+      ]
+    },
+    {
       version:'239',
       title:'Planning 3 semaines simplifié',
       items:[

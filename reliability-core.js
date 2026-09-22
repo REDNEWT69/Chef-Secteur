@@ -6,6 +6,22 @@ const MAIN='sector_planner_universal_v1', ARCHIVE='chef_sector_plan_archive_v1',
 const BACKUPS='chef_recovery_backups_v1', JOURNAL='chef_recovery_transaction_v1', EXPORT='chef_last_export_v1';
 const CATALOG='chef-secteur-official-catalog-local-v1', CUISINISTE='store-runner-cuisiniste-contracts-v193';
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+/* V240 — budgets de stockage, mesurés sur un secteur réel de 58 magasins
+   (tests/recovery-journal-quota-v240.test.cjs rejoue la mesure) :
+
+     sources MAIN+ARCHIVE+RANGE+CATALOG+CUISINISTE .... 524 Ko
+     journal recopiant TOUTES les clés ................ 602 Ko  (1,15x les sources :
+       une chaîne JSON re-sérialisée voit chacun de ses guillemets échappé)
+     8 sauvegardes complètes ......................... 4195 Ko  (82 % du quota)
+     ------------------------------------------------------------
+     pic pendant une génération de planning .......... 5321 Ko  > ~5120 Ko de quota
+
+   D'où l'échec terrain « Setting the value of 'chef_recovery_transaction_v1' exceeded
+   the quota ». Deux corrections indépendantes ci-dessous : le journal ne recopie plus
+   que les clés réellement modifiées, et l'historique de sauvegardes cesse de manger
+   la quasi-totalité du quota. */
+const JOURNAL_MAX_BYTES=1536*1024;
+const BACKUPS_MAX_BYTES=1536*1024;
 let blocked=false;
 const copy=x=>JSON.parse(JSON.stringify(x));
 function object(x){return x!==null&&typeof x==='object'&&!Array.isArray(x)}
@@ -37,14 +53,67 @@ function checkpoint(reason,db=(root.__chefStorage||root.localStorage),bundle=cap
  if(blocked)throw Error('Restaure une sauvegarde avant de modifier les données.');
  const row={id:Date.now()+'-'+Math.random().toString(36).slice(2,7),reason,date:new Date().toISOString(),bundle:copy(bundle)};
  let rows=backups(db);rows.unshift(row);rows=rows.slice(0,8);
- while(true){try{db.setItem(BACKUPS,JSON.stringify(rows));break}catch(e){if(rows.length<=2)throw Error('Espace insuffisant : exporte une sauvegarde avant de continuer.');rows.pop()}}
+ /* V240 — l'historique se bornait au NOMBRE de sauvegardes et ne rétrécissait qu'en
+    réaction à son propre échec d'écriture. Huit bundles d'un secteur chargé pèsent
+    4,2 Mo : il ne restait plus de place pour le journal de la transaction suivante.
+    On le borne donc aussi en octets, avant d'écrire, en gardant toujours la plus
+    récente. Le rétrécissement réactif reste le filet de sécurité final. */
+ while(rows.length>1&&JSON.stringify(rows).length>BACKUPS_MAX_BYTES)rows.pop();
+ while(true){try{db.setItem(BACKUPS,JSON.stringify(rows));break}catch(e){if(rows.length<=1)throw Error('Espace insuffisant : exporte une sauvegarde avant de continuer.');rows.pop()}}
  return row;
 }
 function recover(db=(root.__chefStorage||root.localStorage)){const raw=db.getItem(JOURNAL);if(!raw)return;const before=JSON.parse(raw);for(const k of [MAIN,ARCHIVE,RANGE,CATALOG,CUISINISTE]){if(!Object.prototype.hasOwnProperty.call(before,k))continue;if(before[k]===null)db.removeItem(k);else if(typeof before[k]==='string')db.setItem(k,before[k]);else throw Error('Journal de récupération invalide.')}db.removeItem(JOURNAL)}
+/* Les écritures d'une transaction, dans l'ordre. `null` vaut suppression de la clé, ce
+   qui est aussi ce que rend `getItem` pour une clé absente : une valeur identique se
+   compare donc directement, sans cas particulier. MAIN reste écrit en dernier. */
+function plannedWrites(bundle){
+ const writes=[[ARCHIVE,JSON.stringify(bundle.archive)],[RANGE,bundle.range===null?null:JSON.stringify(bundle.range)]];
+ if(bundle.catalog!==undefined)writes.push([CATALOG,JSON.stringify(bundle.catalog)]);
+ if(bundle.cuisinisteContracts!==undefined)writes.push([CUISINISTE,JSON.stringify(bundle.cuisinisteContracts)]);
+ writes.push([MAIN,JSON.stringify(bundle.state)]);
+ return writes;
+}
+/* Libère la sauvegarde la plus ancienne. Elles existent pour dépanner ; les données
+   vivantes, non. En céder une vaut mieux que refuser d'enregistrer. Rend false quand
+   il n'y a plus rien à céder. */
+function dropOldestBackup(db){
+ let rows;
+ try{rows=backups(db)}catch(e){db.removeItem(BACKUPS);return true}
+ if(!rows.length)return false;
+ rows.pop();
+ try{db.setItem(BACKUPS,JSON.stringify(rows))}catch(e){db.removeItem(BACKUPS)}
+ return true;
+}
+/* V240 — ouvre le journal de retour arrière pour les seules clés qui changent.
+   Il recopiait les cinq clés à chaque fois, y compris le carnet officiel et les
+   imports cuisinistes, pourtant inchangés pendant une génération de planning : 602 Ko
+   recopiés là où 165 Ko suffisent, soit le dépassement de quota constaté.
+   Repli, du moins destructif au plus :
+     1. une seule clé change -> `setItem` est atomique, il n'y a rien à annuler ;
+     2. écrire le journal ; s'il ne passe pas, céder une sauvegarde et réessayer ;
+     3. plus aucune sauvegarde à céder -> refuser AVANT d'avoir touché une donnée.
+   Rend true si un journal a été ouvert. */
+function openJournal(changed,db){
+ if(changed.length<=1)return false;
+ const payload=JSON.stringify(Object.fromEntries(changed.map(([k])=>[k,db.getItem(k)])));
+ if(payload.length>JOURNAL_MAX_BYTES)throw Error('Données locales trop volumineuses pour être enregistrées en sécurité : exporte une sauvegarde depuis Plus → Données, puis allège l’historique.');
+ for(;;){
+  try{db.setItem(JOURNAL,payload);return true}
+  catch(e){if(!dropOldestBackup(db))throw Error('Espace insuffisant : exporte une sauvegarde avant de continuer.')}
+ }
+}
 function persist(bundle,db=(root.__chefStorage||root.localStorage)){
- validate(bundle);const keys=[MAIN,ARCHIVE,RANGE];if(bundle.catalog!==undefined)keys.push(CATALOG);if(bundle.cuisinisteContracts!==undefined)keys.push(CUISINISTE);const before=Object.fromEntries(keys.map(k=>[k,db.getItem(k)]));
- db.setItem(JOURNAL,JSON.stringify(before));
- try{db.setItem(ARCHIVE,JSON.stringify(bundle.archive));if(bundle.range===null)db.removeItem(RANGE);else db.setItem(RANGE,JSON.stringify(bundle.range));if(bundle.catalog!==undefined)db.setItem(CATALOG,JSON.stringify(bundle.catalog));if(bundle.cuisinisteContracts!==undefined)db.setItem(CUISINISTE,JSON.stringify(bundle.cuisinisteContracts));db.setItem(MAIN,JSON.stringify(bundle.state));db.removeItem(JOURNAL)}catch(e){try{recover(db)}catch(_){blocked=true}throw Error('Enregistrement interrompu : données précédentes conservées ou récupération requise. '+e.message)}
+ validate(bundle);
+ /* Un journal resté en place signale une écriture précédente interrompue. On la
+    termine avant d'en ouvrir une autre : l'écraser détruirait son retour arrière. */
+ if(db.getItem(JOURNAL)!==null)recover(db);
+ const changed=plannedWrites(bundle).filter(([k,next])=>db.getItem(k)!==next);
+ if(!changed.length)return;
+ const journaled=openJournal(changed,db);
+ try{
+  for(const [k,next] of changed){if(next===null)db.removeItem(k);else db.setItem(k,next)}
+  if(journaled)db.removeItem(JOURNAL);
+ }catch(e){try{recover(db)}catch(_){blocked=true}throw Error('Enregistrement interrompu : données précédentes conservées ou récupération requise. '+e.message)}
 }
 function load(db=(root.__chefStorage||root.localStorage)){try{recover(db);const raw=db.getItem(MAIN);return raw?validateState(JSON.parse(raw)):null}catch(e){blocked=true;throw Error('Données locales illisibles. Elles ne seront pas écrasées. Ouvre Plus → Données → Sauvegardes. '+e.message)}}
 function save(s,db=(root.__chefStorage||root.localStorage)){if(blocked)throw Error('Écriture bloquée pour protéger les données : utilise la restauration.');validateState(s);const previous=db.getItem(MAIN);if(previous&&previous!==JSON.stringify(s)){
@@ -81,6 +150,6 @@ function planIssues(plan,s,date){
 }
 function eventMinute(raw){const d=new Date(raw);return d.getHours()*60+d.getMinutes()}
 function clock(s){const [h,m]=String(s).split(':').map(Number);return h*60+m}
-const api={capture,validate,validateState,decode,backups,checkpoint,recover,persist,load,save,restore,planIssues,keys:{MAIN,ARCHIVE,RANGE,BACKUPS,JOURNAL,EXPORT,CATALOG,CUISINISTE}};
+const api={capture,validate,validateState,decode,backups,checkpoint,recover,persist,load,save,restore,planIssues,plannedWrites,keys:{MAIN,ARCHIVE,RANGE,BACKUPS,JOURNAL,EXPORT,CATALOG,CUISINISTE},limits:{JOURNAL_MAX_BYTES,BACKUPS_MAX_BYTES}};
 root.ChefReliability=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

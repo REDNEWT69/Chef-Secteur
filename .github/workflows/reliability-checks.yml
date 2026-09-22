@@ -20,6 +20,7 @@ jobs:
           python-version: '3.12'
       - run: node tests/syntax.test.cjs
       - run: node tests/backups.test.cjs
+      - run: node tests/recovery-journal-quota-v240.test.cjs
       - run: node tests/visit-workflow.test.cjs
       - run: node tests/visit-family-report.test.cjs
       - run: node tests/visit-report-slack.test.cjs
