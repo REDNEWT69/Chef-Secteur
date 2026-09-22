@@ -284,4 +284,64 @@ function flat(week){
   assert.deepStrictEqual(weeks[0].diagnostics.map(d=>d.count),[1,1,4,2,4]);
 })();
 
+(function rotationMemoryCoversTheWholeSectorAcrossCycles(){
+  // V243 : 40 magasins, cible 10/semaine × 3 semaines = 30 par cycle. Le premier cycle
+  // couvre forcément les 30 plus proches (comportement radial inchangé, cf. tests
+  // ci-dessus) et laisse 10 magasins jamais touchés. Sans mémoire de rotation, un second
+  // cycle reprendrait exactement les 30 mêmes. Avec elle, il doit d'abord placer les 10
+  // encore jamais vus, puis compléter avec les plus anciennement utilisés du 1er cycle.
+  const stores = Array.from({length:40}, (_,i)=>store(i+1));
+  const days = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi'];
+  const baseOptions = {
+    days, target:10, maxCreditsPerDay:4, stores, distanceOf:s=>s.distance,
+    creditOf:()=>1, lockDayForWeek:()=>'', appointmentDay:()=>'', dayBlocked:()=>false, dayFits:()=>true
+  };
+  const archive = {};
+  const cycle1 = terrain.buildThreeWeekSnail(Object.assign({}, baseOptions, {
+    state:{manualWeekEdits:{}}, firstMonday:monday(), archive
+  }));
+  const cycle1Ids = cycle1.weeks.flatMap(flat).map(s=>s.id);
+  assert.strictEqual(new Set(cycle1Ids).size, 30, 'le premier cycle doit couvrir 30 magasins distincts, sans mémoire à consulter');
+  assert.deepStrictEqual(cycle1Ids, Array.from({length:30},(_,i)=>'s'+(i+1)), 'le premier cycle reste radial : comportement inchangé sans historique');
+  // Persiste l'archive comme le fait generateThreeWeekSnail() en usage réel.
+  for(const week of cycle1.weeks) archive[week.weekKey] = {weekMonday:week.weekKey, plan:week.plan, manualEdited:false};
+
+  const secondMonday = new Date(monday().getFullYear(), monday().getMonth(), monday().getDate()+21, 12);
+  const cycle2 = terrain.buildThreeWeekSnail(Object.assign({}, baseOptions, {
+    state:{manualWeekEdits:{}}, firstMonday:secondMonday, archive
+  }));
+  const cycle2Ids = cycle2.weeks.flatMap(flat).map(s=>s.id);
+  const neverSeenBefore = Array.from({length:10},(_,i)=>'s'+(31+i));
+  for(const id of neverSeenBefore) assert.ok(cycle2Ids.includes(id), id+' n’avait jamais été visité au cycle 1 : il doit être couvert au cycle 2');
+  const allTwoCycles = new Set(cycle1Ids.concat(cycle2Ids));
+  assert.strictEqual(allTwoCycles.size, 40, 'les deux cycles cumulés doivent couvrir l’intégralité des 40 magasins du secteur');
+})();
+
+(function rotationMemoryStaysBoundedOverManyCycles(){
+  // V243 : 15 magasins, cible 5/semaine × 3 = 15 par cycle — chaque cycle couvre pile le
+  // secteur entier une fois. Sur plusieurs cycles, l'écart entre le magasin le plus vu et
+  // le moins vu doit rester minime (même principe que la garantie déjà testée pour V211
+  // dans tests/planning-range-rotation.test.cjs).
+  const stores = Array.from({length:15}, (_,i)=>store(i+1));
+  const days = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi'];
+  const baseOptions = {
+    days, target:5, maxCreditsPerDay:4, stores, distanceOf:s=>s.distance,
+    creditOf:()=>1, lockDayForWeek:()=>'', appointmentDay:()=>'', dayBlocked:()=>false, dayFits:()=>true
+  };
+  const archive = {};
+  const counts = new Map(stores.map(s=>[s.id,0]));
+  let firstMonday = monday();
+  for(let cycle=0; cycle<4; cycle++){
+    const built = terrain.buildThreeWeekSnail(Object.assign({}, baseOptions, {state:{manualWeekEdits:{}}, firstMonday, archive}));
+    for(const week of built.weeks){
+      archive[week.weekKey] = {weekMonday:week.weekKey, plan:week.plan, manualEdited:false};
+      for(const s of flat(week)) counts.set(s.id, counts.get(s.id)+1);
+    }
+    firstMonday = new Date(firstMonday.getFullYear(), firstMonday.getMonth(), firstMonday.getDate()+21, 12);
+  }
+  const values = [...counts.values()];
+  assert.ok(values.every(n=>n>0), 'aucun magasin ne doit rester à zéro passage après 4 cycles sur un secteur qui tient pile dans la cible');
+  assert.ok(Math.max(...values)-Math.min(...values) <= 1, 'l’écart de rotation doit rester minime sur plusieurs cycles : '+JSON.stringify(Object.fromEntries(counts)));
+})();
+
 console.log('terrain-planning-v1: OK');

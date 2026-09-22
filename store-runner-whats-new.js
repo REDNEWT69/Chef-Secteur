@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'243',
+      title:'Le planning se souvient enfin de qui il a déjà visité',
+      items:[
+        'La génération 3 semaines garde maintenant en mémoire les cycles précédents : elle ne repropose plus systématiquement les mêmes magasins les plus proches.',
+        'Un magasin plus éloigné, jamais planifié depuis longtemps, finit par avoir sa place au lieu de rester indéfiniment de côté.',
+        'Sur un secteur trop grand pour tenir dans un seul cycle de 3 semaines, chaque magasin est couvert avant qu’un autre ne repasse une deuxième fois.',
+        'Tes verrous, rendez-vous, capacités par jour et horaires restent respectés exactement comme avant : seul l’ordre de passage change.'
+      ]
+    },
+    {
       version:'242',
       title:'Les semaines modifiées à la main se complètent toute seules',
       items:[
