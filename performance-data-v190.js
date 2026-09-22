@@ -57,9 +57,18 @@ async function unzip(input){
   }
   return out;
 }
+/* V237 — un point de code hors BMP (une puce emoji du classeur, par exemple) s'écrit
+   `&#128680;`. String.fromCharCode le tronque modulo 0x10000 et rend un caractère de la
+   zone privée, que le terrain voyait comme un losange noir juste avant « ALERTE OLED ».
+   fromCodePoint restitue le caractère réel ; une référence hors plage est ignorée plutôt
+   que remplacée par du bruit. */
+function fromRef(n){
+  if(!Number.isFinite(n)||n<0||n>0x10FFFF||(n>=0xD800&&n<=0xDFFF))return'';
+  try{return String.fromCodePoint(n)}catch(e){return''}
+}
 function unescapeXml(s){
-  return String(s).replace(/&#(\d+);/g,(m,d)=>String.fromCharCode(Number(d)))
-    .replace(/&#x([0-9a-f]+);/gi,(m,h)=>String.fromCharCode(parseInt(h,16)))
+  return String(s).replace(/&#(\d+);/g,(m,d)=>fromRef(Number(d)))
+    .replace(/&#x([0-9a-f]+);/gi,(m,h)=>fromRef(parseInt(h,16)))
     .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,'&');
 }
 function sharedStrings(xml){
@@ -528,6 +537,7 @@ function planningBoost(db,storeId,stores){
 
 const api={STORE_KEY,PRIO,PRIO_LABEL,PRIO_ORDER,
   norm,num,prioOf,classify,sourceKey,weekFromName,explicitTarget,ALIASES,brandKey,
+  unescapeXml,
   unzip,readSheet,parseRows,parseWorkbook,
   emptyStore,readStore,writeStore,saveSnapshot,weeks,snapshot,latestSnapshot,
   matchScore,matchRows,rememberMatch,rowForStore,historyForStore,markTreated,isTreated,qualifyingVisit,

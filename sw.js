@@ -1,4 +1,4 @@
-const BUILD_REV = "20260921-photo-share-batches235";
+const BUILD_REV = "20260922-priority-summary237";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",

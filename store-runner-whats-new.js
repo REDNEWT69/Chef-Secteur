@@ -25,6 +25,17 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'237',
+      title:'Priorités magasin plus claires',
+      items:[
+        'Les performances sont maintenant résumées en quelques points : problème principal, action terrain, point positif et chiffres clés.',
+        'La carte du magasin ne déroule plus toutes les alertes du fichier : elle garde les deux sujets qui comptent et les tailles vraiment en recul.',
+        'Une semaine encore négative n’est plus annoncée comme une hausse : elle est dite « en amélioration mais toujours en recul ».',
+        'Le détail complet reste à un clic avec « Voir le détail performance », et le pilotage performance ne change pas.',
+        'Les caractères illisibles qui apparaîssaient avant « ALERTE » ont disparu.'
+      ]
+    },
+    {
       version:'235',
       title:'Partage photo amélioré',
       items:[
