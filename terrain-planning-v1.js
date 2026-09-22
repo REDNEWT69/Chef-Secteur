@@ -166,6 +166,49 @@ function protectedPlanFor(weekKey,state,archive){
   if((snap&&snap.manualEdited)||manual)return copy((snap&&snap.plan)||(manual&&manual.plan)||emptyPlan());
   return null;
 }
+/* V243 : mémoire de rotation multi-cycle, portée depuis range-planner-v2.js (V211,
+   rotationMemoryV211) plutôt qu'appelée à travers ce fichier — les deux modules ne
+   partagent pas le même format de storeKey (celui-ci clé par id, V211 clé par
+   enseigne+ville+adresse), et brancher l'un sur l'autre sans unifier ce format ferait
+   échouer silencieusement toute comparaison usedKeys.has(...). Cette version reprend
+   l'algorithme, avec le storeKey (par id) déjà utilisé par ce fichier, donc directement
+   compatible avec l'archive qu'il écrit et relit depuis toujours — aucune migration de
+   données n'est nécessaire.
+   Volontairement hors périmètre de ce lot : la cadence/fréquence par magasin (V211
+   pondère aussi le retard « dû » via intervalDays et le boost performance dans sa marge
+   de répétition anticipée). Le seul problème mesuré et documenté (audit section 6,
+   benchmark V241) est l'absence totale de mémoire inter-cycles ; ce lot corrige
+   précisément ça, sans changer par ailleurs ce qui fait qu'un magasin est prioritaire. */
+function rotationWindowWeeks(pool,target){
+  return Math.max(1,Math.min(8,Math.ceil((pool||[]).length/Math.max(1,Number(target)||1))));
+}
+function rotationMemory(pool,weekKey,target,archive){
+  const usedKeys=new Set(),useCount=new Map(),lastUsedWeek=new Map(),windowWeeks=rotationWindowWeeks(pool,target);
+  const ref=monday(parseISO(weekKey)||new Date()),valid=new Set((pool||[]).map(storeKey));
+  for(const [key,snap] of Object.entries(archive||{})){
+    const mon=parseISO((snap&&snap.weekMonday)||key);if(!mon)continue;
+    const delta=Math.round((monday(mon)-ref)/(7*86400000));if(delta>=0||delta< -windowWeeks)continue;
+    const weekSeen=new Set();
+    for(const day of DAYS)for(const raw of ((snap&&snap.plan&&snap.plan[day])||[])){
+      const k=storeKey(raw);
+      if(!k||!valid.has(k)||weekSeen.has(k))continue;
+      weekSeen.add(k);usedKeys.add(k);useCount.set(k,(useCount.get(k)||0)+1);
+      const prev=lastUsedWeek.get(k);if(prev==null||delta>prev)lastUsedWeek.set(k,delta);
+    }
+  }
+  return{usedKeys,useCount,lastUsedWeek,windowWeeks};
+}
+/* Tri de la file « déjà vus, à reprendre en dernier recours » : le moins récemment
+   utilisé d'abord (delta le plus négatif), puis le moins souvent utilisé — même principe
+   d'équilibrage que chooseStores côté V211, sans réintroduire son format de clé. */
+function sortByLeastRecentlyUsed(list,memory){
+  return (list||[]).slice().sort((a,b)=>{
+    const ka=storeKey(a),kb=storeKey(b),la=memory.lastUsedWeek.get(ka),lb=memory.lastUsedWeek.get(kb);
+    const la2=la==null?-Infinity:la,lb2=lb==null?-Infinity:lb;
+    if(la2!==lb2)return la2-lb2;
+    return (memory.useCount.get(ka)||0)-(memory.useCount.get(kb)||0);
+  });
+}
 /* V242 : une semaine gelée manuellement ne doit pas rester avec des jours vides quand
    elle n'a été modifiée que partiellement — un jour posé à la main, un recalcul partiel,
    un magasin déplacé... Les visites déjà présentes ne changent jamais de jour ; seule la
@@ -236,6 +279,10 @@ function buildThreeWeekSnail(options){
   const state=options.state,first=monday(options.firstMonday),days=(options.days||[]).filter(d=>DAYS.includes(d)),target=Math.max(1,Number(options.target)||20),max=Math.max(1,Number(options.maxCreditsPerDay)||4),archive=options.archive||{},distance=options.distanceOf||(()=>Infinity),priority=options.priorityOf||(()=>0),credit=options.creditOf||(()=>1),lockFor=options.lockDayForWeek||(()=>''),apptFor=options.appointmentDay||(()=>''),fits=options.dayFits||(()=>true),blocked=options.dayBlocked||(()=>false),imposed=state&&state.included||{};
   if(!days.length)throw new Error('Choisis au moins un jour travaillé.');
   const ranked=rankStoresForSnail((options.stores||[]).filter(Boolean),distance,priority),used=new Set(),weeks=[],unknownGps=new Set(ranked.filter(s=>!validStoreGps(s)).map(storeKey));
+  /* V243 : calculée une seule fois pour tout le cycle, à partir de l'archive telle qu'elle
+     est avant cette génération. Les 3 semaines du cycle se partagent ensuite cette même
+     lecture du passé — used (déjà existant) suffit à empêcher les doublons entre elles. */
+  const memory=rotationMemory(ranked,iso(first),target,archive);
   for(let wi=0;wi<3;wi++){
     const mon=addDays(first,wi*7),weekKey=iso(mon),protectedPlan=protectedPlanFor(weekKey,state,archive);
     if(protectedPlan){
@@ -265,9 +312,13 @@ function buildThreeWeekSnail(options){
       }
       if(!placed)throw new Error((s.enseigne||'Magasin')+' '+(s.ville||'')+' ne tient pas dans la semaine malgré sa contrainte. Le planning précédent est conservé.');
     }
+    /* V243 — palier 1 « frais » : magasins jamais vus dans la fenêtre de rotation
+       (memory.usedKeys), dans l'ordre existant (priorité puis distance). C'est le seul
+       changement par rapport à l'ancien remplissage : un magasin déjà utilisé récemment
+       n'est plus reproposé tant qu'il reste un magasin frais éligible. */
     for(const s of ranked){
       if(flattenPlan(plan,activeDays).length>=target)break;
-      const k=storeKey(s);if(used.has(k)||weekPlaced.has(k))continue;
+      const k=storeKey(s);if(used.has(k)||weekPlaced.has(k)||memory.usedKeys.has(k))continue;
       let placed=false;
       for(const day of orderedPlacementDays(activeDays,plan,quotas,credit)){
         const trial=plan[day].concat([s]),cost=trial.reduce((n,x)=>n+Math.max(1,Number(credit(x))||1),0);
@@ -275,6 +326,25 @@ function buildThreeWeekSnail(options){
         plan[day]=trial;weekPlaced.add(k);used.add(k);placed=true;break;
       }
       if(!placed)unplaced.push(s);
+    }
+    /* V243 — palier 2 « rotation » : si la cible n'est pas atteinte avec des magasins
+       jamais vus (secteur plus petit que la fenêtre, ou tous déjà pris ailleurs dans le
+       cycle), on reprend ceux déjà utilisés, du moins récemment vu au plus récemment vu.
+       C'est ce qui garantit qu'aucun magasin ne reste durablement hors rotation quand le
+       secteur entier a déjà été couvert au moins une fois. */
+    if(flattenPlan(plan,activeDays).length<target){
+      const due=sortByLeastRecentlyUsed(ranked.filter(s=>{const k=storeKey(s);return !used.has(k)&&!weekPlaced.has(k)}),memory);
+      for(const s of due){
+        if(flattenPlan(plan,activeDays).length>=target)break;
+        const k=storeKey(s);
+        let placed=false;
+        for(const day of orderedPlacementDays(activeDays,plan,quotas,credit)){
+          const trial=plan[day].concat([s]),cost=trial.reduce((n,x)=>n+Math.max(1,Number(credit(x))||1),0);
+          if(cost>max||!fits(trial,day,mon))continue;
+          plan[day]=trial;weekPlaced.add(k);used.add(k);placed=true;break;
+        }
+        if(!placed)unplaced.push(s);
+      }
     }
     const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked,used,weekPlaced,credit,fits});weeks.push({weekKey,plan,manual:false,unplaced,diagnostics});
   }
@@ -453,6 +523,6 @@ function installStartButton(){
 }
 function install(){installThreeWeekReport();installStartButton()}
 function boot(){install();root.document&&root.document.addEventListener('store-runner:planning-updated',()=>{install();renderStoredInsights()});root.document&&root.document.addEventListener('store-runner:data-restored',()=>{install();renderStoredInsights()})}
-const api={rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,completeProtectedWeek,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits,overnightForPlan,analyzeOvernightWeeks,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,completeProtectedWeek,rotationWindowWeeks,rotationMemory,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits,overnightForPlan,analyzeOvernightWeeks,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()}
 })(typeof window!=='undefined'?window:globalThis);

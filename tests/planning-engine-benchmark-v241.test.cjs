@@ -1,19 +1,26 @@
 // V241 — Benchmark et qualité du moteur planning.
+// Mis à jour par V243 : sert désormais aussi de test d'acceptation pour la mémoire de
+// rotation branchée dans buildThreeWeekSnail (terrain-planning-v1.js). Avant V243,
+// ESCARGOT plafonnait à 38/58 magasins distincts sur ce scénario ; depuis V243, les deux
+// moteurs convergent vers une couverture quasi complète (cf. assertions en fin de fichier).
 //
-// Instrumentation pure : ce fichier ne modifie et ne remplace aucune fonction de
-// production. Il charge les moteurs existants (terrain-planning-v1.js en require()
+// Instrumentation pure côté benchmark : ce fichier ne modifie et ne remplace aucune
+// fonction de production, il appelle seulement les fonctions publiques des moteurs.
+// Il charge les moteurs existants (terrain-planning-v1.js en require()
 // direct, range-planner-v2.js et route-polish.js via un contexte vm, exactement comme
 // tests/planning-range-rotation.test.cjs et tests/planning-route-quality-v210.test.cjs
 // le font déjà) et les fait tourner sur une fixture synthétique de 58 magasins,
-// représentative du secteur de référence réel.
+// représentative du secteur de référence réel. L'archive ESCARGOT est reconstituée d'un
+// cycle à l'autre (runEscargot), exactement comme generateThreeWeekSnail() la persiste et
+// la relit en usage réel — sans ce va-et-vient, la mémoire de rotation ne voit jamais
+// aucun historique et ce test ne mesurerait rien.
 //
-// Portée volontairement limitée à V241 :
-//   - aucun changement d'algorithme de sélection, de rotation ou de géographie ;
+// Portée volontairement limitée :
 //   - le réétalement géographique V185 (rebalancePlanByGeography) n'est PAS appliqué
 //     ici : les deux moteurs sont mesurés sur leur sortie native (sélection +
 //     affectation jour + ordre nearestRoute/twoOpt intra-jour), pour isoler
 //     précisément ce qui est comparé — sélection et rotation — du polissage
-//     géographique commun aux deux, qui reste un chantier V242 ;
+//     géographique commun aux deux, qui reste un chantier séparé ;
 //   - pas d'import de fichier performance (StoreRunnerPerformanceV190) : le boost
 //     P1/P2 reste à 0 pour les deux moteurs, terrain neutre ;
 //   - pas de modèle d'horaires magasin par enseigne (StoreOpeningHoursV1) : les deux
@@ -183,6 +190,12 @@ function runEscargot(fixture) {
   const weeks = [];
   let firstMonday = parseISO(START_MONDAY_ISO);
   let cpuMs = 0, unplacedTotal = 0, forcedFailures = 0;
+  // V243 : generateThreeWeekSnail() écrit chaque semaine générée dans l'archive persistante
+  // et la relit au cycle suivant (c'est ce qui nourrit la mémoire de rotation en usage réel).
+  // buildThreeWeekSnail() est une fonction pure : reproduire fidèlement ce va-et-vient
+  // archive → génération → archive est nécessaire ici, sinon la mémoire de rotation ne voit
+  // jamais aucun historique et ce test ne mesurerait rien du correctif V243.
+  const archive = {};
   for (let c = 0; c < CYCLES_ESCARGOT; c++) {
     const t0 = process.hrtime.bigint();
     let built;
@@ -194,7 +207,7 @@ function runEscargot(fixture) {
         target: TARGET_PER_WEEK,
         maxCreditsPerDay: MAX_CREDITS_PER_DAY,
         stores: fixture.stores,
-        archive: {},
+        archive,
         distanceOf: s => hav(fixture.base, s),
         priorityOf: () => 0,
         creditOf: s => s.credit,
@@ -215,6 +228,7 @@ function runEscargot(fixture) {
       for (const day of ALL_DAYS) plan[day] = orderDay(week.plan[day] || [], fixture.base);
       unplacedTotal += (week.unplaced || []).length;
       weeks.push({ weekKey: week.weekKey, plan });
+      if (!week.manual) archive[week.weekKey] = { weekMonday: week.weekKey, plan: week.plan, manualEdited: false };
     }
     const t1 = process.hrtime.bigint();
     cpuMs += Number(t1 - t0) / 1e6;
@@ -440,14 +454,21 @@ assert.ok(Number.isFinite(v211.totalKm) && v211.totalKm > 0, 'V211 doit produire
 assert.equal(lockViolationsEscargot.length, 0, 'ESCARGOT doit respecter les verrous récurrents');
 assert.equal(lockViolationsV211.length, 0, 'V211 doit respecter les verrous récurrents');
 
-// Garde-fou central de cet audit (section 6) : sur ' + WEEKS_TOTAL + ' semaines avec une
-// cible × 3 semaines < taille du secteur, V211 (mémoire de rotation) doit couvrir
-// strictement plus de magasins distincts qu'ESCARGOT (balayage radial sans mémoire
-// inter-cycles). Cette assertion documente l'écart mesuré ; elle est censée changer de
-// sens le jour où V243 branche la rotation dans le moteur principal — pas avant.
+// Garde-fou central de cet audit (section 6), mis à jour par V243 : avant ce lot, sur
+// WEEKS_TOTAL semaines avec une cible × 3 semaines < taille du secteur, ESCARGOT (balayage
+// radial sans mémoire inter-cycles) plafonnait à 38/58 magasins distincts pendant que V211
+// (mémoire de rotation) atteignait 58/58. Depuis que buildThreeWeekSnail porte sa propre
+// mémoire de rotation (terrain-planning-v1.js, rotationMemory/palier « frais »/« rotation »),
+// les deux moteurs doivent converger vers une couverture quasi complète du secteur.
+const COVERAGE_TARGET_RATIO = 0.95;
 assert.ok(
-  v211.uniqueCoverage > escargot.uniqueCoverage,
-  'attendu : V211 (mémoire de rotation) couvre plus de magasins distincts qu’ESCARGOT sur ' + WEEKS_TOTAL + ' semaines — v211=' + v211.uniqueCoverage + ' escargot=' + escargot.uniqueCoverage
+  escargot.coverageRatio >= COVERAGE_TARGET_RATIO * 100,
+  'attendu (critère de réussite V243) : ESCARGOT couvre au moins ' + (COVERAGE_TARGET_RATIO * 100) + '% du secteur sur ' + WEEKS_TOTAL + ' semaines — mesuré ' + escargot.coverageRatio + '% (' + escargot.uniqueCoverage + '/58)'
 );
+assert.ok(
+  v211.coverageRatio >= COVERAGE_TARGET_RATIO * 100,
+  'V211 doit rester au moins aussi bon sur ce critère (référence historique) — mesuré ' + v211.coverageRatio + '%'
+);
+assert.equal(escargot.neverVisited, 0, 'V243 : plus aucun magasin ne doit rester durablement hors rotation sur ce cycle de mesure');
 
 console.log('planning-engine-benchmark-v241: OK —', JSON.stringify({ escargot, v211 }));
