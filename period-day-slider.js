@@ -66,7 +66,7 @@
       else if(typeof window.renderWeek==='function')window.renderWeek();
       else if(typeof renderAll==='function')renderAll();
     }catch(e){}
-    try{notice(missing?'Semaine du '+humanDate(mon)+' non générée. Utilise « Générer ma semaine » pour la remplir.':'')}catch(e){}
+    try{notice(missing?'Semaine du '+humanDate(mon)+' non générée. Utilise « Générer mes 3 semaines » pour la remplir.':'')}catch(e){}
     scheduleRender();
     return true;
   }

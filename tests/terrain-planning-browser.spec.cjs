@@ -47,23 +47,32 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
     document.dispatchEvent(new CustomEvent('store-runner:planning-updated'));
   });
 
-  const settings=page.locator('#planningSettings');
-  await page.locator('#planningSettingsShortcut').tap();
-  await expect(settings).toHaveAttribute('role','dialog');
-  const range=page.locator('#rangePlannerCard');
-  await range.evaluate(el=>{el.open=true});
+  // V239 : la semaine affichée est le départ du cycle, et l'action séparée escargot
+  // n'existe plus. Le cycle part donc du bouton principal du planning.
   await page.evaluate(() => {
     const week=document.getElementById('weekDate'),start=document.getElementById('rangeStart');
     if(week)week.value='2026-09-21';
     if(start){start.value='2026-09-21';delete start.dataset.snailUserEdited}
   });
-  await expect(page.locator('#rangeStart')).toHaveValue('2026-09-21');
-  const snail=page.locator('#terrainSnailBtn');
-  await expect(snail).toBeVisible();
-  const box=await snail.boundingBox();
-  if(!box)throw new Error('Bouton escargot introuvable');
+  const settings=page.locator('#planningSettings');
+  await expect(page.locator('#terrainSnailBtn')).toHaveCount(0);
+  const generate=page.locator('#planningToolsV2 [data-planning-generate="three-weeks"]');
+  await expect(generate).toBeVisible();
+  await expect(generate).toHaveText('✦ Générer mes 3 semaines');
+  const box=await generate.boundingBox();
+  if(!box)throw new Error('Bouton principal de génération introuvable');
   expect(box.height).toBeGreaterThanOrEqual(44);
-  await snail.tap();
+  await generate.tap();
+  await page.waitForFunction(() => {
+    const db=window.__chefStorage||localStorage;
+    const a=JSON.parse(db.getItem('chef_sector_plan_archive_v1')||'{}');
+    return !!(a['2026-09-21']&&a['2026-09-28']&&a['2026-10-05']);
+  },undefined,{timeout:20000});
+
+  await page.locator('#planningSettingsShortcut').tap();
+  await expect(settings).toHaveAttribute('role','dialog');
+  const range=page.locator('#rangePlannerCard');
+  await range.evaluate(el=>{el.open=true});
   const terrainStatus=page.locator('#terrainSnailStatus');
   await expect(terrainStatus).toContainText('3 semaines escargot');
   await expect(terrainStatus).toContainText('65 planifiables');
@@ -76,21 +85,21 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
   await expect(insights).toContainText('Horaires');
   await expect(insights).toContainText('Répartition');
   await expect(insights).toContainText('5/5 jours travaillés couverts');
-  await expect(page.locator('#rangeStart')).toHaveValue('2026-09-14');
-  await expect(page.locator('#rangeEnd')).toHaveValue('2026-10-04');
-  await expect(page.locator('#weekDate')).toHaveValue('2026-09-14');
+  await expect(page.locator('#rangeStart')).toHaveValue('2026-09-21');
+  await expect(page.locator('#rangeEnd')).toHaveValue('2026-10-11');
+  await expect(page.locator('#weekDate')).toHaveValue('2026-09-21');
 
   const generated=await page.evaluate(() => {
     const db=window.__chefStorage||localStorage;
     const a=JSON.parse(db.getItem('chef_sector_plan_archive_v1')||'{}');
-    const keys=['2026-09-14','2026-09-21','2026-09-28'];
+    const keys=['2026-09-21','2026-09-28','2026-10-05'];
     const flatten=k=>['Lundi','Mardi','Mercredi','Jeudi','Vendredi'].flatMap(d=>(a[k]?.plan?.[d]||[]).map(s=>s.id));
     const range=JSON.parse(db.getItem('chef_sector_range_v1')||'{}');
     const days=['Lundi','Mardi','Mercredi','Jeudi','Vendredi'];const counts=k=>Object.fromEntries(days.map(d=>[d,(a[k]?.plan?.[d]||[]).length]));return {keys:keys.filter(k=>a[k]),weeks:keys.map(flatten),dayCounts:keys.map(counts),planningDiagnostics:range.planningDiagnostics||[],dayCoverage:range.dayCoverage||null,firstPlan:(window.state.plan.Lundi||[]).map(s=>s.id),poolReport:range.poolReport||null,overnightReport:range.overnightReport||null,hoursReport:range.hoursReport||null,rangeStart:range.start,rangeEnd:range.end};
   });
-  expect(generated.keys).toEqual(['2026-09-14','2026-09-21','2026-09-28']);
-  expect(generated.rangeStart).toBe('2026-09-14');
-  expect(generated.rangeEnd).toBe('2026-10-04');
+  expect(generated.keys).toEqual(['2026-09-21','2026-09-28','2026-10-05']);
+  expect(generated.rangeStart).toBe('2026-09-21');
+  expect(generated.rangeEnd).toBe('2026-10-11');
   expect(generated.poolReport).toMatchObject({planifiable:65,withGps:64,withoutGps:1,imposed:0});
   expect(generated.overnightReport).toHaveLength(3);
   expect(generated.overnightReport[0]).toMatchObject({mode:'auto',threshold:80});
@@ -120,26 +129,26 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
 
   await page.locator('[data-planning-settings-close]').tap();
   await expect(settings).not.toBeVisible();
-  const week2Tab=page.locator('#dayTabs .periodDayTab[data-date="2026-09-21"]');
-  const week3Tab=page.locator('#dayTabs .periodDayTab[data-date="2026-09-28"]');
-  const week1Tab=page.locator('#dayTabs .periodDayTab[data-date="2026-09-14"]');
+  const week2Tab=page.locator('#dayTabs .periodDayTab[data-date="2026-09-28"]');
+  const week3Tab=page.locator('#dayTabs .periodDayTab[data-date="2026-10-05"]');
+  const week1Tab=page.locator('#dayTabs .periodDayTab[data-date="2026-09-21"]');
   await expect(week2Tab).toHaveCount(1);
   await expect(week3Tab).toHaveCount(1);
 
   await week2Tab.click();
-  await page.waitForFunction(() => String(window.state?.settings?.weekDate||'')==='2026-09-21');
+  await page.waitForFunction(() => String(window.state?.settings?.weekDate||'')==='2026-09-28');
   let visibleWeek=await page.evaluate(() => ['Lundi','Mardi','Mercredi','Jeudi','Vendredi'].flatMap(d=>(window.state.plan[d]||[]).map(s=>s.id)));
   expect(visibleWeek).toEqual(generated.weeks[1]);
   await expect(page.locator('#planPanel')).toContainText('Ville 13');
 
   await week3Tab.click();
-  await page.waitForFunction(() => String(window.state?.settings?.weekDate||'')==='2026-09-28');
+  await page.waitForFunction(() => String(window.state?.settings?.weekDate||'')==='2026-10-05');
   visibleWeek=await page.evaluate(() => ['Lundi','Mardi','Mercredi','Jeudi','Vendredi'].flatMap(d=>(window.state.plan[d]||[]).map(s=>s.id)));
   expect(visibleWeek).toEqual(generated.weeks[2]);
   await expect(page.locator('#planPanel')).toContainText('Ville 25');
 
   await week1Tab.click();
-  await page.waitForFunction(() => String(window.state?.settings?.weekDate||'')==='2026-09-14');
+  await page.waitForFunction(() => String(window.state?.settings?.weekDate||'')==='2026-09-21');
   visibleWeek=await page.evaluate(() => ['Lundi','Mardi','Mercredi','Jeudi','Vendredi'].flatMap(d=>(window.state.plan[d]||[]).map(s=>s.id)));
   expect(visibleWeek).toEqual(generated.weeks[0]);
   await expect(page.locator('#planPanel')).toContainText('Ville 1');

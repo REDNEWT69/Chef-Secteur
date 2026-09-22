@@ -249,10 +249,12 @@ test('Store Runner V1 reste utilisable sur un vrai viewport mobile 390 px', asyn
     document.dispatchEvent(new CustomEvent('store-runner:planning-updated'));
   });
   await page.waitForTimeout(120);
-  await page.locator('#planningToolsV2 button[onclick*="generateWeek"]').click();
-  await page.waitForTimeout(500);
+  // V239 : le bouton principal lance le cycle 3 semaines. Sans magasin, il doit le dire
+  // au lieu de rester muet ou de vider le planning.
+  await page.locator('#planningToolsV2 [data-planning-generate="three-weeks"]').click();
+  await page.waitForTimeout(800);
   const statusText = await page.evaluate(() => {
-    const candidates = ['rangePlanStatus','statusText','planStatus'];
+    const candidates = ['planningGenerateStatus','rangePlanStatus','statusText','planStatus'];
     for (const id of candidates) {
       const el = document.getElementById(id);
       if (el && String(el.textContent || '').trim()) return String(el.textContent).trim();

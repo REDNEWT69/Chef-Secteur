@@ -22,7 +22,10 @@ if(!/planningDuplicateGenerate/.test(planning))fail('le bouton de génération h
 if(!/planningDynamicStoreCount/.test(planning))fail('le nombre de magasins affiché doit être dynamique');
 if(/#planningSettings \.settingsInner\{display:block!important\}/.test(planning))fail('les réglages fermés ne doivent pas forcer leur contenu visible');
 if(!/#planningSettings\[open\]>\.settingsInner\{display:block!important\}/.test(planning))fail('le contenu des réglages doit être affiché uniquement quand le détail est ouvert');
-if(!/Générer ma semaine/.test(planning))fail('une action hebdomadaire principale doit rester visible');
+// V239 : l'action principale du planning est le cycle 3 semaines, et une seule.
+if(!/Générer mes 3 semaines/.test(planning))fail('l’action principale de génération doit rester visible');
+if(/Générer ma semaine/.test(planning))fail('l’ancienne action « Générer ma semaine » ne doit plus être proposée');
+if(!/data-planning-generate/.test(planning))fail('le bouton principal doit se déclarer par data-planning-generate, pas par un onclick inline');
 if(!/Planifier plusieurs semaines/.test(range)||!/document\.createElement\('details'\)/.test(range))fail('la génération de période doit être une option repliable et secondaire');
 
 console.log('Planning visual ownership guards: OK · réglages compacts et compteur dynamique');

@@ -104,8 +104,12 @@
        détaché de la bande qu'il explique. */
     const notice=document.getElementById('periodDayNotice');if(notice)moveAfter(tabs,notice);
     let tools=document.getElementById('planningToolsV2');
-    if(!tools){tools=document.createElement('div');tools.id='planningToolsV2';tools.className='planningToolsV2';tools.innerHTML='<button class="secondary" type="button" onclick="showPlanMap()">⌖ Ouvrir la tournée</button><button class="primary" type="button" onclick="generateWeek()">✦ Générer ma semaine</button>'}
-    const generation=tools.querySelector('button[onclick*="generateWeek"]');if(generation){generation.className='primary';generation.textContent='✦ Générer ma semaine'}
+    /* V239 : l'action principale est le cycle 3 semaines. Ce module reste propriétaire du
+       libellé et de la place du bouton ; son câblage appartient à
+       planning-generation-controller.js, qui écoute `data-planning-generate`. */
+    if(!tools){tools=document.createElement('div');tools.id='planningToolsV2';tools.className='planningToolsV2';tools.innerHTML='<button class="secondary" type="button" onclick="showPlanMap()">⌖ Ouvrir la tournée</button><button class="primary" type="button" data-planning-generate="three-weeks">✦ Générer mes 3 semaines</button>'}
+    const generation=tools.querySelector('[data-planning-generate="three-weeks"]')||tools.querySelector('button[onclick*="generateWeek"]');
+    if(generation){generation.className='primary';generation.type='button';generation.removeAttribute('onclick');generation.setAttribute('data-planning-generate','three-weeks');generation.textContent='✦ Générer mes 3 semaines'}
     ensureSettingsShortcut(tools);
     moveAfter(notice||tabs,tools);moveAfter(tools,timeline);
     const monthly=document.querySelector('#planPanel #managerPlanningMonth, #planPanel .managerPlanningMonth, #planPanel .monthPlanning, #planPanel [data-planning-month]');let anchor=timeline;
@@ -185,7 +189,7 @@
 
   function suppressDuplicateGeneration(){
     const settings=document.querySelector('#planningSettings .settingsInner');if(!settings)return;
-    settings.querySelectorAll('button[onclick*="generateWeek"]').forEach(btn=>btn.classList.add('planningDuplicateGenerate'));
+    settings.querySelectorAll('button[onclick*="generateWeek"],[data-planning-generate]').forEach(btn=>btn.classList.add('planningDuplicateGenerate'));
     const target=document.getElementById('target');if(target){const label=target.previousElementSibling;if(label&&label.tagName==='LABEL')label.textContent='Objectif de visites par semaine'}
   }
 
