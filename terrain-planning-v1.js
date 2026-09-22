@@ -166,6 +166,39 @@ function protectedPlanFor(weekKey,state,archive){
   if((snap&&snap.manualEdited)||manual)return copy((snap&&snap.plan)||(manual&&manual.plan)||emptyPlan());
   return null;
 }
+/* V242 : une semaine gelée manuellement ne doit pas rester avec des jours vides quand
+   elle n'a été modifiée que partiellement — un jour posé à la main, un recalcul partiel,
+   un magasin déplacé... Les visites déjà présentes ne changent jamais de jour ; seule la
+   capacité encore libre d'un jour actif est complétée avec le vivier normal, sous les
+   mêmes contraintes que la génération non protégée : capacité, horaires, jours bloqués,
+   rendez-vous, verrous, sans doublon avec cette semaine ni avec les autres semaines du
+   cycle. L'ordre des arrêts déjà posés n'est pas retouché et aucun jour hors activeDays
+   (bloqué ou non travaillé) n'est complété : le réétalement géographique d'une semaine
+   protégée reste hors périmètre de ce correctif, exactement comme V185 l'ignore déjà
+   volontairement (cf. persistSnailGeography, if(week.manual)continue). */
+function completeProtectedWeek(protectedPlan,activeDays,mon,weekKey,target,ranked,used,max,credit,fits,lockFor,apptFor){
+  const plan=copy(protectedPlan);
+  const presentKeys=new Set(flattenPlan(plan).map(storeKey));
+  let total=flattenPlan(plan,activeDays).length;
+  for(const day of activeDays){
+    if(total>=target)break;
+    let route=Array.isArray(plan[day])?plan[day]:(plan[day]=[]);
+    let cost=routeCreditCost(route,credit);
+    if(cost>=max)continue;
+    for(const s of ranked){
+      if(cost>=max||total>=target)break;
+      const k=storeKey(s);
+      if(used.has(k)||presentKeys.has(k))continue;
+      const ld=lockFor(s.id,weekKey),ad=apptFor(s.id,mon);
+      if((ld&&ld!==day)||(ad&&ad!==day))continue;
+      const trial=route.concat([s]),trialCost=routeCreditCost(trial,credit);
+      if(trialCost>max||!fits(trial,day,mon))continue;
+      route=trial;cost=trialCost;presentKeys.add(k);total++;
+    }
+    plan[day]=route;
+  }
+  return plan;
+}
 function safeDistance(a,b,distanceFn){
   try{const d=Number((distanceFn||root.hav)(a,b));return Number.isFinite(d)?d:Infinity}catch(e){return Infinity}
 }
@@ -205,7 +238,14 @@ function buildThreeWeekSnail(options){
   const ranked=rankStoresForSnail((options.stores||[]).filter(Boolean),distance,priority),used=new Set(),weeks=[],unknownGps=new Set(ranked.filter(s=>!validStoreGps(s)).map(storeKey));
   for(let wi=0;wi<3;wi++){
     const mon=addDays(first,wi*7),weekKey=iso(mon),protectedPlan=protectedPlanFor(weekKey,state,archive);
-    if(protectedPlan){for(const s of flattenPlan(protectedPlan))used.add(storeKey(s));const diagnostics=weekDistributionDiagnostics({mon,days,activeDays:days,plan:protectedPlan,target,max,ranked,used,weekPlaced:new Set(flattenPlan(protectedPlan).map(storeKey)),credit,fits,manual:true});weeks.push({weekKey,plan:protectedPlan,manual:true,unplaced:[],diagnostics});continue}
+    if(protectedPlan){
+      const activeDaysProtected=days.filter(day=>!blocked(iso(addDays(mon,DAYS.indexOf(day)))));
+      const completedPlan=completeProtectedWeek(protectedPlan,activeDaysProtected,mon,weekKey,target,ranked,used,max,credit,fits,lockFor,apptFor);
+      for(const s of flattenPlan(completedPlan))used.add(storeKey(s));
+      const diagnostics=weekDistributionDiagnostics({mon,days,activeDays:days,plan:completedPlan,target,max,ranked,used,weekPlaced:new Set(flattenPlan(completedPlan).map(storeKey)),credit,fits,manual:true});
+      weeks.push({weekKey,plan:completedPlan,manual:true,unplaced:[],diagnostics});
+      continue
+    }
     const plan=emptyPlan(),activeDays=days.filter(day=>!blocked(iso(addDays(mon,DAYS.indexOf(day))))),weekPlaced=new Set(),unplaced=[],quotas=dayQuotas(activeDays,target);
     if(!activeDays.length){const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked,used,weekPlaced,credit,fits});weeks.push({weekKey,plan,manual:false,unplaced,diagnostics});continue}
     const forced=[];
@@ -413,6 +453,6 @@ function installStartButton(){
 }
 function install(){installThreeWeekReport();installStartButton()}
 function boot(){install();root.document&&root.document.addEventListener('store-runner:planning-updated',()=>{install();renderStoredInsights()});root.document&&root.document.addEventListener('store-runner:data-restored',()=>{install();renderStoredInsights()})}
-const api={rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits,overnightForPlan,analyzeOvernightWeeks,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,completeProtectedWeek,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits,overnightForPlan,analyzeOvernightWeeks,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()}
 })(typeof window!=='undefined'?window:globalThis);

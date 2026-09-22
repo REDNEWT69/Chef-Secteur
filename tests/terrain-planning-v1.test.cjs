@@ -56,7 +56,11 @@ function flat(week){
   }
 })();
 
-(function manualWeekIsNeverOverwritten(){
+(function manualWeekKeepsPinnedStoreAndFillsGaps(){
+  // V242 : une semaine protégée qui n'a qu'un seul magasin posé ne doit plus rester
+  // gelée avec quatre jours vides. Le magasin posé reste sur son jour, le reste de la
+  // capacité disponible (jusqu'à target) se remplit avec le vivier normal, sans doublon
+  // avec les deux autres semaines du cycle.
   const stores = Array.from({length:50}, (_,i)=>store(i+1));
   const protectedPlan = {Lundi:[stores[40]],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
   const state = {manualWeekEdits:{'2026-09-21':{at:'2026-09-13T00:00:00Z',plan:protectedPlan}}};
@@ -65,8 +69,49 @@ function flat(week){
     maxCreditsPerDay:4, stores, archive:{}, distanceOf:s=>s.distance, creditOf:()=>1,
     lockDayForWeek:()=>'', appointmentDay:()=>'', dayBlocked:()=>false, dayFits:()=>true
   });
-  assert.strictEqual(built.weeks[1].manual, true);
-  assert.deepStrictEqual(flat(built.weeks[1]).map(s=>s.id), ['s41']);
+  const week = built.weeks[1];
+  assert.strictEqual(week.manual, true);
+  assert.ok(week.plan.Lundi.some(s=>s.id==='s41'), 's41 doit rester posé sur son jour d’origine');
+  assert.strictEqual(flat(week).length, 10, 'la semaine complétée doit atteindre la cible, pas dépasser la capacité de chaque jour');
+  const ids = flat(week).map(s=>s.id);
+  assert.strictEqual(new Set(ids).size, ids.length, 'aucun doublon à l’intérieur de la semaine complétée');
+  const all = built.weeks.flatMap(flat).map(s=>s.id);
+  assert.strictEqual(new Set(all).size, all.length, 'le remplissage ne doit pas réutiliser un magasin déjà pris par une autre semaine du cycle');
+})();
+
+(function fullyLoadedProtectedWeekIsUntouched(){
+  // Cas de non-régression : si la semaine protégée est déjà pleine, le complètement ne
+  // doit rien changer — comportement identique à avant V242.
+  const stores = Array.from({length:20}, (_,i)=>store(i+1));
+  const full = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi'].reduce((p,d,i)=>{p[d]=[stores[i*2],stores[i*2+1]];return p},{Samedi:[]});
+  const state = {manualWeekEdits:{'2026-09-21':{at:'2026-09-13T00:00:00Z',plan:JSON.parse(JSON.stringify(full))}}};
+  const built = terrain.buildThreeWeekSnail({
+    state, firstMonday:monday(), days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'], target:10,
+    maxCreditsPerDay:2, stores, archive:{}, distanceOf:s=>s.distance, creditOf:()=>1,
+    lockDayForWeek:()=>'', appointmentDay:()=>'', dayBlocked:()=>false, dayFits:()=>true
+  });
+  assert.deepStrictEqual(built.weeks[1].plan.Lundi.map(s=>s.id), full.Lundi.map(s=>s.id), 'une semaine déjà à capacité ne doit pas être modifiée');
+  assert.strictEqual(flat(built.weeks[1]).length, 10, 'rien à ajouter : la semaine était déjà pleine');
+})();
+
+(function protectedWeekFillRespectsLocksAppointmentsAndHours(){
+  // Appel direct à completeProtectedWeek (exposée dans l'API) plutôt qu'au cycle complet :
+  // isole précisément le remplissage d'une semaine, sans qu'une autre semaine du cycle ne
+  // consomme le vivier avant que le test n'ait pu vérifier le verrou.
+  const stores = Array.from({length:6}, (_,i)=>store(i+1)); // déjà triés par distance croissante
+  const protectedPlan = {Lundi:[],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
+  const weekKey = '2026-09-21';
+  const completed = terrain.completeProtectedWeek(
+    protectedPlan, ['Lundi','Mardi'], monday(), weekKey, 4,
+    stores, new Set(), 4, ()=>1,
+    (route,day)=>route.length<=2, // horaires : 2 arrêts maximum par jour
+    (id,wk)=> id==='s1'&&wk===weekKey ? 'Mardi' : '', // s1 verrouillé sur Mardi
+    ()=>'' // aucun rendez-vous dans ce test
+  );
+  assert.ok(!completed.Lundi.some(s=>s.id==='s1'), 's1 verrouillé sur Mardi ne doit pas être placé Lundi');
+  assert.ok(completed.Mardi.some(s=>s.id==='s1'), 's1 verrouillé doit finir par apparaître sur Mardi si la capacité le permet');
+  assert.ok(completed.Lundi.length<=2 && completed.Mardi.length<=2, 'dayFits (ici : 2 arrêts maximum) doit être respecté pendant le remplissage');
+  for(const day of ['Mercredi','Jeudi','Vendredi']) assert.strictEqual((completed[day]||[]).length, 0, 'un jour hors activeDays ne doit jamais recevoir de remplissage');
 })();
 
 (function recurrentOrDatedLocksRemainHonoured(){

@@ -1,4 +1,4 @@
-const BUILD_REV = "20260922-recovery-journal-quota240";
+const BUILD_REV = "20260922-manual-week-gap-fill242";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
