@@ -25,6 +25,15 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'244',
+      title:'Les mises à jour s’appliquent toutes seules',
+      items:[
+        'Les mises à jour s’appliquent désormais automatiquement sans devoir fermer puis rouvrir Store Runner.',
+        'Après « Mettre à jour », Store Runner télécharge la nouvelle version puis se recharge une seule fois, directement dessus.',
+        'Tes visites, notes, photos, sauvegardes et ton planning restent intacts : seule l’application elle-même change.'
+      ]
+    },
+    {
       version:'243',
       title:'Le planning se souvient enfin de qui il a déjà visité',
       items:[
