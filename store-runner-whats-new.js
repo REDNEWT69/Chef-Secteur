@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'242',
+      title:'Les semaines modifiées à la main se complètent toute seules',
+      items:[
+        'Une semaine où tu as posé une visite ou réorganisé une journée à la main ne reste plus bloquée avec des jours vides pour le reste du cycle.',
+        'Les visites que tu as posées ne bougent jamais de leur jour : seule la place encore libre se remplit automatiquement avec tes prochains magasins à voir.',
+        'Le remplissage respecte tes capacités par jour, tes horaires, tes jours bloqués, tes rendez-vous et tes magasins verrouillés, sans jamais créer de doublon.',
+        'Si la semaine était déjà complète, rien ne change : ce correctif ne touche que les jours réellement vides.'
+      ]
+    },
+    {
       version:'240',
       title:'Plus de blocage « quota dépassé »',
       items:[
