@@ -1,6 +1,10 @@
-/* Store Runner V1 — outils terrain optionnels : 3 semaines escargot + premier magasin choisi.
-   Ce module ne remplace ni generateWeek ni generatePlanningRange. Il ajoute deux actions
-   explicites autour du moteur V1 stable et persiste via ChefReliability. */
+/* Store Runner V1 — moteur 3 semaines escargot + premier magasin choisi.
+   Ce module ne remplace ni generateWeek ni generatePlanningRange. Il expose le moteur
+   escargot et l'action « Commencer par ici » autour du moteur V1 stable, et persiste via
+   ChefReliability.
+   V239 : le cycle 3 semaines est la génération standard du planning. Son déclencheur est
+   le bouton principal, câblé par planning-generation-controller.js ; ce module n'installe
+   plus d'action concurrente dans « Planifier plusieurs semaines ». */
 (function(root){
 'use strict';
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
@@ -270,15 +274,24 @@ function upcomingWorkMonday(now=new Date()){
      si on lance la génération le lundi ; du mardi au dimanche, on part au lundi suivant. */
   return day===1?base:addDays(base,7);
 }
-function resolveSnailStart(state=root.state,doc=root.document,now=new Date()){
+/* V239 : la génération principale du planning est le cycle 3 semaines. Le bouton
+   « Générer mes 3 semaines » transmet explicitement la semaine sélectionnée dans le
+   planning ; c'est elle qui devient la première semaine du cycle.
+   Les deux règles historiques restent derrière, pour tout appel sans semaine imposée :
+   une date de début saisie à la main dans « Planifier plusieurs semaines » gagne, sinon
+   on part du prochain lundi travaillé. Une semaine simplement héritée de l'état ne suffit
+   toujours pas à faire sauter ce lundi. */
+function resolveSnailStart(state=root.state,doc=root.document,now=new Date(),requestedStart){
+  const asked=parseISO(String((requestedStart&&requestedStart.start)||requestedStart||'').trim());
+  if(asked)return monday(asked);
   const get=id=>doc&&typeof doc.getElementById==='function'?doc.getElementById(id):null;
   const rangeStart=get('rangeStart');
   const explicitlyChosen=!!(rangeStart&&rangeStart.dataset&&rangeStart.dataset.snailUserEdited==='1');
   if(explicitlyChosen){const chosen=parseISO(String(rangeStart.value||'').trim());if(chosen)return monday(chosen)}
   return upcomingWorkMonday(now);
 }
-function syncPlanningControlsForSnail(state=root.state){
-  const first=resolveSnailStart(state,root.document),start=iso(first),end=iso(addDays(first,20));
+function syncPlanningControlsForSnail(state=root.state,requestedStart){
+  const first=resolveSnailStart(state,root.document,new Date(),requestedStart),start=iso(first),end=iso(addDays(first,20));
   if(!state.settings)state.settings={};state.settings.weekDate=start;
   const week=root.document&&root.document.getElementById('weekDate'),rangeStart=root.document&&root.document.getElementById('rangeStart'),rangeEnd=root.document&&root.document.getElementById('rangeEnd');
   if(week)week.value=start;if(rangeStart)rangeStart.value=start;if(rangeEnd)rangeEnd.value=end;
@@ -321,36 +334,36 @@ function renderTerrainInsights(range){
   box.innerHTML=html;box.hidden=false;return true;
 }
 function renderStoredInsights(){try{const storage=db(),range=storage&&JSON.parse(storage.getItem(RANGE_KEY)||'null');return renderTerrainInsights(range)}catch(e){return false}}
-async function generateThreeWeekSnail(){
+async function generateThreeWeekSnail(options){
   const state=root.state,R=root.ChefReliability,storage=db();
   if(!state||!R||typeof R.capture!=='function'||typeof R.persist!=='function')throw new Error('Protection des données indisponible.');
-  const first=syncPlanningControlsForSnail(state);
+  const first=syncPlanningControlsForSnail(state,options);
   if(!validBase(state))throw new Error('Définis d’abord le GPS de ton point de départ dans Mon secteur.');
   const days=currentDays(state),report=summarizeTerrainPool(state.stores||[],state),pool=(state.stores||[]).filter(s=>included(s,state));
   if(!pool.length)throw new Error('Aucun magasin actif ne correspond aux filtres.');
-  const status=root.document&&root.document.getElementById('terrainSnailStatus'),button=root.document&&root.document.getElementById('terrainSnailBtn');if(button)button.disabled=true;if(status)status.textContent='Vivier : '+report.planifiable+' planifiables · '+report.withoutGps+' GPS à vérifier · '+report.imposed+' imposés. Agenda puis génération…';
-  try{
-    const calendarSynced=await syncCalendar(first,state);
-    const archive=JSON.parse(storage.getItem(ARCHIVE_KEY)||'{}')||{};
-    const built=buildThreeWeekSnail({state,firstMonday:first,days,target:Number(state.settings.target)||20,maxCreditsPerDay:Number(state.settings.maxVisitsPerDay)||4,stores:pool,archive,distanceOf,priorityOf:(store)=>performancePlanningBoost(store,state),creditOf:visitCredit,lockDayForWeek:lockDay,appointmentDay,dayBlocked:(date)=>dateBlocked(date,state),dayFits:(route,day,mon)=>dayFits(route,day,state,mon)});
-    if(!built.totalVisits)throw new Error('Aucune visite ne tient dans les 3 semaines avec les réglages actuels.');
-    const overnightReport=analyzeOvernightWeeks(built.weeks,state),hoursReport=summarizeOpeningHours(built.weeks,state);
-    R.checkpoint('Avant génération 3 semaines escargot',storage);
-    const bundle=R.capture(state,storage);
-    for(const week of built.weeks){
-      if(week.manual)continue;
-      bundle.archive[week.weekKey]={weekMonday:week.weekKey,plan:Object.fromEntries(DAYS.map(d=>[d,(week.plan[d]||[]).map(cloneStore)])),manualEdited:false,generatedMode:'snail-distance-v1',updatedAt:new Date().toISOString()};
-    }
-    const firstWeek=built.weeks[0];bundle.state.settings.weekDate=firstWeek.weekKey;bundle.state.plan=Object.fromEntries(DAYS.map(d=>[d,(firstWeek.plan[d]||[]).map(s=>canonicalStore(s.id,bundle.state)||s)]));
-    bundle.range={start:firstWeek.weekKey,end:iso(addDays(first,20)),weeks:3,workDays:days,uniqueStores:built.uniqueStores,totalVisits:built.totalVisits,rotation:'snail-distance-v1',calendarSynced,poolReport:report,overnightReport,hoursReport,planningDiagnostics:built.weeks.map(w=>({weekKey:w.weekKey,days:w.diagnostics||[]})),dayCoverage:built.dayCoverage,updatedAt:new Date().toISOString()};
-    R.persist(bundle,storage);if(storage&&typeof storage.flush==='function')await storage.flush();root.state=bundle.state;
-    try{if(typeof root.initControls==='function')root.initControls();if(typeof root.renderAll==='function')root.renderAll()}catch(e){}
-    root.dispatchEvent(new CustomEvent('chef-range-generated',{detail:{start:firstWeek.weekKey,end:bundle.range.end,weeks:3,workDays:days,uniqueStores:built.uniqueStores,mode:'snail-distance-v1'}}));
-    root.document&&root.document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{reason:'three-week-snail',weekDate:firstWeek.weekKey}}));
-    if(status)status.textContent='3 semaines escargot : '+built.totalVisits+' visites · '+built.uniqueStores+' magasins distincts · '+built.dayCoverage.planned+'/'+built.dayCoverage.active+' jours travaillés couverts'+(built.emptyWorkDays.length?' · '+built.emptyWorkDays.length+' jour'+(built.emptyWorkDays.length>1?'s':'')+' vide'+(built.emptyWorkDays.length>1?'s':'')+' expliqué'+(built.emptyWorkDays.length>1?'s':''):'')+' · vivier '+report.planifiable+' planifiables'+(report.imposed?' · '+report.imposed+' imposé'+(report.imposed>1?'s':''):'')+(report.withoutGps?' · '+report.withoutGps+' GPS à vérifier':'')+(hoursReport.unknown?' · '+hoursReport.unknown+' horaires à vérifier':'')+'.';
-    renderTerrainInsights(bundle.range);built.poolReport=report;built.overnightReport=overnightReport;built.hoursReport=hoursReport;
-    return built;
-  }finally{if(button)button.disabled=false}
+  /* V239 : le verrou du bouton pendant la génération appartient au bouton principal,
+     donc à planning-generation-controller.js. Ce moteur ne pilote plus que son statut. */
+  const status=root.document&&root.document.getElementById('terrainSnailStatus');if(status)status.textContent='Vivier : '+report.planifiable+' planifiables · '+report.withoutGps+' GPS à vérifier · '+report.imposed+' imposés. Agenda puis génération…';
+  const calendarSynced=await syncCalendar(first,state);
+  const archive=JSON.parse(storage.getItem(ARCHIVE_KEY)||'{}')||{};
+  const built=buildThreeWeekSnail({state,firstMonday:first,days,target:Number(state.settings.target)||20,maxCreditsPerDay:Number(state.settings.maxVisitsPerDay)||4,stores:pool,archive,distanceOf,priorityOf:(store)=>performancePlanningBoost(store,state),creditOf:visitCredit,lockDayForWeek:lockDay,appointmentDay,dayBlocked:(date)=>dateBlocked(date,state),dayFits:(route,day,mon)=>dayFits(route,day,state,mon)});
+  if(!built.totalVisits)throw new Error('Aucune visite ne tient dans les 3 semaines avec les réglages actuels.');
+  const overnightReport=analyzeOvernightWeeks(built.weeks,state),hoursReport=summarizeOpeningHours(built.weeks,state);
+  R.checkpoint('Avant génération 3 semaines escargot',storage);
+  const bundle=R.capture(state,storage);
+  for(const week of built.weeks){
+    if(week.manual)continue;
+    bundle.archive[week.weekKey]={weekMonday:week.weekKey,plan:Object.fromEntries(DAYS.map(d=>[d,(week.plan[d]||[]).map(cloneStore)])),manualEdited:false,generatedMode:'snail-distance-v1',updatedAt:new Date().toISOString()};
+  }
+  const firstWeek=built.weeks[0];bundle.state.settings.weekDate=firstWeek.weekKey;bundle.state.plan=Object.fromEntries(DAYS.map(d=>[d,(firstWeek.plan[d]||[]).map(s=>canonicalStore(s.id,bundle.state)||s)]));
+  bundle.range={start:firstWeek.weekKey,end:iso(addDays(first,20)),weeks:3,workDays:days,uniqueStores:built.uniqueStores,totalVisits:built.totalVisits,rotation:'snail-distance-v1',calendarSynced,poolReport:report,overnightReport,hoursReport,planningDiagnostics:built.weeks.map(w=>({weekKey:w.weekKey,days:w.diagnostics||[]})),dayCoverage:built.dayCoverage,updatedAt:new Date().toISOString()};
+  R.persist(bundle,storage);if(storage&&typeof storage.flush==='function')await storage.flush();root.state=bundle.state;
+  try{if(typeof root.initControls==='function')root.initControls();if(typeof root.renderAll==='function')root.renderAll()}catch(e){}
+  root.dispatchEvent(new CustomEvent('chef-range-generated',{detail:{start:firstWeek.weekKey,end:bundle.range.end,weeks:3,workDays:days,uniqueStores:built.uniqueStores,mode:'snail-distance-v1'}}));
+  root.document&&root.document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{reason:'three-week-snail',weekDate:firstWeek.weekKey}}));
+  if(status)status.textContent='3 semaines escargot : '+built.totalVisits+' visites · '+built.uniqueStores+' magasins distincts · '+built.dayCoverage.planned+'/'+built.dayCoverage.active+' jours travaillés couverts'+(built.emptyWorkDays.length?' · '+built.emptyWorkDays.length+' jour'+(built.emptyWorkDays.length>1?'s':'')+' vide'+(built.emptyWorkDays.length>1?'s':'')+' expliqué'+(built.emptyWorkDays.length>1?'s':''):'')+' · vivier '+report.planifiable+' planifiables'+(report.imposed?' · '+report.imposed+' imposé'+(report.imposed>1?'s':''):'')+(report.withoutGps?' · '+report.withoutGps+' GPS à vérifier':'')+(hoursReport.unknown?' · '+hoursReport.unknown+' horaires à vérifier':'')+'.';
+  renderTerrainInsights(bundle.range);built.poolReport=report;built.overnightReport=overnightReport;built.hoursReport=hoursReport;
+  return built;
 }
 async function startDayWithStore(storeId){
   const state=root.state,R=root.ChefReliability,storage=db();if(!state||!R)throw new Error('Protection des données indisponible.');
@@ -368,7 +381,12 @@ async function startDayWithStore(storeId){
   return{day,route:reordered,unchanged:false};
 }
 function showError(message){try{if(typeof root.showError==='function')root.showError(message);else root.alert(message)}catch(e){}}
-function installSnailButton(){
+/* V239 : le cycle 3 semaines est devenu la génération standard, déclenchée par le bouton
+   principal du planning. L'ancienne action escargot séparée n'a donc plus de raison
+   d'exister dans « Planifier plusieurs semaines » : elle faisait doublon.
+   Ce module n'y laisse que le compte rendu du dernier cycle — statut et diagnostics —
+   sans bouton ni séparateur orphelin. */
+function installThreeWeekReport(){
   const host=root.document&&root.document.querySelector('#rangePlannerCard .planningChoiceBody');if(!host)return false;
   const rangeStart=root.document.getElementById('rangeStart');
   if(rangeStart&&rangeStart.dataset&&!rangeStart.dataset.snailTracked){
@@ -376,10 +394,16 @@ function installSnailButton(){
     const mark=()=>{rangeStart.dataset.snailUserEdited='1'};
     rangeStart.addEventListener('input',mark);rangeStart.addEventListener('change',mark);
   }
-  if(root.document.getElementById('terrainSnailBtn')){ensureInsightsBox();renderStoredInsights();return true}
-  const normal=root.document.getElementById('generateRangeBtn'),btn=root.document.createElement('button');btn.id='terrainSnailBtn';btn.type='button';btn.className='primary full';btn.textContent='◎ Générer 3 semaines · escargot';btn.onclick=async()=>{try{await generateThreeWeekSnail()}catch(e){showError(e.message||String(e))}};
-  const status=root.document.createElement('div');status.id='terrainSnailStatus';status.className='tiny';status.style.marginTop='7px';status.textContent='Mode terrain : 3 semaines, du plus proche du départ vers le plus loin.';
-  if(normal&&normal.nextSibling)host.insertBefore(btn,normal.nextSibling);else host.appendChild(btn);btn.insertAdjacentElement('afterend',status);ensureInsightsBox();renderStoredInsights();return true;
+  /* Un shell déjà en cache peut encore porter l'ancien bouton : on le retire au lieu de
+     laisser deux entrées de génération coexister. */
+  const legacy=root.document.getElementById('terrainSnailBtn');
+  if(legacy&&legacy.parentNode)legacy.parentNode.removeChild(legacy);
+  if(!root.document.getElementById('terrainSnailStatus')){
+    const status=root.document.createElement('div');status.id='terrainSnailStatus';status.className='tiny';status.style.marginTop='7px';
+    status.textContent='Compte rendu du dernier cycle 3 semaines · rotation escargot, du plus proche du départ vers le plus loin.';
+    host.appendChild(status);
+  }
+  ensureInsightsBox();renderStoredInsights();return true;
 }
 function installStartButton(){
   const actions=root.document&&root.document.querySelector('#storeQuickSheet .sheetActions');if(!actions)return false;
@@ -387,7 +411,7 @@ function installStartButton(){
   const btn=root.document.createElement('button');btn.id='startQuickStoreFirstBtn';btn.type='button';btn.className='secondary';btn.textContent='▶ Commencer par ici';btn.title='Garde les mêmes visites mais place ce magasin en premier dans la journée.';btn.onclick=async()=>{const start=root.document.getElementById('srQuickStart'),id=start&&start.dataset&&start.dataset.srStart;if(!id)return showError('Ouvre ce magasin depuis le planning.');btn.disabled=true;try{const result=await startDayWithStore(id);if(typeof root.closeStoreQuick==='function')root.closeStoreQuick();const s=canonicalStore(id);const text=result.unchanged?'Ce magasin est déjà le premier de '+result.day+'.':(s.enseigne+' '+s.ville+' devient le premier magasin de '+result.day+'.');const st=root.document.getElementById('rangePlanStatus');if(st)st.textContent=text}catch(e){showError(e.message||String(e))}finally{btn.disabled=false}};
   const change=root.document.getElementById('changeQuickStoreBtn');actions.insertBefore(btn,change||actions.firstChild);return true;
 }
-function install(){installSnailButton();installStartButton()}
+function install(){installThreeWeekReport();installStartButton()}
 function boot(){install();root.document&&root.document.addEventListener('store-runner:planning-updated',()=>{install();renderStoredInsights()});root.document&&root.document.addEventListener('store-runner:data-restored',()=>{install();renderStoredInsights()})}
 const api={rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits,overnightForPlan,analyzeOvernightWeeks,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()}

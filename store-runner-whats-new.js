@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'239',
+      title:'Planning 3 semaines simplifié',
+      items:[
+        'La génération du planning crée maintenant directement un cycle de 3 semaines.',
+        'Un seul bouton : « Générer mes 3 semaines » part de la semaine affichée et prépare aussi les deux suivantes.',
+        'L’ancienne action séparée dans « Planifier plusieurs semaines » a disparu : plus de doublon, plus de choix à faire.',
+        'Tes visites posées à la main, tes magasins épinglés, tes rendez-vous et tes capacités par jour sont protégés comme avant.'
+      ]
+    },
+    {
       version:'238',
       title:'Génération des comptes rendus plus fiable',
       items:[

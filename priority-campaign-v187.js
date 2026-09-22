@@ -482,7 +482,7 @@ function renderSummary(){
   const done=rows.filter(r=>r.completedDate).length,planned=rows.filter(r=>!r.completedDate&&r.plannedDate).length,pending=rows.length-done-planned;
   let box=root.document.getElementById('priorityCampaignV187');
   if(!box){
-    const anchor=root.document.getElementById('planningUnifiedHint')||root.document.querySelector&&root.document.querySelector('#planPanel button.primary.full[onclick="generateWeek()"]');
+    const anchor=root.document.getElementById('planningUnifiedHint')||root.document.querySelector&&root.document.querySelector('#planPanel button.primary.full[data-planning-generate="three-weeks"]');
     if(!anchor||!anchor.parentNode)return false;
     box=root.document.createElement('details');box.id='priorityCampaignV187';box.open=true;
     box.style.cssText='margin:10px 0;padding:10px 12px;border:1px solid #fecaca;border-radius:14px;background:#fff7f7;color:#7f1d1d;font-size:12px;line-height:1.45';

@@ -136,7 +136,7 @@ function buildPlanning(dom){
   const title=dom.make('h2');title.className='applePlanTitle';plan.appendChild(title);
   const tabs=dom.make('div');tabs.id='dayTabs';plan.appendChild(tabs);
   const tools=dom.make('div');tools.id='planningToolsV2';tools.className='planningToolsV2';
-  const generate=dom.make('button');generate.className='primary';generate.textContent='✦ Générer ma semaine';generate.setAttribute('onclick','generateWeek()');tools.appendChild(generate);
+  const generate=dom.make('button');generate.className='primary';generate.textContent='✦ Générer mes 3 semaines';generate.setAttribute('data-planning-generate','three-weeks');tools.appendChild(generate);
   plan.appendChild(tools);
   const timeline=dom.make('div');timeline.className='timelineShell';plan.appendChild(timeline);
   const metrics=dom.make('div');metrics.id='planMetrics';plan.appendChild(metrics);
@@ -173,12 +173,12 @@ assert(t.api,'le test doit pouvoir atteindre le raccourci');
 t.api.reorderPlanning();
 const shortcut=t.ui.tools.querySelector('#planningSettingsShortcut');
 assert(shortcut,'le raccourci doit être ajouté à #planningToolsV2');
-assert.equal(shortcut.parentNode,t.ui.tools,'le raccourci doit vivre dans la barre d’outils, à côté de « Générer ma semaine »');
+assert.equal(shortcut.parentNode,t.ui.tools,'le raccourci doit vivre dans la barre d’outils, à côté de « Générer mes 3 semaines »');
 assert.equal(shortcut.textContent,'⚙ Réglages');
 assert.equal(shortcut.type,'button','le raccourci ne doit jamais soumettre un formulaire');
 assert.equal(shortcut.getAttribute('aria-controls'),'planningSettings','le raccourci doit annoncer le panneau qu’il commande');
 const labels=t.ui.tools.querySelectorAll('button').map(b=>b.textContent);
-assert(labels.includes('✦ Générer ma semaine'),'le bouton de génération doit rester présent');
+assert(labels.includes('✦ Générer mes 3 semaines'),'le bouton de génération doit rester présent');
 assert.equal(t.ui.tools.querySelectorAll('button').length,2,'la barre d’outils de ce test part d’un seul bouton : le raccourci en ajoute exactement un');
 
 // Plusieurs passages de reorderPlanning ne doivent pas dupliquer le raccourci.

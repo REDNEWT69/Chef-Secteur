@@ -2,6 +2,10 @@
   'use strict';
   const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   const ARCHIVE_KEY='chef_sector_plan_archive_v1';
+  /* V239 : l'action principale du planning est le cycle 3 semaines. Les boutons qui la
+     portent se déclarent par cet attribut, pas par un `onclick` inline : le libellé et la
+     place restent à planning-ui-fixes.js / au shell, le câblage appartient à ce module. */
+  const MAIN_GENERATE_SELECTOR='[data-planning-generate="three-weeks"]';
   let attempts=0;
 
   function emitPlanningUpdated(source){
@@ -17,10 +21,17 @@
     return typeof window.storeRunnerHasValidBase==='function'&&window.storeRunnerHasValidBase();
   }
 
+  function mainGenerateButtons(){
+    try{return Array.prototype.slice.call(document.querySelectorAll('#planPanel '+MAIN_GENERATE_SELECTOR))}catch(e){return[]}
+  }
+  function mainGenerateAnchor(){
+    return document.querySelector('#planPanel button.primary.full'+MAIN_GENERATE_SELECTOR)||mainGenerateButtons()[0]||null;
+  }
+
   function generationStatus(message,type){
     let box=document.getElementById('planningGenerateStatus');
     if(!box){
-      const button=document.querySelector('#planPanel button.primary.full[onclick="generateWeek()"]');
+      const button=mainGenerateAnchor();
       if(button){
         box=document.createElement('div');box.id='planningGenerateStatus';box.setAttribute('role','status');box.setAttribute('aria-live','polite');
         box.style.margin='9px 2px 0';box.style.fontSize='12px';box.style.lineHeight='1.4';button.insertAdjacentElement('afterend',box);
@@ -122,7 +133,7 @@
   }
 
   function ensureUnifiedGenerationUi(){
-    const generate=document.querySelector('#planPanel button.primary.full[onclick="generateWeek()"]');
+    const generate=mainGenerateAnchor();
     if(!generate||!generate.parentNode)return false;
 
     /* V186 : une seule action visible doit avoir le droit de « générer la semaine ».
@@ -138,9 +149,12 @@
     if(!hint){
       hint=document.createElement('div');hint.id='planningUnifiedHint';hint.className='tiny';
       hint.style.margin='8px 2px 0';hint.style.lineHeight='1.45';
-      hint.textContent='Optimisation géographique et découché sont calculés automatiquement avec ta semaine.';
       generate.insertAdjacentElement('afterend',hint);
     }
+    /* Texte réécrit seulement s'il doit changer : cette fonction repasse à chaque
+       événement planning, et une écriture DOM inutile relance les observateurs. */
+    const hintText='La génération prépare 3 semaines d’affilée à partir de la semaine affichée. Optimisation géographique et découché sont calculés automatiquement.';
+    if(hint.textContent!==hintText)hint.textContent=hintText;
 
     /* Le recalcul reste utile quand la semaine est déjà entamée, mais ce n'est pas un
        deuxième bouton de génération. On le range dans la feuille Réglages, où il garde
@@ -164,14 +178,6 @@
       if(recalc.parentNode!==repair)repair.appendChild(recalc);
     }
 
-    /* « Escargot » reste une capacité avancée 3 semaines, pas une génération concurrente
-       de la semaine courante. Le libellé l'explique dans le panneau multi-semaines. */
-    const snail=document.getElementById('terrainSnailBtn');
-    if(snail){
-      snail.textContent='◎ Préparer 3 semaines en rotation géographique';
-      snail.title='Option avancée sur 3 semaines. Pour la semaine courante, utilise Générer ma semaine.';
-      snail.dataset.advancedPlanning='1';
-    }
     return true;
   }
 
@@ -320,6 +326,53 @@
     }
   }
 
+  function setGenerateBusy(busy){
+    mainGenerateButtons().forEach(function(button){button.disabled=!!busy});
+  }
+
+  /*
+   * V239 — action principale du planning : un clic, trois semaines.
+   *
+   * Le cycle escargot 3 semaines existait déjà (StoreRunnerTerrainPlanningV1), mais il
+   * était rangé derrière une action séparée dans « Planifier plusieurs semaines » alors
+   * que c'est l'usage réel du terrain. Cette fonction ne replanifie rien elle-même :
+   * elle prend la semaine affichée comme première semaine du cycle et délègue au moteur
+   * existant, lu au moment de l'appel pour conserver les enveloppes V184 (capacité
+   * quotidienne) et V185 (optimisation géographique) posées par-dessus.
+   *
+   * La génération d'une seule semaine (`generateWeek`) reste intacte pour ses autres
+   * appelants — assistant, régénération d'une journée — mais n'est plus déclenchée par
+   * le bouton principal.
+   */
+  async function generateThreeWeeks(){
+    const api=window.StoreRunnerTerrainPlanningV1;
+    if(!api||typeof api.generateThreeWeekSnail!=='function'){
+      const message='Le moteur 3 semaines n’est pas encore chargé. Réessaie dans un instant.';
+      generationStatus(message,'bad');return{ok:false,error:message};
+    }
+    if(!hasValidBase()){
+      const message='Point de départ incomplet. Dans Mon activité, saisis une ville ou une adresse (ex. Francheville), puis enregistre les réglages.';
+      generationStatus(message,'bad');
+      return{ok:false,__storeRunnerRejectedEmpty:true,error:message};
+    }
+    const start=isoDate(currentWeekMonday());
+    setGenerateBusy(true);
+    generationStatus('Génération de 3 semaines · rotation géographique…','busy');
+    try{
+      const built=await api.generateThreeWeekSnail({start:start});
+      const visits=Number(built&&built.totalVisits)||0,stores=Number(built&&built.uniqueStores)||0;
+      generationStatus('Planning généré sur 3 semaines. '+visits+' visite'+(visits>1?'s':'')+' · '+stores+' magasin'+(stores>1?'s':'')+'.','ok');
+      ensureUnifiedGenerationUi();
+      return{ok:true,start:start,weeks:3,result:built};
+    }catch(e){
+      const message=e&&e.message?e.message:String(e);
+      generationStatus(message,'bad');
+      return{ok:false,error:message};
+    }finally{
+      setGenerateBusy(false);
+    }
+  }
+
   function install(){
     ensureUnifiedGenerationUi();
     if(window.__storeRunnerPlanningGenerateOwner)return true;
@@ -388,6 +441,19 @@
     if(attempts++<40)setTimeout(boot,75);
   }
 
+  /* Délégation plutôt qu'un branchement par bouton : la barre d'outils du planning est
+     reconstruite par planning-ui-fixes.js quand elle veut, et un `onclick` inline ferait
+     du libellé et du comportement deux propriétaires concurrents. Un bouton désactivé
+     n'émet pas de clic : l'état occupé suffit à empêcher un second lancement. */
+  document.addEventListener('click',function(event){
+    const target=event&&event.target;
+    const button=target&&typeof target.closest==='function'?target.closest(MAIN_GENERATE_SELECTOR):null;
+    if(!button||!button.closest('#planPanel'))return;
+    if(typeof event.preventDefault==='function')event.preventDefault();
+    generateThreeWeeks();
+  });
+
+  window.storeRunnerGenerateThreeWeeks=generateThreeWeeks;
   window.storeRunnerRecalculateRemainingWeek=recalculateRemainingWeek;
   window.__storeRunnerBuildRemainingWeekPlan=buildRemainingWeekPlan;
   window.storeRunnerRefreshOvernightDecision=refreshOvernightDecision;
