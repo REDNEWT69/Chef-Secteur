@@ -70,6 +70,18 @@ function ensureStyle(){
     +'#'+CARD_ID+'{margin-top:8px;padding:10px;border:1px solid #e2e6ed;border-radius:14px;background:#fbfcff;font-size:11.5px;line-height:1.5}'
     +'#'+CARD_ID+' b{font-size:12px}#'+CARD_ID+' .srPerfCardRow{display:block;color:#454b56;margin-top:3px}'
     +'#'+CARD_ID+' button{min-height:44px;width:100%;margin-top:8px;border-radius:12px;border:1px solid #d3d9e3;background:#fff;font-weight:800;font-size:11.5px}'
+    +'#'+CARD_ID+' .srPerfCardHead{display:flex;align-items:center;gap:6px;flex-wrap:wrap}'
+    +'#'+CARD_ID+' .srPerfCardHead b{font-size:13.5px;line-height:1.3;overflow-wrap:anywhere}'
+    +'#'+CARD_ID+' .srPerfCardWeek{display:block;margin-top:2px;font-size:10.5px;color:#667085}'
+    +'#'+CARD_ID+' .srPerfBlock237{margin-top:9px}'
+    +'#'+CARD_ID+' .srPerfBlockTitle237{display:block;font-size:10px;font-weight:850;letter-spacing:.02em;text-transform:uppercase;color:#667085}'
+    +'#'+CARD_ID+' .srPerfBlockBody237{display:block;margin-top:2px;font-size:12px;line-height:1.45;color:#1d2939;white-space:pre-line;overflow-wrap:anywhere}'
+    +'#'+CARD_ID+' .srPerfDetail237{margin-top:11px;border-top:1px solid #e6eaf1;padding-top:8px}'
+    +'#'+CARD_ID+' .srPerfDetail237>summary{min-height:34px;display:flex;align-items:center;cursor:pointer;font-weight:800;font-size:11.5px;color:#315b9d;list-style:none}'
+    +'#'+CARD_ID+' .srPerfDetail237>summary::-webkit-details-marker{display:none}'
+    +'#'+CARD_ID+' .srPerfDetail237>summary::after{content:"\\25be";margin-left:auto;font-size:10px}'
+    +'#'+CARD_ID+' .srPerfDetail237[open]>summary::after{content:"\\25b4"}'
+    +'#'+CARD_ID+' .srPerfDetail237 .srPerfCardRow{overflow-wrap:anywhere}'
     +'@media(max-width:520px){.srPerfKpis{grid-template-columns:repeat(2,minmax(0,1fr))}.srPerfBar{grid-template-columns:1fr}}';
   root.document.head.appendChild(s);
 }
@@ -266,6 +278,263 @@ function ensureSheet(){
 }
 function open(){ensureSheet();say('');if(typeof sheet.showModal==='function'&&!sheet.open)sheet.showModal();else sheet.setAttribute('open','');render();return true}
 
+/* ======================= V237 — synthèse lisible de la priorité =====================
+
+   La carte de la fiche magasin rendait toutes les colonnes du classeur, mission
+   comprise. C'était complet et inutilisable : en visite le FMT a cinq secondes, pas
+   trente lignes. Cette couche ne calcule rien de neuf — elle relit `statusOf`,
+   `weeklyTrend` et la mission déjà lus, et en tire quatre phrases courtes.
+
+   Aucune IA. La mission du classeur est un texte à motifs stables : on la lit avec un
+   vocabulaire fermé et des expressions régulières. Un motif inconnu ne produit pas de
+   phrase — le bloc est omis plutôt qu'inventé.
+
+   Le détail intégral reste dans la carte, replié, et le pilotage performance n'est pas
+   touché. */
+
+function normText(v){
+  let base='';
+  try{base=text(v).normalize('NFD')}catch(e){base=text(v)}
+  let out='';
+  for(const ch of base){
+    const c=ch.codePointAt(0);
+    if(c>=0x300&&c<=0x36F)continue;   // marques diacritiques combinantes
+    out+=ch;
+  }
+  return out.toLowerCase().replace(/[^a-z0-9%<>~\-\/ ]+/g,' ').replace(/\s+/g,' ').trim();
+}
+
+/* Le rendu utilisateur ne doit jamais porter les scories du classeur : caractère de
+   remplacement, demi-surrogate isolé, zone privée laissée par un décodage fautif,
+   séparateurs techniques. On nettoie aussi à l'affichage, parce que les instantanés
+   déjà enregistrés sur l'appareil gardent le texte tel qu'il a été lu à l'époque. */
+function stripJunk(value){
+  let out='';
+  for(const ch of text(value)){
+    const c=ch.codePointAt(0);
+    if(c<9||(c>10&&c<32))continue;                    // commandes de controle du classeur
+    if(c>=0xD800&&c<=0xDFFF)continue;                 // demi-surrogate isole
+    if(c>=0xE000&&c<=0xF8FF)continue;                 // zone privee : decodage fautif
+    if(c===0xFFFD||c===0xFFFE||c===0xFFFF)continue;   // caractere de remplacement
+    out+=ch;
+  }
+  return out;
+}
+function cleanMission(value){
+  return stripJunk(value)
+    .split(/[|•;]+/).join(' · ')
+    .split('·').map(part=>part.trim()).filter(Boolean).join(' · ')
+    .replace(/[ \t]{2,}/g,' ')
+    .trim();
+}
+
+/* Vocabulaire fermé, du plus spécifique au plus général : « Neo QLED » doit gagner
+   contre « QLED », sinon toute la dynamique Neo QLED serait lue comme du QLED. */
+const FAMILIES=[
+  ['neo qled','Neo QLED'],['the frame','The Frame'],['lifestyle','Lifestyle'],
+  ['oled','OLED'],['qled','QLED'],['uhd','UHD'],['crystal','Crystal'],
+  ['soundbar','Soundbar'],['barre de son','Soundbar'],
+  ['lave linge','Lave-linge'],['lave vaisselle','Lave-vaisselle'],
+  ['refrigerateur','Réfrigérateur'],['micro onde','Micro-ondes']
+];
+function familyOf(segment){
+  const n=normText(segment);
+  for(let i=0;i<FAMILIES.length;i++)if(n.includes(FAMILIES[i][0]))return FAMILIES[i][1];
+  return '';
+}
+function signedNumber(segment){
+  const m=String(segment).match(/([+\-−]?\s?\d+(?:[.,]\d+)?)\s*%/);
+  if(!m)return null;
+  const n=Number(m[1].replace(/\s/g,'').replace('−','-').replace(',','.'));
+  return Number.isFinite(n)?Math.round(n*10)/10:null;
+}
+/* « 37~43 », « 37-43 », « 80/85 » : le classeur écrit les groupes de tailles de
+   plusieurs façons. Seules les paires de pouces plausibles sont retenues. */
+function sizesOf(segment){
+  const out=[];
+  const re=/(\d{2})\s*[~\-–—/]\s*(\d{2,3})/g;
+  let m;
+  while((m=re.exec(String(segment)))){
+    const min=Number(m[1]),max=Number(m[2]);
+    if(min>=15&&max<=120&&max>min)out.push({min,max,label:min+'–'+max+'"'});
+  }
+  return out;
+}
+
+/* Découpe la mission en signaux typés. */
+function parseMission(mission){
+  const clean=cleanMission(mission);
+  const out={alerts:[],weights:[],declines:[],growths:[],sizes:[],mission:clean};
+  if(!clean)return out;
+  const segments=clean.split(/·|\n/);
+  for(let i=0;i<segments.length;i++){
+    const segment=segments[i].trim();
+    if(!segment)continue;
+    const n=normText(segment),family=familyOf(segment),value=signedNumber(segment);
+
+    /* Un plancher de poids — « Poids OLED <40% » — est le signal le plus fort du
+       classeur : il dit que la famille n'est pas exposée, pas seulement qu'elle recule. */
+    const floor=segment.match(/<\s*(\d+(?:[.,]\d+)?)\s*%/);
+    if(/poids/.test(n)&&family&&floor){
+      out.weights.push({label:family,floor:Number(floor[1].replace(',','.'))});
+      continue;
+    }
+    if(/alerte/.test(n)&&family){out.alerts.push({label:family,value:value});continue}
+
+    const sizes=sizesOf(segment);
+    if(sizes.length){
+      const up=/hausse|progress|croissance/.test(n)&&!/decroissance/.test(n);
+      for(let s=0;s<sizes.length;s++)out.sizes.push({min:sizes[s].min,max:sizes[s].max,label:sizes[s].label,direction:up?'up':'down'});
+      continue;
+    }
+    if(value==null||!family)continue;
+    if(value<0||/baisse|recul|decroissance|reprise requise|retard/.test(n))out.declines.push({label:family,value:value});
+    else if(value>0)out.growths.push({label:family,value:value});
+  }
+  return out;
+}
+
+/* Ce qui n'est pas exposé passe avant ce qui recule, et un fort recul avant un faible.
+   Jamais plus de deux familles : au-delà, la carte redevient le mur de texte qu'on
+   vient justement de supprimer. */
+const MAX_FAMILIES=2,MAX_SIZES=2,MAX_ACTIONS=2;
+function keptFamilies(signals){
+  const seen=Object.create(null),out=[];
+  const push=(label,kind,value)=>{
+    if(!label||seen[label]||out.length>=MAX_FAMILIES)return;
+    seen[label]=true;out.push({label:label,kind:kind,value:value});
+  };
+  for(let i=0;i<signals.weights.length;i++)push(signals.weights[i].label,'weight',signals.weights[i].floor);
+  for(let i=0;i<signals.alerts.length;i++)push(signals.alerts[i].label,'alert',signals.alerts[i].value);
+  const worst=signals.declines.slice().sort((a,b)=>a.value-b.value);
+  for(let i=0;i<worst.length;i++)push(worst[i].label,'decline',worst[i].value);
+  return out;
+}
+function keptSizes(signals){
+  const seen=Object.create(null),out=[];
+  for(let i=0;i<signals.sizes.length;i++){
+    const t=signals.sizes[i];
+    if(t.direction!=='down'||seen[t.label]||out.length>=MAX_SIZES)continue;
+    seen[t.label]=true;out.push(t);
+  }
+  return out;
+}
+function bestGrowth(signals){
+  const up=signals.growths.filter(g=>g.value>0).sort((a,b)=>b.value-a.value);
+  return up.length?up[0]:null;
+}
+
+/* Les alertes du classeur sont écrites pour un analyste. Ces phrases-là sont écrites
+   pour quelqu'un qui est debout dans le rayon. */
+function actionForFamily(f){
+  if(f.kind==='weight')return 'Renforcer la présence et le discours '+f.label+'.';
+  if(f.kind==='alert')return 'Contrôler l’exposition '+f.label+' et le discours vendeur.';
+  return 'Identifier les freins à la vente '+f.label+'.';
+}
+function actionForSize(t){
+  if(t.max<=50)return 'Travailler les petites tailles '+t.label+'.';
+  if(t.min>=70)return 'Vérifier l’exposition et la proposition sur les très grandes tailles.';
+  return 'Travailler les tailles '+t.label+'.';
+}
+function fieldActions(families,sizes,growth){
+  const out=[];
+  for(let i=0;i<families.length&&out.length<MAX_ACTIONS;i++)out.push(actionForFamily(families[i]));
+  for(let i=0;i<sizes.length&&out.length<MAX_ACTIONS;i++)out.push(actionForSize(sizes[i]));
+  if(!out.length&&growth)out.push('S’appuyer sur la dynamique '+growth.label+'.');
+  return out;
+}
+
+/* « hausse » sur une valeur restée négative faisait lire un redressement là où le
+   magasin recule encore. Le sens de la variation et le signe de la dernière semaine
+   sont deux informations distinctes, donc deux morceaux de phrase distincts. */
+function weeklyReading(trend){
+  if(!trend||!trend.points||!trend.points.length)return null;
+  const last=trend.points[trend.points.length-1];
+  if(trend.points.length<2)return{week:last.week,value:last.value,reading:''};
+  const negative=last.value<0,delta=trend.delta;
+  let reading;
+  if(negative)reading=delta>0?'amélioration récente mais toujours en recul'
+    :delta<0?'dégradation qui se poursuit':'stable, toujours en recul';
+  else reading=delta>0?'en progression':delta<0?'en repli, mais toujours positif':'stable';
+  return{week:last.week,value:last.value,reading:reading};
+}
+
+/* Le reste de la carte ecrit les negatifs avec un trait d'union via `pct`. La
+   synthese aligne le signe moins typographique du reste de l'interface, sans
+   toucher au formateur historique que d'autres vues utilisent deja. */
+function pctSigned(v){
+  if(v==null)return '—';
+  const n=Math.round(Math.abs(v)*10)/10;
+  return (v<0?'−':'')+String(n).replace('.',',')+' %';
+}
+function joinList(items){
+  if(items.length<=1)return items[0]||'';
+  return items.slice(0,-1).join(', ')+' et '+items[items.length-1];
+}
+function headlineOf(families,status){
+  if(families.length)return 'Relancer '+families.map(f=>f.label).join(' / ');
+  if(status&&status.underTarget===true)return 'Redresser la part de marché';
+  if(status&&status.underTarget===false)return 'Tenir le niveau atteint';
+  return 'Performance à regarder';
+}
+function situationOf(row,targetPdm,status){
+  if(row.pdmYtd==null)return 'Pas de part de marché dans le fichier : s’appuyer sur la mission et le sell-out.';
+  const gap=status&&status.gap!=null?status.gap:null;
+  const target=targetPdm==null?'':' vs '+pct(targetPdm)+' cible';
+  if(gap==null)return 'PDM à '+pct(row.pdmYtd)+target+'.';
+  const force=Math.abs(gap)>=10?'très ':Math.abs(gap)>=4?'':'légèrement ';
+  return 'Magasin '+force+(gap<0?'sous l’objectif':'au-dessus de l’objectif')+
+    ', avec une PDM à '+pct(row.pdmYtd)+target+'.';
+}
+function focusOf(families,sizes){
+  const parts=families.map(f=>
+    f.kind==='weight'?f.label+' sous '+String(Math.round(f.value)).replace('.',',')+' %'
+    :f.value==null?f.label+' en difficulté'
+    :f.label+' '+signedPct(f.value));
+  let phrase=parts.length?joinList(parts):'';
+  if(sizes.length){
+    const t=joinList(sizes.map(x=>x.label));
+    phrase=phrase?phrase+', avec une faiblesse particulière sur les '+t
+                 :'Faiblesse marquée sur les '+t;
+  }
+  return phrase?phrase+'.':'';
+}
+function positiveOf(growth){
+  return growth?growth.label+' '+signedPct(growth.value)+' progresse fortement.':'';
+}
+/* Deux chiffres cumulés, jamais la ligne complète des semaines. La dernière semaine a
+   sa propre ligne, avec sa lecture : la répéter ici ferait lire deux fois le même
+   chiffre dans le même bloc. */
+function keyFigures(row,status){
+  const out=[];
+  if(row.evolYtd!=null)out.push('YTD '+signedPct(row.evolYtd));
+  if(status&&status.gap!=null)out.push('écart cible '+signed(status.gap));
+  return out;
+}
+
+/* Point d'entrée unique de la synthèse. Pure : mêmes entrées, même sortie. */
+function prioritySummary(row,targetPdm){
+  const P=D();
+  if(!row||!P)return null;
+  const status=P.statusOf(row,targetPdm);
+  const signals=parseMission(row.comment);
+  const families=keptFamilies(signals);
+  const sizes=keptSizes(signals);
+  const growth=bestGrowth(signals);
+  const weekly=weeklyReading(P.weeklyTrend(row));
+  return{
+    headline:headlineOf(families,status),
+    situation:situationOf(row,targetPdm,status),
+    focus:focusOf(families,sizes),
+    positive:positiveOf(growth),
+    actions:fieldActions(families,sizes,growth),
+    figures:keyFigures(row,status),
+    weekly:weekly,
+    signals:{families:families,sizes:sizes,growth:growth,
+      alerts:signals.alerts,weights:signals.weights,declines:signals.declines,mission:signals.mission}
+  };
+}
+
 /* ---------------------------------------------------- bloc de la fiche magasin ------ */
 function renderStoreCard(){
   const P=D();if(!P||!root.document)return false;
@@ -280,10 +549,41 @@ function renderStoreCard(){
   if(!card){ensureStyle();card=el('section');card.id=CARD_ID;card.setAttribute('aria-label','Performance du magasin');anchor.insertAdjacentElement('afterend',card)}
   card.replaceChildren();
   const last=history[history.length-1],r=last.row;
-  const head=el('div');head.append(tag(r.prio),el('b','Performance '+last.week));
-  card.append(head);
-  const line=(t)=>card.append(el('span',t,'srPerfCardRow'));
   const st=P.statusOf(r,last.targetPdm);
+  const summary=prioritySummary(r,last.targetPdm);
+
+  /* En tête : la pastille de priorité, puis ce qu'il faut faire. Le titre dit l'action,
+     pas la colonne du classeur. */
+  const head=el('div','','srPerfCardHead');
+  head.append(tag(r.prio),el('b',summary?summary.headline:'Performance'));
+  card.append(head,el('span','Performance '+last.week,'srPerfCardWeek'));
+
+  /* Quatre blocs courts au maximum, chacun omis quand il n'a rien à dire : un bloc vide
+     coûte de la hauteur d'écran sans rien apprendre. */
+  const block=(title,body)=>{
+    if(!body)return;
+    const b=el('div','','srPerfBlock237');
+    b.append(el('span',title,'srPerfBlockTitle237'),el('span',body,'srPerfBlockBody237'));
+    card.append(b);
+  };
+  if(summary){
+    block('Situation',summary.situation);
+    block('À travailler',summary.focus);
+    block('Point positif',summary.positive);
+    block('Action visite',summary.actions.join(' '));
+    const figures=summary.figures.join(' · ');
+    const weekly=summary.weekly&&summary.weekly.reading
+      ? summary.weekly.week+' '+pctSigned(summary.weekly.value)+' · '+summary.weekly.reading:'';
+    if(figures||weekly)block('Tendance',[figures,weekly].filter(Boolean).join('\n'));
+  }
+
+  /* Rien n'est retiré : tout ce que la carte affichait est ici, replié. */
+  const detail=root.document.createElement('details');
+  detail.className='srPerfDetail237';
+  const head2=root.document.createElement('summary');
+  head2.textContent='Voir le détail performance';
+  detail.append(head2);
+  const line=(t)=>detail.append(el('span',t,'srPerfCardRow'));
   line('Statut YTD : '+st.label);
   line('PDM YTD '+pct(r.pdmYtd)+' · cible '+pct(last.targetPdm)+(r.pdmYtd==null?' — pas de PDM dans le fichier':' · écart '+signed(r.deltaYtd)));
   const w=P.weeklyTrend(r);
@@ -300,7 +600,10 @@ function renderStoreCard(){
   line(v&&v.lastVisit?'Dernière visite terminée '+v.lastVisit+' · '+v.count+' visite'+(v.count>1?'s':''):'Aucune visite terminée enregistrée');
   const treated=P.isTreated(db(),last.week,storeId);
   if(treated)line('Marqué traité pour '+last.week+' le '+treated.at);
-  if(r.comment)line('Mission : '+r.comment);
+  const mission=cleanMission(r.comment);
+  if(mission)line('Mission : '+mission);
+  card.append(detail);
+
   card.append(btn('Ouvrir le pilotage performance',open));
   return true;
 }
@@ -324,7 +627,8 @@ function ensureMenuEntry(){
    aucune d'elles ne touche au planning. */
 function install(){ensureStyle();ensureMenuEntry();renderStoreCard();return true}
 
-const api={open,install,importFile,renderStoreCard,visitsFor,suggestedStoreFields};
+const api={open,install,importFile,renderStoreCard,visitsFor,suggestedStoreFields,
+  prioritySummary,parseMission,cleanMission};
 root.StoreRunnerPerformanceUIV190=api;
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){
