@@ -118,6 +118,34 @@ Le workflow `.github/workflows/reliability-checks.yml` vérifie notamment :
 
 Chaque lot fonctionnel doit conserver ces contrôles au vert.
 
+### Suite navigateur en local
+
+La suite navigateur (Playwright, Chromium mobile 390 px) se lance par une seule commande :
+
+```bash
+node tools/run-browser-tests.mjs
+```
+
+Elle démarre le serveur statique de test sur `http://127.0.0.1:4173/`, exécute exactement
+les specs listés dans `.github/workflows/reliability-checks.yml` — la CI et le poste local
+partagent donc la même liste — puis arrête le serveur. La CI lance ce même script.
+
+Prérequis, identiques à la CI :
+
+```bash
+npm install --no-save --no-package-lock @playwright/test@1.55.0
+npx playwright install --with-deps chromium
+```
+
+`node tools/run-browser-tests.mjs <spec>...` limite l'exécution à certains fichiers, et
+`node tools/run-browser-tests.mjs --serve` sert l'application sans lancer de test.
+
+Ne pas servir l'application de test avec `python -m http.server` : ce serveur répond en
+HTTP/1.0, sans keep-alive, avec une file d'écoute de 5 connexions. Le boot de Store Runner
+ouvre une connexion par module ; sur une longue suite, les rafales finissent par être
+refusées et le loader affiche « Erreur de chargement : Failed to fetch » alors que
+l'application n'a aucun défaut.
+
 ## Google Agenda
 
 L’intégration Google utilise un client OAuth Web et le scope Calendar en **lecture seule**. Les jetons restent limités à la session et aucun secret client ne doit être placé dans le navigateur.
