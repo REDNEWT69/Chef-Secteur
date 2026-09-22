@@ -204,6 +204,54 @@ ${source}`
 }
 function cleanAIText(value){let s=text(value);s=s.replace(/^```(?:markdown|md|text)?\s*/i,'').replace(/\s*```$/,'').trim();s=s.replace(/^(?:Voici|Voilà)\s+(?:le|ton|votre)\s+(?:compte rendu|résumé)[^\n]*\n+/i,'').trim();return s}
 let sheet=null,activeVisit='',activeTab='blanc',aiDrafts=Object.create(null),generating=false;
+/* ---------------------------------------------------------------------------
+   V235 — partage photo par lots depuis « Sortie magasin ».
+
+   Android accepte une feuille de partage d'une dizaine de fichiers ; au-delà,
+   `navigator.share` rejette la demande (« Permission denied / Failed to execute
+   share on Navigator ») et le FMT repart sans aucune photo. Un rapport de 31
+   photos BRUN est donc impartageable en un seul appel.
+
+   On découpe en lots de 10 au maximum, et on retient ce qui est réellement parti.
+   La progression vit en mémoire, par `visitId + famille` : Store Runner ne peut
+   pas savoir ce que l'utilisateur fait des fichiers une fois la feuille Android
+   ouverte, donc rien n'est écrit dans IndexedDB ni dans les données métier.
+   Aucune photo n'est modifiée ni supprimée après un partage.
+   --------------------------------------------------------------------------- */
+const SHARE_BATCH_MAX=10;
+const shareProgress=Object.create(null);
+let sharing=false;
+function shareQueueKey(visitId,familyKey){return String(visitId||'')+'|'+String(familyKey||'')}
+function shareFamilyKey(merged){return merged?'merged':activeTab}
+/* Le Set des identifiants déjà partis pour CETTE file. Chaque famille a le sien :
+   passer sur BLANC puis revenir sur BRUN doit reprendre là où BRUN s'était arrêté. */
+function sharedSet(visitId,familyKey){const k=shareQueueKey(visitId,familyKey);return shareProgress[k]||(shareProgress[k]=new Set())}
+/* Ordre déterministe : `createdAt` puis `id`. Jamais l'index du tableau — une photo
+   ajoutée pendant la visite décale tout et ferait repartir un lot déjà envoyé. */
+function orderPhotos(rows){return (Array.isArray(rows)?rows.slice():[]).sort((a,b)=>{const ca=String(a&&a.createdAt||''),cb=String(b&&b.createdAt||'');if(ca!==cb)return ca<cb?-1:1;const ia=String(a&&a.id||''),ib=String(b&&b.id||'');return ia===ib?0:(ia<ib?-1:1)})}
+function pendingPhotos(rows,done){const seen=done||new Set();return orderPhotos(rows).filter(r=>!seen.has(String(r&&r.id)))}
+function nextShareBatch(rows,done,max){const size=Math.max(1,Number(max)||SHARE_BATCH_MAX);return pendingPhotos(rows,done).slice(0,size)}
+/* Appelé UNIQUEMENT après une promesse de partage résolue : une annulation Android
+   (AbortError) ou une erreur réelle laisse la file intacte et reproposera le même lot. */
+function commitSharedBatch(visitId,familyKey,batch){const done=sharedSet(visitId,familyKey);for(const r of (Array.isArray(batch)?batch:[]))if(r&&r.id!=null)done.add(String(r.id));return done}
+/* Le libellé dit toujours ce que CE clic va envoyer, puis ce qu'il restera.
+   Un lot unique garde la formulation historique : « Partager les 2 photos BRUN ».
+   Dès qu'il faut plusieurs lots, le bouton annonce la découpe. */
+function shareButtonLabel(total,remaining,batch,merged,family){
+  const FAM=merged?'':' '+String(family||'').toUpperCase();
+  if(!total)return merged?'Aucune photo pour ce magasin.':'Aucune photo pour cette famille.';
+  if(!remaining)return 'Toutes les photos'+FAM+' ont été partagées';
+  if(remaining===total&&batch===total)return total===1?'Partager la photo'+FAM:'Partager les '+total+' photos'+FAM;
+  if(remaining===total)return 'Partager '+batch+' / '+total+' photo'+(total>1?'s':'')+FAM;
+  if(remaining===1)return 'Partager la dernière photo'+FAM;
+  return 'Partager les '+batch+' suivantes · '+remaining+' restantes';
+}
+function shareState(rows,merged){
+  const list=Array.isArray(rows)?rows:[],v=visitById(activeVisit);
+  const done=v?sharedSet(v.id,shareFamilyKey(merged)):new Set();
+  const reste=pendingPhotos(list,done),batch=Math.min(SHARE_BATCH_MAX,reste.length);
+  return {total:list.length,remaining:reste.length,batch,done};
+}
 function el(tag,txt,cls){const n=root.document.createElement(tag);if(txt!==undefined)n.textContent=txt;if(cls)n.className=cls;return n}
 function btn(txt,fn,cls){const b=el('button',txt,cls||'sr-reportBtn');b.type='button';b.addEventListener('click',fn);return b}
 function state(){return root.state||{}}
@@ -214,8 +262,14 @@ function draftKey(v,skeleton){return v.id+':'+(MERGED[skeleton]?'merged':activeT
 function currentDraftKey(){const v=visitById(activeVisit);if(!v)return'';return draftKey(v,skeletonFor(storeOf(state(),v).enseigne))}
 function ensureStyle(){if(!root.document||root.document.getElementById('sr-report-style'))return;const s=el('style');s.id='sr-report-style';s.textContent='#'+SHEET_ID+'{box-sizing:border-box;width:min(720px,calc(100vw - 20px));max-width:calc(100vw - 20px);max-height:calc(100dvh - 20px);overflow:auto;padding:16px;border-radius:24px;border:1px solid #d9dce3;background:#fff;color:#1d1d1f}#'+SHEET_ID+'::backdrop{background:rgba(17,24,39,.45)}.sr-reportHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.sr-reportHead h2{margin:0;font-size:20px}.sr-reportHead p{margin:4px 0 0;color:#667085;font-size:12px}.sr-reportTabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 8px}.sr-reportTab{min-height:44px;border:1px solid #d3d9e3;border-radius:13px;background:#f4f6fa;color:#454b56;font-weight:800;font-size:12px}.sr-reportTab[aria-selected=true]{background:#1428a0;border-color:#1428a0;color:#fff}#srReportText{width:100%;box-sizing:border-box;min-height:300px;border:1px solid #d9dee8;border-radius:14px;padding:10px;font:400 12px ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.45;background:#fbfcff;color:#1d1d1f;-webkit-text-fill-color:#1d1d1f;resize:vertical}#srReportText:not([readonly]){background:#fff;border-color:#8eb6ff;box-shadow:0 0 0 3px rgba(20,40,160,.08)}.sr-reportStatus{min-height:18px;font-size:12px;color:#315b9d;margin:8px 0}.sr-reportStatus.sr-reportError{color:#b42318}.sr-reportActions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px}.sr-reportBtn{min-height:48px;border-radius:14px;font-weight:800}.sr-reportAI{background:linear-gradient(180deg,#1428a0,#0f1f7d);color:#fff;border:0}.sr-reportAI:disabled{opacity:.62}.sr-reportEdit{background:#fff;color:#1428a0;border:1px solid #ccd4ef}.sr-reportCopy{background:#1428a0;color:#fff;border:0}.sr-reportPhotos{background:#eef0f4;color:#1d1d1f;border:0}.sr-reportPhotos:disabled{opacity:.55}.sr-reportClose{background:#eef0f4;color:#1d1d1f;border:0}#'+VISIT_BTN_ID+',#'+QUICK_BTN_ID+'{min-height:44px}';root.document.head.appendChild(s)}
 function ensureSheet(){if(sheet)return sheet;if(!root.document)return null;ensureStyle();sheet=el('dialog');sheet.id=SHEET_ID;sheet.setAttribute('aria-labelledby','srReportTitle');sheet.innerHTML='<div class="sr-reportHead"><div><h2 id="srReportTitle">Sortie magasin</h2><p id="srReportSubtitle"></p></div></div><div id="srReportTabs" class="sr-reportTabs"></div><textarea id="srReportText" rows="18" readonly aria-label="Compte rendu à copier"></textarea><p id="srReportStatus" class="sr-reportStatus" role="status"></p><div class="sr-reportActions"></div>';const actions=sheet.querySelector('.sr-reportActions'),ai=btn('✨ Générer avec l’IA',generateAI,'sr-reportBtn sr-reportAI'),edit=btn('Modifier le texte',toggleEdit,'sr-reportBtn sr-reportEdit'),copyBtn=btn('Copier le compte rendu',copy,'sr-reportBtn sr-reportCopy'),share=btn('Aucune photo pour ce magasin.',sharePhotos,'sr-reportBtn sr-reportPhotos');ai.id=AI_BTN_ID;edit.id=EDIT_BTN_ID;share.id=SHARE_BTN_ID;share.disabled=true;actions.append(ai,edit,copyBtn,share,btn('Fermer',close,'sr-reportBtn sr-reportClose'));const area=sheet.querySelector('#srReportText');area.addEventListener('input',()=>{const k=area.dataset.draftKey;if(k&&!area.readOnly)aiDrafts[k]=area.value});sheet.addEventListener('cancel',e=>{e.preventDefault();close()});root.document.body.appendChild(sheet);return sheet}
-async function photosFor(storeId,family,merged){const api=root.StorePhotosV1;if(!api)return [];try{if(merged&&typeof api.list==='function')return await api.list(storeId);if(typeof api.listByFamily==='function')return await api.listByFamily(storeId,family);return []}catch(e){return []}}
-function updatePhotoButton(photos,merged){const b=sheet&&sheet.querySelector('#'+SHARE_BTN_ID);if(!b)return;b.hidden=false;const n=Array.isArray(photos)?photos.length:0;b.disabled=!n;if(merged){b.textContent=n?(n===1?'Partager la photo':'Partager les '+n+' photos'):'Aucune photo pour ce magasin.';return}const FAM=activeTab.toUpperCase();b.textContent=n?(n===1?'Partager la photo '+FAM:'Partager les '+n+' photos '+FAM):'Aucune photo pour cette famille.'}
+/* V235 — une photo sans famille n'appartient plus ni à BRUN ni à BLANC : reprise dans
+   les deux, elle produisait un doublon entre les deux comptes rendus et entre les lots
+   de partage. `listStrictByFamily` est la lecture dédiée ; si un module plus ancien est
+   encore en cache, on refiltre nous-mêmes plutôt que de réintroduire les non classées.
+   Le magasin fusionné (cuisinistes, buying groups) garde un seul compte rendu et lit
+   donc toutes les photos du magasin. */
+async function photosFor(storeId,family,merged){const api=root.StorePhotosV1;if(!api)return [];try{if(merged&&typeof api.list==='function')return await api.list(storeId);if(typeof api.listStrictByFamily==='function')return await api.listStrictByFamily(storeId,family);if(typeof api.listByFamily==='function'){const rows=await api.listByFamily(storeId,family);return rows.filter(r=>String(r&&r.family||'')===String(family||''))}return []}catch(e){return []}}
+function updatePhotoButton(photos,merged){const b=sheet&&sheet.querySelector('#'+SHARE_BTN_ID);if(!b)return;b.hidden=false;const st=shareState(photos,merged);b.disabled=!st.total||!st.remaining;b.textContent=shareButtonLabel(st.total,st.remaining,st.batch,merged,activeTab)}
 function updateAIButton(merged){const b=sheet&&sheet.querySelector('#'+AI_BTN_ID);if(!b)return;b.textContent=merged?'✨ Générer le compte rendu':'✨ Générer le résumé '+activeTab.toUpperCase()}
 function updateEditButton(){const area=sheet&&sheet.querySelector('#srReportText'),b=sheet&&sheet.querySelector('#'+EDIT_BTN_ID);if(!area||!b)return;b.textContent=area.readOnly?'Modifier le texte':'Terminer la modification'}
 async function refresh(){const v=visitById(activeVisit);if(!v){say('Visite introuvable.',true);return}const store=storeOf(state(),v),skeleton=skeletonFor(store.enseigne),merged=!!MERGED[skeleton];sheet.querySelector('#srReportSubtitle').textContent=text(store.enseigne)+' '+text(store.ville)+' · '+visitDate(v)+(merged?' · un seul compte rendu':' · deux comptes rendus');const tabs=sheet.querySelector('#srReportTabs');tabs.replaceChildren();tabs.hidden=merged;if(!merged){const M=model();for(const family of M.FAMILIES){const b=btn(family.toUpperCase(),()=>{activeTab=family;say('');refresh()},'sr-reportTab');b.setAttribute('role','tab');b.setAttribute('aria-selected',activeTab===family?'true':'false');b.dataset.family=family;tabs.append(b)}}const photos=await photosFor(v.storeId,activeTab,merged),key=draftKey(v,skeleton),area=sheet.querySelector('#srReportText');area.dataset.draftKey=key;area.readOnly=true;area.value=Object.prototype.hasOwnProperty.call(aiDrafts,key)?aiDrafts[key]:build(state(),v.id,activeTab,photos);updatePhotoButton(photos,merged);updateAIButton(merged);updateEditButton()}
@@ -230,7 +284,43 @@ function toggleEdit(){const area=sheet&&sheet.querySelector('#srReportText');if(
 async function generateAI(){const v=visitById(activeVisit);if(!v){say('Visite introuvable.',true);return false}
  if(generating){say('Génération déjà en cours, patiente quelques secondes.');return false}const store=storeOf(state(),v),skeleton=skeletonFor(store.enseigne),merged=!!MERGED[skeleton],button=sheet&&sheet.querySelector('#'+AI_BTN_ID),area=sheet&&sheet.querySelector('#srReportText');if(typeof root.callAIGateway!=='function'||!root.aiConfig||!root.aiConfig.gateway){say('IA en ligne indisponible. Le rapport local reste utilisable et modifiable.',true);return false}const oldLabel=button&&button.textContent;generating=true;if(button){button.disabled=true;button.textContent='✨ Génération en cours…'}say('Génération du compte rendu à partir de tes seules notes terrain…');try{const photos=await photosFor(v.storeId,activeTab,merged),payload=buildAIPayload(state(),v.id,activeTab,photos),key=draftKey(v,skeleton);const response=await root.callAIGateway({mode:'assistant',message:aiPrompt(payload),context:{task:'visit_report',visit:payload}}),generated=cleanAIText(response&&response.text);if(!generated||generated.length<80)throw new Error('réponse trop courte');if(skeleton==='grands-magasins'&&!/^(?:⚫|⚪)?\s*Résumé\s+(BRUN|BLANC)\b/i.test(generated))throw new Error('format de résumé inattendu');if(skeleton==='grands-magasins'&&!/(?:Formation|Plan d[’']action)\s*\/\s*prochain passage/i.test(generated))throw new Error('bloc plan d’action / prochain passage manquant');aiDrafts[key]=generated;if(area){area.dataset.draftKey=key;area.value=generated;area.readOnly=true}updateEditButton();say((merged?'Compte rendu':'Résumé '+activeTab.toUpperCase())+(response&&response.repaired?' généré après une réparation automatique.':' généré.')+' Relis-le, corrige si besoin, puis copie-le dans Slack.');return true}catch(e){say('IA indisponible ou réponse incomplète : '+(e&&e.message?e.message:String(e))+'. Le rapport local est conservé.',true);return false}finally{generating=false;if(button){button.disabled=false;button.textContent=oldLabel||'✨ Générer avec l’IA';updateAIButton(merged)}}}
 async function copy(){const area=sheet&&sheet.querySelector('#srReportText');if(!area)return false;try{if(root.navigator&&root.navigator.clipboard&&root.navigator.clipboard.writeText){await root.navigator.clipboard.writeText(area.value);say('Compte rendu copié.');return true}}catch(e){}const wasReadonly=area.readOnly;try{area.readOnly=false;area.select();const ok=root.document.execCommand&&root.document.execCommand('copy');area.readOnly=wasReadonly;if(ok){say('Compte rendu copié.');return true}}catch(e){area.readOnly=wasReadonly}say('Copie impossible ici. Sélectionne le texte et copie-le à la main.',true);return false}
-async function sharePhotos(){const v=visitById(activeVisit);if(!v){say('Visite introuvable.',true);return false}const store=storeOf(state(),v),skeleton=skeletonFor(store.enseigne),merged=!!MERGED[skeleton],api=root.StorePhotosV1;if(!api||typeof api.shareRecords!=='function'||(!merged&&typeof api.listByFamily!=='function')||(merged&&typeof api.list!=='function')){say('Partage photo indisponible ici. Ouvre Photos magasin pour les télécharger une par une.',true);return false}const rows=await photosFor(v.storeId,activeTab,merged);updatePhotoButton(rows,merged);const area=sheet&&sheet.querySelector('#srReportText'),key=currentDraftKey();if(area&&!Object.prototype.hasOwnProperty.call(aiDrafts,key))area.value=build(state(),v.id,activeTab,rows);if(!rows.length){say(merged?'Aucune photo pour ce magasin.':'Aucune photo pour cette famille.');return false}try{const result=await api.shareRecords(rows);if(result==='shared'){say(rows.length+' photo'+(rows.length>1?'s':'')+(merged?'':' '+activeTab.toUpperCase())+' partagée'+(rows.length>1?'s':'')+'.');return true}if(result==='downloaded'){say('Photo téléchargée.');return true}say('Partage de plusieurs fichiers indisponible ici. Ouvre Photos magasin pour les télécharger une par une.',true);return false}catch(e){if(e&&e.name==='AbortError'){say('Partage annulé.');return false}say('Partage impossible : '+(e.message||String(e))+'. Ouvre Photos magasin pour les télécharger une par une.',true);return false}}
+/* V235 — un lot à la fois, et la progression n'avance qu'après une promesse résolue.
+   `navigator.share` rejette avec `AbortError` quand l'utilisateur referme la feuille
+   Android : ce n'est pas un envoi, le même lot doit être reproposé au clic suivant.
+   Le verrou `sharing` empêche un double tap d'ouvrir deux feuilles sur le même lot. */
+async function sharePhotos(){const v=visitById(activeVisit);if(!v){say('Visite introuvable.',true);return false}
+ if(sharing){say('Partage déjà en cours, termine la feuille ouverte.');return false}
+ const store=storeOf(state(),v),skeleton=skeletonFor(store.enseigne),merged=!!MERGED[skeleton],api=root.StorePhotosV1;
+ if(!api||typeof api.shareRecords!=='function'||(!merged&&typeof api.listStrictByFamily!=='function'&&typeof api.listByFamily!=='function')||(merged&&typeof api.list!=='function')){say('Partage photo indisponible ici. Ouvre Photos magasin pour les télécharger une par une.',true);return false}
+ const familyKey=shareFamilyKey(merged),FAM=merged?'':' '+activeTab.toUpperCase();
+ sharing=true;
+ try{
+  const rows=await photosFor(v.storeId,activeTab,merged);
+  updatePhotoButton(rows,merged);
+  const area=sheet&&sheet.querySelector('#srReportText'),key=currentDraftKey();
+  if(area&&!Object.prototype.hasOwnProperty.call(aiDrafts,key))area.value=build(state(),v.id,activeTab,rows);
+  if(!rows.length){say(merged?'Aucune photo pour ce magasin.':'Aucune photo pour cette famille.');return false}
+  const done=sharedSet(v.id,familyKey),batch=nextShareBatch(rows,done,SHARE_BATCH_MAX);
+  if(!batch.length){say('Toutes les photos'+FAM+' ont été partagées');return false}
+  try{
+   const result=await api.shareRecords(batch);
+   if(result==='shared'||result==='downloaded'){
+    commitSharedBatch(v.id,familyKey,batch);
+    updatePhotoButton(rows,merged);
+    const reste=pendingPhotos(rows,done).length;
+    if(result==='downloaded')say('Photo téléchargée.');
+    else say(batch.length+' photo'+(batch.length>1?'s':'')+FAM+' partagée'+(batch.length>1?'s':'')+(reste?' · '+reste+' restante'+(reste>1?'s':''):' · c’était la dernière'));
+    return true;
+   }
+   say('Partage impossible sur cet appareil. Réessaie ce lot ou ouvre Photos magasin.',true);
+   return false;
+  }catch(e){
+   if(e&&e.name==='AbortError'){say('Partage annulé.');return false}
+   say('Partage impossible sur cet appareil. Réessaie ce lot ou ouvre Photos magasin.',true);
+   return false;
+  }
+ }finally{sharing=false}
+}
 function close(){if(sheet&&sheet.open)sheet.close()}
 async function open(visitId){const v=visitById(String(visitId||''));if(!v)return false;ensureSheet();activeVisit=v.id;const M=model();activeTab=M&&M.FAMILIES.indexOf(v.activeFamily)>=0?v.activeFamily:'brun';say('');if(typeof sheet.showModal==='function'&&!sheet.open)sheet.showModal();else sheet.setAttribute('open','');await refresh();return true}
 function fromVisitDialog(){const api=root.StoreRunnerVisits,id=api&&typeof api.activeVisitId==='function'?api.activeVisitId():'';if(!id)return false;open(id);return true}

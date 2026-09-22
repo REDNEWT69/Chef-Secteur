@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'235',
+      title:'Partage photo amélioré',
+      items:[
+        'Les photos BRUN et BLANC sont maintenant triées automatiquement et partagées par lots de 10, sans doublons.',
+        'Une photo sans famille n’est plus comptée à la fois dans BRUN et dans BLANC : elle reste à part.',
+        'Le bouton indique ce qu’il envoie et ce qu’il reste : « Partager les 10 suivantes · 21 restantes ».',
+        'Si tu refermes la fenêtre de partage d’Android, rien n’est perdu : le même lot est reproposé au clic suivant.'
+      ]
+    },
+    {
       version:'234',
       title:'Un démarrage plus rapide et plus fluide',
       items:[

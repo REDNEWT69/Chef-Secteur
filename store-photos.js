@@ -152,6 +152,14 @@ async function listByVisitId(visitId){
   return rows;
 }
 async function listByFamily(storeId,family){const rows=await list(storeId);return rows.filter(r=>{const f=String(r&&r.family||'');return !f||f===String(family||'')})}
+/* V235 — lecture STRICTE par famille, pour le partage et le reporting.
+   `listByFamily` rend volontairement les photos non étiquetées aux deux familles :
+   la galerie et l'affichage historique en dépendent, son contrat ne bouge pas.
+   Mais un partage « Sortie magasin » qui reprend ces photos les envoie deux fois,
+   une fois dans le lot BRUN et une fois dans le lot BLANC. Ici, seule une famille
+   explicitement posée compte : une photo sans famille n'appartient à aucun lot.
+   Aucun enregistrement n'est modifié — c'est une lecture, pas une migration. */
+async function listStrictByFamily(storeId,family){const target=String(family||'');if(!target)return [];const rows=await list(storeId);return rows.filter(r=>String(r&&r.family||'')===target)}
 function clearUrls(){for(const url of objectUrls)try{URL.revokeObjectURL(url)}catch(e){}objectUrls=[]}
 function blobUrl(blob){const url=URL.createObjectURL(blob);objectUrls.push(url);return url}
 function el(tag,text,cls){const node=root.document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node}
@@ -333,7 +341,7 @@ function installQuickButton(){
 }
 function boot(){ensureDialog();installQuickButton()}
 
-const api={DB_NAME,STORE,MAX_EDGE,safePart,scaleSize,defaultSelection,shareFileName,openDb,list,listByFamily,listByVisitId,addPhoto,removeRecord,updateNote,updateTags,open,render,shareRecords,installQuickButton,moveRecords,visitStoreId,keepsVisitLink,movableStores,openMoveDialog,closeMoveDialog,confirmMove,renderMoveList,syncMoveButton};
+const api={DB_NAME,STORE,MAX_EDGE,safePart,scaleSize,defaultSelection,shareFileName,openDb,list,listByFamily,listStrictByFamily,listByVisitId,addPhoto,removeRecord,updateNote,updateTags,open,render,shareRecords,installQuickButton,moveRecords,visitStoreId,keepsVisitLink,movableStores,openMoveDialog,closeMoveDialog,confirmMove,renderMoveList,syncMoveButton};
 root.StorePhotosV1=api;
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();root.document.addEventListener('store-runner:data-restored',installQuickButton);root.document.addEventListener('store-runner:planning-updated',installQuickButton)}
