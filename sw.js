@@ -1,4 +1,4 @@
-const BUILD_REV = "20260922-rotation-memory-escargot243";
+const BUILD_REV = "20260922-pwa-auto-apply244";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -97,6 +97,11 @@ self.addEventListener('activate', event => {
 });
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
+  // V244 : update-manager.js demande la révision servie pour savoir si un simple
+  // rechargement suffit (worker déjà à jour, page restée sur l'ancienne version).
+  if (event.data && event.data.type === 'GET_BUILD_REV' && event.ports && event.ports[0]) {
+    event.ports[0].postMessage({type:'BUILD_REV', buildRev: BUILD_REV});
+  }
 });
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);

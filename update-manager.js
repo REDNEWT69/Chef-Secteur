@@ -147,7 +147,7 @@
     if(install)install.disabled=state.status==='installing';
     if(status){
       if(state.status==='checking')status.textContent='Recherche de mise à jour…';
-      else if(state.status==='installing')status.textContent='Installation de la nouvelle version…';
+      else if(state.status==='installing')status.textContent='Mise à jour en cours…';
       else if(available)status.textContent='Version '+(state.displayVersion||displayVersion(state.latest))+' disponible.';
       else if(state.error)status.textContent='Impossible de vérifier maintenant. La version installée reste utilisable hors ligne.';
       else status.textContent='À jour · Version '+displayVersion(state.current)+'.';
@@ -161,12 +161,19 @@
     return{latestBuild:latest,displayVersion:String(data.displayVersion||displayVersion(latest))};
   }
 
+  async function fetchManifest(){
+    const response=await fetch(VERSION_URL+'?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+    if(!response.ok)throw new Error('HTTP '+response.status);
+    return parseManifest(await response.json());
+  }
+
   async function checkForUpdates(silent){
+    /* Une vérification silencieuse (retour au premier plan) n'écrase pas l'état d'une
+       installation en cours. */
+    if(silent&&applying)return{available:state.latest!==state.current,current:state.current,latest:state.latest};
     if(!silent){state.status='checking';state.error=null;render()}
     try{
-      const response=await fetch(VERSION_URL+'?ts='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
-      if(!response.ok)throw new Error('HTTP '+response.status);
-      const manifest=parseManifest(await response.json());
+      const manifest=await fetchManifest();
       state.latest=manifest.latestBuild;
       state.displayVersion=manifest.displayVersion;
       state.lastCheckedAt=Date.now();
@@ -190,59 +197,225 @@
     }
   }
 
+  /* V244 — Appliquer une mise à jour sans fermer puis rouvrir l'application.
+     Avant : le module attendait la prise de contrôle 3,5 s au plus. Sur Android, le
+     nouveau worker précharge ~75 fichiers pendant install() — souvent plus long que
+     ça sur réseau mobile. L'écouteur était retiré, le bandeau demandait de fermer et
+     rouvrir, et le worker finissait par s'activer sur une page restée l'ancienne.
+     Maintenant : on attend réellement que le nouveau worker soit installé, on
+     l'active, et on ne recharge qu'au controllerchange — quand il contrôle la page.
+     Le rechargement est borné par un marqueur de session {from,to} : au plus un
+     rechargement automatique par couple de versions, nettoyé dès que la nouvelle
+     version tourne ou au bout de APPLY_MARKER_TTL. Aucune donnée locale n'est touchée :
+     seuls les fichiers de l'application changent, via le cache du service worker. */
+  const APPLY_MARKER_KEY='store-runner-update-apply';
+  const APPLY_MARKER_TTL=5*60*1000;
+  const INSTALL_TIMEOUT=120000;
+  const ACTIVATE_TIMEOUT=15000;
+  const NO_UPDATE_GRACE=2500;
+  const RELOAD_DELAY=350;
+  let applying=null;
+  let reloadScheduled=false;
+
+  function session(){
+    try{return window.sessionStorage||null}catch(e){return null}
+  }
+
+  function readApplyMarker(){
+    const s=session();if(!s)return null;
+    try{const m=JSON.parse(s.getItem(APPLY_MARKER_KEY)||'null');return m&&typeof m==='object'?m:null}catch(e){return null}
+  }
+
+  function clearApplyMarker(){
+    const s=session();if(!s)return;
+    try{s.removeItem(APPLY_MARKER_KEY)}catch(e){}
+  }
+
+  function writeApplyMarker(target){
+    const s=session();if(!s)return;
+    try{s.setItem(APPLY_MARKER_KEY,JSON.stringify({from:currentBuild,to:target,at:Date.now()}))}catch(e){}
+  }
+
+  function markerFresh(m){
+    return !!(m&&Number(m.at)>0&&Date.now()-Number(m.at)<=APPLY_MARKER_TTL);
+  }
+
+  /* Au démarrage : la nouvelle version tourne → marqueur retiré ; périmé ou sans rapport
+     → retiré aussi. Il ne reste que s'il décrit un rechargement récent revenu sur
+     l'ancienne version : c'est lui qui empêche d'en relancer un deuxième. */
+  function settleApplyMarker(){
+    const m=readApplyMarker();
+    if(!m)return null;
+    if(m.to===currentBuild){clearApplyMarker();return 'applied'}
+    if(m.from!==currentBuild||!markerFresh(m)){clearApplyMarker();return null}
+    return 'stale';
+  }
+
+  function reloadAlreadyTried(target){
+    const m=readApplyMarker();
+    return !!(m&&m.from===currentBuild&&m.to===target&&markerFresh(m));
+  }
+
   function reloadNow(){
     try{
       if(window.location&&typeof window.location.reload==='function'){window.location.reload();return true}
+      if(window.location&&typeof window.location.replace==='function'){window.location.replace(window.location.href);return true}
     }catch(e){}
     return false;
   }
 
-  async function installUpdate(){
-    if(!('serviceWorker' in navigator)){
-      state.error=new Error('Service Worker indisponible');render();return false;
+  function stickyBanner(title,detail,actionLabel,handler){
+    const banner=setBanner(title,detail,actionLabel,handler);
+    if(banner)banner.dataset.sticky='1';
+    return banner;
+  }
+
+  function scheduleReload(target){
+    if(reloadScheduled)return true;
+    if(reloadAlreadyTried(target)){
+      window.__storeRunnerUpdateApplying=false;
+      state.status='ready';render();
+      setBanner('Nouvelle version pas encore servie','Le rechargement a rouvert l’ancienne version. Réessaie dans quelques minutes.','Réessayer',installUpdate,6000);
+      return false;
     }
-    state.status='installing';state.error=null;render();
-    const banner=setBanner('Installation en cours','Store Runner prépare la nouvelle version…',null,null);
-    banner.dataset.sticky='1';
-    try{
-      const registration=await navigator.serviceWorker.getRegistration();
-      if(!registration)throw new Error('Service Worker non enregistré');
-      let changed=false;
-      /* Le rechargement appartient à ce module, pas au bootloader. Le garde-fou
-         'store-runner-sw-reload:' d'index.html est indexé sur le BUILD_REV de la page
-         chargée, donc sur l'ancienne révision : une fois posé par le clients.claim()
-         initial, il bloque tous les controllerchange suivants de la session. Ici on sait
-         que la prise de contrôle est volontaire — l'utilisateur vient d'appuyer — donc on
-         recharge sans borne, autant de fois qu'il y a de mises à jour dans la session. */
-      const onControllerChange=function(){
-        changed=true;
-        const done=setBanner('Mise à jour installée','Store Runner recharge la nouvelle version…',null,null);
-        if(done)done.dataset.sticky='1';
-        window.setTimeout(function(){
-          if(reloadNow())return;
-          const manual=setBanner('Mise à jour installée','Ferme et rouvre Store Runner pour l’appliquer.',null,null);
-          if(manual)manual.dataset.sticky='1';
-        },350);
+    reloadScheduled=true;
+    window.__storeRunnerUpdateApplying=true;
+    writeApplyMarker(target);
+    stickyBanner('Mise à jour installée','Store Runner recharge la nouvelle version…',null,null);
+    window.setTimeout(function(){
+      if(reloadNow())return;
+      reloadScheduled=false;
+      clearApplyMarker();
+      window.__storeRunnerUpdateApplying=false;
+      state.status='ready';render();
+      stickyBanner('Mise à jour installée','Recharge Store Runner pour ouvrir la nouvelle version.','Recharger',reloadNow);
+    },RELOAD_DELAY);
+    return true;
+  }
+
+  function delay(ms){return new Promise(function(resolve){window.setTimeout(resolve,ms)})}
+
+  /* Attend un worker « installed » (donc registration.waiting). Couvre les trois
+     départs possibles : déjà en attente, en cours d'installation, ou découvert par
+     l'update() qu'on vient de lancer (updatefound). Si update() n'a rien trouvé, on
+     ne laisse qu'un court délai à un updatefound tardif avant de conclure. */
+  function waitForWaitingWorker(registration,timeoutMs){
+    return new Promise(function(resolve){
+      let done=false,timer=null;
+      const watched=[];
+      const arm=function(ms){if(timer)window.clearTimeout(timer);timer=window.setTimeout(function(){finish(registration.waiting||null)},ms)};
+      const onFound=function(){arm(timeoutMs);watch(registration.installing)};
+      const finish=function(worker){
+        if(done)return;done=true;
+        if(timer)window.clearTimeout(timer);
+        try{if(typeof registration.removeEventListener==='function')registration.removeEventListener('updatefound',onFound)}catch(e){}
+        resolve(worker||null);
       };
-      navigator.serviceWorker.addEventListener('controllerchange',onControllerChange,{once:true});
-      await registration.update();
-      if(registration.waiting)registration.waiting.postMessage({type:'SKIP_WAITING'});
-      if(registration.installing){
-        registration.installing.addEventListener('statechange',function(){
-          if(registration.waiting)registration.waiting.postMessage({type:'SKIP_WAITING'});
+      const watch=function(worker){
+        if(!worker||watched.indexOf(worker)>=0||typeof worker.addEventListener!=='function')return;
+        watched.push(worker);
+        worker.addEventListener('statechange',function(){
+          if(registration.waiting)return finish(registration.waiting);
+          if(worker.state==='redundant'){
+            if(registration.installing&&registration.installing!==worker)watch(registration.installing);
+            else finish(null);
+          }
+        });
+      };
+      if(registration.waiting)return finish(registration.waiting);
+      if(typeof registration.addEventListener==='function')registration.addEventListener('updatefound',onFound);
+      watch(registration.installing);
+      arm(registration.installing?timeoutMs:Math.min(timeoutMs,NO_UPDATE_GRACE));
+    });
+  }
+
+  /* Demande au worker la révision qu'il sert. Un worker antérieur à V244 ne répond pas :
+     null, et on ne suppose rien. */
+  function askWorkerBuild(worker){
+    return new Promise(function(resolve){
+      if(!worker||typeof worker.postMessage!=='function'||typeof MessageChannel!=='function')return resolve(null);
+      let done=false;
+      const finish=function(v){if(!done){done=true;resolve(v)}};
+      try{
+        const channel=new MessageChannel();
+        channel.port1.onmessage=function(e){finish(e&&e.data&&e.data.buildRev?String(e.data.buildRev):null)};
+        worker.postMessage({type:'GET_BUILD_REV'},[channel.port2]);
+      }catch(e){return finish(null)}
+      window.setTimeout(function(){finish(null)},1500);
+    });
+  }
+
+  function installUpdate(){
+    if(reloadScheduled)return Promise.resolve(true);
+    if(applying)return applying;
+    applying=applyUpdate().then(function(result){applying=null;return result},function(){applying=null;return false});
+    return applying;
+  }
+
+  async function applyUpdate(){
+    state.status='installing';state.error=null;render();
+    stickyBanner('Mise à jour en cours…','Store Runner télécharge la nouvelle version.',null,null);
+    let manifest=null;
+    try{manifest=await fetchManifest()}catch(error){
+      state.error=error;state.status='ready';render();
+      setBanner('Mise à jour impossible','Connexion indisponible ou version pas encore propagée.','Réessayer',installUpdate,4200);
+      return false;
+    }
+    state.latest=manifest.latestBuild;state.displayVersion=manifest.displayVersion;state.lastCheckedAt=Date.now();
+    const target=state.latest;
+    if(target===state.current){
+      state.status='ready';render();
+      setBanner('Store Runner est à jour','Version '+displayVersion(state.current)+' installée.',null,null,2600);
+      return false;
+    }
+    render();
+    /* Sans service worker, aucune ancienne copie ne s'interpose : un rechargement suffit. */
+    const sw=('serviceWorker' in navigator)?navigator.serviceWorker:null;
+    if(!sw)return scheduleReload(target);
+    let registration=null;
+    try{registration=await sw.getRegistration()}catch(e){registration=null}
+    if(!registration)return scheduleReload(target);
+
+    /* À partir d'ici le rechargement appartient à ce module : le garde-fou du bootloader
+       (index.html) s'efface pour qu'un seul rechargement parte. */
+    window.__storeRunnerUpdateApplying=true;
+    let controlled=false,resolveControlled=null;
+    const controlledPromise=new Promise(function(resolve){resolveControlled=resolve});
+    const onControllerChange=function(){controlled=true;resolveControlled(true)};
+    sw.addEventListener('controllerchange',onControllerChange);
+    const cleanup=function(){
+      try{sw.removeEventListener('controllerchange',onControllerChange)}catch(e){}
+      if(!reloadScheduled)window.__storeRunnerUpdateApplying=false;
+    };
+    try{
+      try{await registration.update()}catch(error){if(!registration.waiting&&!registration.installing)throw error}
+      const worker=controlled?null:await Promise.race([waitForWaitingWorker(registration,INSTALL_TIMEOUT),controlledPromise.then(function(){return null})]);
+      if(controlled){cleanup();return scheduleReload(target)}
+      if(!worker){
+        /* Aucun worker en attente : soit le worker actif sert déjà la nouvelle version
+           (page restée ancienne), soit la page n'est pas contrôlée — dans les deux cas le
+           rechargement ouvre la bonne version. Sinon le serveur ne la publie pas encore. */
+        const activeBuild=sw.controller?await askWorkerBuild(sw.controller):null;
+        cleanup();
+        if(!sw.controller||activeBuild===target)return scheduleReload(target);
+        state.status='ready';render();
+        setBanner('Nouvelle version pas encore prête','Le téléchargement n’a pas abouti. Réessaie dans quelques minutes.','Réessayer',installUpdate,6000);
+        return false;
+      }
+      if(typeof worker.addEventListener==='function'){
+        worker.addEventListener('statechange',function(){
+          if(worker.state==='activated'&&sw.controller===worker)onControllerChange();
         });
       }
-      window.setTimeout(function(){
-        if(changed)return;
-        /* Sans prise de contrôle il n'y a pas de rechargement : on retire l'écouteur pour
-           qu'il ne s'accumule pas d'un essai à l'autre, et on annonce ce qui se passe
-           réellement au lieu de promettre un rechargement qui n'aura pas lieu. */
-        try{navigator.serviceWorker.removeEventListener('controllerchange',onControllerChange)}catch(e){}
-        state.status='ready';render();
-        setBanner('Mise à jour prête','Ferme et rouvre Store Runner pour l’appliquer.','Vérifier',function(){checkForUpdates(false)},4200);
-      },3500);
-      return true;
+      worker.postMessage({type:'SKIP_WAITING'});
+      const ok=await Promise.race([controlledPromise,delay(ACTIVATE_TIMEOUT).then(function(){return controlled})]);
+      cleanup();
+      if(ok)return scheduleReload(target);
+      state.status='ready';render();
+      setBanner('Mise à jour presque prête','La nouvelle version est téléchargée mais pas encore activée.','Réessayer',installUpdate,6000);
+      return false;
     }catch(error){
+      cleanup();
       state.error=error;state.status='ready';render();
       setBanner('Mise à jour impossible','Connexion indisponible ou version pas encore propagée.','Réessayer',installUpdate,4200);
       return false;
@@ -257,10 +430,11 @@
     if(previous===currentBuild)return;
     const title=previous?'Mise à jour Store Runner installée':'Store Runner est à jour';
     const detail='Version '+displayVersion(currentBuild)+' installée.';
-    window.setTimeout(function(){setBanner(title,detail,null,null,3600)},700);
+    window.setTimeout(function(){if(applying||reloadScheduled)return;setBanner(title,detail,null,null,3600)},700);
   }
 
   function start(){
+    settleApplyMarker();
     css();
     ensureMenuEntry();
     window.setTimeout(ensureMenuEntry,80);
