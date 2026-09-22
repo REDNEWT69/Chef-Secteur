@@ -55,6 +55,49 @@ function compactContext(context) {
   };
 }
 
+// ---------------------------------------------------------------------------------
+// V238 — taxonomie d'échec des fournisseurs IA.
+//
+// Jusqu'ici tout finissait en `Error` nue. « Réponse IA vide. » couvrait donc aussi bien
+// « aucun moteur n'est configuré » que « les deux moteurs ont répondu 200 sans produire
+// un seul caractère » : le terrain ne pouvait pas les distinguer, et le client ne pouvait
+// pas décider si une seconde tentative avait un sens.
+//
+// Les diagnostics transportés sont volontairement non sensibles — fournisseur, modèle,
+// finishReason, longueur du texte, repli utilisé, code interne. JAMAIS une note terrain,
+// jamais le prompt, jamais la charge utile.
+const AI_NO_PROVIDER = 'ai_no_provider';
+const AI_PROVIDER_UNAVAILABLE = 'ai_provider_unavailable';
+const AI_EMPTY_RESPONSE = 'ai_empty_response';
+
+function aiError(code, message, diagnostics) {
+  const err = new Error(message);
+  err.code = code;
+  err.diagnostics = diagnostics || {};
+  return err;
+}
+
+function diagnosticsOf(result) {
+  return {
+    provider: (result && result.provider) || '',
+    model: (result && result.model) || '',
+    finishReason: (result && result.finishReason) || '',
+    textLength: String((result && result.text) || '').length,
+    fallbackUsed: Boolean(result && result.fallbackFrom)
+  };
+}
+
+function asAiError(err, provider, model, previous) {
+  if (err && err.code) return err;
+  return aiError(AI_PROVIDER_UNAVAILABLE, err && err.message ? err.message : String(err), {
+    provider,
+    model,
+    finishReason: '',
+    textLength: 0,
+    fallbackUsed: Boolean(previous)
+  });
+}
+
 function hasWorkersAI(env) {
   return Boolean(env && env.AI && typeof env.AI.run === 'function');
 }
@@ -77,27 +120,82 @@ function buildMessages(system, user, userOnly = false) {
   ];
 }
 
-function extractWorkersAIText(data) {
+/* V238 — l'extraction s'arrêtait au PREMIER champ connu PRÉSENT, même vide.
+   Une enveloppe parfaitement légitime comme {response:'', choices:[{message:{content:
+   '<json>'}}]} était donc rapportée « vide » alors que le JSON attendait deux champs plus
+   loin ; `{text:''}`, `{result:{response:''}}` et une `message.content` vide doublée d'un
+   canal de raisonnement produisaient la même perte. On balaie maintenant toutes les formes
+   connues et on retient la première qui porte réellement du texte. Un champ inconnu reste
+   ignoré : on ne devine rien. */
+function firstText(...values) {
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return '';
+}
+
+function partsText(content) {
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((part) => {
+      if (typeof part === 'string') return part;
+      if (part && typeof part.text === 'string') return part.text;
+      if (part && Array.isArray(part.content)) return partsText(part.content);
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+}
+
+function choiceText(choice) {
+  if (!choice || typeof choice !== 'object') return '';
+  const message = choice.message && typeof choice.message === 'object' ? choice.message : null;
+  const delta = choice.delta && typeof choice.delta === 'object' ? choice.delta : null;
+  return firstText(
+    message ? message.content : '',
+    message ? partsText(message.content) : '',
+    delta ? delta.content : '',
+    choice.text,
+    partsText(choice.content)
+  );
+}
+
+function envelopeText(data) {
   if (typeof data === 'string') return data.trim();
   if (!data || typeof data !== 'object') return '';
 
-  if (typeof data.response === 'string') return data.response.trim();
-  if (data.result && typeof data.result.response === 'string') return data.result.response.trim();
-  if (typeof data.text === 'string') return data.text.trim();
+  const direct = firstText(data.response, data.text, data.output_text, partsText(data.output));
+  if (direct) return direct;
 
-  const choice = Array.isArray(data.choices) && data.choices[0] ? data.choices[0] : null;
-  const content = choice && choice.message ? choice.message.content : '';
-  if (typeof content === 'string') return content.trim();
-
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => (part && typeof part.text === 'string' ? part.text : ''))
-      .filter(Boolean)
-      .join('\n')
-      .trim();
+  const choices = Array.isArray(data.choices) ? data.choices : [];
+  for (const choice of choices) {
+    const value = choiceText(choice);
+    if (value) return value;
   }
-
   return '';
+}
+
+function extractWorkersAIText(data) {
+  const own = envelopeText(data);
+  if (own) return own;
+  // Certaines enveloppes Workers AI emboîtent la charge utile sous `result`.
+  if (data && typeof data === 'object' && data.result) return envelopeText(data.result);
+  return '';
+}
+
+function envelopeFinishReason(data) {
+  if (!data || typeof data !== 'object') return '';
+  const choice = Array.isArray(data.choices) && data.choices[0] ? data.choices[0] : null;
+  return String(
+    data.finish_reason
+    || data.finishReason
+    || (choice && (choice.finish_reason || choice.finishReason))
+    || (data.result && (data.result.finish_reason || data.result.finishReason))
+    || ''
+  );
 }
 
 async function callWorkersAI(env, system, user, maxTokens, options = {}) {
@@ -119,9 +217,7 @@ async function callWorkersAI(env, system, user, maxTokens, options = {}) {
 
   return {
     text,
-    finishReason: data && typeof data === 'object'
-      ? String(data.finish_reason || (data.choices && data.choices[0] && data.choices[0].finish_reason) || '')
-      : '',
+    finishReason: envelopeFinishReason(data),
     model,
     provider: 'cloudflare-workers-ai'
   };
@@ -172,35 +268,91 @@ async function callGroq(env, system, user, maxTokens, options = {}) {
   };
 }
 
+/* V238 — `callAI` ne rend plus jamais un objet sans texte au handler.
+   Elle rendait `{...fallback}` sans regarder `fallback.text` : quand Workers AI ET Groq
+   répondaient 200 sans un seul caractère, le handler héritait d'un objet vide et le
+   traduisait par un « Réponse IA vide. » indistinct. Les quatre situations sont désormais
+   séparées : aucun moteur configuré, moteur injoignable, moteur muet, sortie tronquée
+   (celle-ci n'est pas une erreur — elle voyage sur un 200 avec `truncated`).
+   `options.allowEmpty` n'est conservé que pour la relecture, qui gère elle-même son
+   second essai avec plus de marge. */
 async function callAI(env, system, user, maxTokens, options = {}) {
-  let workersError = null;
+  const allowEmpty = options.allowEmpty === true;
+  let failure = null;
+  let emptyResult = null;
 
   if (hasWorkersAI(env)) {
     try {
       const result = await callWorkersAI(env, system, user, maxTokens, options);
-      if (result.text) return result;
-      workersError = new Error('Workers AI a renvoyé une réponse vide.');
+      if (result.text) return { ...result, fallbackFrom: null };
+      emptyResult = { ...result, fallbackFrom: null };
+      failure = aiError(AI_EMPTY_RESPONSE, 'Le moteur IA n’a produit aucun texte.', diagnosticsOf(emptyResult));
     } catch (err) {
-      workersError = err instanceof Error ? err : new Error(String(err));
+      failure = asAiError(err, 'cloudflare-workers-ai', workersAIModel(env));
     }
   }
 
   if (env && env.GROQ_API_KEY) {
-    if (workersError) {
-      console.warn(`Workers AI indisponible, fallback Groq: ${workersError.message}`);
+    // Journal de diagnostic : uniquement le code interne, jamais le message d'un moteur
+    // ni la moindre part de la requête. Un fallback Groq reste explicite dans les logs.
+    if (failure) console.warn(`Workers AI indisponible, fallback Groq: ${failure.code}`);
+    let fallback;
+    try {
+      fallback = await callGroq(env, system, user, maxTokens, options);
+    } catch (err) {
+      throw asAiError(err, 'groq', groqModel(env), failure);
     }
-    const fallback = await callGroq(env, system, user, maxTokens, options);
-    return {
-      ...fallback,
-      fallbackFrom: workersError ? 'cloudflare-workers-ai' : null
-    };
+    const shaped = { ...fallback, fallbackFrom: failure ? 'cloudflare-workers-ai' : null };
+    if (shaped.text) return shaped;
+    emptyResult = shaped;
+    failure = aiError(AI_EMPTY_RESPONSE, 'Le moteur IA n’a produit aucun texte.', {
+      ...diagnosticsOf(shaped),
+      fallbackUsed: Boolean(shaped.fallbackFrom)
+    });
   }
 
-  if (workersError) throw workersError;
+  if (!failure) {
+    throw aiError(
+      AI_NO_PROVIDER,
+      'Aucun moteur IA configuré : ajoute le binding Workers AI `AI` ou le secret GROQ_API_KEY.',
+      {}
+    );
+  }
+  if (allowEmpty && emptyResult) return emptyResult;
+  throw failure;
+}
 
-  throw new Error(
-    'Aucun moteur IA configuré : ajoute le binding Workers AI `AI` ou le secret GROQ_API_KEY.'
-  );
+/* V238 — une panne IA sort classée. `callAIGateway` ne conserve que les 180 premiers
+   caractères du corps : le code interne est donc écrit EN TÊTE pour survivre toujours à
+   cette troncature, quel que soit le message. Aucun diagnostic n'expose de note terrain. */
+function aiFailure(err, origin) {
+  const code = err && err.code ? err.code : '';
+  const diagnostics = (err && err.diagnostics) || {};
+  const message = err && err.message ? err.message : String(err);
+
+  if (code === AI_EMPTY_RESPONSE) {
+    return json({
+      code,
+      error: message,
+      attempts: Number(diagnostics.attempts) || 1,
+      provider: diagnostics.provider || '',
+      model: diagnostics.model || '',
+      finishReason: diagnostics.finishReason || '',
+      textLength: 0,
+      fallbackUsed: Boolean(diagnostics.fallbackUsed)
+    }, 502, origin);
+  }
+  if (code === AI_PROVIDER_UNAVAILABLE) {
+    return json({
+      code,
+      error: message,
+      provider: diagnostics.provider || '',
+      model: diagnostics.model || '',
+      fallbackUsed: Boolean(diagnostics.fallbackUsed)
+    }, 502, origin);
+  }
+  if (code) return json({ code, error: message }, 500, origin);
+  return json({ error: message }, 500, origin);
 }
 
 const ASSISTANT_SYSTEM = `Tu es l'assistant opérationnel d'un chef de secteur.
@@ -233,6 +385,9 @@ Règles impératives :
 Réponds uniquement par le texte final, sans introduction, commentaire ni markdown.`;
 
 const PROOFREAD_OPTIONS = {
+  // La relecture gère elle-même son second essai avec plus de marge : `callAI` doit donc
+  // continuer à lui rendre un résultat vide au lieu de lever. C'est la seule exception.
+  allowEmpty: true,
   userOnly: true,
   reasoningEffort: 'low',
   includeReasoning: false
@@ -284,6 +439,32 @@ const VISIT_REPORT_OPTIONS = {
   reasoningEffort: 'low',
   includeReasoning: false
 };
+
+// V238 — un compte rendu revenu VIDE est le seul cas qui mérite une seconde tentative.
+//
+// Mesures reproduites par tests/visit-report-empty-retry-v238.test.cjs :
+//   - le prompt d'ENTRÉE BLANC ne dépasse celui de BRUN que de 37 caractères, soit 0,4 % :
+//     la longueur d'entrée n'est donc pas la cause de l'écart constaté sur le terrain ;
+//   - la SORTIE attendue, elle, est 17,2 % plus longue — BLANC porte quatre univers
+//     produits (lavage, froid, cuisson, entretien des sols) là où BRUN en porte deux
+//     (merchandising, audio) : 16 rubriques contre 14 ;
+//   - à 2600 tokens, la marge sur le texte visible reste de 2,28x pour BLANC contre 2,68x
+//     pour BRUN. Le plafond n'est donc PAS le facteur limitant du texte visible et n'est
+//     pas relevé ici. Ce qui rétrécit, c'est la réserve laissée au raisonnement, facturé
+//     sur le même plafond : 1462 tokens pour BLANC contre 1629 pour BRUN.
+//
+// Le second essai ne rejoue donc pas la requête à l'identique — ce serait repartir dans le
+// même mur. Il resserre le contrat en une seule tournée utilisateur, la forme déjà retenue
+// pour la relecture. Mêmes données source, même schéma attendu, même température basse,
+// aucune invention supplémentaire autorisée, aucun token de plus.
+const VISIT_REPORT_RETRY_OPTIONS = {
+  userOnly: true,
+  reasoningEffort: 'low',
+  includeReasoning: false
+};
+
+// Plafond dur. Deux tentatives logiques pour un cas vide, jamais trois, jamais de boucle.
+const VISIT_REPORT_MAX_ATTEMPTS = 2;
 
 async function handlePing(env, origin) {
   const workersReady = hasWorkersAI(env);
@@ -390,8 +571,33 @@ export default {
         const message = String(body.message || '').trim().slice(0, 24000);
         if (!message) return json({ error: 'Message vide.' }, 400, origin);
 
-        const result = await callAI(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, VISIT_REPORT_OPTIONS);
-        if (!result.text) throw new Error('Réponse IA vide.');
+        // Le client coupe le second essai sur son appel de RÉPARATION V232 : une réponse
+        // déjà revenue puis mal formée relève de la réparation, pas du cas vide, et le
+        // plafond global d'appels fournisseur reste ainsi borné.
+        const maxAttempts = body.retryEmpty === false ? 1 : VISIT_REPORT_MAX_ATTEMPTS;
+
+        let result = null;
+        let attempts = 0;
+        for (;;) {
+          attempts += 1;
+          try {
+            result = await callAI(
+              env,
+              VISIT_REPORT_SYSTEM,
+              message,
+              VISIT_REPORT_MAX_TOKENS,
+              attempts === 1 ? VISIT_REPORT_OPTIONS : VISIT_REPORT_RETRY_OPTIONS
+            );
+            break;
+          } catch (err) {
+            // Seule une réponse RÉELLEMENT vide se rejoue. Une panne de transport, un
+            // moteur injoignable ou l'absence de moteur repartiraient dans le même mur.
+            if (!err || err.code !== AI_EMPTY_RESPONSE || attempts >= maxAttempts) {
+              if (err && err.diagnostics) err.diagnostics.attempts = attempts;
+              throw err;
+            }
+          }
+        }
 
         // finishReason est renvoyé au client : une réponse coupée doit être reconnaissable
         // comme telle, jamais confondue avec une réponse absurde.
@@ -402,6 +608,8 @@ export default {
           fallbackFrom: result.fallbackFrom || null,
           finishReason: result.finishReason || '',
           truncated: String(result.finishReason || '').toLowerCase() === 'length',
+          attempts,
+          retried: attempts > 1,
           mode: 'visit_report'
         }, 200, origin);
       }
@@ -431,8 +639,9 @@ export default {
 
       const context = compactContext(body.context || {});
       const user = `QUESTION UTILISATEUR:\n${message}\n\nCONTEXTE CHEF SECTEUR (JSON):\n${JSON.stringify(context)}`;
+      // `callAI` classe désormais elle-même un moteur muet : plus aucun « Réponse IA
+      // vide. » indistinct ne peut sortir d'ici.
       const result = await callAI(env, ASSISTANT_SYSTEM, user, 1000);
-      if (!result.text) throw new Error('Réponse IA vide.');
 
       return json({
         text: result.text,
@@ -445,7 +654,7 @@ export default {
         fallbackFrom: result.fallbackFrom || null
       }, 200, origin);
     } catch (err) {
-      return json({ error: err && err.message ? err.message : String(err) }, 500, origin);
+      return aiFailure(err, origin);
     }
   }
 };

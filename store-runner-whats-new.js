@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'238',
+      title:'Génération des comptes rendus plus fiable',
+      items:[
+        'Store Runner relance automatiquement une génération de compte rendu lorsqu’une réponse IA revient vide.',
+        'Quand la seconde tentative aboutit, le compte rendu s’affiche normalement et Store Runner te le signale d’un mot.',
+        'Si elle échoue aussi, tu lis une phrase claire au lieu d’un message technique, et ton compte rendu local reste intact.',
+        'Le bouton reste verrouillé pendant toute la génération : un second appui ne relance plus rien.'
+      ]
+    },
+    {
       version:'237',
       title:'Priorités magasin plus claires',
       items:[

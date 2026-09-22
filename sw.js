@@ -1,4 +1,4 @@
-const BUILD_REV = "20260922-priority-summary237";
+const BUILD_REV = "20260922-visit-report-empty-retry238";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
