@@ -98,14 +98,14 @@ function validityText(r,api){
   return span+(r.inherited?' · vient du brief '+api.shortWeek(r.briefWeek):'');
 }
 function ruleCard(r,api,options){
-  const o=options||{},box=el('div',undefined,'srBriefRule'),head=el('div');
+  const o=options||{},box=el('div',undefined,'srBriefRule'),head=el('div'),waiting=r.confidence!=='confirmed'||!!r.pending;
   head.append(el('span',api.TYPE_LABELS[r.type],'srBriefTag '+r.type));
-  if(r.confidence!=='confirmed')head.append(el('span','À confirmer','srBriefTag'));
+  if(waiting)head.append(el('span','À confirmer','srBriefTag'));
   head.append(el('b',r.label));
   box.append(head,el('span',scopeText(r,api)+' · '+effectText(r,api),'srBriefMeta'),el('span',validityText(r,api)+(r.pending?' · en attente : '+r.pending:''),'srBriefMeta'));
   if(o.editable){
     const row=el('div',undefined,'srBriefRow');
-    if(r.confidence!=='confirmed')row.append(btn('Confirmer',()=>commit((a,s)=>a.confirmRule(s,week,r.id),'Règle confirmée : elle compte dès maintenant.'),'primary'));
+    if(waiting)row.append(btn('Confirmer',()=>commit((a,s)=>a.confirmRule(s,week,r.id),'Règle confirmée : elle compte dès maintenant.'),'primary'));
     row.append(btn('Retirer',()=>{
       if(typeof root.confirm==='function'&&!root.confirm('Retirer « '+r.label+' » du brief '+api.shortWeek(week)+' ? La version précédente reste dans l’historique.'))return;
       commit((a,s)=>a.removeRule(s,week,r.id),'Règle retirée. La version précédente reste dans l’historique.');
@@ -173,25 +173,26 @@ function ruleForm(api){
   const until=select([0,1,2,3,4].map(n=>[String(n),n?'Jusqu’à '+api.shortWeek(api.shiftWeek(week,n)):'Cette semaine seulement']),'0');until.id='srBriefRuleUntil';
   const pending=input('text','',{maxlength:'120',placeholder:'ex. Confirmation SEF'});pending.id='srBriefRulePending';
   const confirmed=input('checkbox');confirmed.checked=true;confirmed.id='srBriefRuleConfirmed';
+  pending.addEventListener('input',()=>{if(pending.value.trim())confirmed.checked=false});
   const check=el('label',undefined,'srBriefCheck');check.append(confirmed,el('span','Règle confirmée (sinon elle attend validation et ne compte pas)'));
   const fBoost=field('Effet sur la priorité (−100 à +100)',boost),fTarget=field('Contribution à neutraliser',target),fDue=field('Échéance',due);
   const grid=el('div',undefined,'srBriefGrid');
-  grid.append(field('Type',type),field('Famille',family),field('Enseignes (virgules)',brands),field('Magasins visés',prio),fBoost,fTarget,fDue,field('Validité',until));
+  grid.append(field('Type',type),field('Famille',family),field('Enseignes (virgules)',brands),field('Priorité performance ciblée',prio),fBoost,fTarget,fDue,field('Validité',until));
   const sync=()=>{const t=type.value;fBoost.hidden=!(t==='boost'||t==='deadline');fTarget.hidden=t!=='suspend';fDue.hidden=t!=='deadline';if(t==='deadline'&&boost.value==='20')boost.value='0';};
   type.addEventListener('change',sync);sync();
   const add=btn('Ajouter la règle',()=>{
-    const t=type.value,name=label.value.trim();
+    const t=type.value,name=label.value.trim(),waiting=pending.value.trim();
     if(!name){say('Donne un libellé à la règle : c’est lui qui s’affiche sur la fiche magasin.',true);return}
     if(t==='deadline'&&!due.value){say('Indique la date limite de l’échéance.',true);return}
     const n=Number(boost.value);
     if(t==='boost'&&(!Number.isFinite(n)||n===0)){say('Un renforcement a besoin d’un effet différent de 0.',true);return}
-    const rule={type:t,label:name,origin:'manual',confidence:confirmed.checked?'confirmed':'ambiguous',pending:pending.value,
+    const rule={type:t,label:name,origin:'manual',confidence:waiting?'ambiguous':(confirmed.checked?'confirmed':'ambiguous'),pending:waiting,
       scope:{family:family.value,brands:brands.value.split(',').map(x=>x.trim()).filter(Boolean),basePrio:prio.value||null},
       validFrom:week,validTo:api.shiftWeek(week,Number(until.value)||0)};
     if(t==='boost'||t==='deadline')rule.boost=Number.isFinite(n)?n:0;
     if(t==='suspend')rule.target=target.value;
     if(t==='deadline')rule.dueDate=due.value;
-    if(commit((a,s)=>a.addRule(s,week,rule),'Règle ajoutée au brief '+api.shortWeek(week)+'.')){label.value='';brands.value='';pending.value=''}
+    if(commit((a,s)=>a.addRule(s,week,rule),'Règle ajoutée au brief '+api.shortWeek(week)+'.')){label.value='';brands.value='';pending.value='';confirmed.checked=true}
   },'primary srBriefWide');
   add.id='srBriefRuleAdd';
   wrap.append(field('Libellé',label),grid,field('En attente de (facultatif)',pending),check,add);
@@ -251,7 +252,7 @@ function render(){
     body.append(empty);
   }else body.append(briefForm(api,brief));
 
-  const active=api.rulesForWeek(s,week),pending=brief?brief.rules.filter(r=>r.confidence!=='confirmed').map(r=>Object.assign({},r,{briefWeek:week,inherited:false})):[];
+  const active=api.rulesForWeek(s,week),pending=brief?brief.rules.filter(r=>r.confidence!=='confirmed'||r.pending).map(r=>Object.assign({},r,{briefWeek:week,inherited:false})):[];
   const rulesBox=el('section',undefined,'srBriefSection');rulesBox.id='srBriefRules';
   rulesBox.append(el('h3','Règles actives en '+api.shortWeek(week)+' · '+active.length));
   if(!active.length)rulesBox.append(el('div','Aucune règle confirmée pour cette semaine.','srBriefEmpty'));
