@@ -2,7 +2,7 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 const source=fs.readFileSync(__dirname+'/../range-planner-v2.js','utf8')
-  .replace('window.generatePlanningRange=generateRange;', 'window.testRangeRotation={generateRange,chooseStores,buildWeekUnique,visitCredit,routeCredits};window.generatePlanningRange=generateRange;');
+  .replace('window.generatePlanningRange=generateRange;', 'window.testRangeRotation={generateRange,chooseStores,buildWeekUnique,visitCredit,routeCredits,rankCandidateDaysV249,dayCohesionV249};window.generatePlanningRange=generateRange;');
 
 function makeStore(id,priority,enseigne='Fnac'){
   return {id,enseigne,ville:'Ville '+id,adresse:'Adresse '+id,lat:45,lon:4,priority,active:true};
@@ -118,5 +118,21 @@ function creditOf(ctx,snap){return DAYS.reduce((n,d)=>n+ctx.testRangeRotation.ro
   const afterBlocked=new Set(snaps.flatMap(weekIds));
   assert.equal(afterBlocked.size,5,'le dernier magasin frais doit encore être planifié après une semaine bloquée');
 
-  console.log('PASS: la génération de période couvre le vivier avant répétition, garde une mémoire équilibrée/LRU sur toute la période, respecte les crédits, les contraintes fortes et les semaines bloquées.');
+  // V249 : à charge égale, le magasin rejoint la journée géographiquement la plus proche.
+  const west=makeStore('west',5),east=makeStore('east',5),nearWest=makeStore('near-west',4),nearEast=makeStore('near-east',4);
+  t=env({stores:[west,east,nearWest,nearEast],target:4,max:2,workDays:['Lundi','Mardi']});
+  t.ctx.StoreRunnerRoadMatrixV248={distanceKm:(a,b)=>{
+    const x=String(a&&a.id||'base'),y=String(b&&b.id||'base'),pair=[x,y].sort().join('|');
+    const distances={'near-west|west':2,'east|near-east':3,'east|near-west':95,'near-east|west':100};
+    return Object.prototype.hasOwnProperty.call(distances,pair)?distances[pair]:40;
+  }};
+  let ranked=t.ctx.testRangeRotation.rankCandidateDaysV249({Lundi:[west],Mardi:[east]},['Lundi','Mardi'],nearEast);
+  assert.equal(ranked[0],'Mardi','à charge égale, near-east doit rejoindre le groupe east');
+  ranked=t.ctx.testRangeRotation.rankCandidateDaysV249({Lundi:[],Mardi:[east]},['Lundi','Mardi'],nearEast);
+  assert.equal(ranked[0],'Lundi','l’équilibre de charge doit rester prioritaire sur la proximité');
+  const zoned=t.ctx.testRangeRotation.buildWeekUnique([west,east,nearWest,nearEast],['Lundi','Mardi'],'2026-09-07').plan;
+  assert.equal(zoned.Lundi.map(s=>s.id).join(','),'west,near-west','la journée de lundi doit former le groupe ouest');
+  assert.equal(zoned.Mardi.map(s=>s.id).join(','),'east,near-east','la journée de mardi doit former le groupe est');
+
+  console.log('PASS: la génération de période couvre le vivier avant répétition, garde une mémoire équilibrée/LRU, respecte crédits/contraintes et regroupe les journées par cohésion géographique V249.');
 })().catch(e=>{console.error(e);process.exitCode=1});
