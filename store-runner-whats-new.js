@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'245',
+      title:'Le Mode Terrain au cœur de ta journée',
+      items:[
+        'Le Mode Terrain est désormais accessible directement depuis votre journée, et les compteurs distinguent clairement magasins, visites réalisées et crédits.',
+        'Les jours de tournée, l’accueil affiche une carte noire Mode terrain : magasin en cours, visite X / Y, démarrage de la visite 6P et itinéraire en un geste.',
+        'Quand une visite est terminée, la carte passe toute seule au magasin suivant.',
+        'Dans Planning, « ▶ Passer en mode terrain » ouvre directement la tournée du jour affiché.'
+      ]
+    },
+    {
       version:'244',
       title:'Les mises à jour s’appliquent toutes seules',
       items:[

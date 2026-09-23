@@ -191,8 +191,10 @@ const AUTOFIX=fs.readFileSync(__dirname+'/../auto-planning-fix.js','utf8');
 for(const [nom,src] of [['auto-planning-fix.js',AUTOFIX],['visit-counting.js',fs.readFileSync(__dirname+'/../visit-counting.js','utf8')]]){
   assert(!/premiumHomeV2 \.phGrid \.phCard:first-child/.test(src),
     nom+' ne doit plus écrire dans la première carte venue');
-  assert(/phCard\[data-home-card="week"\]/.test(src),
-    nom+' doit désigner la carte semaine par son rôle');
+  /* V245 : la carte semaine n'a plus qu'un écrivain, home-refresh-v2.js, qui la construit
+     depuis StoreRunnerActivityMetrics. Aucun module ne la réécrit après rendu. */
+  assert(!/phCard\[data-home-card="week"\]/.test(src),
+    nom+' ne doit plus réécrire la carte semaine après son rendu');
 }
 
 // --- Carte d'alertes identifiable et observateurs inchangés ---------------------------

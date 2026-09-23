@@ -58,7 +58,20 @@
     if(!hero){hero=document.createElement('section');hero.id='planningHeroV2';hero.className='planningHeroV2';hero.innerHTML='<div class="planningHeroTop"><span class="planningHeroPill">Cette semaine</span><span id="planningHeroWeek" class="planningHeroWeek"></span></div><div id="planningHeroDay" class="planningHeroDay"></div><div id="planningHeroFull" class="planningHeroFull"></div>'}
     if(hero.parentNode!==plan)plan.insertBefore(hero,plan.firstChild);
     const day=document.getElementById('planningHeroDay'),full=document.getElementById('planningHeroFull'),week=document.getElementById('planningHeroWeek');
-    if(day)day.textContent=dayHeroLabel();if(full)full.textContent=fullDayLabel();if(week)week.textContent=weekLabel();if(title)title.style.display='none';return hero;
+    if(day)day.textContent=dayHeroLabel();if(full)full.textContent=fullDayLabel();if(week)week.textContent=weekLabel();if(title)title.style.display='none';syncTerrainShortcut(hero);return hero;
+  }
+  /* V245 : le jour affiché, s'il contient au moins une visite, ouvre le même terrainPanel
+     (openTerrain du noyau) ciblé sur ce jour. Aucun second moteur terrain ; un jour vide
+     n'affiche pas de bouton inutile. */
+  function selectedDayName(){const i=(selectedDayDate().getDay()+6)%7;return i<DAYS.length?DAYS[i]:''}
+  function syncTerrainShortcut(hero){
+    let btn=document.getElementById('planningTerrainBtn');
+    if(!btn){btn=document.createElement('button');btn.id='planningTerrainBtn';btn.type='button';btn.className='planningTerrainBtn';btn.textContent='▶ Passer en mode terrain';btn.addEventListener('click',function(e){if(e&&typeof e.preventDefault==='function')e.preventDefault();if(typeof window.openTerrain==='function')window.openTerrain(btn.dataset.day||'')})}
+    if(btn.parentNode!==hero)hero.appendChild(btn);
+    let count=0;const name=selectedDayName();try{const rows=state.plan&&state.plan[name];count=Array.isArray(rows)?rows.length:0}catch(e){}
+    if(btn.dataset.day!==name)btn.dataset.day=name;
+    if(btn.hidden!==!count)btn.hidden=!count;
+    return btn;
   }
 
   function syncSmartBrief(){const brief=document.getElementById('smartBrief'),plan=document.getElementById('planPanel');if(!brief||!plan)return;brief.style.display=plan.classList.contains('active')?'none':''}
@@ -215,7 +228,7 @@
     #planningSettings:not([open]),#planningSettings:not(.planningSettingsSheetOpen){display:none!important}
     #planPanel .timelineRow{min-width:0!important}#planPanel .tlMain{min-width:0!important}#planPanel .timelineRow *{max-width:100%}
     #planPanel .applePlan{padding-top:2px!important}body:has(#planPanel.active) #smartBrief{display:none!important}#planPanel #iosDayHero{display:none!important}
-    .planningHeroV2{margin:0 0 8px;padding:8px 2px 2px;background:transparent;border:0;box-shadow:none}.planningHeroTop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}.planningHeroPill{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.78);border:1px solid rgba(60,60,67,.12);font-size:11px;font-weight:800;color:#667085;box-shadow:0 4px 14px rgba(31,41,55,.04)}.planningHeroWeek{font-size:11px;color:#8a93a2;font-weight:650;text-align:right}.planningHeroDay{font-family:Georgia,"Times New Roman",serif;font-size:44px;line-height:.98;letter-spacing:-.045em;font-weight:500;color:#111318;margin:0}.planningHeroFull{font-size:14px;color:#717987;margin-top:8px;font-weight:600}
+    .planningHeroV2{margin:0 0 8px;padding:8px 2px 2px;background:transparent;border:0;box-shadow:none}.planningTerrainBtn{display:block;width:100%;min-height:50px;margin:12px 0 4px;border:0;border-radius:17px;background:#111;color:#fff;font-size:16px;font-weight:800;box-shadow:0 12px 28px rgba(0,0,0,.14)}.planningTerrainBtn[hidden]{display:none}.planningHeroTop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}.planningHeroPill{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.78);border:1px solid rgba(60,60,67,.12);font-size:11px;font-weight:800;color:#667085;box-shadow:0 4px 14px rgba(31,41,55,.04)}.planningHeroWeek{font-size:11px;color:#8a93a2;font-weight:650;text-align:right}.planningHeroDay{font-family:Georgia,"Times New Roman",serif;font-size:44px;line-height:.98;letter-spacing:-.045em;font-weight:500;color:#111318;margin:0}.planningHeroFull{font-size:14px;color:#717987;margin-top:8px;font-weight:600}
     #planPanel #dayTabs{margin:10px 0 8px;padding-bottom:2px;display:flex!important;flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none}#planPanel #dayTabs::-webkit-scrollbar{display:none}#planPanel #dayTabs .dayTab{flex:1 1 0!important;min-width:56px!important;max-width:96px!important;scroll-snap-align:center;touch-action:pan-x}
     .planningToolsV2{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}.planningToolsV2 button{min-height:44px;padding:10px 13px;flex:1 1 180px}#planPanel .timelineShell{margin-bottom:20px}#planPanel #planMetrics{margin:18px 0 14px!important}#planPanel .departureCard{margin:8px 0 14px!important}#planPanel #saturdayRecommendation:empty{display:none}
     /* AGENTS.md : la hiérarchie d'affichage du planning appartient à ce module. Le duo

@@ -64,9 +64,10 @@ assert.match(source,/visitCreditOverride/,'le comptage doit accepter un choix pr
 assert.match(source,/actual<=1\|\|!isBoulanger/,'un Boulanger réglé à une visite ne doit pas garder une capacité cachée de magasin double');
 assert.match(source,/detail\.reason==='day-store-recenter'/,'le recalcul de période doit rester ciblé sur un recentrage manuel');
 assert.doesNotMatch(source,/observe\(document\.body/,'le module de comptage ne doit jamais observer tout document.body');
-assert.match(source,/OBSERVED_UI_IDS=\['summary','smartBrief','premiumHomeV2','proMonthBody','storeQuickSheet'\]/,'les zones observées doivent rester explicitement limitées aux vues de comptage utiles');
+assert.match(source,/OBSERVED_UI_IDS=\['summary','proMonthBody','storeQuickSheet'\]/,'V245 : les zones observées restent limitées aux vues dont ce module est l’unique écrivain (plus l’accueil ni le brief legacy)');
 assert.match(source,/attributeFilter:\['class','aria-hidden','data-sr-start'\]/,'la fiche rapide doit rester rafraîchie quand le magasin affiché change');
-assert.match(source,/\.phCard\[data-home-card="week"\]/,'l’accueil doit corriger la carte Cette semaine elle-même, pas la première carte arbitraire');
+assert.doesNotMatch(source,/\.phCard\[data-home-card="week"\]/,'V245 : la carte Cette semaine est construite par l’accueil depuis la source unique, jamais réécrite ici');
 assert.doesNotMatch(source,/premiumHomeV2 \.phGrid \.phCard:first-child/,'une priorité ou opportunité classée avant la semaine ne doit jamais être écrasée par le compteur');
-assert.match(source,/stats\.visits\+' visites comptabilisées'/,'la carte semaine doit afficher explicitement les crédits de visite');
+assert.match(source,/credits:n=>plural\(n,'crédit de visite','crédits de visite'\)/,'les crédits de visite gardent un libellé propre, distinct des visites réalisées');
+assert.doesNotMatch(source,/visites comptabilisées/,'V245 : « visites comptabilisées » ne désigne plus des crédits');
 console.log('PASS: V189 donne la main par magasin, Carrefour vaut 1 par défaut et les statistiques suivent les crédits réels.');

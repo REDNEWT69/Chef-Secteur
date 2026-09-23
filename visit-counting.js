@@ -6,13 +6,14 @@ const RANGE_KEY='chef_sector_range_v1';
 /* Carrefour repasse à 1 par défaut en V189. Un magasin précis peut être passé à 2
    depuis sa fiche grâce à visitCreditOverride. */
 const DEFAULT_RULES={darty:2,boulanger:2,but:2,conforama:2};
-const OBSERVED_UI_IDS=['summary','smartBrief','premiumHomeV2','proMonthBody','storeQuickSheet'];
+const OBSERVED_UI_IDS=['summary','proMonthBody','storeQuickSheet'];
 let patchScheduled=false,uiObserver=null;
 
 function norm(v){try{return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim()}catch(e){return String(v||'').toLowerCase().trim()}}
 function storage(){try{return window.__chefStorage||window.localStorage}catch(e){return null}}
+function liveState(){try{return typeof window!=='undefined'?window.state:null}catch(e){return null}}
 function rules(){
-  const configured=(window.state&&state.settings&&state.settings.visitCreditsByBrand)||{};
+  const live=liveState(),configured=(live&&live.settings&&live.settings.visitCreditsByBrand)||{};
   const map=Object.assign({},DEFAULT_RULES,configured);
   /* L'ancienne valeur Carrefour x2 venait du code, pas d'un choix utilisateur. La V189
      force donc le défaut enseigne à 1 ; le double comptage se décide magasin par magasin. */
@@ -39,7 +40,7 @@ function canonicalStore(entry){
   const id=entry.id;
   if(id==null||id==='')return entry;
   try{
-    const list=(window.state&&Array.isArray(state.stores))?state.stores:null;
+    const live=liveState(),list=(live&&Array.isArray(live.stores))?live.stores:null;
     if(!list||!list.length)return entry;
     const found=list.find(s=>s&&String(s.id)===String(id));
     return found||entry;
@@ -144,20 +145,90 @@ function reconcileStoredRangeStats(){
 function planStats(plan){return{stores:planStores(plan),visits:planCredits(plan)}}
 function currentPlanStats(){try{return planStats(state.plan||{})}catch(e){return{stores:0,visits:0}}}
 function setText(el,text){if(el&&el.textContent!==text)el.textContent=text}
+/* V245 — Source unique des compteurs affichés.
+   Avant, l'accueil, le planning, l'historique et ce module recomptaient chacun « les
+   visites » et se réécrivaient après rendu. Toutes les vues lisent désormais ces valeurs
+   nommées ; aucune règle de crédit n'est changée (visitCredit reste l'unique règle).
+   - magasins planifiés = passages physiques de state.plan (unité de settings.target :
+     le moteur compare flattenPlan(plan).length à target, jamais des crédits) ;
+   - crédits de visite  = somme de visitCredit sur ces passages (Darty x2, etc.) ;
+   - visite réalisée    = couple magasin + jour, visite 6P terminée ou « Visité » coché,
+     dédupliqué : une visite 6P terminée écrit aussi l'historique legacy du même jour. */
+function metricsState(stateArg){return stateArg||liveState()||{}}
+function storeResolver(stateArg){
+  const map=new Map();for(const s of (metricsState(stateArg).stores||[]))if(s&&s.id!=null)map.set(String(s.id),s);
+  return entry=>{if(entry==null)return null;if(typeof entry!=='object')return map.get(String(entry))||{id:String(entry)};return (entry.id!=null&&map.get(String(entry.id)))||entry};
+}
+function mondayIso(d){const x=new Date(d);x.setHours(12,0,0,0);x.setDate(x.getDate()-((x.getDay()+6)%7));return iso(x)}
+function refDate(now){const d=now instanceof Date?new Date(now):new Date(now==null?Date.now():now);return isNaN(d)?new Date():d}
+function completedVisitDays(stateArg){
+  const st=metricsState(stateArg),out=new Map();
+  const add=(id,date)=>{const key=String(id==null?'':id),day=String(date||'').slice(0,10);if(!key||!/^\d{4}-\d{2}-\d{2}$/.test(day))return;if(!out.has(key))out.set(key,new Set());out.get(key).add(day)};
+  for(const v of ((st.businessV2&&Array.isArray(st.businessV2.visits))?st.businessV2.visits:[]))if(v&&v.status==='completed')add(v.storeId,v.completedDate);
+  for(const [id,h] of Object.entries(st.visits||{})){if(!h)continue;if(h.lastVisit)add(id,h.lastVisit);if(Array.isArray(h.history))for(const d of h.history)add(id,d)}
+  return out;
+}
+function activityMetrics(stateArg,options){
+  const st=metricsState(stateArg),opts=options||{},now=refDate(opts.now),today=iso(now),monday=mondayIso(now),sunday=iso(addDays(parse(monday),6)),month=today.slice(0,7);
+  const resolve=storeResolver(st),credit=typeof opts.credit==='function'?opts.credit:(entry=>visitCredit(resolve(entry)));
+  let plannedStores=0,plannedCredits=0;
+  for(const d of DAYS)for(const entry of ((st.plan&&Array.isArray(st.plan[d]))?st.plan[d]:[])){plannedStores++;plannedCredits+=Number(credit(entry))||0}
+  let total=0,todayCount=0,week=0,monthCount=0;const monthStores=new Set();
+  for(const [id,days] of completedVisitDays(st))for(const day of days){total++;if(day===today)todayCount++;if(day>=monday&&day<=sunday)week++;if(day.slice(0,7)===month){monthCount++;monthStores.add(id)}}
+  let openActions=0,overdueActions=0;
+  for(const a of ((st.businessV2&&Array.isArray(st.businessV2.actions))?st.businessV2.actions:[])){if(!a||a.status==='done'||a.status==='cancelled')continue;openActions++;if(a.dueDate&&a.dueDate<today)overdueActions++}
+  const target=Number(st.settings&&st.settings.target);
+  return{
+    today,weekStart:monday,weekEnd:sunday,month,
+    activeStores:(st.stores||[]).filter(s=>s&&s.active!==false).length,
+    plannedStoresWeek:plannedStores,
+    plannedVisitCreditsWeek:plannedCredits,
+    target:Number.isFinite(target)&&target>0?Math.round(target):null,
+    targetUnit:'magasins',
+    completedVisitsToday:todayCount,
+    completedVisitsWeek:week,
+    completedVisitsMonth:monthCount,
+    completedVisitsTotal:total,
+    completedUniqueStoresMonth:monthStores.size,
+    openActions,overdueActions
+  };
+}
+function plural(n,one,many){return n+' '+(n>1?many:one)}
+const LABELS={
+  plannedStores:n=>plural(n,'magasin planifié','magasins planifiés'),
+  credits:n=>plural(n,'crédit de visite','crédits de visite'),
+  completed:(n,when)=>plural(n,'visite réalisée','visites réalisées')+(when?' '+when:''),
+  activeStores:n=>plural(n,'magasin actif','magasins actifs'),
+  target:n=>'objectif '+n+' magasin'+(n>1?'s':'')
+};
+/* La tournée du jour se lit sur la vraie date : state.plan peut contenir une autre
+   semaine quand l'utilisateur navigue dans le planning ; l'archive de la semaine courante
+   prend alors le relais. Aucune donnée n'est écrite. */
+function todayTour(stateArg,options){
+  const st=metricsState(stateArg),opts=options||{},now=refDate(opts.now),today=iso(now),dayIndex=(now.getDay()+6)%7;
+  if(dayIndex>5)return null;
+  const day=DAYS[dayIndex],monday=mondayIso(now),planMonday=mondayIso(parse(String((st.settings&&st.settings.weekDate)||'').slice(0,10))||now);
+  let rows=null;
+  if(planMonday===monday&&st.plan&&Array.isArray(st.plan[day]))rows=st.plan[day];
+  else{let archive=opts.archive;try{if(typeof archive==='function')archive=archive()}catch(e){archive=null}const snap=archive&&archive[monday];if(snap&&snap.plan&&Array.isArray(snap.plan[day]))rows=snap.plan[day]}
+  if(!rows||!rows.length)return null;
+  const resolve=storeResolver(st),credit=typeof opts.credit==='function'?opts.credit:(entry=>visitCredit(resolve(entry))),done=completedVisitDays(st);
+  const route=rows.map(resolve).filter(s=>s&&s.id!=null);if(!route.length)return null;
+  const visited=route.map(s=>!!(done.get(String(s.id))&&done.get(String(s.id)).has(today)));
+  const index=visited.indexOf(false),remaining=visited.filter(v=>!v).length;
+  let credits=0,remainingCredits=0;route.forEach((s,i)=>{const c=Number(credit(s))||0;credits+=c;if(!visited[i])remainingCredits+=c});
+  let next=null;if(index>=0)for(let i=index+1;i<route.length;i++)if(!visited[i]){next=route[i];break}
+  return{day,date:today,route,visited,total:route.length,done:route.length-remaining,remaining,credits,remainingCredits,index,current:index>=0?route[index]:null,previous:index>0?route[index-1]:null,next,finished:index<0};
+}
+function summaryHtml(stateArg,options){
+  const st=metricsState(stateArg),m=activityMetrics(st,options),opts=options||{};let km=0;
+  try{const cost=opts.routeCost||(typeof routeCost==='function'?routeCost:null);if(cost)for(const d of DAYS)km+=Number(cost((st.plan&&st.plan[d])||[]))||0}catch(e){}
+  return '<span>'+LABELS.plannedStores(m.plannedStoresWeek)+'</span><span>'+LABELS.credits(m.plannedVisitCreditsWeek)+'</span><span>~'+Math.round(km)+' km géographiques</span><span>'+LABELS.completed(m.completedVisitsToday,'aujourd’hui')+'</span>';
+}
 function patchSummary(){
   const el=document.getElementById('summary');if(!el||!window.state)return;
-  const stats=currentPlanStats();let km=0,visitedStores=0,visitedVisits=0;
-  try{for(const d of DAYS){const r=(state.plan&&state.plan[d])||[];if(typeof routeCost==='function')km+=Number(routeCost(r))||0;for(const s of r){if(typeof storeVisit==='function'&&typeof todayISO==='function'&&storeVisit(s).lastVisit===todayISO()){visitedStores++;visitedVisits+=visitCredit(s)}}}}catch(e){}
-  const html='<span>'+stats.stores+' magasins planifiés</span><span>'+stats.visits+' visites comptabilisées</span><span>~'+Math.round(km)+' km géographiques</span><span>'+visitedVisits+' visites cochées aujourd’hui'+(visitedStores&&visitedVisits!==visitedStores?' · '+visitedStores+' magasins':'')+'</span>';
+  const html=summaryHtml(state);
   if(el.innerHTML!==html)el.innerHTML=html;
-}
-function patchLegacyBrief(){
-  const value=document.querySelector('#smartBrief .planMetric:first-child .pmValue'),sub=document.querySelector('#smartBrief .planMetric:first-child .pmSub');if(!value)return;
-  const stats=currentPlanStats();setText(value,stats.visits+' visites');setText(sub,stats.stores+' magasins planifiés · objectif '+Number((state.settings&&state.settings.target)||20)+' magasins');
-}
-function patchPremiumHome(){
-  const card=document.querySelector('#premiumHomeV2 .phGrid .phCard[data-home-card="week"]');if(!card)return;
-  const value=card.querySelector('.phValue'),sub=card.querySelector('.phSub'),stats=currentPlanStats();setText(value,stats.visits+' visites comptabilisées');setText(sub,stats.stores+' magasins planifiés · objectif '+Number((state.settings&&state.settings.target)||20)+' magasins');
 }
 function visibleMonth(){
   const head=document.querySelector('#proMonthBody .proMonthHead b');if(!head)return null;const text=norm(head.textContent),months=['janvier','fevrier','mars','avril','mai','juin','juillet','aout','septembre','octobre','novembre','decembre'];let month=-1;for(let i=0;i<months.length;i++)if(text.includes(months[i])){month=i;break}const m=text.match(/\b(20\d{2})\b/);return month>=0&&m?{year:Number(m[1]),month}:null;
@@ -168,12 +239,12 @@ function monthArchiveStats(year,month){
   return{stores,visits,uniqueStores:unique.size};
 }
 function patchProMonth(){
-  const month=visibleMonth();if(!month)return;const stats=monthArchiveStats(month.year,month.month),head=document.querySelector('#proMonthBody .proMonthHead span');setText(head,stats.visits+' visites comptabilisées · '+stats.uniqueStores+' magasins distincts');const first=document.querySelector('#proMonthMetrics > div:first-child');if(first){setText(first.querySelector('b'),String(stats.visits));setText(first.querySelector('span'),'visites comptabilisées')}document.querySelectorAll('#proMonthBody .proMore').forEach(e=>{if(/visites?/i.test(e.textContent||''))e.textContent=e.textContent.replace(/visites?/i,'magasins')});
+  const month=visibleMonth();if(!month)return;const stats=monthArchiveStats(month.year,month.month),head=document.querySelector('#proMonthBody .proMonthHead span');setText(head,LABELS.credits(stats.visits)+' planifiés · '+stats.uniqueStores+' magasins distincts');const first=document.querySelector('#proMonthMetrics > div:first-child');if(first){setText(first.querySelector('b'),String(stats.visits));setText(first.querySelector('span'),stats.visits>1?'crédits de visite planifiés':'crédit de visite planifié')}document.querySelectorAll('#proMonthBody .proMore').forEach(e=>{if(/visites?/i.test(e.textContent||''))e.textContent=e.textContent.replace(/visites?/i,'magasins')});
 }
 function patchQuickStore(){
-  const sheet=document.getElementById('storeQuickSheet'),start=document.getElementById('srQuickStart');if(!sheet||!start||!start.dataset)return;const id=start.dataset.srStart;if(!id)return;let store=null;try{store=(state.stores||[]).find(s=>String(s.id)===String(id))}catch(e){}if(!store)return;const address=document.getElementById('sqAddress');if(!address)return;let badge=document.getElementById('sqVisitCredit');if(!badge){badge=document.createElement('div');badge.id='sqVisitCredit';badge.className='tiny';badge.style.marginTop='6px';address.insertAdjacentElement('afterend',badge)}const c=visitCredit(store),families=(Array.isArray(store.products)?store.products:[]).filter(x=>x&&x!=='À confirmer');const duration=visitDuration(store);setText(badge,'Ce passage compte pour '+c+' visite'+(c>1?'s':'')+' · '+duration+' min prévues'+(families.length?' · Familles : '+families.join(' + '):''));
+  const sheet=document.getElementById('storeQuickSheet'),start=document.getElementById('srQuickStart');if(!sheet||!start||!start.dataset)return;const id=start.dataset.srStart;if(!id)return;let store=null;try{store=(state.stores||[]).find(s=>String(s.id)===String(id))}catch(e){}if(!store)return;const address=document.getElementById('sqAddress');if(!address)return;let badge=document.getElementById('sqVisitCredit');if(!badge){badge=document.createElement('div');badge.id='sqVisitCredit';badge.className='tiny';badge.style.marginTop='6px';address.insertAdjacentElement('afterend',badge)}const c=visitCredit(store),families=(Array.isArray(store.products)?store.products:[]).filter(x=>x&&x!=='À confirmer');const duration=visitDuration(store);setText(badge,'Ce passage vaut '+LABELS.credits(c)+' · '+duration+' min prévues'+(families.length?' · Familles : '+families.join(' + '):''));
 }
-function patchVisibleUi(){if(!window.state)return;patchSummary();patchLegacyBrief();patchPremiumHome();patchProMonth();patchQuickStore()}
+function patchVisibleUi(){if(!window.state)return;patchSummary();patchProMonth();patchQuickStore()}
 function schedulePatch(){if(patchScheduled)return;patchScheduled=true;const run=()=>{patchScheduled=false;patchVisibleUi()};if(typeof requestAnimationFrame==='function')requestAnimationFrame(run);else setTimeout(run,0)}
 function observeUi(){
   if(uiObserver||typeof MutationObserver==='undefined')return;
@@ -186,11 +257,11 @@ function observeUi(){
 }
 function formatAssistantSummary(){
   if(!window.state)return'Aucune semaine générée.';const days=(state.settings&&state.settings.days)||DAYS,lines=[];let stores=0,visits=0,km=0;
-  for(const day of days){const route=(state.plan&&state.plan[day])||[],s=route.length,v=routeCredits(route);stores+=s;visits+=v;let dkm=0;try{if(typeof routeCost==='function')dkm=Number(routeCost(route))||0}catch(e){}km+=dkm;lines.push(day+' : '+s+' magasin'+(s>1?'s':'')+' · '+v+' visite'+(v>1?'s':'')+' comptabilisée'+(v>1?'s':'')+' · ~'+Math.round(dkm)+' km')}
-  return stores?lines.join('\n')+'\nTotal : '+stores+' magasins · '+visits+' visites comptabilisées · ~'+Math.round(km)+' km.':'Aucune semaine générée.';
+  for(const day of days){const route=(state.plan&&state.plan[day])||[],s=route.length,v=routeCredits(route);stores+=s;visits+=v;let dkm=0;try{if(typeof routeCost==='function')dkm=Number(routeCost(route))||0}catch(e){}km+=dkm;lines.push(day+' : '+s+' magasin'+(s>1?'s':'')+' · '+LABELS.credits(v)+' · ~'+Math.round(dkm)+' km')}
+  return stores?lines.join('\n')+'\nTotal : '+stores+' magasins · '+LABELS.credits(visits)+' · ~'+Math.round(km)+' km.':'Aucune semaine générée.';
 }
 function patchRangeStatus(candidate){
-  const el=document.getElementById('rangePlanStatus');if(!el||!candidate)return;const stores=Number(candidate.range&&candidate.range.totalStores)||Number(candidate.storeCount)||0,visits=Number(candidate.range&&candidate.range.totalVisits)||Number(candidate.visitCredits)||0;if(candidate.range)setText(el,'Période appliquée : '+candidate.range.weeks+' semaines · '+stores+' magasins · '+visits+' visites comptabilisées · '+Number(candidate.range.uniqueStores||0)+' magasins distincts.');else setText(el,'Semaine générée : '+stores+' magasins · '+visits+' visites comptabilisées.');
+  const el=document.getElementById('rangePlanStatus');if(!el||!candidate)return;const stores=Number(candidate.range&&candidate.range.totalStores)||Number(candidate.storeCount)||0,visits=Number(candidate.range&&candidate.range.totalVisits)||Number(candidate.visitCredits)||0;if(candidate.range)setText(el,'Période appliquée : '+candidate.range.weeks+' semaines · '+stores+' magasins · '+LABELS.credits(visits)+' · '+Number(candidate.range.uniqueStores||0)+' magasins distincts.');else setText(el,'Semaine générée : '+stores+' magasins · '+LABELS.credits(visits)+'.');
 }
 function hookReliability(){
   const R=window.ChefReliability;if(!R||typeof R.propose!=='function'||R.propose.__visitCreditsWrapped)return false;const original=R.propose;
@@ -202,13 +273,17 @@ function onPlanningUpdated(e){
 }
 function boot(){ensureRules();window.assistantSummary=formatAssistantSummary;hookReliability();observeUi();schedulePatch();document.addEventListener('store-runner:planning-updated',onPlanningUpdated);document.addEventListener('store-runner:data-restored',()=>{ensureRules();schedulePatch()});document.addEventListener('chef-range-generated',schedulePatch);document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('.proMonthPrev,.proMonthNext'))schedulePatch()});document.addEventListener('touchend',e=>{if(e.target&&e.target.closest&&e.target.closest('#proMonthBody'))schedulePatch()},{passive:true})}
 
+const ActivityMetrics={compute:activityMetrics,todayTour,completedVisitDays,summaryHtml,labels:LABELS};
+if(typeof module!=='undefined'&&module.exports)module.exports={StoreRunnerActivityMetrics:ActivityMetrics,credit:visitCredit,planStores,planCredits};
+if(typeof window==='undefined'||typeof document==='undefined')return;
+window.StoreRunnerActivityMetrics=ActivityMetrics;
 window.storeVisitCredit=planningVisitCredit;
 window.storeVisitCreditsForRoute=routeCredits;
 window.storeVisitDuration=visitDuration;
 window.storeVisitMinutesForRoute=routeVisitMinutes;
 window.storeVisitCreditsForPlan=planCredits;
 window.storeVisitStoresForPlan=planStores;
-window.StoreVisitCounting={canonicalStore,credit:visitCredit,planningCredit:planningVisitCredit,duration:visitDuration,routeVisitMinutes,routeCredits,planCredits,planStores,archiveStats,normalizeCandidate,reconcileStoredRangeStats,monthArchiveStats,rules};
+window.StoreVisitCounting={canonicalStore,credit:visitCredit,planningCredit:planningVisitCredit,duration:visitDuration,routeVisitMinutes,routeCredits,planCredits,planStores,archiveStats,normalizeCandidate,reconcileStoredRangeStats,monthArchiveStats,rules,refresh:schedulePatch};
 document.addEventListener('store-runner:reliability-propose-ready',hookReliability);
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
