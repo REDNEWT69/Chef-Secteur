@@ -25,6 +25,17 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'246',
+      title:'Le brief de la semaine explique tes priorités',
+      items:[
+        'Nouveau « 🗓️ Brief semaine » dans le menu Plus : note la feuille de route de la semaine (W39, W40…) et ses consignes.',
+        'Chaque semaine garde son brief : la feuille de route W40 ne remplace jamais celle de W39, et tu peux relire les anciennes.',
+        'Une consigne peut renforcer des magasins, fixer une échéance ou neutraliser une priorité le temps d’une semaine, comme « Prios Co BRUN annulées ».',
+        'La fiche magasin affiche pourquoi il est prioritaire cette semaine : sa priorité permanente, son P1/P2 et la règle du brief, sans rien effacer.',
+        'Ton planning n’est pas modifié par le brief pour l’instant.'
+      ]
+    },
+    {
       version:'245',
       title:'Le Mode Terrain au cœur de ta journée',
       items:[
