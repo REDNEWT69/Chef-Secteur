@@ -97,7 +97,6 @@ const complete=(st,storeId,date)=>st.businessV2.visits.push({id:'v-'+storeId+'-'
   t=M.todayTour(st,{now:NOW});
   assert.equal(t.finished,true);assert.equal(t.current,null);assert.equal(t.done,3);assert.equal(t.index,-1);
 }
-
 {
   // 2. Aucune visite aujourd’hui, dimanche, ou semaine affichée différente sans archive.
   const st=baseState();st.plan.Mercredi=[];
