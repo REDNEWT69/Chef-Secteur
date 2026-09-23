@@ -97,6 +97,7 @@ const complete=(st,storeId,date)=>st.businessV2.visits.push({id:'v-'+storeId+'-'
   t=M.todayTour(st,{now:NOW});
   assert.equal(t.finished,true);assert.equal(t.current,null);assert.equal(t.done,3);assert.equal(t.index,-1);
 }
+
 {
   // 2. Aucune visite aujourd’hui, dimanche, ou semaine affichée différente sans archive.
   const st=baseState();st.plan.Mercredi=[];
@@ -118,7 +119,7 @@ const complete=(st,storeId,date)=>st.businessV2.visits.push({id:'v-'+storeId+'-'
   const st=baseState();const tour=M.todayTour(st,{now:NOW});
   const html=Home.buildTerrainCard(tour,{distanceKm:73.4,dayKm:120.6,draft:false});
   assert.match(html,/class="phTerrain" data-home-terrain="active"/,'1. carte terrain présente');
-  assert.match(html,/Mode terrain/);
+  assert.match(html,/Mode Runner/);
   assert.match(html,/Mercredi · visite 1 \/ 3/,'4. visite X / Y');
   assert.match(html,/Boulanger Ville-Test A/,'3. magasin courant');
   assert.match(html,/1 avenue Alpha · ~73 km à vol d’oiseau/,'distance géographique annoncée comme telle');
@@ -152,7 +153,7 @@ const complete=(st,storeId,date)=>st.businessV2.visits.push({id:'v-'+storeId+'-'
   assert.match(ui,/btn\.textContent='▶ Passer en mode terrain'/,'9. bouton planning');
   assert.match(ui,/window\.openTerrain\(btn\.dataset\.day\|\|''\)/,'9. le bouton planning ouvre le même terrainPanel');
   assert.match(ui,/if\(btn\.hidden!==!count\)btn\.hidden=!count;/,'10. jour sans visite : bouton masqué');
-  assert.match(home,/<button data-go="terrainPanel" data-terrain-fallback>➤ Mode terrain<\/button>/,'11. accès de secours dans Plus');
+  assert.match(home,/<button data-go="terrainPanel" data-terrain-fallback>➤ Mode Runner<\/button>/,'11. accès de secours dans Plus');
   assert.doesNotMatch(home,/data-panel="terrainPanel"/,'le terrain n’est pas une destination principale de la barre mobile');
   assert.match(home,/'terrainDay','terrainStore'/,'7. l’accueil suit le rendu du terrainPanel pour passer au magasin suivant');
   // 21. Plus aucun écrivain concurrent des compteurs.
