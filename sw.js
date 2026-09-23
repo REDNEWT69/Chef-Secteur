@@ -1,4 +1,4 @@
-const BUILD_REV = "20260923-weekly-brief-pdf246b";
+const BUILD_REV = "20260923-weekly-brief-pdf246";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
