@@ -25,6 +25,15 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'247',
+      title:'Le résumé IA de sortie magasin a plus de temps',
+      items:[
+        'Une note terrain longue laisse maintenant jusqu’à 90 secondes à l’IA pour rédiger le résumé BRUN ou BLANC, au lieu de 45.',
+        'Si l’IA met quand même trop de temps, le message le dit clairement au lieu d’afficher une erreur technique.',
+        'Le compte rendu local reste toujours affiché, modifiable et copiable, même quand l’IA ne répond pas.'
+      ]
+    },
+    {
       version:'246',
       title:'Le brief de la semaine explique tes priorités',
       items:[
