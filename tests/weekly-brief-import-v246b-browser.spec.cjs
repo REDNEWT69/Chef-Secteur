@@ -87,7 +87,7 @@ test('V246B analyse un PDF local à 390 px puis enregistre seulement des proposi
   expect(saved.stores).toBe(avant.stores);
 
   await expect(page.locator('#srBriefRules')).toContainText('À confirmer');
-  await expect(page.locator('#srBriefRules')).toContainText('Confirmation de SEF');
+  await expect(page.locator('#srBriefRules')).toContainText('confirmation de SEF');
   await page.screenshot({ path: 'test-results/weekly-brief-v246b-pdf-390.png' });
   expect(errors).toEqual([]);
 });
