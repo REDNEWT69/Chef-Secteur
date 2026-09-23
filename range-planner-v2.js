@@ -272,6 +272,29 @@ function finish(route,day){
 }
 function limitFor(day){return tm(day==='Samedi'?(state.settings.saturdayEnd||'12:00'):(state.settings.endTime||'18:00'))}
 function optimizeRoute(route){try{if(typeof nearestRoute==='function'&&typeof twoOpt==='function')return twoOpt(nearestRoute(route));if(typeof nearestRoute==='function')return nearestRoute(route)}catch(e){}return route.slice()}
+/* V249 : une « zone » n'est pas un label permanent. On garde d'abord l'équilibre de
+   charge entre les jours, puis on départage les jours de même charge par proximité avec
+   les magasins déjà présents. La matrice routière V248 est utilisée quand elle existe ;
+   sinon le calcul historique haversine reste le repli déterministe. Ainsi les contraintes
+   fortes restent prioritaires et les journées se densifient naturellement par secteur. */
+function geographicDistanceV249(a,b){
+  try{const api=window.StoreRunnerRoadMatrixV248;if(api&&typeof api.distanceKm==='function'){const n=Number(api.distanceKm(a,b));if(Number.isFinite(n)&&n>=0)return n}}catch(e){}
+  try{const n=Number(hav(a,b));if(Number.isFinite(n)&&n>=0)return n*1.22}catch(e){}
+  return Infinity
+}
+function dayCohesionV249(route,store){
+  const rows=Array.isArray(route)?route.filter(Boolean):[];
+  if(!rows.length){try{const base=baseObj();return geographicDistanceV249(base,store)}catch(e){return Infinity}}
+  let best=Infinity;for(const existing of rows)best=Math.min(best,geographicDistanceV249(existing,store));return best
+}
+function rankCandidateDaysV249(plan,days,store){
+  const source=plan||{};
+  return (days||[]).slice().sort((a,b)=>{
+    const load=routeCredits(source[a])-routeCredits(source[b]);if(load)return load;
+    const da=dayCohesionV249(source[a],store),db=dayCohesionV249(source[b],store);if(da!==db)return da-db;
+    return DAYS.indexOf(a)-DAYS.indexOf(b)
+  })
+}
 function countPlan(plan,days){return (days||DAYS).reduce((n,d)=>n+((plan&&Array.isArray(plan[d]))?plan[d].length:0),0)}
 
 function buildWeekUnique(chosen,days,weekKey){
@@ -302,7 +325,7 @@ function buildWeekUnique(chosen,days,weekKey){
     /* Le plafond journalier est un budget de crédits, pas un nombre de magasins : sans
        cela une journée à 4 pouvait recevoir 2 Darty et 2 Boulanger, soit 8 crédits. */
     const cost=visitCredit(store);
-    const candidates=days.slice().sort((a,b)=>routeCredits(plan[a])-routeCredits(plan[b]));
+    const candidates=rankCandidateDaysV249(plan,days,store);
     for(const day of candidates){
       if(routeCredits(plan[day])+cost>max)continue;
       const route=optimizeRoute((plan[day]||[]).concat([store]));
@@ -720,6 +743,11 @@ window.storeRunnerSetRecurringLock=function(id,day){
   if(!DAYS.includes(day))return false;
   state.locks[String(id)]=day;
   return true;
+};
+window.StoreRunnerGeographicV249={
+  version:249,
+  cohesionDistance:function(route,store){return dayCohesionV249(route,store)},
+  rankCandidateDays:function(plan,days,store){return rankCandidateDaysV249(plan,days,store)}
 };
 window.StoreRunnerPlanningPilotV211={
   version:211,
