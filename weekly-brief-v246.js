@@ -26,8 +26,9 @@ const CONFIDENCE=['confirmed','ambiguous'];
 const ORIGINS=['manual','parsed','ai'];
 const SOURCE_KINDS=['manual','text','file'];
 const BOOST_LIMIT=100;
-/* Même poids que le besoin V211 « équilibré » (range-planner-v2.js : p*12). Le score
-   n'est qu'un ordre de lecture ; le futur planning consommera `weekBoost`, pas `score`. */
+/* Même poids que le besoin V211 « équilibré » (range-planner-v2.js : p*12).
+   `score`/`planningPriority()` portent la priorité complète (structurelle + semaine).
+   `weekBoost` reste volontairement le delta hebdomadaire performance + brief. */
 const STRUCTURAL_WEIGHT=12;
 const EXCERPT_MAX=4000;
 /* Budget de stockage (précédent V240 : le quota localStorage est partagé avec tout le
@@ -197,12 +198,14 @@ function briefForWeek(state,week){return data(state).briefs[week]||null}
 function listBriefs(state){
   return Object.values(data(state).briefs).sort((a,b)=>b.week.localeCompare(a.week)).map(b=>({
     week:b.week,weekMonday:b.weekMonday,title:b.title,revision:b.revision,updatedAt:b.updatedAt,
-    rules:b.rules.length,ambiguous:b.rules.filter(r=>r.confidence!=='confirmed').length,
+    rules:b.rules.length,ambiguous:b.rules.filter(r=>r.confidence!=='confirmed'||r.pending).length,
     fileName:b.source.fileName,revisions:b.history.length+1
   }));
 }
 /* Règles valables pour une semaine : celles de son brief, et celles des briefs plus
-   anciens dont la fenêtre de validité la couvre encore (« maintenu semaine suivante »). */
+   anciens dont la fenêtre de validité la couvre encore (« maintenu semaine suivante »).
+   Une règle qui porte encore un motif `pending` reste inerte, même si une ancienne
+   version l'avait marquée confirmed : la confirmation explicite doit aussi lever l'attente. */
 function rulesForWeek(state,week,options){
   const o=options||{},out=[];
   if(!validWeek(week))return out;
@@ -210,7 +213,7 @@ function rulesForWeek(state,week,options){
     if(b.week>week)continue;
     for(const r of b.rules){
       if(r.validFrom>week||r.validTo<week)continue;
-      if(r.confidence!=='confirmed'&&!o.includeAmbiguous)continue;
+      if((r.confidence!=='confirmed'||r.pending)&&!o.includeAmbiguous)continue;
       out.push(Object.assign({},r,{briefWeek:b.week,inherited:b.week!==week}));
     }
   }
@@ -278,7 +281,7 @@ function removeRule(state,week,ruleId,options){
   if(!prev||!prev.rules.some(r=>r.id===ruleId))throw Error('Règle introuvable.');
   return saveBrief(state,week,{rules:prev.rules.filter(r=>r.id!==ruleId)},options);
 }
-function confirmRule(state,week,ruleId,options){return updateRule(state,week,ruleId,{confidence:'confirmed'},options)}
+function confirmRule(state,week,ruleId,options){return updateRule(state,week,ruleId,{confidence:'confirmed',pending:null},options)}
 
 /* ------------------------------------------------------------- appariement --------- */
 /* Magasin sans famille renseignée (ou « À confirmer ») : il peut porter les deux. */
@@ -427,7 +430,6 @@ function evaluate(store,week,perfCtx,rules,ctx){
     if(r.boost)line+=' ('+(r.boost>0?'+':'')+r.boost+')';
     if(r.type==='deadline'&&r.dueDate)line+=' · avant le '+dateLabel(r.dueDate);
     line+=r.validTo>r.validFrom||r.inherited?' · valable jusqu’à '+shortWeek(r.validTo):' · cette semaine seulement';
-    if(r.pending)line+=' · en attente : '+r.pending;
     explain.push(line+'.');
   }
 
@@ -459,9 +461,10 @@ function effectivePriorities(week,options){
   rows.sort((a,b)=>b.score-a.score||String(a.store.enseigne||'').localeCompare(String(b.store.enseigne||''))||String(a.storeId).localeCompare(String(b.storeId)));
   return{week:w,weekMonday:weekMonday(w),performance:{week:perfCtx.week||null,source:perfCtx.source},rules,rows};
 }
-/* Le seul nombre qu'un planificateur aura à lire. Sans règle de brief pour la semaine,
-   il vaut exactement `StoreRunnerPerformanceV190.planningBoost` sur le même snapshot. */
+/* Delta hebdomadaire performance + brief, conservé pour compatibilité et diagnostic. */
 function weekBoost(store,week,options){const r=effectivePriority(store,week,options);return r?r.weekBoost:0}
+/* Contrat à consommer par le futur planning : structurelle + performance + brief. */
+function planningPriority(store,week,options){const r=effectivePriority(store,week,options);return r?r.score:0}
 
 const api={
   SCHEMA,RULE_TYPES,SUSPEND_TARGETS,FAMILIES,BOOST_LIMIT,STRUCTURAL_WEIGHT,EXCERPT_MAX,HISTORY_MAX,HISTORY_WEEKS,RULES_MAX,
@@ -470,7 +473,7 @@ const api={
   emptyData,normalize,validate,data,briefForWeek,listBriefs,rulesForWeek,
   saveBrief,addRule,updateRule,removeRule,confirmRule,
   storeFamilies,ruleApplies,performanceForWeek,completedVisitDates,
-  effectivePriority,effectivePriorities,weekBoost,
+  effectivePriority,effectivePriorities,weekBoost,planningPriority,
   activeWeek(today){return isoWeek(today===undefined?new Date():today)}
 };
 root.StoreRunnerWeeklyBriefV246=api;
