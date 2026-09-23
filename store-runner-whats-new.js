@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'249',
+      title:'Des journées mieux regroupées',
+      items:[
+        'Quand Store Runner prépare une semaine, les magasins déjà retenus sont maintenant regroupés en journées plus cohérentes géographiquement.',
+        'L’équilibre de charge entre tes journées reste prioritaire : la proximité ne vient départager que des journées comparables.',
+        'Quand les distances routières sont disponibles, elles servent à rapprocher les magasins d’un même secteur ; sinon l’estimation habituelle prend le relais.',
+        'Tes priorités, tes rotations, tes magasins posés et tes rendez-vous gardent exactement la même priorité qu’avant.'
+      ]
+    },
+    {
       version:'248',
       title:'Des trajets plus proches de la réalité',
       items:[
