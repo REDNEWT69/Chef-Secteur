@@ -278,9 +278,17 @@ function toggleEdit(){const area=sheet&&sheet.querySelector('#srReportText');if(
    déjà dépensé sa seconde tentative sur une réponse IA restée vide, le module JSON V225
    rend la phrase métier ; sinon on garde le message d'origine, qui reste utile pour un
    vrai incident réseau. Aucune note terrain n'entre jamais dans ce texte. */
+/* V247 — un délai dépassé n'est pas une panne à décrire techniquement : « signal is
+   aborted without reason » (Chrome), « The operation was aborted » (Safari) ou le message
+   V247 du noyau disent tous la même chose au terrain. On le reconnaît aussi quand un
+   noyau plus ancien est encore en cache. */
+const AI_TIMEOUT_TEXT='L’IA a mis trop de temps à répondre (réseau lent ou moteur chargé). Le compte rendu local est conservé : réessaie dans un instant.';
+function aiTimedOut(e){const m=String(e&&e.message||e||'');return (e&&e.name==='AbortError')||/délai ia dépassé|aborted|timed? ?out|timeout/i.test(m)}
 function aiFailureMessage(e){
  const api=root.StoreRunnerVisitReportJSONV225,propre=api&&typeof api.failureMessage==='function'?api.failureMessage(e):'';
- return propre||('IA indisponible ou réponse incomplète : '+(e&&e.message?e.message:String(e))+'. Le rapport local est conservé.')
+ if(propre)return propre;
+ if(aiTimedOut(e))return AI_TIMEOUT_TEXT;
+ return 'IA indisponible ou réponse incomplète : '+(e&&e.message?e.message:String(e))+'. Le rapport local est conservé.'
 }
 /* V232 — un tap répété sur mobile ne doit jamais lancer deux générations : le second appel
    partirait en parallèle du premier, brûlerait du quota et écraserait son résultat.
@@ -335,5 +343,5 @@ function fromVisitDialog(){const api=root.StoreRunnerVisits,id=api&&typeof api.a
 function fromQuickSheet(){const start=root.document&&root.document.getElementById('srQuickStart'),storeId=start&&start.dataset?start.dataset.srStart:'',draft=storeId?draftFor(storeId):null;if(!draft){ensureSheet();say('Démarre la visite avant de générer le compte rendu.',true);if(typeof root.alert==='function')root.alert('Démarre la visite avant de générer le compte rendu.');return false}open(draft.id);return true}
 function installButtons(){if(!root.document)return false;ensureStyle();let done=0;const head=root.document.querySelector('#srVisitDialog .sr-head');if(head&&!root.document.getElementById(VISIT_BTN_ID)){const b=btn('📤 Sortie magasin',fromVisitDialog,'secondary');b.id=VISIT_BTN_ID;const fermer=[...head.querySelectorAll('button')].find(x=>x.textContent==='Fermer');if(fermer)head.insertBefore(b,fermer);else head.appendChild(b);done++}const actions=root.document.querySelector('#storeQuickSheet .sheetActions');if(actions&&!root.document.getElementById(QUICK_BTN_ID)){const b=btn('📤 Sortie magasin',fromQuickSheet,'secondary');b.id=QUICK_BTN_ID;const photo=root.document.getElementById('storePhotosQuickBtn');if(photo&&photo.parentNode===actions)photo.insertAdjacentElement('afterend',b);else actions.appendChild(b);done++}return done>0}
 function boot(){ensureSheet();installButtons()}
-const api={FAMILY_OF_BRAND,skeletonFor,build,buildAIPayload,aiPrompt,cleanAIText,open,installButtons};root.StoreRunnerVisitReport=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();root.document.addEventListener('store-runner:data-restored',installButtons);root.document.addEventListener('store-runner:planning-updated',installButtons)}
+const api={FAMILY_OF_BRAND,skeletonFor,build,buildAIPayload,aiPrompt,cleanAIText,aiFailureMessage,open,installButtons};root.StoreRunnerVisitReport=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();root.document.addEventListener('store-runner:data-restored',installButtons);root.document.addEventListener('store-runner:planning-updated',installButtons)}
 })(typeof window!=='undefined'?window:globalThis);
