@@ -31,7 +31,7 @@ const context={
   }
 };
 context.window=context;
-context.localStorage={getItem(){return null},setItem(){}};
+context.localStorage={getItem(){return null},setItem(){},removeItem(){}};
 context.baseObj=()=>({id:'BASE',x:0,lat:0,lon:0});
 context.hav=(a,b)=>Math.abs(Number(a.x||0)-Number(b.x||0));
 context.routeCost=(route,start)=>{
@@ -74,3 +74,4 @@ const range=fs.readFileSync('range-planner-v2.js','utf8');
 assert(range.includes("typeof nearestRoute==='function'&&typeof twoOpt==='function'"),'le moteur V2 doit toujours utiliser les helpers d’ordonnancement');
 
 console.log('planning route quality v210 ok');
+require('./road-matrix-v248.test.cjs');

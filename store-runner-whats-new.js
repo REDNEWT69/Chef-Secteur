@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'248',
+      title:'Des trajets plus proches de la réalité',
+      items:[
+        'Quand tu génères ton planning, Store Runner essaie désormais de récupérer les vraies distances et durées routières entre ton point de départ et tes magasins.',
+        'Les trajets déjà calculés sont conservés sur le téléphone pour éviter de les redemander à chaque génération.',
+        'Sans réseau ou si le service routier ne répond pas, le planning continue avec son estimation habituelle au lieu de se bloquer.',
+        'Tes priorités, tes visites, tes magasins posés et tes règles de planning ne sont pas modifiés par ce changement.'
+      ]
+    },
+    {
       version:'247',
       title:'Le résumé IA de sortie magasin a plus de temps',
       items:[

@@ -1,4 +1,4 @@
-const BUILD_REV = "20260923-visit-report-timeout247";
+const BUILD_REV = "20260923-road-matrix248";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
