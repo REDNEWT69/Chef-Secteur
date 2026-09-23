@@ -241,7 +241,7 @@
     return{mode:'next',title:dayTitle(next),afterHours,pendingToday:afterHours&&unfinished?todayTour.remaining:0,today:todayTour,next};
   }
   function nextDayEstimate(next){let estimate=null;try{if(next&&next.route.length&&typeof window.dayEstimatePremium==='function')estimate=window.dayEstimatePremium(next.route,next.day)}catch(e){}return estimate}
-  function openPlanningDateCode(date){const safe=String(date||'').replace(/[^0-9-]/g,'');return `goTab('planPanel');setTimeout(function(){var b=document.querySelector('.periodDayTab[data-date="${safe}"]');if(b)b.click()},40)`}
+  function openPlanningDateCode(date){const safe=String(date||'').replace(/[^0-9-]/g,'');return `goTab('planPanel');setTimeout(function(){var bs=document.querySelectorAll('.periodDayTab'),b=null;for(var i=0;i<bs.length;i++){if(bs[i].dataset&&bs[i].dataset.date==='${safe}'){b=bs[i];break}}if(b)b.click()},40)`}
   function buildNextDayCard(context,stateValue){
     const next=context&&context.next;if(!next)return'';const estimate=nextDayEstimate(next),appointments=appointmentsForDay(stateValue,next.date),byStore=new Map();
     for(const a of appointments){const id=storeIdOf(a);if(id)byStore.set(id,a)}
