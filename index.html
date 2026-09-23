@@ -197,6 +197,7 @@
     try{
       if(navigator.storage&&navigator.storage.persist){navigator.storage.persist().catch(()=>{});}
       window.__chefStorage=await createStorageFallback();
+
       window.__STORE_RUNNER_BUILD_REV=BUILD_REV;
       document.documentElement.dataset.storeRunnerBuild=BUILD_REV;
       if ('serviceWorker' in navigator) {
