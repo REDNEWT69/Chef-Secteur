@@ -131,8 +131,8 @@ function creditOf(ctx,snap){return DAYS.reduce((n,d)=>n+ctx.testRangeRotation.ro
   ranked=t.ctx.testRangeRotation.rankCandidateDaysV249({Lundi:[],Mardi:[east]},['Lundi','Mardi'],nearEast);
   assert.equal(ranked[0],'Lundi','l’équilibre de charge doit rester prioritaire sur la proximité');
   const zoned=t.ctx.testRangeRotation.buildWeekUnique([west,east,nearWest,nearEast],['Lundi','Mardi'],'2026-09-07').plan;
-  assert.deepEqual(zoned.Lundi.map(s=>s.id),['west','near-west'],'la journée de lundi doit former le groupe ouest');
-  assert.deepEqual(zoned.Mardi.map(s=>s.id),['east','near-east'],'la journée de mardi doit former le groupe est');
+  assert.equal(zoned.Lundi.map(s=>s.id).join(','),'west,near-west','la journée de lundi doit former le groupe ouest');
+  assert.equal(zoned.Mardi.map(s=>s.id).join(','),'east,near-east','la journée de mardi doit former le groupe est');
 
   console.log('PASS: la génération de période couvre le vivier avant répétition, garde une mémoire équilibrée/LRU, respecte crédits/contraintes et regroupe les journées par cohésion géographique V249.');
 })().catch(e=>{console.error(e);process.exitCode=1});
