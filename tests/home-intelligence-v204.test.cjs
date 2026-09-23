@@ -27,8 +27,11 @@ function emptyEnv(){return{now:NOW,pilotage:{rows:[]},performance:{rows:[]},oppo
   assert.strictEqual(cards.some(c=>/retard/i.test(c.label)),false,'pas de carte 0 en retard');
   assert.strictEqual(cards.length,1,'la progression semaine reste le repli utile');
   assert.strictEqual(cards[0].id,'week');
-  assert.strictEqual(cards[0].value,'2 magasins planifiés','les magasins distincts ne sont pas confondus avec les visites');
-  assert(cards[0].sub.includes('5 visites'),'l’objectif garde explicitement son unité');
+  /* V245 : trois passages physiques (a deux fois + b), unité de settings.target. */
+  assert.strictEqual(cards[0].value,'3 magasins planifiés','les magasins planifiés ne sont pas confondus avec les crédits');
+  assert(cards[0].sub.includes('6 crédits de visite'),'Boulanger x2 deux fois + Darty x2 = six crédits · '+cards[0].sub);
+  assert(cards[0].sub.includes('objectif 5 magasins'),'l’objectif garde son unité réelle : des magasins · '+cards[0].sub);
+  assert(!/objectif 5 visites/.test(cards[0].sub),'l’objectif n’est plus libellé en visites');
 }
 
 // Une action échue doit passer avant une information neutre.

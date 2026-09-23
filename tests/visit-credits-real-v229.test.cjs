@@ -179,20 +179,24 @@ assert.equal(archives.V.archiveStats(melange,'2026-09-07','2026-09-13').uniqueSt
   'le même magasin vu en partiel puis en complet reste un seul magasin distinct');
 
 // --------------------------------------------- 6. La carte semaine affiche le vrai total
-reel.fire('store-runner:planning-updated');
-assert.equal(reel.weekValue.textContent,'17 visites comptabilisées',
-  'la carte [data-home-card="week"] affiche les crédits réels · '+reel.weekValue.textContent);
-assert.equal(reel.weekSub.textContent,'10 magasins planifiés · objectif 10 magasins',
-  'le sous-texte reste un objectif de magasins physiques · '+reel.weekSub.textContent);
+/* V245 : la carte semaine est construite par home-refresh-v2.js depuis la source unique
+   StoreRunnerActivityMetrics. Ni visit-counting.js ni auto-planning-fix.js ne la
+   réécrivent après rendu : un texte posé par l'accueil doit survivre à leurs événements. */
+const metrics=reel.ctx.StoreRunnerActivityMetrics.compute(reel.state,{now:new Date('2026-09-09T12:00:00')});
+assert.equal(metrics.plannedStoresWeek,10,'la source unique compte dix magasins planifiés');
+assert.equal(metrics.plannedVisitCreditsWeek,17,'la source unique compte dix-sept crédits de visite malgré les copies partielles');
+assert.equal(metrics.target,10,'settings.target reste un objectif de magasins');
+assert.equal(metrics.targetUnit,'magasins');
 assert.equal(reel.state.settings.target,10,'settings.target n’est jamais converti en crédits');
-/* Le second écrivain de la même carte suit la même règle. */
+reel.weekValue.textContent='10 magasins planifiés';reel.weekSub.textContent='17 crédits de visite · objectif 10 magasins';
+reel.fire('store-runner:planning-updated');
 reel.fire('store-runner:home-rendered');
-assert.equal(reel.weekValue.textContent,'17 visites comptabilisées',
-  'le rendu accueil ne réécrit pas un total faux par-dessus');
-assert.equal(reel.spans[1].textContent,'17 visites comptabilisées',
-  'le résumé de la semaine compte les mêmes crédits · '+reel.spans[1].textContent);
-assert.equal(reel.spans[0].textContent,'10 magasins planifiés',
-  'le résumé garde le nombre de magasins physiques');
+assert.equal(reel.weekValue.textContent,'10 magasins planifiés','aucun module ne réécrit la carte semaine après l’accueil');
+assert.equal(reel.weekSub.textContent,'17 crédits de visite · objectif 10 magasins','aucun module ne réécrit le sous-texte de la carte semaine');
+const summaryHtml=reel.reg.summary.innerHTML;
+assert.match(summaryHtml,/<span>10 magasins planifiés<\/span><span>17 crédits de visite<\/span>/,
+  'le résumé de la semaine compte les mêmes magasins et crédits · '+summaryHtml);
+assert.match(summaryHtml,/visites? réalisées? aujourd’hui/,'le résumé parle de visites réalisées, pas de crédits');
 
 // ------------------------------------------------------------ 7. Un seul moteur de calcul
 const AUTOFIX=fs.readFileSync(__dirname+'/../auto-planning-fix.js','utf8');

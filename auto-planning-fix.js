@@ -105,14 +105,14 @@ function patchStoreFunctions(){
   if(typeof window.saveStore==='function'&&!window.saveStore.__v189StoreRules){const original=window.saveStore;const wrapped=function(){ensureStoreRulesUi();const select=document.getElementById('fVisitCreditOverride'),raw=select?String(select.value):'auto',choice=raw==='1'?1:raw==='2'?2:null,before=new Set(stores().map(s=>String(s.id))),targetId=editingStoreId,edited=targetId?findStore(targetId):null,previousFingerprints=edited?[storeFingerprint(edited)]:[];const out=original.apply(this,arguments);let store=targetId?findStore(targetId):stores().find(s=>!before.has(String(s.id)))||null;if(store){applyCreditChoice(store,choice,previousFingerprints);try{if(typeof window.save==='function')window.save()}catch(e){}try{if(typeof window.renderStores==='function')window.renderStores()}catch(e){}refreshCountingUi()}editingStoreId='';return out};wrapped.__v189StoreRules=true;wrapped.__original=original;window.saveStore=wrapped}
   return true
 }
-function productsLabel(store){return(store&&Array.isArray(store.products)?store.products:[]).filter(x=>x&&x!=='À confirmer').join(' + ')}
+/* V245 : ce module ne réécrit plus aucun compteur. Le résumé du planning, la carte
+   « Cette semaine » et le badge de la fiche rapide ont un seul écrivain : visit-counting.js
+   (StoreRunnerActivityMetrics). On se contente de lui demander un rafraîchissement ciblé
+   après une modification de crédit, au lieu de recopier ses totaux par-dessus. */
 function refreshCountingUi(){
-  if(!window.state)return false;patchCountingApi();const plan=state.plan||{},physical=planStores(plan),visits=planCredits(plan),summary=document.getElementById('summary');if(summary){const spans=summary.querySelectorAll('span');if(spans[0])spans[0].textContent=physical+' magasins planifiés';if(spans[1])spans[1].textContent=visits+' visites comptabilisées'}
-  /* La carte semaine se désigne par son rôle, jamais par sa position : une priorité ou
-     une opportunité classée avant elle serait écrasée par ce compteur. Même règle que
-     visit-counting.js, qui écrit dans la même carte. */
-  const card=document.querySelector('#premiumHomeV2 .phGrid .phCard[data-home-card="week"]');if(card){const value=card.querySelector('.phValue'),sub=card.querySelector('.phSub');if(value)value.textContent=visits+' visites comptabilisées';if(sub)sub.textContent=physical+' magasins planifiés · objectif '+Number((state.settings&&state.settings.target)||20)+' magasins'}
-  const sheet=document.getElementById('storeQuickSheet'),start=document.getElementById('srQuickStart');if(sheet&&start&&start.dataset&&start.dataset.srStart){const store=findStore(start.dataset.srStart),address=document.getElementById('sqAddress');if(store&&address){let badge=document.getElementById('sqVisitCredit');if(!badge){badge=document.createElement('div');badge.id='sqVisitCredit';badge.className='tiny';badge.style.marginTop='6px';address.insertAdjacentElement('afterend',badge)}const fam=productsLabel(store),c=visitCredit(store),duration=(()=>{try{return typeof window.storeVisitDuration==='function'?window.storeVisitDuration(store,state):Math.max(15,Number(state.settings&&state.settings.visitMinutes)||60)}catch(e){return Math.max(15,Number(state.settings&&state.settings.visitMinutes)||60)}})();badge.textContent='Ce passage compte pour '+c+' visite'+(c>1?'s':'')+' · '+duration+' min prévues'+(fam?' · Familles : '+fam:'')}}return true
+  if(!window.state)return false;patchCountingApi();
+  const V=counting();if(V&&typeof V.refresh==='function')V.refresh();
+  return true
 }
 
 function baseObjSafe(){try{return typeof window.baseObj==='function'?window.baseObj():null}catch(e){return null}}

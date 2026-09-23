@@ -89,7 +89,7 @@ function makeApp(o){
     __STORE_RUNNER_BUILD_REV:o.current||'20260922-old243',
     MessageChannel:function(){const ch=this;ch.port1={onmessage:null};ch.port2={postMessage(d){if(ch.port1.onmessage)ch.port1.onmessage({data:d})}}},
     setTimeout:clock.setTimeout,clearTimeout:clock.clearTimeout,
-    fetch:async()=>({ok:true,async json(){return{latestBuild:o.latest||'20260922-pwa-auto-apply244',displayVersion:'244'}}})};
+    fetch:async()=>({ok:true,async json(){return{latestBuild:o.latest||'20260922-terrain-activity-metrics245',displayVersion:'245'}}})};
   ctx.window=ctx;ctx.self=ctx;ctx.globalThis=ctx;
   if(o.noServiceWorker)delete ctx.navigator.serviceWorker;
   if(o.withBootListener&&!o.noServiceWorker){
@@ -113,7 +113,7 @@ let finished=false,step='début';
 process.on('beforeExit',()=>{if(!finished){console.error('FAIL: test bloqué (promesse jamais résolue) à : '+step);process.exit(1)}});
 
 (async function(){
-  const OLD='20260922-old243',NEW='20260922-pwa-auto-apply244';
+  const OLD='20260922-old243',NEW='20260922-terrain-activity-metrics245';
 
   // 1-5. Nouvelle version détectée, worker en attente, activation, controllerchange → 1 rechargement
   step='1-5. Nouvelle version détectée, worker en attente, activatio';

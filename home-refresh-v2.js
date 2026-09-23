@@ -45,27 +45,18 @@
     const sunday=new Date(monday);sunday.setDate(monday.getDate()+6);
     return{start:isoLocal(monday),end:isoLocal(sunday)};
   }
-  function plannedWeek(stateValue){
-    let visits=0,unknown=0;const ids=new Set();
-    for(const day of DAYS){
-      const rows=(stateValue.plan&&Array.isArray(stateValue.plan[day]))?stateValue.plan[day]:[];
-      visits+=rows.length;
-      for(const row of rows){const id=storeIdOf(row);if(id)ids.add(id);else unknown++}
-    }
-    return{visits,storeIds:[...ids],stores:unknown?null:ids.size,unknown};
+  /* V245 : l'accueil ne recompte plus lui-même les visites. Les compteurs viennent de
+     StoreRunnerActivityMetrics (visit-counting.js), seule source des magasins planifiés,
+     crédits de visite et visites réalisées ; aucun autre module ne réécrit ensuite la carte. */
+  function metricsApi(){
+    try{if(typeof window!=='undefined'&&window.StoreRunnerActivityMetrics)return window.StoreRunnerActivityMetrics}catch(e){}
+    try{if(typeof module!=='undefined'&&typeof require==='function')return require('./visit-counting.js').StoreRunnerActivityMetrics}catch(e){}
+    return null;
   }
-  function completedWeek(stateValue,now){
-    const bounds=weekBounds(now),keys=new Set(),stores=new Set();
-    const add=(storeId,date)=>{const id=String(storeId||''),d=String(date||'');if(!id||d<bounds.start||d>bounds.end)return;keys.add(id+'|'+d);stores.add(id)};
-    const b=stateValue.businessV2||{};
-    for(const v of Array.isArray(b.visits)?b.visits:[])if(v&&v.status==='completed')add(v.storeId,v.completedDate);
-    for(const [id,h] of Object.entries(stateValue.visits||{})){
-      const dates=[];
-      if(h&&h.lastVisit)dates.push(h.lastVisit);
-      if(h&&Array.isArray(h.history))dates.push(...h.history);
-      for(const d of dates)add(id,d);
-    }
-    return{visits:keys.size,stores:stores.size,start:bounds.start,end:bounds.end};
+  function plannedStoreIds(stateValue){
+    const ids=new Set();
+    for(const day of DAYS)for(const row of ((stateValue.plan&&Array.isArray(stateValue.plan[day]))?stateValue.plan[day]:[])){const id=storeIdOf(row);if(id)ids.add(id)}
+    return ids;
   }
   function openActions(stateValue,now){
     const today=isoLocal(now),open=[],overdue=[];
@@ -117,7 +108,7 @@
 
   function buildActivityCards(stateValue,environment){
     const s=stateValue||{},env=environment||{},now=env.now instanceof Date?env.now:new Date(env.now||Date.now());
-    const planned=plannedWeek(s),done=completedWeek(s,now),target=numberOrNull(s.settings&&s.settings.target);
+    const api=metricsApi(),m=env.metrics||(api?api.compute(s,{now}):null);
     const pilotage=env.pilotage||{rows:[]},performance=env.performance||{rows:[]},actions=openActions(s,now);
     const opportunities=opportunityFacts(env.opportunities!==undefined?env.opportunities:((((s||{}).businessV2||{}).opportunities)||[]),now);
     const ctx={pilotMap:pilotageMap(pilotage),performanceMap:perfMap(performance),actions,opportunities};
@@ -172,18 +163,20 @@
       candidates.push(card('appointment','Prochain rendez-vous',fmtDate(ap.d),parts.join(' · ')||'Rendez-vous planifié',54,'calendar','appointments',id));
     }
 
-    const perfP1=(performance.rows||[]).filter(r=>r&&r.prio==='P1'&&r.storeId),plannedIds=new Set(planned.storeIds);
-    const weekBits=[];
-    if(done.visits)weekBits.push(plural(done.visits,'visite faite','visites faites'));
-    if(target!=null){const remaining=Math.max(0,Math.round(target)-done.visits);weekBits.push(remaining+' à faire · objectif '+Math.round(target)+' visites')}
-    else if(planned.visits){const remaining=Math.max(0,planned.visits-done.visits);weekBits.push(plural(remaining,'visite planifiée restante','visites planifiées restantes'))}
-    if(perfP1.length&&planned.storeIds.length){const n=perfP1.filter(r=>plannedIds.has(String(r.storeId))).length;weekBits.push('P1 : '+n+'/'+perfP1.length+' planifiés')}
-    let weekValue='';
-    if(planned.stores!=null&&planned.visits)weekValue=plural(planned.stores,'magasin planifié','magasins planifiés');
-    else if(planned.visits)weekValue=plural(planned.visits,'visite prévue','visites prévues');
-    else if(done.visits)weekValue=plural(done.stores,'magasin visité','magasins visités');
-    else if(target!=null)weekValue='Objectif '+Math.round(target)+' visites';
-    if(weekValue)candidates.push(card('week','Cette semaine',weekValue,weekBits.join(' · ')||'Suivi hebdomadaire',30,'chart','plan'));
+    const perfP1=(performance.rows||[]).filter(r=>r&&r.prio==='P1'&&r.storeId),plannedIds=plannedStoreIds(s);
+    if(m){
+      const L=api&&api.labels,credits=n=>L?L.credits(n):plural(n,'crédit de visite','crédits de visite'),done=n=>L?L.completed(n,'cette semaine'):plural(n,'visite réalisée','visites réalisées')+' cette semaine';
+      const weekBits=[];
+      if(m.plannedStoresWeek)weekBits.push(credits(m.plannedVisitCreditsWeek));
+      if(m.completedVisitsWeek)weekBits.push(done(m.completedVisitsWeek));
+      if(m.target!=null)weekBits.push('objectif '+plural(m.target,'magasin','magasins'));
+      if(perfP1.length&&plannedIds.size){const n=perfP1.filter(r=>plannedIds.has(String(r.storeId))).length;weekBits.push('P1 : '+n+'/'+perfP1.length+' planifiés')}
+      let weekValue='';
+      if(m.plannedStoresWeek)weekValue=plural(m.plannedStoresWeek,'magasin planifié','magasins planifiés');
+      else if(m.completedVisitsWeek)weekValue=plural(m.completedVisitsWeek,'visite réalisée','visites réalisées');
+      else if(m.target!=null)weekValue='Objectif '+plural(m.target,'magasin','magasins');
+      if(weekValue)candidates.push(card('week','Cette semaine',weekValue,weekBits.join(' · ')||'Suivi hebdomadaire',30,'chart','plan'));
+    }
 
     return rankCards(candidates);
   }
@@ -194,6 +187,31 @@
     try{if(window.StoreRunnerPerformanceV190&&typeof window.StoreRunnerPerformanceV190.dashboard==='function'){const db=window.__chefStorage||window.localStorage;performance=window.StoreRunnerPerformanceV190.dashboard(db,{state,stores:activeStores()})||performance}}catch(e){}
     try{if(window.StoreRunnerOpportunities&&typeof window.StoreRunnerOpportunities.list==='function')opportunities=window.StoreRunnerOpportunities.list(state,{openOnly:true})||[];else opportunities=((((state||{}).businessV2||{}).opportunities)||[])}catch(e){}
     return buildActivityCards(state,{now:ref,pilotage,performance,opportunities,recommended:recommended(),appointment:nextAppointment(ref)});
+  }
+  /* V245 — Mode terrain contextuel. La carte réutilise le workflow terrain existant :
+     data-sr-start ouvre la visite 6P par StoreRunnerVisits.start (même gestionnaire que
+     le bouton du terrainPanel), openMapsStore l'itinéraire et openTerrain le panneau.
+     Aucun second moteur : la tournée vient de StoreRunnerActivityMetrics.todayTour. */
+  function buildTerrainCard(tour,extra){
+    if(!tour||!tour.total)return'';
+    const x=extra||{},credits=n=>plural(n,'crédit de visite','crédits de visite');
+    const km=Number.isFinite(x.dayKm)&&x.dayKm>0?' · ~'+Math.round(x.dayKm)+' km estimés':'';
+    const head=`<div class="phTerrainEyebrow">Mode terrain</div>`;
+    if(tour.finished)return `<section class="phTerrain" data-home-terrain="done" aria-label="Mode terrain">${head}<div class="phTerrainDay">${esc(tour.day)} · tournée terminée</div><div class="phTerrainStore">${tour.done} / ${tour.total} magasins visités</div><div class="phTerrainMeta">${esc(credits(tour.credits))} réalisés aujourd’hui</div><div class="phTerrainBtns"><button type="button" class="phTerrainMain" data-sr-hub>Voir mes visites &amp; actions</button></div></section>`;
+    const c=tour.current||{},position=tour.index+1,id=esc(String(c.id));
+    const place=[text(c.adresse),Number.isFinite(x.distanceKm)?'~'+Math.round(x.distanceKm)+' km à vol d’oiseau':''].filter(Boolean).join(' · ');
+    const summary='Aujourd’hui : '+tour.done+'/'+plural(tour.total,'magasin','magasins')+' faits · '+credits(tour.credits)+km;
+    const next=tour.next?`<div class="phTerrainNext">Prochaine : <b>${esc([text(tour.next.enseigne),text(tour.next.ville)].filter(Boolean).join(' '))}</b></div>`:`<div class="phTerrainNext">Dernier magasin de la tournée.</div>`;
+    return `<section class="phTerrain" data-home-terrain="active" data-terrain-store="${id}" aria-label="Mode terrain">${head}<div class="phTerrainDay">${esc(tour.day)} · visite ${position} / ${tour.total}</div><div class="phTerrainStore">${esc([text(c.enseigne),text(c.ville)].filter(Boolean).join(' ')||'Magasin')}</div>${place?`<div class="phTerrainMeta">${esc(place)}</div>`:''}<div class="phTerrainBtns"><button type="button" class="phTerrainMain" data-sr-start="${id}">${x.draft?'Reprendre la visite 6P':'Démarrer la visite 6P'}</button><button type="button" class="phTerrainRoute" data-store-id="${id}" onclick="openMapsStore(this.dataset.storeId)">➤ Itinéraire</button></div><div class="phTerrainSummary">${esc(summary)}</div>${next}<button type="button" class="phTerrainOpen" onclick="openTerrain()">Ouvrir le mode terrain ›</button></section>`;
+  }
+  function archiveSnapshot(){try{const db=window.__chefStorage||window.localStorage;return JSON.parse(db.getItem('chef_sector_plan_archive_v1')||'{}')||{}}catch(e){return{}}}
+  function runtimeTodayTour(now){const api=metricsApi();if(!api)return null;try{return api.todayTour(state,{now,archive:archiveSnapshot})}catch(e){return null}}
+  function runtimeTerrainCard(tour){
+    if(!tour)return'';const extra={};
+    try{const c=tour.current;if(c&&typeof window.hav==='function'){const d=tour.previous?window.hav(tour.previous,c):(typeof window.havBase==='function'?window.havBase(c):NaN);if(Number.isFinite(Number(d)))extra.distanceKm=Number(d)}}catch(e){}
+    try{if(typeof window.dayEstimatePremium==='function'){const est=window.dayEstimatePremium(tour.route,tour.day);if(est&&Number.isFinite(est.km))extra.dayKm=est.km}}catch(e){}
+    try{const id=tour.current&&String(tour.current.id);extra.draft=!!(id&&(((state.businessV2||{}).visits)||[]).some(v=>v&&String(v.storeId)===id&&v.status==='draft'))}catch(e){}
+    return buildTerrainCard(tour,extra);
   }
   function actionCode(action){
     if(action==='pilotage')return"if(window.StoreRunnerSectorPilotage&&StoreRunnerSectorPilotage.open)StoreRunnerSectorPilotage.open(window);else goTab('storesPanel')";
@@ -207,6 +225,7 @@
   function ensureCss(){if(document.getElementById('home-refresh-v2-css'))return;const s=document.createElement('style');s.id='home-refresh-v2-css';s.textContent=`
 #homePanel{max-width:980px;margin:0 auto}.homeHero,#homeKpis,#homePriority,#homeNext,#homePanel>.sectionTitle{display:none!important}
 #premiumHomeV2{display:block}.phTop{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin:2px 0 22px}.phEyebrow{font-size:14px;color:#858991}.phTitle{font-size:clamp(42px,7vw,72px);line-height:.98;letter-spacing:-.065em;margin:7px 0 0;font-weight:820}.phBase{border:0;background:transparent;color:#777c85;font-size:14px;padding:2px 0}.phGrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.phCard{box-sizing:border-box;width:100%;min-width:0;min-height:184px;padding:20px;border:1px solid rgba(255,255,255,.84);border-radius:28px;background:rgba(255,255,255,.72);box-shadow:0 14px 42px rgba(35,40,55,.08);backdrop-filter:blur(24px) saturate(1.15);-webkit-backdrop-filter:blur(24px) saturate(1.15);display:flex;flex-direction:column;align-items:flex-start;text-align:left;overflow:hidden;color:inherit}.phIcon{width:48px;height:48px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(195,224,255,.82),rgba(228,239,251,.66));font-size:24px;color:#0a84ff;margin-bottom:28px}.phIcon svg{width:24px;height:24px}.phLabel{font-size:15px;color:#30333a}.phValue{display:block;max-width:100%;font-size:38px;line-height:1.02;font-weight:790;letter-spacing:-.055em;margin-top:8px;overflow-wrap:anywhere}.phValue.phStoreValue{font-size:26px;line-height:1.08;letter-spacing:-.035em}.phSub{display:block;font-size:13px;color:#777c85;margin-top:8px;line-height:1.35;overflow-wrap:anywhere}.phWide{margin-top:14px;padding:22px;border:1px solid rgba(255,255,255,.84);border-radius:30px;background:rgba(255,255,255,.72);box-shadow:0 14px 42px rgba(35,40,55,.08);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px)}.phWideLabel{font-size:16px;color:#6f747d}.phWideValue{font-size:42px;font-weight:790;letter-spacing:-.055em;margin:5px 0 16px}.phButton{width:100%;min-height:54px;border:0;border-radius:19px;background:rgba(180,211,247,.58);color:#0878e8;font-size:17px;font-weight:700}.phRange{margin-top:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 18px;border-radius:22px;background:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.72)}.phRange b{font-size:15px}.phRange span{display:block;font-size:12px;color:#777c85;margin-top:4px}.phRange button{border:0;background:#111217;color:#fff;border-radius:15px;padding:10px 13px;font-weight:700}.phActions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.phActions button{min-height:50px;border-radius:18px;border:1px solid rgba(120,125,140,.14);background:rgba(255,255,255,.70);color:#176fd0;font-weight:720}
+#premiumHomeV2 .phTerrain{order:2;box-sizing:border-box;width:100%;margin:0 0 14px;padding:22px 20px 18px;border-radius:28px;background:#111;color:#fff;box-shadow:0 20px 50px rgba(0,0,0,.18)}#premiumHomeV2 .phTerrainEyebrow{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#d6d2cd}#premiumHomeV2 .phTerrainDay{font-size:13px;color:#b9b5af;margin-top:6px}#premiumHomeV2 .phTerrainStore{font-family:Georgia,serif;font-size:32px;line-height:1.08;margin:10px 0 6px;overflow-wrap:anywhere}#premiumHomeV2 .phTerrainMeta{font-size:14px;line-height:1.4;color:#e8e4de;overflow-wrap:anywhere}#premiumHomeV2 .phTerrainBtns{display:grid;grid-template-columns:1fr;gap:8px;margin-top:16px}#premiumHomeV2 .phTerrainBtns button{min-height:52px;border-radius:17px;font-size:16px;font-weight:800;border:0}#premiumHomeV2 .phTerrainMain{background:#fff;color:#111}#premiumHomeV2 .phTerrainRoute{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.22)!important}#premiumHomeV2 .phTerrainSummary{margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.14);font-size:13px;color:#d6d2cd;line-height:1.4}#premiumHomeV2 .phTerrainNext{font-size:13px;color:#d6d2cd;margin-top:4px;line-height:1.4}#premiumHomeV2 .phTerrainNext b{color:#fff}#premiumHomeV2 .phVisitCard .phAssistant:first-child{margin-top:0}#premiumHomeV2 .phTerrainOpen{margin-top:10px;padding:6px 0;border:0;background:none;color:#fff;font-size:13px;font-weight:700;opacity:.8}@media(min-width:701px){#premiumHomeV2 .phTerrainBtns{grid-template-columns:2fr 1fr}}
 #moreSheetV2{display:none;position:fixed;inset:0;z-index:190;background:rgba(20,24,32,.20);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}#moreSheetV2.open{display:block}.moreSheetCard{position:absolute;left:12px;right:12px;bottom:calc(82px + env(safe-area-inset-bottom));padding:10px;border-radius:28px;background:rgba(249,250,252,.94);border:1px solid rgba(255,255,255,.9);box-shadow:0 28px 80px rgba(20,25,35,.24)}.moreSheetCard>div:first-child{width:42px;height:5px;border-radius:999px;background:#d3d6dc;margin:2px auto 12px}.moreSheetGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.moreSheetGrid button{border:0;background:rgba(235,238,244,.76);border-radius:18px;min-height:58px;font-weight:720;color:#333941}.moreClose{width:100%;margin-top:8px;border:0;background:#111217;color:#fff;border-radius:18px;min-height:48px;font-weight:750}
 @media(max-width:700px){.top .tabs{display:none!important}.top{padding-bottom:10px!important}.phTop{margin-top:10px}.phTitle{font-size:48px}.phGrid{gap:10px}.phCard{min-height:166px;padding:17px;border-radius:24px}.phIcon{margin-bottom:22px;width:44px;height:44px}.phValue{font-size:31px}.phValue.phStoreValue{font-size:22px}.phWide{border-radius:26px;padding:19px}.phWideValue{font-size:38px}.bottomAppNav{grid-template-columns:repeat(5,1fr)!important}.bottomNavBtn{font-size:10px!important}.bottomNavBtn .bnIcon{font-size:22px!important}}
 `;
@@ -216,36 +235,38 @@
   function buildHome(){
     const panel=document.getElementById('homePanel');if(!panel)return false;
     let box=document.getElementById('premiumHomeV2');if(!box){box=document.createElement('div');box.id='premiumHomeV2';const install=document.getElementById('installCard');if(install&&install.parentNode===panel)panel.insertBefore(box,install.nextSibling);else panel.insertBefore(box,panel.firstChild)}
-    const range=rangeInfo(),today=new Date(),cards=runtimeActivityCards(today);let rangeHtml='Aucune période générée',rangeSub='Crée ton prochain planning';
+    const range=rangeInfo(),today=new Date(),cards=runtimeActivityCards(today),tour=runtimeTodayTour(today),terrain=runtimeTerrainCard(tour);let rangeHtml='Aucune période générée',rangeSub='Crée ton prochain planning';
     if(range){rangeHtml=fmtDate(range.start)+' → '+fmtDate(range.end);rangeSub=(range.weeks||'')+(range.weeks?' semaines':'')+(range.uniqueStores?' · '+range.uniqueStores+' magasins distincts':'')}
     const day=DAYS[(today.getDay()+6)%7];let todayRoute=[];
-    try{if(day&&typeof dateForDay==='function'&&dateForDay(day)===todayISO())todayRoute=(state.plan&&state.plan[day])||[]}catch(e){}
+    /* dateForDay n'est pas exposé hors du noyau : la tournée du jour vient de la même
+       source que la carte terrain, pour que le sous-titre ne la contredise jamais. */
+    if(tour)todayRoute=tour.route;
     let estimate=null;try{if(todayRoute.length&&typeof window.dayEstimatePremium==='function')estimate=window.dayEstimatePremium(todayRoute,day)}catch(e){}
     const km=estimate&&Number.isFinite(estimate.km)?' · ~'+Math.round(estimate.km)+' km':'';
     const summary=todayRoute.length?todayRoute.length+' magasin'+(todayRoute.length>1?'s':'')+' aujourd’hui'+km:'Prépare ta prochaine tournée';
-    const daySummary=todayRoute.length?todayRoute.length+' visite'+(todayRoute.length>1?'s':'')+km+(estimate&&estimate.start?' · départ '+estimate.start:''):'Aucune visite prévue aujourd’hui';
+    const daySummary=todayRoute.length?todayRoute.length+' magasin'+(todayRoute.length>1?'s':'')+' prévu'+(todayRoute.length>1?'s':'')+km+(estimate&&estimate.start?' · départ '+estimate.start:''):'Aucune visite prévue aujourd’hui';
     const sector=String((state.profile&&state.profile.sectorName)||'Mon secteur').replace(/^samsung\s*[·:–—-]?\s*/i,'').trim()||'Mon secteur';
     const markup=`<div class="phTop"><div class="phBrandRow"><div class="phBrand"><img class="srBrandLogo" src="./app-icon.svg" alt="S-RUNNER"><span class="srBrandName">Store Runner</span><span class="srBrandSignature">S-RUNNER By Red①</span></div><div class="phHeaderContext"><button class="phBase" type="button" onclick="openDepartureSettings()" aria-label="Modifier le point de départ">${icon('pin')}<span class="phDepartureCopy"><span>${/^(ma position(?: actuelle)?)$/i.test(baseName())?'Ma position actuelle':'Départ'}</span><span class="phDepartureAddress"></span></span></button><span class="phSector">${esc(sector)} · ${activeStores().length} magasins</span></div></div><h2 class="phTitle">Aujourd’hui.</h2><p class="phTagline">${esc(daySummary)}</p></div>
-    <section class="phVisitCard" aria-label="Vos visites"><button class="phVisitLink" type="button" onclick="goTab('planPanel')"><span class="phVisitIcon">${icon('navigation')}</span><span class="phVisitText"><strong>${todayRoute.length?'Ta journée est prête':'Prépare ta journée'}</strong><span>${esc(summary)}</span></span><span class="phArrow">${icon('chevron')}</span></button><button class="phAssistant" type="button" onclick="toggleAssistant()"><span class="phSpark">${icon('spark')}</span><span>Tes magasins, tes priorités,<br>préparons ta prochaine tournée…</span>${icon('chevron')}</button></section>
+    ${terrain}<section class="phVisitCard" aria-label="Vos visites">${terrain?'':`<button class="phVisitLink" type="button" onclick="goTab('planPanel')"><span class="phVisitIcon">${icon('navigation')}</span><span class="phVisitText"><strong>${todayRoute.length?'Ta journée est prête':'Prépare ta journée'}</strong><span>${esc(summary)}</span></span><span class="phArrow">${icon('chevron')}</span></button>`}<button class="phAssistant" type="button" onclick="toggleAssistant()"><span class="phSpark">${icon('spark')}</span><span>Tes magasins, tes priorités,<br>préparons ta prochaine tournée…</span>${icon('chevron')}</button></section>
     <div class="phActivityHeading"><div><h3>Votre activité</h3></div><button type="button" onclick="goTab('historyPanel')">Voir tout ${icon('chevron')}</button></div>
     <div class="phGrid" data-home-cards="${cards.length}">${activityMarkup(cards)}</div>
     <div class="phRange"><div><b>Planning actif</b><span>${esc(rangeHtml)} · ${esc(rangeSub)}</span></div><button type="button" onclick="goTab('planPanel')">Voir</button></div>`;
     if(box.__lastMarkup!==markup){box.innerHTML=markup;box.__lastMarkup=markup;document.dispatchEvent(new CustomEvent('store-runner:home-rendered'))}return true
   }
 
-  function installMoreSheet(){if(document.getElementById('moreSheetV2'))return;const s=document.createElement('div');s.id='moreSheetV2';s.innerHTML='<div class="moreSheetCard"><div></div><div class="moreSheetGrid"><button data-go="appointmentsPanel">◷ Rendez-vous</button><button data-go="terrainPanel">➤ Terrain</button><button data-go="historyPanel">◴ Historique</button><button data-go="profilePanel">◎ Secteur</button><button data-go="importPanel">⇅ Données</button><button data-go="storesPanel">▤ Magasins</button></div><button class="moreClose" type="button">Fermer</button></div>';document.body.appendChild(s);s.addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b){s.classList.remove('open');if(typeof window.goTab==='function')window.goTab(b.dataset.go);return}if(e.target===s||e.target.closest('.moreClose'))s.classList.remove('open')})}
+  function installMoreSheet(){if(document.getElementById('moreSheetV2'))return;const s=document.createElement('div');s.id='moreSheetV2';s.innerHTML='<div class="moreSheetCard"><div></div><div class="moreSheetGrid"><button data-go="appointmentsPanel">◷ Rendez-vous</button><button data-go="terrainPanel" data-terrain-fallback>➤ Mode terrain</button><button data-go="historyPanel">◴ Historique</button><button data-go="profilePanel">◎ Secteur</button><button data-go="importPanel">⇅ Données</button><button data-go="storesPanel">▤ Magasins</button></div><button class="moreClose" type="button">Fermer</button></div>';document.body.appendChild(s);s.addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b){s.classList.remove('open');if(typeof window.goTab==='function')window.goTab(b.dataset.go);return}if(e.target===s||e.target.closest('.moreClose'))s.classList.remove('open')})}
   function showMore(){installMoreSheet();document.getElementById('moreSheetV2').classList.add('open')}
   function rebuildBottomNav(){const nav=document.getElementById('bottomAppNav');if(!nav)return false;if(nav.dataset.v2==='1')return true;nav.dataset.v2='1';nav.innerHTML='<button class="bottomNavBtn active" data-panel="homePanel" type="button"><span class="bnIcon">'+icon('home')+'</span>Accueil</button><button class="bottomNavBtn" data-panel="planPanel" type="button"><span class="bnIcon">'+icon('calendar')+'</span>Planning</button><button class="bottomNavBtn" data-panel="storesPanel" type="button"><span class="bnIcon">'+icon('store')+'</span>Magasins</button><button class="bottomNavBtn ia" data-ai="1" type="button"><span class="bnIcon">'+icon('spark')+'</span>IA</button><button class="bottomNavBtn" data-more="1" type="button"><span class="bnIcon">'+icon('more')+'</span>Plus</button>';nav.addEventListener('click',e=>{const b=e.target.closest('.bottomNavBtn');if(!b)return;if(b.dataset.ai){if(typeof window.toggleAssistant==='function')window.toggleAssistant();return}if(b.dataset.more){showMore();return}const p=b.dataset.panel;if(p&&typeof window.goTab==='function'){window.goTab(p);setActive(p)}});return true}
   function setActive(panel){document.body.classList.toggle('glassHome',panel==='homePanel');const nav=document.getElementById('bottomAppNav');if(!nav)return;nav.querySelectorAll('.bottomNavBtn').forEach(b=>b.classList.toggle('active',b.dataset.panel===panel))}
   function activePanel(){const p=document.querySelector('.panel.active');return p&&p.id}
   function run(){if(busy)return;busy=true;try{ensureCss();buildHome();rebuildBottomNav();installMoreSheet();setActive(activePanel()||'homePanel')}finally{busy=false}}
   function scheduleRun(delay){clearTimeout(refreshTimer);refreshTimer=setTimeout(run,delay==null?30:delay)}
-  function observeHomeSignals(){if(homeObserver)return true;const targets=['homeKpis','homePriority','homeNext'].map(id=>document.getElementById(id)).filter(Boolean);if(!targets.length)return false;homeObserver=new MutationObserver(function(){scheduleRun(30)});targets.forEach(function(el){homeObserver.observe(el,{childList:true,subtree:true,characterData:true})});return true}
+  function observeHomeSignals(){if(homeObserver)return true;const targets=['homeKpis','homePriority','homeNext','terrainDay','terrainStore'].map(id=>document.getElementById(id)).filter(Boolean);if(!targets.length)return false;homeObserver=new MutationObserver(function(){scheduleRun(30)});targets.forEach(function(el){homeObserver.observe(el,{childList:true,subtree:true,characterData:true})});return true}
   function observePanels(){if(!panelObserver)panelObserver=new MutationObserver(function(){setTimeout(function(){setActive(activePanel()||'homePanel')},0)});let found=false;document.querySelectorAll('.panel').forEach(function(panel){found=true;if(observedPanels.has(panel))return;panelObserver.observe(panel,{attributes:true,attributeFilter:['class']});observedPanels.add(panel)});return found}
   async function boot(){for(let i=0;i<60;i++){run();observeHomeSignals();observePanels();if(document.getElementById('homePanel')&&document.getElementById('bottomAppNav')&&homeObserver)break;await new Promise(r=>setTimeout(r,100))}run();observeHomeSignals();observePanels()}
   function refreshWhenVisible(){if(document.hidden)return;run();observeHomeSignals();observePanels()}
 
-  const publicApi={buildActivityCards,rankCards,plannedWeek,completedWeek,openActions,opportunityFacts};
+  const publicApi={buildActivityCards,buildTerrainCard,rankCards,openActions,opportunityFacts};
   if(typeof module!=='undefined'&&module.exports)module.exports=publicApi;
   if(typeof window==='undefined'||typeof document==='undefined')return;
   window.StoreRunnerHomeV204=publicApi;
