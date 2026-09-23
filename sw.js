@@ -1,4 +1,4 @@
-const BUILD_REV = "20260923-weekly-brief246";
+const BUILD_REV = "20260923-weekly-brief-pdf246";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -15,7 +15,7 @@ const CORE_SHELL = [
 const OPTIONAL_SHELL = [
   "./visit-report-slack.js",
   "./store-runner-opportunities.js",
-  "./performance-data-v190.js", "./performance-ui-v190.js", "./assistant-performance-context-v192.js", "./weekly-brief-v246.js", "./weekly-brief-ui-v246.js", "./visit-mobile-ux-v215.js", "./visit-mobile-tabs-v216.js", "./cuisiniste-contracts-v193.js", "./cuisiniste-contract-proposal-v225.js", "./cuisiniste-followup-v229.js",
+  "./performance-data-v190.js", "./performance-ui-v190.js", "./assistant-performance-context-v192.js", "./weekly-brief-v246.js", "./weekly-brief-ui-v246.js", "./weekly-brief-import-v246b.js", "./visit-mobile-ux-v215.js", "./visit-mobile-tabs-v216.js", "./cuisiniste-contracts-v193.js", "./cuisiniste-contract-proposal-v225.js", "./cuisiniste-followup-v229.js",
   "./region-stores.js", "./region-stores.css",
   "./region-fetch-resilience.js",
   "./official-catalog.js",
