@@ -37,7 +37,10 @@ function stripComments(source){return source.replace(/\/\*[\s\S]*?\*\//g,'').rep
 // (store-runner-branding.js, home-refresh-v2.js) qui retire activement l'ancienne marque -
 // jamais comme texte affiché. Seule la graphie capitalisée ("Samsung") signale un vrai
 // libellé de prose destiné à l'utilisateur.
-const BUSINESS_CONTENT_EXEMPT=['assistant-upgrade.js','region-stores.js'];
+// V246B restitue des consignes métier extraites d'une feuille de route (par exemple un
+// comparatif concurrent) : comme le contexte assistant et les référentiels, ce contenu
+// métier peut légitimement citer une marque sans devenir le branding de Store Runner.
+const BUSINESS_CONTENT_EXEMPT=['assistant-upgrade.js','region-stores.js','weekly-brief-import-v246b.js'];
 for(const name of runtimeFiles){
   if(BUSINESS_CONTENT_EXEMPT.includes(name))continue;
   const file=path.join(root,name);
@@ -54,4 +57,4 @@ if(/samsung-wordmark/i.test(sw))throw new Error('sw.js ne doit plus mettre samsu
 const branding=fs.readFileSync(path.join(root,'store-runner-branding.js'),'utf8');
 if(!/img\[src\*="samsung-wordmark"\]/.test(branding))throw new Error('store-runner-branding.js doit garder le nettoyage de l\'ancien wordmark pour les installations déjà en cache');
 
-console.log('PASS: le compteur de magasins du panneau Secteur est ciblé par id, sans regex ni valeur figée, et plus aucun libellé d\'interface ne mentionne Samsung.');
+console.log('PASS: le compteur de magasins du panneau Secteur est ciblé par id, sans regex ni valeur figée, et plus aucun libellé d\'interface hors contenu métier ne mentionne Samsung.');
