@@ -3,7 +3,8 @@
 // Ce test fixe les règles qui gouvernent la couche : trois sources séparées
 // (`store.priority`, le snapshot performance de la semaine, le brief Wxx), des briefs
 // conservés semaine par semaine, une neutralisation qui ne touche jamais la donnée
-// source, et un `weekBoost` identique à `planningBoost` tant qu'aucun brief n'existe.
+// source, un `weekBoost` identique à `planningBoost` tant qu'aucun brief n'existe et une
+// `planningPriority` qui réunit explicitement structurelle + performance + brief.
 //
 // Toutes les données sont fabriquées : aucun magasin réel n'est écrit dans le dépôt.
 const assert = require('assert/strict');
@@ -71,6 +72,8 @@ function base() {
   for (const s of state.stores) {
     const r = B.effectivePriority(s, '2026-W39', opts);
     assert.equal(r.weekBoost, P.planningBoost(db, s.id, state.stores), 'weekBoost = planningBoost pour ' + s.id);
+    assert.equal(B.planningPriority(s, '2026-W39', opts), r.contributions.structural + r.weekBoost, 'planningPriority = structurelle + semaine pour ' + s.id);
+    assert.equal(B.planningPriority(s, '2026-W39', opts), r.score, 'planningPriority expose le score complet pour ' + s.id);
     assert.equal(r.contributions.brief, 0);
     assert.equal(r.touchedByBrief, false);
   }
@@ -79,6 +82,7 @@ function base() {
   assert.equal(e.base.treated, true, 'un P1 marqué traité ne reçoit plus de coup de pouce');
   assert.equal(e.weekBoost, 0);
   assert.equal(B.weekBoost('a', '2026-W39', opts), 60);
+  assert.equal(B.planningPriority('a', '2026-W39', opts), 5 * B.STRUCTURAL_WEIGHT + 60);
   // Aucune écriture : ni l'état, ni le stockage.
   assert.equal(state.weeklyBriefs, undefined);
 }
@@ -99,6 +103,7 @@ function base() {
   assert.equal(a.contributions.performance, 0);
   assert.equal(a.contributions.structural, 5 * B.STRUCTURAL_WEIGHT);
   assert.equal(a.weekBoost, 0);
+  assert.equal(B.planningPriority('a', '2026-W39', opts), 5 * B.STRUCTURAL_WEIGHT, 'la structurelle reste dans la priorité planning');
   assert.ok(a.badges.some(x => x.text === 'P1 · neutralisée W39'), 'le badge P1 reste, marqué neutralisé');
   assert.ok(a.badges.some(x => x.text === 'W39 : Prios Co BRUN annulées'));
   assert.ok(a.explain.some(l => /neutralisée en W39 par « Prios Co BRUN annulées » \(la donnée source reste Prio 1\)/.test(l)));
@@ -138,6 +143,7 @@ function base() {
   assert.equal(b.contributions.performance, 25);
   assert.equal(b.contributions.brief, 30);
   assert.equal(b.weekBoost, 55);
+  assert.equal(B.planningPriority('b', '2026-W39', opts), 3 * B.STRUCTURAL_WEIGHT + 55);
   assert.ok(b.badges.some(x => x.text === 'W39 : Challenge Darty — moniteurs'));
   assert.ok(b.explain.some(l => l === 'Brief W39 : Challenge Darty — moniteurs (+30) · cette semaine seulement.'));
   const layer = b.layers.find(l => l.source === 'brief');
@@ -190,7 +196,7 @@ function base() {
   assert.equal(B.effectivePriority('b', '2026-W39', opts).contributions.brief, 40);
 }
 
-// --- 7. Fenêtre de validité : « BLANC maintenu semaine suivante » -----------------------
+// --- 7. Fenêtre de validité : « BLANC maintenu semaine suivante » + attente SEF ----------
 {
   const { state, opts } = base();
   B.addRule(state, '2026-W39', {
@@ -198,12 +204,25 @@ function base() {
     validTo: '2026-W40', pending: 'Confirmation SEF', confidence: 'confirmed'
   });
   B.saveBrief(state, '2026-W40', { title: 'Feuille de route W40' });
-  const c40 = B.effectivePriority('c', '2026-W40', opts);
-  assert.equal(c40.contributions.brief, 20, 'la règle W39 couvre encore W40');
+
+  // Même une ancienne donnée marquée confirmed reste inactive tant qu'un pending existe.
+  let c40 = B.effectivePriority('c', '2026-W40', opts);
+  assert.equal(c40.contributions.brief, 0, 'une règle en attente SEF ne devient pas une vérité dure');
+  assert.equal(c40.touchedByBrief, false);
+  assert.equal(B.listBriefs(state).find(x => x.week === '2026-W39').ambiguous, 1, 'le pending apparaît comme à confirmer');
+  assert.equal(B.rulesForWeek(state, '2026-W40', { includeAmbiguous: true }).length, 1, 'la règle reste consultable avant confirmation');
+
+  B.confirmRule(state, '2026-W39', 'r1');
+  const confirmed = B.briefForWeek(state, '2026-W39').rules[0];
+  assert.equal(confirmed.confidence, 'confirmed');
+  assert.equal(confirmed.pending, null, 'confirmer lève explicitement le motif d’attente');
+
+  c40 = B.effectivePriority('c', '2026-W40', opts);
+  assert.equal(c40.contributions.brief, 20, 'après confirmation, la règle W39 couvre W40');
   const layer = c40.layers.find(l => l.source === 'brief');
   assert.equal(layer.inherited, true);
   assert.equal(layer.briefWeek, '2026-W39');
-  assert.ok(c40.explain.some(l => /valable jusqu’à W40 · en attente : Confirmation SEF/.test(l)));
+  assert.ok(c40.explain.some(l => /valable jusqu’à W40/.test(l)));
   assert.equal(B.effectivePriority('c', '2026-W41', opts).contributions.brief, 0);
   assert.equal(B.effectivePriority('c', '2026-W38', opts).contributions.brief, 0, 'une règle ne remonte pas dans le passé');
   assert.equal(B.effectivePriority('a', '2026-W40', opts).contributions.brief, 0, 'un magasin BRUN seul n’est pas visé');
@@ -236,6 +255,7 @@ function base() {
   assert.equal(d.base.structural, 4);
   assert.equal(state.stores[3].priority, 4);
   assert.equal(d.weekBoost, 0, 'weekBoost n’inclut jamais la part structurelle');
+  assert.equal(B.planningPriority('d', '2026-W39', opts), 0, 'planningPriority respecte la neutralisation structurelle');
 }
 
 // --- 10. Snapshot correspondant à la semaine ------------------------------------------
@@ -258,6 +278,7 @@ function base() {
   const nu = B.effectivePriority('a', '2026-W39', { state, db: null, perf: null, today: AUJOURDHUI });
   assert.equal(nu.weekBoost, 0);
   assert.equal(nu.base.structural, 5);
+  assert.equal(B.planningPriority('a', '2026-W39', { state, db: null, perf: null, today: AUJOURDHUI }), 5 * B.STRUCTURAL_WEIGHT);
 }
 
 // --- 11. Déterminisme et ordre du lot -------------------------------------------------
