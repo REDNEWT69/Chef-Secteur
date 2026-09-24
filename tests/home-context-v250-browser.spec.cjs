@@ -25,6 +25,19 @@ async function seed(page){
     if(typeof goTab==='function')goTab('homePanel');
   });
 }
+async function expectHomeStack(home,runnerSelector){
+  await expect(home.locator('.phBrandRow')).toBeVisible();
+  await expect(home.locator('.phHeaderContext')).toBeVisible();
+  await expect(home.locator('.phAssistant')).toBeVisible();
+  const top=await home.locator('.phTop').boundingBox();
+  const assistant=await home.locator('.phVisitCard').boundingBox();
+  const runner=await home.locator(runnerSelector).boundingBox();
+  const activity=await home.locator('.phActivityHeading').boundingBox();
+  expect(top&&assistant&&runner&&activity).toBeTruthy();
+  expect(top.y).toBeLessThan(assistant.y);
+  expect(assistant.y).toBeLessThan(runner.y);
+  expect(runner.y).toBeLessThan(activity.y);
+}
 
 test('V250 : avant 20 h reste sur Aujourd’hui puis bascule sur Demain dès la tournée terminée',async({page})=>{
   const errors=[];await boot(page,errors,'2026-09-23T18:00:00');await seed(page);
@@ -32,6 +45,7 @@ test('V250 : avant 20 h reste sur Aujourd’hui puis bascule sur Demain dès la 
   await expect(home.locator('.phTitle')).toHaveText('Aujourd’hui.');
   await expect(home.locator('.phTerrain')).toHaveAttribute('data-home-terrain','active');
   expect(await home.locator('.phNextDay').count()).toBe(0);
+  await expectHomeStack(home,'.phTerrain');
 
   await page.evaluate(()=>{markVisited('today')});
   await expect(home.locator('.phTitle')).toHaveText('Demain.');
@@ -39,6 +53,7 @@ test('V250 : avant 20 h reste sur Aujourd’hui puis bascule sur Demain dès la 
   await expect(home.locator('.phNextDay')).toContainText('Boulanger Villefranche');
   await expect(home.locator('.phNextDay')).toContainText('1 magasin');
   expect(await home.locator('.phTerrain').count()).toBe(0);
+  await expectHomeStack(home,'.phNextDay');
 
   await home.locator('.phNextOpen').click();
   await expect(page.locator('#planPanel')).toHaveClass(/active/);
@@ -57,6 +72,7 @@ test('V250 : après 20 h prépare Demain sans cacher une visite encore en attent
   await expect(home.locator('.phNextWarn')).toHaveText('1 visite encore en attente aujourd’hui');
   await expect(home.locator('.phNextDay')).toContainText('Boulanger Villefranche');
   expect(await home.locator('.phTerrain').count()).toBe(0);
+  await expectHomeStack(home,'.phNextDay');
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
   expect(errors).toEqual([]);
