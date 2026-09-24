@@ -24,7 +24,7 @@ Secteur et magasins
 - Gestion du secteur et du carnet de magasins, import de secteur, catalogue officiel et scan régional.
 - Point de départ personnalisable et géolocalisation.
 - Horaires d'ouverture : modèle par enseigne (`state.brandOpeningHours`, V230), exceptions par magasin, repli historique.
-- Photos magasin et déplacement d'une photo vers un autre magasin.
+- Photos magasin classées automatiquement par visite, date et famille BRUN / BLANC, galerie filtrable avec plein écran, catégories facultatives et déplacement d'une photo vers un autre magasin.
 
 Planning et tournées
 

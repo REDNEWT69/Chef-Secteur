@@ -69,7 +69,9 @@ function lastPromise(v,family){
  }
  return null;
 }
-function openPhotos(v){const api=window.StorePhotosV1;if(!api||typeof api.open!=='function'){message('Photos indisponibles sur cet appareil.',true);return}api.open(v.storeId).catch(e=>message('Photos indisponibles : '+(e.message||String(e)),true))}
+/* V255 — la galerie s'ouvre sur les photos de CETTE visite, et la prochaine photo prend la
+   famille affichée ici (BRUN ou BLANC) : aucun classement manuel à faire. */
+function openPhotos(v){const api=window.StorePhotosV1;if(!api||typeof api.open!=='function'){message('Photos indisponibles sur cet appareil.',true);return}api.open(v.storeId,{visitId:v.id,family:shownFamily(v)}).catch(e=>message('Photos indisponibles : '+(e.message||String(e)),true))}
 function report(host,v){
  const data=M.reportOf(v),family=shownFamily(v),families=visitFamilies(v),block=data[family];
  const promise=lastPromise(v,family);

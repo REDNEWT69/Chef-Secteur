@@ -44,6 +44,51 @@ const source=fs.readFileSync('store-photos.js','utf8');
   assert(!/redne|responsable/i.test(etiquete),'aucun nom de personne dans le nom de fichier');
 })();
 
+(function categoriesV255(){
+  const brun=photos.categoriesFor('brun').map(c=>c.label),blanc=photos.categoriesFor('blanc').map(c=>c.label);
+  assert.deepEqual(brun,['TV','OLED','Neo QLED / Mini LED','QLED','Lifestyle / Frame','Audio','PLV','TG','Entrée magasin','Mural','Concurrence','Anomalie merchandising'],'catégories BRUN dans l’ordre métier');
+  assert.deepEqual(blanc,['Froid','Lavage','Cuisson','Micro-ondes','Aspiration','PEM','TG','Entrée magasin','Mural','Concurrence','Anomalie merchandising'],'catégories BLANC dans l’ordre métier');
+  assert(photos.categoriesFor('').some(c=>c.id==='oled')&&photos.categoriesFor('').some(c=>c.id==='froid'),'une photo sans famille peut recevoir toute catégorie');
+  assert.equal(photos.normalizeCategory('blanc','oled'),'','OLED n’existe pas en BLANC');
+  assert.equal(photos.normalizeCategory('blanc','mural'),'mural','une catégorie commune survit au changement de famille');
+  assert.equal(photos.normalizeCategory('brun',''),'','la catégorie reste facultative');
+  assert.equal(photos.normalizeCategory('brun','inventee'),'','une catégorie inconnue n’est jamais stockée');
+  assert.equal(photos.registerCategory('brun','barre-son','Barre de son'),true,'la liste est extensible');
+  assert.equal(photos.registerCategory('brun','barre-son','Doublon'),false,'sans doublon d’identifiant');
+  assert(photos.categoriesFor('brun').some(c=>c.id==='barre-son')&&!photos.categoriesFor('blanc').some(c=>c.id==='barre-son'),'ajoutée à la seule famille demandée');
+  assert.equal(photos.categoryLabel('neo-qled'),'Neo QLED / Mini LED');
+})();
+
+(function classementV255(){
+  const visits=[{id:'v1',storeId:'s1',createdAt:'2026-09-24T07:30:00'},{id:'v0',storeId:'s1',createdAt:'2026-09-10T08:00:00'}];
+  const rows=[
+    {id:'a',storeId:'s1',visitId:'v1',family:'brun',createdAt:'2026-09-24T08:00:00'},
+    {id:'b',storeId:'s1',visitId:'v1',family:'brun',category:'oled',createdAt:'2026-09-24T08:05:00'},
+    {id:'c',storeId:'s1',visitId:'v1',family:'blanc',category:'froid',createdAt:'2026-09-24T08:40:00'},
+    {id:'d',storeId:'s1',visitId:'v0',family:'blanc',createdAt:'2026-09-10T09:00:00'},
+    {id:'old',storeId:'s1',createdAt:'2026-08-01T10:00:00'},                 // ancienne photo : ni visite, ni famille, ni miniature
+    {id:'old2',storeId:'s1',visitId:null,family:'',createdAt:'2026-08-01T11:00:00'}
+  ];
+  const groups=photos.groupRows(rows,visits);
+  assert.deepEqual(groups.map(g=>g.key),['v:v1','v:v0','d:2026-08-01'],'visites puis jours, du plus récent au plus ancien');
+  assert.deepEqual([groups[0].brun,groups[0].blanc,groups[0].total],[2,1,3],'24/09 : BRUN · 2, BLANC · 1');
+  assert.equal(photos.groupLabel(groups[0]),'Visite du 24/09/2026');
+  assert.equal(photos.groupLabel(groups[2]),'Hors visite · 01/08/2026','les anciennes photos sont classées par date, sans migration');
+  assert.equal(groups[2].none,2,'une photo sans famille n’est comptée ni en BRUN ni en BLANC');
+  assert.equal(photos.localDay('2026-09-24T23:30:00'),'2026-09-24','jour local, pas UTC');
+  assert.equal(photos.frenchDay('2026-09-24'),'24/09/2026');
+
+  assert.deepEqual(photos.filterRows(rows,{family:'brun'}).map(r=>r.id),['b','a'],'filtre BRUN strict, récent d’abord');
+  assert.deepEqual(photos.filterRows(rows,{family:'blanc',sort:'asc'}).map(r=>r.id),['d','c'],'tri ancien d’abord');
+  assert.deepEqual(photos.filterRows(rows,{group:'v:v1',family:'blanc'}).map(r=>r.id),['c'],'visite + famille');
+  assert.deepEqual(photos.filterRows(rows,{category:'oled'}).map(r=>r.id),['b'],'filtre catégorie');
+  assert.deepEqual(photos.filterRows(rows,{family:'none'}).map(r=>r.id),['old2','old'],'les photos sans famille restent trouvables');
+  assert.equal(photos.filterRows(rows,{}).length,rows.length,'Toutes = toutes');
+  assert.deepEqual(photos.familyCounts(rows,'v:v1'),{all:3,brun:2,blanc:1,none:0},'compteurs de la visite filtrée');
+  assert.deepEqual(photos.familyCounts(rows,''),{all:6,brun:2,blanc:2,none:2});
+  assert.equal(photos.groupKeyOf({createdAt:'pas une date'}),'d:inconnue','une date illisible ne casse pas le classement');
+})();
+
 /* IndexedDB de fortune : listByFamily lit réellement le stockage, on ne teste pas une
    copie du filtre. Assez fidèle pour les curseurs et la fin de transaction. */
 function fakeIndexedDB(rows){
@@ -105,6 +150,18 @@ function fakeIndexedDB(rows){
   assert.equal(nettoye.family,'','une famille hors contrat retombe sur non étiquetée');
   assert.equal(nettoye.moment,'','un moment hors contrat aussi');
   assert.equal(await photos.updateTags('inconnue',{family:'brun'}),false,'un identifiant inconnu ne casse rien');
+  // V255 — catégorie facultative : posée, nettoyée si la famille la rend impossible, gardée si commune.
+  assert.equal(await photos.updateTags('p1',{category:'oled'}),true);
+  assert.equal((await photos.list('s1')).find(r=>r.id==='p1').category,'oled');
+  await photos.updateTags('p1',{family:'blanc'});
+  assert.equal((await photos.list('s1')).find(r=>r.id==='p1').category,'','OLED tombe quand la photo passe en BLANC');
+  await photos.updateTags('p1',{category:'mural'});await photos.updateTags('p1',{family:'brun'});
+  const p1=(await photos.list('s1')).find(r=>r.id==='p1');
+  assert.equal(p1.category,'mural','une catégorie commune suit la photo');
+  assert.equal(p1.moment,'avant','le moment n’est pas touché par la catégorie');
+  const legacy=(await photos.list('s1')).find(r=>r.id==='p3');
+  assert(!('thumb' in legacy)||legacy.thumb==null,'aucune migration : une ancienne photo n’est pas réécrite à la lecture');
+  assert.equal(await photos.ensureThumb(legacy),null,'hors navigateur, pas de miniature et aucune erreur : la galerie retombe sur l’original');
 
   // Ticket 2B : shareRecords doit fonctionner sans open() préalable et prendre le magasin
   // porté par chaque enregistrement, jamais activeStoreId d'une ancienne galerie.

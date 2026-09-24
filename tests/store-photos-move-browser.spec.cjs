@@ -41,9 +41,15 @@ test('Photos : déplacer la sélection vers le bon magasin à 390 px',async({pag
   await expect(dialog.locator('.sr-photoCard')).toHaveCount(2);
 
   /* on étiquette la première, pour vérifier que l'étiquette survit au voyage */
-  await dialog.locator('.sr-photoCard').first().locator('select[data-photo-tag="family"]').selectOption('brun');
-  await dialog.locator('.sr-photoCard').first().locator('select[data-photo-tag="moment"]').selectOption('apres');
-  await page.waitForTimeout(400);
+  /* V255 — étiquettes posées depuis la visionneuse plein écran. */
+  await dialog.locator('.sr-photoCard').first().locator('.sr-photoOpen').click();
+  const viewer=page.locator('#srPhotoViewer');await expect(viewer).toBeVisible();
+  await viewer.locator('select[data-photo-tag="family"]').selectOption('brun');
+  await expect(viewer.locator('#srViewerStatus')).toContainText('Étiquette photo enregistrée');
+  await viewer.locator('select[data-photo-tag="moment"]').selectOption('apres');
+  await expect(viewer.locator('#srViewerStatus')).toContainText('Étiquette photo enregistrée');
+  await viewer.locator('#srViewerBack').click();await expect(viewer).not.toBeVisible();
+  await page.waitForTimeout(100);
 
   /* --- le bouton n'apparaît que si une photo est cochée ------------------ */
   await page.evaluate(()=>{
