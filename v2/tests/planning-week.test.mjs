@@ -12,6 +12,7 @@ import {
   weekMondayFromDate,
 } from '../src/planning/week.mjs';
 import { createPlanningFeature, PlanningFeatureError } from '../src/planning/planning.mjs';
+import { reorderPlanningIds } from '../src/planning/reorder-ui.mjs';
 import { createFakeDocument } from './fake-dom.mjs';
 
 function makeState() {
@@ -51,6 +52,17 @@ function makeRotationState() {
 
 function plannedIds(week) {
   return Object.values(week.days).flat();
+}
+
+// Réordonnancement manuel pur : même ensemble, aucun doublon, position finale
+// explicite. Une cible inconnue ne doit jamais mutiler la journée.
+{
+  const source = ['alpha', 'beta', 'gamma'];
+  assert.deepEqual(reorderPlanningIds(source, 'gamma', 0), ['gamma', 'alpha', 'beta']);
+  assert.deepEqual(reorderPlanningIds(source, 'alpha', 2), ['beta', 'gamma', 'alpha']);
+  assert.deepEqual(reorderPlanningIds(source, 'beta', 1), source);
+  assert.deepEqual(reorderPlanningIds(source, 'inconnu', 0), source);
+  assert.deepEqual(source, ['alpha', 'beta', 'gamma'], 'la fonction ne doit pas muter la source');
 }
 
 // La date sélectionnée n'a pas besoin d'être un lundi : le contrat est la
