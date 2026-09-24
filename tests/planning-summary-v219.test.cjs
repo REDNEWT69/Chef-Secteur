@@ -60,16 +60,17 @@ assert.strictEqual(Summary.hoursLabel(0),'0 h');
 assert.strictEqual(Summary.hoursLabel(217),'3 h 35');
 assert.strictEqual(Summary.hoursLabel(NaN),'0 h');
 
-// V252.1 : le recalcul doit vivre DANS la feuille visible .settingsInner.
-// Le contrôleur de génération créait auparavant le bloc comme enfant direct de
-// #planningSettings : avec la bottom sheet mobile, il restait derrière le panneau.
-const inner={children:[],appendChild(node){if(node.parentNode&&node.parentNode.children){const i=node.parentNode.children.indexOf(node);if(i>=0)node.parentNode.children.splice(i,1)}node.parentNode=this;this.children.push(node);return node}};
+// V252.1/V252.2 : le recalcul vit DANS la feuille visible .settingsInner et peut
+// recevoir le polish compact sans casser le déplacement dans un DOM minimal.
+const inner={children:[],appendChild(node){if(node.parentNode&&node.parentNode.children){const i=node.parentNode.children.indexOf(node);if(i>=0)node.parentNode.children.splice(i,1)}node.parentNode=this;this.children.push(node);return node},querySelector(){return null}};
 const settings={children:[],querySelector(sel){return sel==='.settingsInner'?inner:null},appendChild:inner.appendChild};
 const oldParent={children:[],appendChild(node){node.parentNode=this;this.children.push(node);return node}};
-const repair={id:'planningRepairSettings',parentNode:null};oldParent.appendChild(repair);
+const classes=new Set();
+const repair={id:'planningRepairSettings',parentNode:null,firstElementChild:null,classList:{add(name){classes.add(name)}},removeAttribute(){},querySelector(){return null}};oldParent.appendChild(repair);
 const uiWin={document:{getElementById(id){if(id==='planningSettings')return settings;if(id==='planningRepairSettings')return repair;return null}}};
 assert.strictEqual(Summary.repairPlanningSettingsUi(uiWin),true,'le correctif doit trouver la feuille Réglages');
 assert.strictEqual(repair.parentNode,inner,'le bloc recalcul doit être déplacé dans .settingsInner, pas derrière la feuille');
 assert(inner.children.includes(repair),'le bouton doit être rendu dans le contenu scrollable visible');
+assert(classes.has('planningRepairCardV2522'),'le polish compact doit être appliqué à la carte de recalcul');
 
 console.log('planning-summary-v219: OK');
