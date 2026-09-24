@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'251',
+      title:'Des tournées mieux ordonnées',
+      items:[
+        'Dans chaque journée générée, Store Runner cherche maintenant l’ordre de passage qui réduit le temps de route sans changer les magasins prévus.',
+        'Les horaires d’ouverture, rendez-vous, blocs Agenda, durées de visite et heure de fin restent prioritaires sur le gain de trajet.',
+        'Une semaine modifiée à la main ou protégée garde son ordre : Store Runner ne réorganise pas silencieusement ce que tu as posé.',
+        'Si les durées routières ne sont pas disponibles, l’estimation habituelle prend le relais et le planning reste utilisable.'
+      ]
+    },
+    {
       version:'250',
       title:'L’accueil prépare ta prochaine journée',
       items:[

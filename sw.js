@@ -1,4 +1,4 @@
-const BUILD_REV = "20260923-contextual-home250";
+const BUILD_REV = "20260924-route-order251";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
@@ -59,6 +59,7 @@ const OPTIONAL_SHELL = [
   "./home-refresh-v2.js",
   "./sector-pilotage.js",
   "./v182-fixes.js",
+  "./planning-route-optimizer-v251.js",
   "./priority-campaign-v187.js",
   "./auto-planning-fix.js",
   "./connection-ui.js",
