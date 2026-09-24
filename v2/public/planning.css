@@ -36,6 +36,58 @@
   touch-action: pan-y;
 }
 
+/* Réordonnancement manuel : le swipe horizontal reste propriétaire du reste de
+   la carte. Seule la poignée prend la main sur le geste tactile. */
+.srv2-planning-card {
+  position: relative;
+  padding-right: 62px;
+}
+
+.srv2-planning-drag-handle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  border: 1px solid #d8dbe1;
+  border-radius: 12px;
+  background: #f7f8fa;
+  color: #686d76;
+  font: inherit;
+  font-size: 24px;
+  line-height: 1;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+
+.srv2-planning-drag-handle:active,
+.srv2-planning-card.is-dragging .srv2-planning-drag-handle {
+  cursor: grabbing;
+  background: #eaf2ff;
+  border-color: #9fc2ff;
+  color: #0a66ff;
+}
+
+.srv2-planning-card.is-dragging {
+  z-index: 2;
+  opacity: .94;
+  transform: scale(1.012);
+  box-shadow: 0 10px 28px rgba(20, 22, 26, .14);
+  border-color: #9fc2ff;
+}
+
+.srv2-planning-list.is-reordering {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 /* Outils terrain : origine locale + synthèse copiable pour TeamHaven. */
 .srv2-terrain-tools {
   display: grid;
@@ -173,6 +225,17 @@
     background: #16181d;
     color: #f2f3f5;
     border-color: #2a2d34;
+  }
+  .srv2-planning-drag-handle {
+    background: #20232a;
+    color: #b7bac0;
+    border-color: #343841;
+  }
+  .srv2-planning-drag-handle:active,
+  .srv2-planning-card.is-dragging .srv2-planning-drag-handle {
+    background: #19355f;
+    color: #8bb6ff;
+    border-color: #3869ad;
   }
   .srv2-planning-range,
   .srv2-terrain-tools { border-color: #2a2d34; }
