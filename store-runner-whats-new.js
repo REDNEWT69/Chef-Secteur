@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'252',
+      title:'Le recalcul ne chamboule plus la suite',
+      items:[
+        'Quand tu recalcules le reste du planning, les journées futures qui sont encore valides gardent maintenant leurs magasins et leur ordre.',
+        'Une visite ratée ou devenue incompatible est replacée sans pousser inutilement toutes les journées déjà pleines qui suivent.',
+        'Les semaines qui n’ont réellement pas changé restent intactes dans l’archive et ne sont pas marquées à nouveau comme modifiées.',
+        'Si tout est déjà cohérent, le recalcul s’arrête sans réécrire le planning : aucun déplacement artificiel.'
+      ]
+    },
+    {
       version:'251',
       title:'Des tournées mieux ordonnées',
       items:[
