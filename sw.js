@@ -1,4 +1,4 @@
-const BUILD_REV = "20260924-recalc-ui2521";
+const BUILD_REV = "20260924-recalc-ui252";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
