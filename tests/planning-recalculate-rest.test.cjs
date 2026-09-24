@@ -121,6 +121,38 @@ function assertRoutesRespectRules(t,weeks){
   assert.equal(Object.values(dominoBuilt.weeks).flatMap(allOccurrences).length,10,'aucune visite future ne doit disparaître');
   assertRoutesRespectRules(domino,dominoBuilt.weeks);
 
+  // V252 : une visite ratée ne doit plus pousser en domino des journées futures déjà valides.
+  const stable=env();
+  stable.state.visits={};stable.state.businessV2={visits:[],actions:[],storeSnapshots:{}};stable.state.locks={};stable.state.appointments=[];stable.state.manualWeekEdits={};stable.state.settings.maxVisitsPerDay=2;
+  const sm=mk('sm','Fnac','Ratée'),sa=mk('sa','Fnac','Mardi A'),sb=mk('sb','Fnac','Mardi B'),sc=mk('sc','Fnac','Mercredi A'),sd=mk('sd','Fnac','Mercredi B'),se=mk('se','Fnac','Jeudi'),sn1=mk('sn1','Fnac','Semaine suivante A'),sn2=mk('sn2','Fnac','Semaine suivante B');
+  stable.state.stores=[sm,sa,sb,sc,sd,se,sn1,sn2];stable.state.plan=emptyPlan();stable.state.plan.Lundi=[sm];stable.state.plan.Mardi=[sa,sb];stable.state.plan.Mercredi=[sc,sd];stable.state.plan.Jeudi=[se];
+  const stableNext=emptyPlan();stableNext.Lundi=[sn1,sn2];
+  stable.mem.set(ARCHIVE_KEY,JSON.stringify({
+    '2026-09-14':{weekMonday:'2026-09-14',plan:JSON.parse(JSON.stringify(stable.state.plan))},
+    '2026-09-21':{weekMonday:'2026-09-21',plan:JSON.parse(JSON.stringify(stableNext)),manualEdited:true,manualEditedAt:'sentinel-next-week'}
+  }));
+  const stableBuilt=buildAsPlanning(stable);assert.equal(stableBuilt.ok,true,stableBuilt.error||'recalcul stable possible');
+  assert.equal(ids(stableBuilt.weeks['2026-09-14'].Mardi),'["sa","sb"]','mardi futur reste strictement identique');
+  assert.equal(ids(stableBuilt.weeks['2026-09-14'].Mercredi),'["sc","sd"]','mercredi futur reste strictement identique');
+  assert.equal(ids(stableBuilt.weeks['2026-09-14'].Jeudi),'["se","sm"]','seule la visite ratée prend la première place libre');
+  assert.equal(ids(stableBuilt.weeks['2026-09-21'].Lundi),'["sn1","sn2"]','la semaine suivante ne doit pas bouger');
+  assert.equal(stableBuilt.moved,1,'une seule visite doit réellement bouger');
+  assert.equal(stableBuilt.weeksTouched,1,'une seule semaine doit être marquée modifiée');
+  assert.equal(JSON.stringify(Array.from(stableBuilt.changedWeekKeys)),JSON.stringify(['2026-09-14']));
+  assert.equal(stableBuilt.archive['2026-09-21'].manualEditedAt,'sentinel-next-week','métadonnée future inchangée');
+  const stableApplied=await stable.ctx.storeRunnerRecalculateRemainingWeek();assert.equal(stableApplied.ok,true,stableApplied.error||'recalcul stable appliqué');
+  assert.equal(stable.proposals.length,1,'un vrai déplacement passe toujours par Reliability.propose');
+  assert(stable.state.manualWeekEdits['2026-09-14']&&stable.state.manualWeekEdits['2026-09-14'].plan,'semaine réellement modifiée protégée');
+  assert.equal(stable.state.manualWeekEdits['2026-09-21'],undefined,'semaine future intacte non remarquée manuelle');
+  assert.equal(JSON.parse(stable.mem.get(ARCHIVE_KEY))['2026-09-21'].manualEditedAt,'sentinel-next-week','archive future intacte après application');
+
+  // V252 : si tout tient déjà, le recalcul devient un no-op sans proposition ni écriture manuelle.
+  const noop=env();noop.state.visits={};noop.state.businessV2={visits:[],actions:[],storeSnapshots:{}};noop.state.locks={};noop.state.appointments=[];noop.state.manualWeekEdits={};noop.state.settings.maxVisitsPerDay=2;
+  const na=mk('na','Fnac','Stable A'),nb=mk('nb','Fnac','Stable B');noop.state.stores=[na,nb];noop.state.plan=emptyPlan();noop.state.plan.Mardi=[na];noop.state.plan.Mercredi=[nb];
+  noop.mem.set(ARCHIVE_KEY,JSON.stringify({'2026-09-14':{weekMonday:'2026-09-14',plan:JSON.parse(JSON.stringify(noop.state.plan)),manualEditedAt:'sentinel-current'}}));
+  const noopBuilt=buildAsPlanning(noop);assert.equal(noopBuilt.ok,true);assert.equal(noopBuilt.unchanged,true);assert.equal(noopBuilt.moved,0);assert.equal(noopBuilt.weeksTouched,0);
+  const noopApplied=await noop.ctx.storeRunnerRecalculateRemainingWeek();assert.equal(noopApplied.ok,true);assert.equal(noopApplied.unchanged,true);assert.equal(noop.proposals.length,0,'aucune proposition Reliability pour un planning identique');assert.equal(Object.keys(noop.state.manualWeekEdits).length,0,'aucune semaine ne doit être remarquée manuelle');assert.equal(JSON.parse(noop.mem.get(ARCHIVE_KEY))['2026-09-14'].manualEditedAt,'sentinel-current');
+
   // V179 : contraintes fixes restent explicites et ne sont jamais déplacées silencieusement.
   const fixedCredits=env();setFixedTuesday(fixedCredits,[fixedCredits.stores.but1,fixedCredits.stores.d1],3);const beforeFixed=JSON.stringify(fixedCredits.state.plan);const rejectedCredits=buildAsPlanning(fixedCredits);
   assert.equal(rejectedCredits.ok,false);assert.equal(JSON.stringify(fixedCredits.state.plan),beforeFixed);assert.match(rejectedCredits.error,/Mardi contient déjà 4 crédits fixes/);assert.match(rejectedCredits.error,/BUT Ville-Test C \(2\)/);assert.match(rejectedCredits.error,/Darty Ville-Test B \(2\)/);assert.match(rejectedCredits.error,/maximum est réglé sur 3/);assert.match(rejectedCredits.error,/Passe-le à 4 dans Réglages/);assert.match(rejectedCredits.error,/Rien n’a été changé/);
@@ -128,5 +160,5 @@ function assertRoutesRespectRules(t,weeks){
   const boulangerHeavy=env();setFixedTuesday(boulangerHeavy,[boulangerHeavy.stores.b1,boulangerHeavy.stores.but1],4);const rejectedHeavy=buildAsPlanning(boulangerHeavy);assert.equal(rejectedHeavy.ok,false);assert.match(rejectedHeavy.error,/règle Boulanger/i);
   const twoBoulanger=env();setFixedTuesday(twoBoulanger,[twoBoulanger.stores.b1,twoBoulanger.stores.b2],4);const rejectedTwo=buildAsPlanning(twoBoulanger);assert.equal(rejectedTwo.ok,false);assert.match(rejectedTwo.error,/règle Boulanger/i);
 
-  console.log('PASS: V181 recalcule en cascade sur les semaines suivantes, conserve les visites/rendez-vous/verrous, respecte Boulanger/BUT, étend la période visible et ne perd aucune visite.');
+  console.log('PASS: V252 recalcule en cascade sans perdre de visite, conserve les journées futures valides, ne marque que les semaines réellement modifiées et reste un no-op quand rien ne doit bouger.');
 })().catch(e=>{console.error(e);process.exit(1)});
