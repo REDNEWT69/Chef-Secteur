@@ -16,6 +16,7 @@
   import { createDataToolsFeature } from '../src/app/data-tools.mjs';
   import { createStore } from '../src/core/store.mjs';
   import { createPlanningFeature } from '../src/planning/planning.mjs';
+  import { createPlanningReorderFeature } from '../src/planning/reorder-ui.mjs';
   import { createPlanningRangeFeature } from '../src/planning/range-ui.mjs';
   import { createTerrainToolsFeature } from '../src/planning/terrain-tools.mjs';
   import { loadState, saveState, STORAGE_KEY } from '../src/storage/persistence.mjs';
@@ -60,6 +61,10 @@
 
   const planningFeature = createPlanningFeature({ document, store });
   shell.mountScreen('planning', planningFeature.element);
+
+  // Extension locale au planning : elle ne génère rien et ne change jamais de
+  // jour. Elle permet uniquement de réordonner les cartes de la journée au doigt.
+  createPlanningReorderFeature({ document, store, planningFeature });
 
   const terrainToolsFeature = createTerrainToolsFeature({ document, store });
   shell.mountScreen('planning', terrainToolsFeature.element);
