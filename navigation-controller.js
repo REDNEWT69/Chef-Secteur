@@ -102,6 +102,13 @@
         dragStartY=null;
       },{passive:true});
     }
+    /* V252.1 : l'action corrective appartient visuellement à la feuille. Elle reste
+       juste sous son en-tête, donc visible sans scroller et jamais derrière le backdrop. */
+    const repair=document.getElementById('planningRepairSettings');
+    if(repair){
+      if(repair.parentNode!==inner)inner.appendChild(repair);
+      if(repair.previousElementSibling!==header)header.insertAdjacentElement('afterend',repair);
+    }
     return true;
   }
 
