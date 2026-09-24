@@ -34,18 +34,21 @@ function syncDatedLock(win,id,day){const info=typeof win.storeRunnerLockInfo==='
 function clearDatedLock(win,id,day){try{const info=typeof win.storeRunnerLockInfo==='function'?win.storeRunnerLockInfo(id):null;if(!info||info.recurring)return;const week=currentWeekKey(win.state);if(info.week===week&&info.day===day){if(typeof win.storeRunnerUnpinPlannedStore==='function')win.storeRunnerUnpinPlannedStore(id);else if(win.state.locks)delete win.state.locks[String(id)]}}catch(e){}}
 async function persist(win,reason,detail){const week=currentWeekKey(win.state),now=new Date().toISOString(),db=storage(win);if(!db||typeof win.save!=='function')throw Error('Sauvegarde indisponible.');win.state.manualWeekEdits=win.state.manualWeekEdits||{};win.state.manualWeekEdits[week]={at:now,plan:clonePlan(win.state)};const archive=JSON.parse(db.getItem(ARCHIVE_KEY)||'{}')||{};archive[week]=Object.assign({},archive[week]||{},{weekMonday:week,plan:clonePlan(win.state),manualEdited:true,manualEditedAt:now});db.setItem(ARCHIVE_KEY,JSON.stringify(archive));
  win.save();if(typeof db.flush==='function')await db.flush();try{if(typeof win.renderAll==='function')win.renderAll();else if(typeof win.renderWeek==='function')win.renderWeek()}catch(e){}try{win.document.dispatchEvent(new win.CustomEvent('store-runner:planning-updated',{detail:Object.assign({reason,weekDate:week},detail||{})}))}catch(e){}return true}
-async function editStore(win,id,day,remove){
+/* Une seule transaction pour toute modification manuelle : on garde l'état et le
+   stockage d'avant, on applique, on enregistre. Au moindre échec d'écriture, les deux
+   reviennent exactement à l'état d'avant et rien n'est annoncé comme réussi.
+   `apply` ne doit rien modifier quand il renvoie ok:false. */
+async function runManualEdit(win,options){
   if(editBusy)return{ok:false,error:'Une modification est déjà en cours.'};
   editBusy=true;const db=storage(win),fields=['plan','locks','manualWeekEdits'],before={},stored={};
   try{
     for(const key of fields)before[key]=win.state[key]===undefined?undefined:JSON.parse(JSON.stringify(win.state[key]));
     if(!db)throw Error('Sauvegarde indisponible.');
     for(const key of [ARCHIVE_KEY,'sector_planner_universal_v1'])stored[key]=db.getItem(key);
-    if(win.ChefReliability&&typeof win.ChefReliability.checkpoint==='function')win.ChefReliability.checkpoint('Avant modification manuelle du planning',db);
-    const result=remove?removeFromPlan(win.state,id,day):addToPlan(win.state,id,day);
-    if(!result.ok||result.already)return result;
-    if(remove)clearDatedLock(win,id,day);else syncDatedLock(win,id,day);
-    await persist(win,remove?'manual-store-removed':result.sourceDay?'manual-store-moved':'manual-store-added',{day,sourceDay:result.sourceDay||null,storeId:String(id)});
+    if(options.checkpoint&&win.ChefReliability&&typeof win.ChefReliability.checkpoint==='function')win.ChefReliability.checkpoint(options.checkpoint,db);
+    const result=options.apply();
+    if(!result||!result.ok||result.already||result.unchanged)return result;
+    await persist(win,options.reason(result),options.detail(result));
     return result;
   }catch(e){
     for(const key of fields){if(before[key]===undefined)delete win.state[key];else win.state[key]=before[key]}
@@ -55,8 +58,127 @@ async function editStore(win,id,day,remove){
     return{ok:false,error};
   }finally{editBusy=false}
 }
+async function editStore(win,id,day,remove){
+  return runManualEdit(win,{
+    checkpoint:'Avant modification manuelle du planning',
+    apply(){
+      const result=remove?removeFromPlan(win.state,id,day):addToPlan(win.state,id,day);
+      if(!result.ok||result.already)return result;
+      if(remove)clearDatedLock(win,id,day);else syncDatedLock(win,id,day);
+      return result;
+    },
+    reason:result=>remove?'manual-store-removed':result.sourceDay?'manual-store-moved':'manual-store-added',
+    detail:result=>({day,sourceDay:result.sourceDay||null,storeId:String(id)})
+  });
+}
 async function addStore(win,id,day){return editStore(win,id,day||currentDay(win),false)}
 async function removeStore(win,id,day){return editStore(win,id,day||currentDay(win),true)}
+
+/* ---------------------------------------------------------------------------
+   V254.3 — réordonner une journée au doigt (issue #426).
+
+   Le geste vit dans planning-reorder-v254.js ; les règles et l'écriture restent ici,
+   dans le propriétaire des modifications manuelles. Seul l'ordre de passage d'une
+   journée change : l'ensemble de ses magasins, donc crédits, maximum et règle Boulanger,
+   reste identique par construction, et aucune visite ne change de jour.
+   Un ordre choisi à la main n'est jamais réécrit : s'il rend la journée infaisable
+   (rendez-vous, ouverture, fin de journée), il est enregistré tel quel et le contrôle
+   rend un avertissement clair. Toute écriture marque la semaine comme modifiée à la main :
+   l'optimiseur V251 ne la réordonne plus, et le recalcul V252 garde l'ordre d'une journée
+   valide.
+   --------------------------------------------------------------------------- */
+function dayIds(state,day){return ((state&&state.plan&&state.plan[day])||[]).map(s=>String(s&&s.id))}
+function sameIds(a,b){return Array.isArray(a)&&Array.isArray(b)&&a.length===b.length&&a.every((x,i)=>String(x)===String(b[i]))}
+function weekDayDate(state,day){const index=DAYS.indexOf(day);if(index<0)return'';const d=parse(currentWeekKey(state));if(!d)return'';d.setDate(d.getDate()+index);return iso(d)}
+function storeLabel(store){return (text(store&&store.enseigne)||'Magasin')+(text(store&&store.ville)?' '+text(store.ville):'')}
+function hm(minutes){const m=Math.round(Number(minutes));if(!Number.isFinite(m))return'';const v=((m%1440)+1440)%1440;return String(Math.floor(v/60)).padStart(2,'0')+':'+String(v%60).padStart(2,'0')}
+function reorderInPlan(state,day,id,toIndex){
+  if(!state||!DAYS.includes(day)||!state.plan||!Array.isArray(state.plan[day]))return{ok:false,error:'Journée introuvable.'};
+  const route=state.plan[day],from=route.findIndex(s=>String(s&&s.id)===String(id));
+  if(from<0)return{ok:false,error:'Cette visite n’est plus prévue '+day.toLowerCase()+'. Recharge le planning.'};
+  const wanted=Number(toIndex);
+  if(!Number.isInteger(wanted))return{ok:false,error:'Position invalide.'};
+  const to=Math.max(0,Math.min(route.length-1,wanted));
+  if(from===to)return{ok:true,unchanged:true,from,to,day,store:route[from]};
+  const next=route.slice(),moved=next.splice(from,1)[0];next.splice(to,0,moved);state.plan[day]=next;
+  return{ok:true,from,to,day,store:moved};
+}
+/* Ce qu'un nouvel ordre rendrait infaisable, lu dans l'ordonnanceur des horaires
+   (StoreOpeningHoursV1), le même que l'affichage, le recalcul et « Commencer par ici ».
+   Seul ce que le changement abîme est signalé : un rendez-vous déjà intenable ou une
+   journée déjà trop longue avant le geste ne lui est pas imputé. */
+function lateEnd(s){return !!s&&s.estimatedEnd!=null&&Number.isFinite(Number(s.estimatedEnd))&&Number.isFinite(Number(s.endLimit))&&Number(s.estimatedEnd)>Number(s.endLimit)+0.5}
+function newStatusRow(before,after,status){const had=new Set(((before&&before.rows)||[]).filter(r=>r&&r.status===status).map(r=>String(r.store&&r.store.id)));return((after&&after.rows)||[]).find(r=>r&&r.status===status&&!had.has(String(r.store&&r.store.id)))||null}
+function scheduleIssue(before,after){
+  if(!after)return null;
+  const count=(sched,key)=>Number(sched&&sched[key])||0;
+  if(count(after,'appointmentConflicts')>count(before,'appointmentConflicts')){
+    const row=newStatusRow(before,after,'appointment-conflict'),a=row&&row.appointment;
+    return{code:'rdv-conflict',reason:(a&&a.manualHours===true?'L’arrivée imposée':'Le rendez-vous')+(a&&a.time?' de '+a.time:'')+(row?' chez '+storeLabel(row.store):'')+' n’est plus tenable avec cet ordre.'};
+  }
+  if(count(after,'closedCount')>count(before,'closedCount')){
+    const row=newStatusRow(before,after,'closed');
+    return{code:'closing',reason:(row?storeLabel(row.store):'Un magasin')+' serait fermé à ton arrivée avec cet ordre.'};
+  }
+  if(lateEnd(after)&&!lateEnd(before))return{code:'late-end',reason:'Fin estimée vers '+hm(after.estimatedEnd)+', après ta fin de journée ('+hm(after.endLimit)+').'};
+  return null;
+}
+function reorderPolicy(win){
+  const state=win&&win.state,hours=win&&win.StoreOpeningHoursV1;
+  return{
+    today:todayISO(),
+    dateOf:day=>weekDayDate(state,day),
+    schedule:(route,day)=>{try{return hours&&typeof hours.scheduleRoute==='function'&&route&&route.length?hours.scheduleRoute(route,day,state):null}catch(e){return null}}
+  };
+}
+/* Contrôle d'un réordonnancement : seule une journée à venir (aujourd'hui compris) se
+   réorganise. Avec `toIndex`, le contrôle rend l'horaire du nouvel ordre et, s'il rend la
+   journée infaisable, un avertissement : l'ordre reste accepté. */
+function reorderCheck(state,id,day,policy,toIndex){
+  if(!state||!DAYS.includes(day))return{ok:false,code:'day',reason:'Journée introuvable.'};
+  if(!dayIds(state,day).includes(String(id)))return{ok:false,code:'missing',reason:'Cette visite n’est plus prévue '+day.toLowerCase()+'. Recharge le planning.'};
+  const date=policy.dateOf(day);
+  if(date&&date<policy.today)return{ok:false,code:'past',reason:'Une journée passée ne se réorganise plus.'};
+  if(toIndex===undefined)return{ok:true,date};
+  const trial={plan:{[day]:(state.plan[day]||[]).slice()}},moved=reorderInPlan(trial,day,id,toIndex);
+  if(!moved.ok)return{ok:false,code:'position',reason:moved.error};
+  if(moved.unchanged)return{ok:true,date,unchanged:true,to:moved.to,warning:null};
+  const after=policy.schedule(trial.plan[day],day);
+  return{ok:true,date,to:moved.to,schedule:after,warning:scheduleIssue(policy.schedule(state.plan[day],day),after)};
+}
+async function reorderStore(win,id,day,toIndex,options){
+  options=options||{};
+  const check=reorderCheck(win.state,id,day,reorderPolicy(win),toIndex);
+  if(!check.ok)return{ok:false,error:check.reason,code:check.code};
+  if(options.expected&&!sameIds(options.expected,dayIds(win.state,day)))return{ok:false,code:'stale',error:'Le planning a changé pendant le déplacement. Réessaie.'};
+  const week=currentWeekKey(win.state),before=dayIds(win.state,day);
+  return runManualEdit(win,{
+    apply(){
+      const result=reorderInPlan(win.state,day,id,toIndex);
+      if(result.ok&&!result.unchanged){result.undo={week,day,before,after:dayIds(win.state,day)};result.warning=check.warning||null}
+      return result;
+    },
+    reason:()=>'manual-store-reordered',
+    detail:result=>({day,storeId:String(id),from:result.from,to:result.to})
+  });
+}
+/* Retour arrière d'un nouvel ordre, tant que rien d'autre n'a touché la journée. */
+async function undoEdit(win,token){
+  if(!token||!DAYS.includes(token.day)||!Array.isArray(token.before)||!Array.isArray(token.after))return{ok:false,error:'Rien à annuler.'};
+  return runManualEdit(win,{
+    apply(){
+      const state=win.state,day=token.day;
+      if(currentWeekKey(state)!==token.week)return{ok:false,error:'Annulation impossible : la semaine affichée a changé.'};
+      if(!sameIds(dayIds(state,day),token.after))return{ok:false,error:'Annulation impossible : la journée a changé entre-temps.'};
+      const pool=new Map(state.plan[day].map(s=>[String(s.id),s])),route=token.before.map(id=>pool.get(String(id)));
+      if(route.some(s=>!s))return{ok:false,error:'Annulation impossible : une visite a disparu entre-temps.'};
+      state.plan[day]=route;
+      return{ok:true,undone:true,day};
+    },
+    reason:()=>'manual-store-reorder-undone',
+    detail:result=>({day:result.day})
+  });
+}
 /* ---------------------------------------------------------------------------
    Suggestions de magasins proches.
 
@@ -363,5 +485,5 @@ function bindRow(win,row){if(!row||row.classList.contains('calendarEvent')||row.
 function enhance(win){const doc=win.document,shell=doc.querySelector('#planPanel .timelineShell');if(!shell)return false;let head=shell.querySelector('.pmvHead');if(!head){head=doc.createElement('div');head.className='pmvHead';head.innerHTML='<span>Visites</span><button class="pmvAdd" type="button">＋ Ajouter</button>';const timeline=shell.querySelector('.appleTimeline');shell.insertBefore(head,timeline||shell.firstChild);/* Le swipe reste actif, mais son mode d'emploi n'a pas à occuper l'écran en permanence :
    l'élément reste en place, masqué, pour rester disponible à la demande. */const hint=doc.createElement('div');hint.className='pmvHint';hint.hidden=true;hint.textContent='Astuce : glisse une visite à gauche ou à droite pour la retirer.';head.insertAdjacentElement('afterend',hint);head.querySelector('.pmvAdd').addEventListener('click',()=>openDialog(win))}shell.querySelectorAll('.timelineRow:not(.calendarEvent)').forEach(r=>bindRow(win,r));renderSuggestions(win);installRadiusField(win);return true}
 function install(win){if(installed)return;installed=true;ensureCss(win.document);ensureDialog(win);const run=()=>setTimeout(()=>enhance(win),0);run();win.document.addEventListener('store-runner:planning-updated',run);win.document.addEventListener('store-runner:data-restored',run);if(typeof win.MutationObserver!=='undefined'){const panel=win.document.getElementById('planPanel');if(panel){observer=new win.MutationObserver(run);observer.observe(panel,{childList:true,subtree:true})}}}
-return{DAYS,clonePlan,currentWeekKey,plannedDay,addToPlan,removeFromPlan,currentDay,addStore,removeStore,capacityWarning,parseRowStoreId,install,enhance,DEFAULT_RADIUS_KM,MAX_SUGGESTIONS,MAX_WITH_PRIORITY,PRIO_BADGE,radiusKm,coords,dateOfDay,haversine,computeSuggestions,suggestionsFor,suggestionLabel,visitLabel,renderSuggestions,acceptSuggestion,installRadiusField};
+return{DAYS,clonePlan,currentWeekKey,plannedDay,addToPlan,removeFromPlan,currentDay,addStore,removeStore,capacityWarning,parseRowStoreId,install,enhance,dayIds,weekDayDate,reorderInPlan,reorderCheck,reorderPolicy,scheduleIssue,reorderStore,undoEdit,DEFAULT_RADIUS_KM,MAX_SUGGESTIONS,MAX_WITH_PRIORITY,PRIO_BADGE,radiusKm,coords,dateOfDay,haversine,computeSuggestions,suggestionsFor,suggestionLabel,visitLabel,renderSuggestions,acceptSuggestion,installRadiusField};
 });

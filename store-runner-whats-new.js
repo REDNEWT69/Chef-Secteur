@@ -25,6 +25,18 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'254',
+      title:'Réorganise ta journée au doigt',
+      items:[
+        'Dans le planning, garde le doigt appuyé sur une visite, puis fais-la glisser pour changer son ordre de passage dans la journée.',
+        'Les heures d’arrivée, les trajets et la fin de journée se recalculent aussitôt. Le nouvel ordre reste enregistré, même après avoir fermé l’application, et l’optimisation automatique ne le défait plus.',
+        'Si le nouvel ordre rend un rendez-vous, une heure d’ouverture ou ta fin de journée intenable, un avertissement clair te le dit, mais ton choix est gardé tel quel.',
+        'Un bouton « Annuler » s’affiche juste après chaque changement pour revenir en arrière d’un geste.',
+        'Faire défiler le planning reste naturel : un simple glissement ne déplace jamais une visite.',
+        'Un magasin avec rendez-vous garde maintenant sa place dans la journée au lieu de repartir en fin de tournée à chaque ouverture.'
+      ]
+    },
+    {
       version:'252',
       title:'Le recalcul ne chamboule plus la suite',
       items:[
