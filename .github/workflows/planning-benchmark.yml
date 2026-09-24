@@ -1,0 +1,19 @@
+name: Planning benchmark
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Benchmark moteur planning V253
+        run: node tests/planning-engine-benchmark-v253.test.cjs
