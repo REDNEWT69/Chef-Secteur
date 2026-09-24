@@ -50,6 +50,7 @@ jobs:
       - run: node tests/google-oauth-production.test.cjs
       - run: node tests/planning.test.cjs
       - run: node tests/planning-route-quality-v210.test.cjs
+      - run: node tests/planning-route-optimizer-v251.test.cjs
       - run: node tests/planning-pilot-v211.test.cjs
       - run: node tests/v212-smart-schedule.test.cjs
       - run: node tests/visit-mobile-ux-v215.test.cjs
