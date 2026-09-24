@@ -49,9 +49,9 @@ function env(){
   ctx.window=ctx;vm.runInNewContext(source,ctx);return{ctx,state,mem,proposals,stores:{b0,missed,b1,b2,but1,d1,f1}};
 }
 function buildAsPlanning(t){t.ctx.__storeRunnerPlanningGenerationActive=true;try{return t.ctx.__storeRunnerBuildRemainingWeekPlan()}finally{t.ctx.__storeRunnerPlanningGenerationActive=false}}
-function setFixedTuesday(t,stores,max){
-  t.state.settings.maxVisitsPerDay=max;t.state.plan=emptyPlan();t.state.plan.Mardi=stores.slice();t.state.visits={};t.state.businessV2={visits:[],actions:[],storeSnapshots:{}};t.state.appointments=[];t.state.locks={};
-  for(const s of stores)t.state.locks[s.id]={day:'Mardi',week:'2026-09-14'};
+function setFixedDay(t,day,stores,max){
+  t.state.settings.maxVisitsPerDay=max;t.state.plan=emptyPlan();t.state.plan[day]=stores.slice();t.state.visits={};t.state.businessV2={visits:[],actions:[],storeSnapshots:{}};t.state.appointments=[];t.state.locks={};
+  for(const s of stores)t.state.locks[s.id]={day,week:'2026-09-14'};
   t.mem.set(ARCHIVE_KEY,JSON.stringify({'2026-09-14':{weekMonday:'2026-09-14',plan:JSON.parse(JSON.stringify(t.state.plan))}}));
 }
 function assertRoutesRespectRules(t,weeks){
@@ -153,12 +153,12 @@ function assertRoutesRespectRules(t,weeks){
   const noopBuilt=buildAsPlanning(noop);assert.equal(noopBuilt.ok,true);assert.equal(noopBuilt.unchanged,true);assert.equal(noopBuilt.moved,0);assert.equal(noopBuilt.weeksTouched,0);
   const noopApplied=await noop.ctx.storeRunnerRecalculateRemainingWeek();assert.equal(noopApplied.ok,true);assert.equal(noopApplied.unchanged,true);assert.equal(noop.proposals.length,0,'aucune proposition Reliability pour un planning identique');assert.equal(Object.keys(noop.state.manualWeekEdits).length,0,'aucune semaine ne doit être remarquée manuelle');assert.equal(JSON.parse(noop.mem.get(ARCHIVE_KEY))['2026-09-14'].manualEditedAt,'sentinel-current');
 
-  // V179 : contraintes fixes restent explicites et ne sont jamais déplacées silencieusement.
-  const fixedCredits=env();setFixedTuesday(fixedCredits,[fixedCredits.stores.but1,fixedCredits.stores.d1],3);const beforeFixed=JSON.stringify(fixedCredits.state.plan);const rejectedCredits=buildAsPlanning(fixedCredits);
-  assert.equal(rejectedCredits.ok,false);assert.equal(JSON.stringify(fixedCredits.state.plan),beforeFixed);assert.match(rejectedCredits.error,/Mardi contient déjà 4 crédits fixes/);assert.match(rejectedCredits.error,/BUT Ville-Test C \(2\)/);assert.match(rejectedCredits.error,/Darty Ville-Test B \(2\)/);assert.match(rejectedCredits.error,/maximum est réglé sur 3/);assert.match(rejectedCredits.error,/Passe-le à 4 dans Réglages/);assert.match(rejectedCredits.error,/Rien n’a été changé/);
-  const boulangerLight=env();setFixedTuesday(boulangerLight,[boulangerLight.stores.b1,boulangerLight.stores.f1],4);assert.equal(buildAsPlanning(boulangerLight).ok,true);
-  const boulangerHeavy=env();setFixedTuesday(boulangerHeavy,[boulangerHeavy.stores.b1,boulangerHeavy.stores.but1],4);const rejectedHeavy=buildAsPlanning(boulangerHeavy);assert.equal(rejectedHeavy.ok,false);assert.match(rejectedHeavy.error,/règle Boulanger/i);
-  const twoBoulanger=env();setFixedTuesday(twoBoulanger,[twoBoulanger.stores.b1,twoBoulanger.stores.b2],4);const rejectedTwo=buildAsPlanning(twoBoulanger);assert.equal(rejectedTwo.ok,false);assert.match(rejectedTwo.error,/règle Boulanger/i);
+  // V179 : les contraintes fixes futures restent explicites et ne sont jamais déplacées silencieusement.
+  const fixedCredits=env();setFixedDay(fixedCredits,'Mercredi',[fixedCredits.stores.but1,fixedCredits.stores.d1],3);const beforeFixed=JSON.stringify(fixedCredits.state.plan);const rejectedCredits=buildAsPlanning(fixedCredits);
+  assert.equal(rejectedCredits.ok,false);assert.equal(JSON.stringify(fixedCredits.state.plan),beforeFixed);assert.match(rejectedCredits.error,/Mercredi contient déjà 4 crédits fixes/);assert.match(rejectedCredits.error,/BUT Ville-Test C \(2\)/);assert.match(rejectedCredits.error,/Darty Ville-Test B \(2\)/);assert.match(rejectedCredits.error,/maximum est réglé sur 3/);assert.match(rejectedCredits.error,/Passe-le à 4 dans Réglages/);assert.match(rejectedCredits.error,/Rien n’a été changé/);
+  const boulangerLight=env();setFixedDay(boulangerLight,'Mardi',[boulangerLight.stores.b1,boulangerLight.stores.f1],4);assert.equal(buildAsPlanning(boulangerLight).ok,true);
+  const boulangerHeavy=env();setFixedDay(boulangerHeavy,'Mardi',[boulangerHeavy.stores.b1,boulangerHeavy.stores.but1],4);const rejectedHeavy=buildAsPlanning(boulangerHeavy);assert.equal(rejectedHeavy.ok,false);assert.match(rejectedHeavy.error,/règle Boulanger/i);
+  const twoBoulanger=env();setFixedDay(twoBoulanger,'Mardi',[twoBoulanger.stores.b1,twoBoulanger.stores.b2],4);const rejectedTwo=buildAsPlanning(twoBoulanger);assert.equal(rejectedTwo.ok,false);assert.match(rejectedTwo.error,/règle Boulanger/i);
 
   console.log('PASS: V252 recalcule en cascade sans perdre de visite, conserve les journées futures valides, ne marque que les semaines réellement modifiées et reste un no-op quand rien ne doit bouger.');
 })().catch(e=>{console.error(e);process.exit(1)});
