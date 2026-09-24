@@ -16,6 +16,7 @@ Un lot V1 ne touche pas `v2/`, et un lot V2 ne touche pas le runtime V1.
 - V2-04b — navigation entre les semaines : livré
 - V2-04c — rotation équilibrée entre les semaines : livré
 - V2-05a — swipe tactile entre les jours : livré
+- V2-05b — réordonnancement manuel des magasins d’une journée au doigt : proposé dans #424 ; l’ordre reste dans le même jour et est persisté localement
 - V2-06 — génération de 3 semaines en tournée escargot : livré
 - V2-07 — import local d’une sauvegarde V1 + persistance : livré
 - Outils terrain du planning (départ, préparation TeamHaven, workflow mobile) : livrés dans l’environnement V2 de test
