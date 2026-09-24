@@ -1,7 +1,7 @@
 const BUILD_REV = "20260924-recalc-ui252";
-// V254.1 reste un ajustement visuel de l'accueil : même version fonctionnelle 252,
-// nouveau cache pour livrer l'ordre logo > IA > Mode Runner sans conserver l'ancien CSS.
-const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV + "-home-order2541";
+// V254.2 corrige le recalcul terrain sans changer la version utilisateur 252 :
+// nouveau cache pour livrer immédiatement planning-cascade-v181.js après mise à jour.
+const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV + "-recalc-overbook2542";
 const CORE_SHELL = [
   "./",
   "./index.html",
