@@ -227,3 +227,105 @@ test('V2-05a Planning : génération, semaines et vrais gestes tactiles restent 
   await expect(page.locator('.srv2-screen[data-screen="home"]')).toBeVisible();
   expect(pageErrors, 'Le planning V2 ne doit produire aucune erreur JavaScript').toEqual([]);
 });
+
+test('V2 Planning : un magasin se déplace au doigt dans sa journée et l’ordre persiste', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(String(error && error.message || error)));
+
+  await page.goto(V2_URL, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.srv2-nav');
+  await page.locator('.srv2-tab[data-tab="planning"]').tap();
+
+  const screen = page.locator('.srv2-screen[data-screen="planning"]');
+  const generate = screen.locator('.srv2-planning-generate');
+  await generate.tap();
+
+  // Prépare une journée à trois magasins à partir de l'état V2 réellement
+  // sauvegardé. On ne change ni le magasin, ni la semaine : seulement leur ordre.
+  await page.evaluate(() => {
+    const key = 'store_runner_v2_state';
+    const state = JSON.parse(localStorage.getItem(key));
+    const week = state.planning.weeks['2026-09-14'];
+    state.settings.maxVisitsPerDay = 4;
+    week.days.Lundi = ['demo-alpha', 'demo-beta', 'demo-gamma'];
+    week.days.Mardi = [];
+    week.days.Mercredi = [];
+    week.days.Jeudi = [];
+    week.days.Vendredi = [];
+    state.planning.currentWeek = '2026-09-14';
+    state.settings.weekDate = '2026-09-14';
+    localStorage.setItem(key, JSON.stringify(state));
+  });
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.srv2-nav');
+  await page.locator('.srv2-tab[data-tab="planning"]').tap();
+
+  const planning = page.locator('.srv2-screen[data-screen="planning"]');
+  const cards = planning.locator('.srv2-planning-card');
+  await expect(cards).toHaveCount(3);
+  await expect(cards.nth(0)).toContainText('Enseigne Alpha');
+  await expect(cards.nth(1)).toContainText('Enseigne Bêta');
+  await expect(cards.nth(2)).toContainText('Enseigne Gamma');
+  expect(await activeDay(planning)).toBe('Lundi');
+
+  const handles = planning.locator('.srv2-planning-drag-handle');
+  await expect(handles).toHaveCount(3);
+  const firstHandleBox = await handles.nth(0).boundingBox();
+  const thirdHandleBox = await handles.nth(2).boundingBox();
+  if (!firstHandleBox || !thirdHandleBox) throw new Error('Poignée tactile V2 introuvable');
+  expect(firstHandleBox.width).toBeGreaterThanOrEqual(44);
+  expect(firstHandleBox.height).toBeGreaterThanOrEqual(44);
+
+  // Gamma passe de la troisième à la première place par un vrai geste tactile.
+  await touchDrag(page,
+    { x: thirdHandleBox.x + thirdHandleBox.width / 2, y: thirdHandleBox.y + thirdHandleBox.height / 2 },
+    { x: firstHandleBox.x + firstHandleBox.width / 2, y: Math.max(4, firstHandleBox.y - 6) },
+    8
+  );
+  await page.waitForTimeout(180);
+
+  await expect(cards.nth(0)).toContainText('Enseigne Gamma');
+  await expect(cards.nth(1)).toContainText('Enseigne Alpha');
+  await expect(cards.nth(2)).toContainText('Enseigne Bêta');
+  expect(await activeDay(planning)).toBe('Lundi');
+  await expect(planning.locator('.srv2-planning-status')).toHaveText('Ordre de la journée enregistré.');
+
+  const persisted = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('store_runner_v2_state'));
+    return state.planning.weeks['2026-09-14'].days.Lundi;
+  });
+  expect(persisted).toEqual(['demo-gamma', 'demo-alpha', 'demo-beta']);
+  expect(new Set(persisted).size).toBe(3);
+
+  // Après fermeture/rechargement, l'ordre manuel doit être intact.
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.srv2-nav');
+  await page.locator('.srv2-tab[data-tab="planning"]').tap();
+  const afterReload = page.locator('.srv2-screen[data-screen="planning"]');
+  const reloadedCards = afterReload.locator('.srv2-planning-card');
+  await expect(reloadedCards).toHaveCount(3);
+  await expect(reloadedCards.nth(0)).toContainText('Enseigne Gamma');
+  await expect(reloadedCards.nth(1)).toContainText('Enseigne Alpha');
+  await expect(reloadedCards.nth(2)).toContainText('Enseigne Bêta');
+
+  // Le geste horizontal reste disponible hors de la poignée.
+  const firstCardBox = await reloadedCards.nth(0).boundingBox();
+  if (!firstCardBox) throw new Error('Carte V2 introuvable après reload');
+  await touchDrag(page,
+    { x: firstCardBox.x + Math.min(170, firstCardBox.width * 0.55), y: firstCardBox.y + 24 },
+    { x: firstCardBox.x + 28, y: firstCardBox.y + 24 },
+    6
+  );
+  await page.waitForTimeout(120);
+  expect(await activeDay(afterReload)).toBe('Mardi');
+
+  const overflow = await page.evaluate(() => ({
+    documentScrollWidth: document.documentElement.scrollWidth,
+    documentClientWidth: document.documentElement.clientWidth,
+    planningScrollWidth: document.querySelector('.srv2-planning-feature')?.scrollWidth || 0,
+  }));
+  expect(overflow.documentScrollWidth).toBeLessThanOrEqual(overflow.documentClientWidth + 1);
+  expect(overflow.planningScrollWidth).toBeLessThanOrEqual(391);
+  expect(pageErrors, 'Le réordonnancement tactile ne doit produire aucune erreur JavaScript').toEqual([]);
+});
