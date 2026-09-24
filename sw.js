@@ -1,7 +1,7 @@
 const BUILD_REV = "20260924-recalc-ui252";
-// V252.2 est un polish visuel du même build fonctionnel. Le suffixe force un cache
-// propre sans fabriquer une nouvelle version utilisateur juste pour de la cosmétique.
-const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV + "-ui-polish2";
+// V254.1 reste un ajustement visuel de l'accueil : même version fonctionnelle 252,
+// nouveau cache pour livrer l'ordre logo > IA > Mode Runner sans conserver l'ancien CSS.
+const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV + "-home-order2541";
 const CORE_SHELL = [
   "./",
   "./index.html",
