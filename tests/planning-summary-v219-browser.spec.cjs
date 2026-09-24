@@ -60,6 +60,24 @@ test('Planning masque les résumés redondants et garde le détail dans Pilotage
   let overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 
+  /* V252.1 : le bouton de recalcul doit appartenir au contenu visible de la bottom sheet.
+     S'il reste enfant direct de #planningSettings, il se retrouve derrière le panneau sur
+     téléphone, exactement comme le bug terrain observé pendant V254. */
+  await page.evaluate(()=>{
+    const settings=document.getElementById('planningSettings');
+    if(settings)settings.open=true;
+    window.StoreRunnerPlanningSummaryV219.repairPlanningSettingsUi(window);
+  });
+  const repair=page.locator('#planningSettings .settingsInner > #planningRepairSettings');
+  await expect(repair).toHaveCount(1);
+  await expect(repair).toBeVisible();
+  await expect(repair.locator('#recalculateRemainingWeekBtn')).toBeVisible();
+  const repairBox=await repair.boundingBox();
+  expect(repairBox).toBeTruthy();
+  expect(repairBox.y).toBeGreaterThanOrEqual(0);
+  expect(repairBox.y).toBeLessThan(844);
+  await page.evaluate(()=>{const settings=document.getElementById('planningSettings');if(settings)settings.open=false});
+
   /* Le reporting détaillé n'est pas supprimé : il reste accessible dans l'écran
      d'activité / Pilotage, qui est précisément sa bonne place. */
   await page.evaluate(()=>window.StoreRunnerSectorPilotage.open(window));
