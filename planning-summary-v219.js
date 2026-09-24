@@ -122,11 +122,35 @@ function repairPlanningSettingsUi(win){
   const inner=settings.querySelector&&settings.querySelector('.settingsInner');
   const target=inner||settings;
   if(repair.parentNode!==target)target.appendChild(repair);
+  const header=target.querySelector&&target.querySelector('#planningSettingsSheetHeader');
+  if(header&&header.nextElementSibling!==repair)header.insertAdjacentElement('afterend',repair);
+  repair.classList.add('planningRepairCardV2522');
+  repair.removeAttribute('style');
+  const title=repair.firstElementChild;
+  if(title&&title.id!=='recalculateRemainingWeekBtn'){
+    title.classList.add('planningRepairTitleV2522');
+    title.removeAttribute('style');
+    title.textContent='Ajuster cette semaine';
+  }
+  const hint=repair.querySelector('.tiny');
+  if(hint){
+    hint.classList.add('planningRepairHintV2522');
+    hint.removeAttribute('style');
+    hint.textContent='Replacer une visite sans régénérer tes 3 semaines.';
+  }
+  const button=repair.querySelector('#recalculateRemainingWeekBtn');
+  if(button){
+    button.classList.add('planningRepairButtonV2522');
+    button.style.removeProperty('width');
+    button.style.removeProperty('min-height');
+    button.textContent='↻ Recalculer le reste';
+  }
   return repair.parentNode===target
 }
 function ensureCss(doc){if(doc.getElementById('planningSummaryV219Css'))return;const s=doc.createElement('style');s.id='planningSummaryV219Css';s.textContent=`
 .proQualityCardV219{padding:10px 14px!important;cursor:pointer;touch-action:manipulation}.proQualityCardV219 .proTitle{margin:0}.proQualityCardV219 #proQuality{margin-top:3px!important;gap:7px!important;align-items:baseline!important}.proQualityCardV219 #proQuality .proScore{font-size:21px!important;line-height:1.1}.proQualityCardV219 #proQuality .proScore small{font-size:9px!important}.proQualityCardV219 #proQuality>div:last-child{display:flex;align-items:baseline;gap:6px;min-width:0}.proQualityCardV219 #proQuality>div:last-child b{font-size:13px}.proQualityCardV219 #proQuality>div:last-child span{display:none}.proQualityCardV219.is-open #proQuality>div:last-child span{display:block;font-size:9px;color:#667085}.proQualityCardV219:focus-visible{outline:2px solid #4f7cff;outline-offset:2px}#proQualityDetailV219{font-size:10px;line-height:1.35;color:#667085;margin-top:7px;padding-top:7px;border-top:1px solid #eef0f3}#proQualityDetailV219[hidden]{display:none!important}.proWeekMetricsV219,.spMonthMetricsV219{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin-top:8px}.proWeekMetricV219{background:#f7f9fc;border-radius:11px;padding:8px;min-width:0}.proWeekMetricV219 b{display:block;font-size:16px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.proWeekMetricV219 span{display:block;font-size:9px;line-height:1.2;color:#667085;margin-top:3px}.spMonthSummaryV219{margin-top:12px}.spMonthSummaryHeadV219{display:flex;align-items:baseline;justify-content:space-between;gap:10px}.spMonthSummaryHeadV219 h3{margin:0!important}.spMonthSummaryHeadV219 span{font-size:10px;color:#747b86}.spMonthMetricsV219{grid-template-columns:repeat(4,minmax(0,1fr))}.spMonthMetricsV219 .proWeekMetricV219{background:#f7f9fc}
-@media(max-width:700px){#planningProTop .proTop{gap:8px!important}.proQualityCardV219{margin-bottom:0!important}.proWeekMetricsV219{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.proWeekMetricsV219 .proWeekMetricV219:last-child{grid-column:1/-1}.proWeekMetricV219{padding:7px}.proWeekMetricV219 b{font-size:15px}.spMonthSummaryHeadV219{align-items:flex-start;flex-direction:column;gap:2px}.spMonthMetricsV219{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}}
+#planningRepairSettings.planningRepairCardV2522{display:grid;grid-template-columns:34px minmax(0,1fr);column-gap:10px;row-gap:2px;margin:10px 0 14px!important;padding:13px 13px 12px!important;border:1px solid rgba(60,60,67,.12)!important;border-radius:18px;background:rgba(255,255,255,.78);box-shadow:0 5px 18px rgba(31,41,55,.045)}#planningRepairSettings.planningRepairCardV2522:before{content:'↻';grid-column:1;grid-row:1/3;display:grid;place-items:center;width:32px;height:32px;border-radius:11px;background:#edf5ff;color:#0a6ccf;font-size:18px;font-weight:800}#planningRepairSettings .planningRepairTitleV2522{grid-column:2;margin:1px 0 0!important;font-size:13.5px!important;line-height:1.25;font-weight:850!important;color:#20252d}#planningRepairSettings .planningRepairHintV2522{grid-column:2;margin:1px 0 0!important;font-size:11px!important;line-height:1.35!important;color:#737b88!important}#planningRepairSettings .planningRepairButtonV2522{grid-column:1/-1;width:100%!important;min-height:44px!important;margin:9px 0 0!important;padding:9px 12px!important;border:1px solid #d4e3f7!important;border-radius:14px!important;background:#f7faff!important;color:#0b67bf!important;box-shadow:none!important;font-size:13px!important;line-height:1.25!important;font-weight:800!important}#planningRepairSettings .planningRepairButtonV2522:active{background:#edf5ff!important;transform:scale(.99)}
+@media(max-width:700px){#planningProTop .proTop{gap:8px!important}.proQualityCardV219{margin-bottom:0!important}.proWeekMetricsV219{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.proWeekMetricsV219 .proWeekMetricV219:last-child{grid-column:1/-1}.proWeekMetricV219{padding:7px}.proWeekMetricV219 b{font-size:15px}.spMonthSummaryHeadV219{align-items:flex-start;flex-direction:column;gap:2px}.spMonthMetricsV219{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#planningRepairSettings.planningRepairCardV2522{margin-top:8px!important}}
 `;doc.head.appendChild(s)}
 function observe(node,win){if(!node||observers.has(node)||typeof win.MutationObserver==='undefined')return;const ob=new win.MutationObserver(()=>schedule(win));ob.observe(node,{childList:true,subtree:true});observers.set(node,ob)}
 function refresh(win){ensureCss(win.document);repairPlanningSettingsUi(win);renderPlanning(win);renderPilotage(win);observe(win.document.getElementById('planningProTop'),win);observe(win.document.getElementById('pilotagePanel'),win)}

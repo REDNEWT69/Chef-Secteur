@@ -30,7 +30,7 @@ test('V181 : recalcul du planning sépare les Boulanger sans perdre de magasin',
 
   const button=page.locator('#recalculateRemainingWeekBtn');
   await expect(button).toBeVisible();
-  await expect(button).toContainText('Recalculer le reste du planning');
+  await expect(button).toContainText('Recalculer le reste');
   const before=await page.evaluate(()=>Object.values(state.plan).flat().map(s=>s.id).sort());
 
   const recalc=await page.evaluate(async()=>await window.storeRunnerRecalculateRemainingWeek());
