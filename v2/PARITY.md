@@ -10,7 +10,7 @@ Cette matrice décrit l’état réellement présent dans le dépôt. Elle sert 
 | Stockage local | oui | `src/storage/*` | livré | valider sur vrais appareils et gros états |
 | Import / export V2 | oui | `src/storage/json-transfer.mjs` | livré | maintenir la compatibilité du schéma |
 | Magasins | oui | `src/stores/stores.mjs` | livré | compléter uniquement les comportements V1 réellement utilisés qui manquent |
-| Planning semaine | oui | `src/planning/planning.mjs`, `week.mjs` | livré | reprendre les règles métier validées en V1 sans recopier son architecture |
+| Planning semaine | oui | `src/planning/planning.mjs`, `week.mjs`, `reorder-ui.mjs` | livré + ordre manuel tactile proposé dans #424 | valider le glisser vertical sur Android et iPhone réels |
 | Navigation jours / swipe | oui | `src/ui/horizontal-swipe.mjs` | livré | validation réelle tactile |
 | Multi-semaines | oui | `src/planning/range.mjs`, `range-ui.mjs` | livré | consolider les contraintes métier finales |
 | Tournée 3 semaines / rotation | oui | moteur V2 planning | livré | validation terrain |
