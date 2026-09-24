@@ -52,7 +52,7 @@ test('V254.2 keeps an overbooked current day, moves only the excess visit and cl
   const t=env(),a=store('d1',{enseigne:'Darty'}),b=store('d2',{enseigne:'Darty'}),excess=store('f',{enseigne:'Fnac'});
   t.state.settings.maxVisitsPerDay=3;t.state.stores=[a,b,excess];t.state.plan.Lundi=[a,b,excess];
   t.state.locks.d1={day:'Lundi',week:'2026-09-21'};t.state.locks.d2={day:'Lundi',week:'2026-09-21'};
-  const r=t.build();assert.equal(r.ok,true,r.error);assert.equal(r.unchanged,false);assert.equal(r.moved,1);assert.deepEqual(r.plan.Lundi.map(s=>s.id),['d1','d2']);assert.deepEqual(r.plan.Mardi.map(s=>s.id),['f']);
+  const r=t.build();assert.equal(r.ok,true,r.error);assert.equal(r.unchanged,false);assert.equal(r.moved,1);assert.equal(JSON.stringify(Array.from(r.plan.Lundi,s=>s.id)),JSON.stringify(['d1','d2']));assert.equal(JSON.stringify(Array.from(r.plan.Mardi,s=>s.id)),JSON.stringify(['f']));
   assert.equal(r.overCapacityKept.length,1);assert.deepEqual(copy(r.overCapacityKept[0]),{week:'2026-09-21',day:'Lundi',date:'2026-09-21',actual:4,max:3});
 });
 test('V254.2 still rejects an overbooked future fixed day',()=>{
