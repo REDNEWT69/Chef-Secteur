@@ -25,6 +25,17 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'250',
+      title:'L’accueil prépare ta prochaine journée',
+      items:[
+        'Tant qu’il te reste des visites aujourd’hui, l’accueil reste concentré sur ta tournée en cours.',
+        'Dès que ta journée est terminée, ou à partir de 20 h, l’accueil affiche automatiquement la prochaine journée réellement planifiée.',
+        'Les jours vides et le week-end sont sautés : vendredi soir, Store Runner peut directement préparer ton lundi.',
+        'Si une visite reste en attente le soir, elle reste signalée clairement au-dessus du programme suivant.',
+        'Ton planning n’est jamais régénéré en arrière-plan : l’accueil s’adapte, mais tu gardes la main.'
+      ]
+    },
+    {
       version:'249',
       title:'Des journées mieux regroupées',
       items:[

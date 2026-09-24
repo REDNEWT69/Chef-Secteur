@@ -1,4 +1,4 @@
-const BUILD_REV = "20260923-geographic-cohesion249";
+const BUILD_REV = "20260923-contextual-home250";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
