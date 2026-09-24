@@ -115,16 +115,25 @@ function renderPilotage(win){
   const st=monthStats(win,win.state||{},new Date()),html='<div class="spMonthSummaryHeadV219"><h3>Résumé du mois</h3><span>activité planifiée · '+st.label+'</span></div><div class="spMonthMetricsV219">'+metric(st.visits,'visites planifiées')+metric(Math.round(st.km),'km estimés')+metric(hoursLabel(st.minutes),'terrain + route')+metric(st.hotels,'découchés')+'</div>';if(card.innerHTML!==html)card.innerHTML=html;
   return true
 }
+function repairPlanningSettingsUi(win){
+  const doc=win&&win.document;if(!doc)return false;
+  const settings=doc.getElementById('planningSettings'),repair=doc.getElementById('planningRepairSettings');
+  if(!settings||!repair)return false;
+  const inner=settings.querySelector&&settings.querySelector('.settingsInner');
+  const target=inner||settings;
+  if(repair.parentNode!==target)target.appendChild(repair);
+  return repair.parentNode===target
+}
 function ensureCss(doc){if(doc.getElementById('planningSummaryV219Css'))return;const s=doc.createElement('style');s.id='planningSummaryV219Css';s.textContent=`
 .proQualityCardV219{padding:10px 14px!important;cursor:pointer;touch-action:manipulation}.proQualityCardV219 .proTitle{margin:0}.proQualityCardV219 #proQuality{margin-top:3px!important;gap:7px!important;align-items:baseline!important}.proQualityCardV219 #proQuality .proScore{font-size:21px!important;line-height:1.1}.proQualityCardV219 #proQuality .proScore small{font-size:9px!important}.proQualityCardV219 #proQuality>div:last-child{display:flex;align-items:baseline;gap:6px;min-width:0}.proQualityCardV219 #proQuality>div:last-child b{font-size:13px}.proQualityCardV219 #proQuality>div:last-child span{display:none}.proQualityCardV219.is-open #proQuality>div:last-child span{display:block;font-size:9px;color:#667085}.proQualityCardV219:focus-visible{outline:2px solid #4f7cff;outline-offset:2px}#proQualityDetailV219{font-size:10px;line-height:1.35;color:#667085;margin-top:7px;padding-top:7px;border-top:1px solid #eef0f3}#proQualityDetailV219[hidden]{display:none!important}.proWeekMetricsV219,.spMonthMetricsV219{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin-top:8px}.proWeekMetricV219{background:#f7f9fc;border-radius:11px;padding:8px;min-width:0}.proWeekMetricV219 b{display:block;font-size:16px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.proWeekMetricV219 span{display:block;font-size:9px;line-height:1.2;color:#667085;margin-top:3px}.spMonthSummaryV219{margin-top:12px}.spMonthSummaryHeadV219{display:flex;align-items:baseline;justify-content:space-between;gap:10px}.spMonthSummaryHeadV219 h3{margin:0!important}.spMonthSummaryHeadV219 span{font-size:10px;color:#747b86}.spMonthMetricsV219{grid-template-columns:repeat(4,minmax(0,1fr))}.spMonthMetricsV219 .proWeekMetricV219{background:#f7f9fc}
 @media(max-width:700px){#planningProTop .proTop{gap:8px!important}.proQualityCardV219{margin-bottom:0!important}.proWeekMetricsV219{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.proWeekMetricsV219 .proWeekMetricV219:last-child{grid-column:1/-1}.proWeekMetricV219{padding:7px}.proWeekMetricV219 b{font-size:15px}.spMonthSummaryHeadV219{align-items:flex-start;flex-direction:column;gap:2px}.spMonthMetricsV219{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}}
 `;doc.head.appendChild(s)}
 function observe(node,win){if(!node||observers.has(node)||typeof win.MutationObserver==='undefined')return;const ob=new win.MutationObserver(()=>schedule(win));ob.observe(node,{childList:true,subtree:true});observers.set(node,ob)}
-function refresh(win){ensureCss(win.document);renderPlanning(win);renderPilotage(win);observe(win.document.getElementById('planningProTop'),win);observe(win.document.getElementById('pilotagePanel'),win)}
+function refresh(win){ensureCss(win.document);repairPlanningSettingsUi(win);renderPlanning(win);renderPilotage(win);observe(win.document.getElementById('planningProTop'),win);observe(win.document.getElementById('pilotagePanel'),win)}
 function schedule(win){if(refreshQueued)return;refreshQueued=true;const run=()=>{refreshQueued=false;refresh(win)};if(typeof win.requestAnimationFrame==='function')win.requestAnimationFrame(run);else setTimeout(run,0)}
 function install(win){
   const boot=()=>{refresh(win);['store-runner:planning-updated','store-runner:data-restored','store-runner:home-rendered','store-runner:planning-user-opened'].forEach(name=>win.document.addEventListener(name,()=>schedule(win)));setTimeout(()=>refresh(win),120)};
   if(win.document.readyState==='loading')win.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()
 }
-return{finite,safeRouteKm,routeMinutes,priorityOutsideWeek,weekStats,monthStats,hoursLabel,renderPlanning,renderPilotage,install};
+return{finite,safeRouteKm,routeMinutes,priorityOutsideWeek,weekStats,monthStats,hoursLabel,renderPlanning,renderPilotage,repairPlanningSettingsUi,install};
 });

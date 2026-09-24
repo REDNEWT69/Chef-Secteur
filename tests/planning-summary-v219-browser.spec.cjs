@@ -7,7 +7,7 @@ test('Planning masque les résumés redondants et garde le détail dans Pilotage
   const errors=[];
   page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>window.StoreRunnerPlanningSummaryV219&&window.StoreRunnerSectorPilotage&&window.state&&typeof window.renderAll==='function');
+  await page.waitForFunction(()=>window.StoreRunnerPlanningSummaryV219&&window.StoreRunnerSectorPilotage&&window.StoreRunnerNavigation&&window.state&&typeof window.renderAll==='function');
 
   await page.evaluate(()=>{
     const st=window.state||state;
@@ -59,6 +59,35 @@ test('Planning masque les résumés redondants et garde le détail dans Pilotage
 
   let overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
+
+  /* V252.1 : le bouton de recalcul appartient à la vraie bottom sheet, immédiatement
+     sous son en-tête. Un clic doit fermer la sheet avant d'appeler le moteur : la
+     confirmation de fiabilité suivante reste donc visible au lieu d'être masquée. */
+  await page.evaluate(()=>{
+    window.StoreRunnerPlanningSummaryV219.repairPlanningSettingsUi(window);
+    window.__v2521RecalcCalls=0;
+    window.storeRunnerRecalculateRemainingWeek=async()=>{window.__v2521RecalcCalls++;return{ok:true}};
+    window.StoreRunnerNavigation.openPlanningSettings();
+  });
+  const settings=page.locator('#planningSettings');
+  await expect(settings).toHaveClass(/planningSettingsSheetOpen/);
+  const repair=page.locator('#planningSettings .settingsInner > #planningRepairSettings');
+  await expect(repair).toHaveCount(1);
+  await expect(repair).toBeVisible();
+  const repairBox=await repair.boundingBox();
+  expect(repairBox).toBeTruthy();
+  expect(repairBox.y).toBeGreaterThanOrEqual(0);
+  expect(repairBox.y).toBeLessThan(844);
+  const header=page.locator('#planningSettingsSheetHeader');
+  await expect(header).toBeVisible();
+  const order=await page.evaluate(()=>{
+    const h=document.getElementById('planningSettingsSheetHeader'),r=document.getElementById('planningRepairSettings');
+    return !!(h&&r&&h.nextElementSibling===r);
+  });
+  expect(order).toBeTruthy();
+  await repair.locator('#recalculateRemainingWeekBtn').click();
+  await expect(settings).not.toHaveClass(/planningSettingsSheetOpen/);
+  expect(await page.evaluate(()=>window.__v2521RecalcCalls)).toBe(1);
 
   /* Le reporting détaillé n'est pas supprimé : il reste accessible dans l'écran
      d'activité / Pilotage, qui est précisément sa bonne place. */

@@ -43,6 +43,10 @@ must('navigation-controller.js','fermeture clavier',/e\.key==='Escape'/);
 must('navigation-controller.js','glissement vers le bas',/y-dragStartY>70/);
 must('navigation-controller.js','hauteur mobile bornée',/max-height:min\(82dvh,760px\)/);
 must('navigation-controller.js','cible fermeture 44px',/width:44px;height:44px;min-width:44px/);
+// V252.1 : le clic de recalcul doit d'abord libérer la sheet mobile pour que la
+// confirmation ChefReliability reste visible et que la promesse puisse se terminer.
+must('navigation-controller.js','interception du recalcul dans la sheet',/closest\('#recalculateRemainingWeekBtn'\)/);
+must('navigation-controller.js','fermeture avant le recalcul',/if\(recalc\)\{\s*closePlanningSettingsSheet\(\);\s*return;/);
 forbid('navigation-controller.js','ancien scroll vers les réglages',/scrollIntoView/);
 forbid('navigation-controller.js','duplication du formulaire de réglages',/cloneNode/);
 

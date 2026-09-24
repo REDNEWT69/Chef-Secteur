@@ -102,6 +102,13 @@
         dragStartY=null;
       },{passive:true});
     }
+    /* V252.1 : l'action corrective appartient visuellement à la feuille. Elle reste
+       juste sous son en-tête, donc visible sans scroller et jamais derrière le backdrop. */
+    const repair=document.getElementById('planningRepairSettings');
+    if(repair){
+      if(repair.parentNode!==inner)inner.appendChild(repair);
+      if(repair.previousElementSibling!==header)header.insertAdjacentElement('afterend',repair);
+    }
     return true;
   }
 
@@ -128,6 +135,17 @@
         if(typeof e.preventDefault==='function')e.preventDefault();
         if(typeof e.stopPropagation==='function')e.stopPropagation();
         openPlanningSettingsSheet();
+        return;
+      }
+
+      /* V252.1 : le recalcul ouvre ensuite une confirmation de fiabilité. La feuille
+         Réglages doit donc disparaître avant que le gestionnaire du bouton ne lance le
+         recalcul ; sinon la seconde validation peut rester derrière la feuille sur mobile
+         et donner l'impression que le recalcul ne finit jamais. On ferme uniquement la
+         feuille, sans annuler le clic : le gestionnaire métier reçoit bien le même clic. */
+      const recalc=e.target&&e.target.closest?e.target.closest('#recalculateRemainingWeekBtn'):null;
+      if(recalc){
+        closePlanningSettingsSheet();
         return;
       }
 
