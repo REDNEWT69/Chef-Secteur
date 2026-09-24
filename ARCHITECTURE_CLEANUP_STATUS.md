@@ -19,6 +19,10 @@ Ce document décrit la **V1 de production**. `/v2/` est un chantier parallèle i
 - `assistant-store-lookup.js` : résolveur de planning magasin et archivage des semaines par événements/observer ; il ne remplace plus `assistantSend`, `renderAll` ni `generateWeek` et ne se réveille plus globalement au focus/retour de visibilité.
 - Le domaine métier **Visit + Action + workflow 6P** est intégré dans la V1 de `main` et protégé par les suites Reliability dédiées.
 - `store-runner-opportunities.js` est propriétaire de l’interface et des mutations Opportunity V200. Il ne doit pas écrire le planning, `store.priority` ni les performances.
+- `planning-manual-visits.js` (`StoreRunnerManualPlanning`) est propriétaire de toutes les modifications manuelles du planning : ajout, retrait, déplacement, ordre de passage dans la journée (`reorderStore`, `undoEdit`, V254.3). Chaque écriture passe par une seule transaction avec retour arrière et marque la semaine comme manuelle, ce qui empêche l’optimiseur V251 de la réordonner. Un ordre qui rend un rendez-vous, une ouverture ou la fin de journée intenable est enregistré tel quel, avec un avertissement : il n’est jamais réécrit en silence.
+- `planning-reorder-v254.js` ne possède que le geste « appui long puis glisser » et son retour visuel ; il n’écrit jamais `state.plan` et délègue règles et écriture à `StoreRunnerManualPlanning`.
+- `planning-reorder-v254.js` ne change jamais l’ensemble des magasins d’une journée : crédits, maximum journalier et règle Boulanger restent donc ceux de la journée d’origine. Le déplacement vers un autre jour n’est pas proposé (issue #426).
+- `applyAppointmentsToPlan` (noyau) laisse désormais à sa place un magasin déjà prévu le jour de son rendez-vous ; il ne le renvoie plus en fin de journée à chaque ouverture.
 
 ## Contrats d’extension assistant
 

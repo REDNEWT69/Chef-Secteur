@@ -1,7 +1,5 @@
-const BUILD_REV = "20260924-recalc-ui252";
-// V254.2 corrige le recalcul terrain sans changer la version utilisateur 252 :
-// nouveau cache pour livrer immédiatement planning-cascade-v181.js après mise à jour.
-const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV + "-recalc-overbook2542";
+const BUILD_REV = "20260924-reorder254";
+const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",
   "./index.html",
@@ -54,6 +52,7 @@ const OPTIONAL_SHELL = [
   "./planning-summary-v219.js",
   "./period-day-slider.js",
   "./planning-manual-visits.js",
+  "./planning-reorder-v254.js",
   "./workdays-enforcer.js",
   "./visit-history-delete.js",
   "./assistant-sheet-drag.js",

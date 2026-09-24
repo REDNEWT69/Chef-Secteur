@@ -63,6 +63,10 @@ test('Planning masque les résumés redondants et garde le détail dans Pilotage
   /* V252.2 : le recalcul reste en tête de la vraie bottom sheet mais devient une carte
      compacte. À 390 px elle ne doit plus ressembler à un panneau géant qui écrase le
      reste des réglages. Le clic garde exactement le contrat V252.1. */
+  /* planning-cascade-v181.js réinstalle son recalcul à l'événement load : un faux recalcul
+     posé avant load est écrasé et le clic appelle alors le vrai. On attend donc la fin du
+     chargement, sinon le test dépend de la vitesse des ressources restantes. */
+  await page.waitForFunction(()=>document.readyState==='complete');
   await page.evaluate(()=>{
     window.StoreRunnerPlanningSummaryV219.repairPlanningSettingsUi(window);
     window.__v2521RecalcCalls=0;
