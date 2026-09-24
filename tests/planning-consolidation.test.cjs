@@ -48,4 +48,16 @@ test('manual storage failure never reports a successful edit',async()=>{
   const t=env(),a=store('a');t.state.stores=[a];t.state.plan.Lundi=[a];t.ctx.save=()=>{throw Error('quota')};const before=JSON.stringify(t.state.plan);
   const result=await Manual.addStore(t.ctx,'a','Mardi');assert.equal(result.ok,false);assert.match(result.error,/quota/);assert.equal(JSON.stringify(t.state.plan),before);
 });
-
+test('V254.2 keeps an intentionally overbooked current day and closes it to additions',()=>{
+  const t=env(),a=store('d1',{enseigne:'Darty'}),b=store('d2',{enseigne:'Darty'}),free=store('f',{enseigne:'Fnac'});
+  t.state.settings.maxVisitsPerDay=3;t.state.stores=[a,b,free];t.state.plan.Lundi=[a,b];t.state.plan.Mardi=[free];
+  t.state.locks.d1={day:'Lundi',week:'2026-09-21'};t.state.locks.d2={day:'Lundi',week:'2026-09-21'};
+  const r=t.build();assert.equal(r.ok,true,r.error);assert.equal(r.unchanged,true);assert.deepEqual(r.plan.Lundi.map(s=>s.id),['d1','d2']);assert.deepEqual(r.plan.Mardi.map(s=>s.id),['f']);
+  assert.equal(r.overCapacityKept.length,1);assert.deepEqual(copy(r.overCapacityKept[0]),{week:'2026-09-21',day:'Lundi',date:'2026-09-21',actual:4,max:3});
+});
+test('V254.2 still rejects an overbooked future fixed day',()=>{
+  const t=env(),a=store('d1',{enseigne:'Darty'}),b=store('d2',{enseigne:'Darty'});
+  t.state.settings.maxVisitsPerDay=3;t.state.stores=[a,b];t.state.plan.Mardi=[a,b];
+  t.state.locks.d1={day:'Mardi',week:'2026-09-21'};t.state.locks.d2={day:'Mardi',week:'2026-09-21'};
+  const r=t.build();assert.equal(r.ok,false);assert.match(r.error,/Mardi contient déjà 4 crédits fixes/);assert.match(r.error,/maximum est réglé sur 3/);
+});
