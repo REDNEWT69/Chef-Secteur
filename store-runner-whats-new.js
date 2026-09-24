@@ -25,6 +25,18 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'255',
+      title:'Une vraie galerie photo par magasin',
+      items:[
+        'Une photo prise pendant une visite est rangée toute seule : magasin, visite, date et famille BRUN ou BLANC active. Rien à classer à la main.',
+        'La galerie se filtre en un geste : Toutes, BRUN ou BLANC, puis par visite. Chaque date affiche par exemple « BRUN · 12 » et « BLANC · 8 » ; un appui ouvre directement ces photos.',
+        'Touche une miniature pour la voir en plein écran, puis balaie à gauche ou à droite pour passer d’une photo à l’autre.',
+        'Une catégorie (OLED, Froid, Mural, Concurrence…) peut être ajoutée si tu le souhaites, jamais obligatoire.',
+        'La galerie affiche des miniatures légères chargées au fil du défilement, même avec beaucoup de photos.',
+        'Toutes tes anciennes photos restent là et sont classées automatiquement par visite ou par date.'
+      ]
+    },
+    {
       version:'254',
       title:'Réorganise ta journée au doigt',
       items:[

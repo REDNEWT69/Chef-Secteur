@@ -95,17 +95,25 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA F
 
   await dialog.locator('#srPhotoCameraInput').setInputFiles({name:'avant.png',mimeType:'image/png',buffer:PNG});
   await expect(dialog.locator('.sr-photoCard')).toHaveCount(1);
-  await dialog.locator('.sr-photoCard').first().locator('.sr-photoNote').fill('Avant implantation');
-  await dialog.locator('.sr-photoCard').first().locator('.sr-photoNote').press('Tab');
-  await expect(dialog.locator('#srPhotoStatus')).toContainText('Note photo enregistrée');
+  /* V255 — la note se pose depuis la visionneuse plein écran ouverte d'un appui. */
+  const viewer=page.locator('#srPhotoViewer');
+  await dialog.locator('.sr-photoCard').first().locator('.sr-photoOpen').tap();
+  await expect(viewer).toBeVisible();
+  await viewer.locator('#srViewerNote').fill('Avant implantation');
+  await viewer.locator('#srViewerNote').press('Tab');
+  await expect(viewer.locator('#srViewerStatus')).toContainText('Note photo enregistrée');
+  await viewer.locator('#srViewerBack').tap();await expect(viewer).not.toBeVisible();
   await page.waitForTimeout(15);
 
   await tagRows.nth(1).locator('[data-tag="apres"]').tap();
   await dialog.locator('#srPhotoLibraryInput').setInputFiles({name:'apres.png',mimeType:'image/png',buffer:PNG});
   await expect(dialog.locator('.sr-photoCard')).toHaveCount(2);
-  await dialog.locator('.sr-photoCard').first().locator('.sr-photoNote').fill('Après implantation');
-  await dialog.locator('.sr-photoCard').first().locator('.sr-photoNote').press('Tab');
-  await expect(dialog.locator('#srPhotoStatus')).toContainText('Note photo enregistrée');
+  await dialog.locator('.sr-photoCard').first().locator('.sr-photoOpen').tap();
+  await expect(viewer.locator('#srViewerCount')).toHaveText('1 / 2');
+  await viewer.locator('#srViewerNote').fill('Après implantation');
+  await viewer.locator('#srViewerNote').press('Tab');
+  await expect(viewer.locator('#srViewerStatus')).toContainText('Note photo enregistrée');
+  await viewer.locator('#srViewerBack').tap();await expect(viewer).not.toBeVisible();
   await expect(dialog.locator('[data-photo-select]:checked')).toHaveCount(2);
 
   await dialog.locator('#srComparePhotos').tap();
@@ -170,8 +178,12 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA F
   await reopenQuickAndTapPhotos(page);
   const reloadedCards=page.locator('#storePhotosDialog .sr-photoCard');
   await expect(reloadedCards).toHaveCount(2);
-  await expect(reloadedCards.first().locator('.sr-photoNote')).toHaveValue('Après implantation');
-  await expect(reloadedCards.nth(1).locator('.sr-photoNote')).toHaveValue('Avant implantation');
+  await reloadedCards.first().locator('.sr-photoOpen').tap();
+  const reloadedViewer=page.locator('#srPhotoViewer');
+  await expect(reloadedViewer.locator('#srViewerNote')).toHaveValue('Après implantation');
+  await reloadedViewer.locator('#srViewerNext').tap();
+  await expect(reloadedViewer.locator('#srViewerNote')).toHaveValue('Avant implantation');
+  await reloadedViewer.locator('#srViewerBack').tap();
   await page.locator('#srPhotoClose').tap();
 
   await context.setOffline(true);
