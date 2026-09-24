@@ -60,9 +60,9 @@ test('Planning masque les résumés redondants et garde le détail dans Pilotage
   let overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 
-  /* V252.1 : le bouton de recalcul appartient à la vraie bottom sheet, immédiatement
-     sous son en-tête. Un clic doit fermer la sheet avant d'appeler le moteur : la
-     confirmation de fiabilité suivante reste donc visible au lieu d'être masquée. */
+  /* V252.2 : le recalcul reste en tête de la vraie bottom sheet mais devient une carte
+     compacte. À 390 px elle ne doit plus ressembler à un panneau géant qui écrase le
+     reste des réglages. Le clic garde exactement le contrat V252.1. */
   await page.evaluate(()=>{
     window.StoreRunnerPlanningSummaryV219.repairPlanningSettingsUi(window);
     window.__v2521RecalcCalls=0;
@@ -74,10 +74,21 @@ test('Planning masque les résumés redondants et garde le détail dans Pilotage
   const repair=page.locator('#planningSettings .settingsInner > #planningRepairSettings');
   await expect(repair).toHaveCount(1);
   await expect(repair).toBeVisible();
+  await expect(repair).toHaveClass(/planningRepairCardV2522/);
+  await expect(repair.locator('.planningRepairTitleV2522')).toHaveText('Ajuster cette semaine');
+  await expect(repair.locator('.planningRepairHintV2522')).toHaveText('Replacer une visite sans régénérer tes 3 semaines.');
+  const recalc=repair.locator('#recalculateRemainingWeekBtn');
+  await expect(recalc).toHaveText('↻ Recalculer le reste');
   const repairBox=await repair.boundingBox();
   expect(repairBox).toBeTruthy();
   expect(repairBox.y).toBeGreaterThanOrEqual(0);
   expect(repairBox.y).toBeLessThan(844);
+  expect(repairBox.height).toBeLessThanOrEqual(190);
+  const recalcBox=await recalc.boundingBox();
+  expect(recalcBox).toBeTruthy();
+  expect(recalcBox.height).toBeLessThanOrEqual(52);
+  const fontSize=await recalc.evaluate(el=>parseFloat(getComputedStyle(el).fontSize));
+  expect(fontSize).toBeLessThanOrEqual(14);
   const header=page.locator('#planningSettingsSheetHeader');
   await expect(header).toBeVisible();
   const order=await page.evaluate(()=>{
@@ -85,7 +96,7 @@ test('Planning masque les résumés redondants et garde le détail dans Pilotage
     return !!(h&&r&&h.nextElementSibling===r);
   });
   expect(order).toBeTruthy();
-  await repair.locator('#recalculateRemainingWeekBtn').click();
+  await recalc.click();
   await expect(settings).not.toHaveClass(/planningSettingsSheetOpen/);
   expect(await page.evaluate(()=>window.__v2521RecalcCalls)).toBe(1);
 
