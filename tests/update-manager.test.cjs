@@ -18,6 +18,7 @@ assert(!manager.includes("#planningSettings .settingsInner"),'le centre de mise 
 assert(manager.includes('Vérifier les mises à jour'),'le contrôle manuel doit être visible');
 assert(manager.includes('Mettre à jour maintenant'),'le bouton d’installation doit exister');
 assert(manager.includes('state.latest!==state.current'),'une alerte ne doit apparaître que si la version distante diffère');
+assert(manager.includes('!olderThanCurrent(state.latest)'),'une version publiée plus ancienne que celle qui tourne n’est jamais proposée');
 assert(manager.includes('registration.update()'),'le bouton doit demander une vérification réelle du service worker');
 assert(manager.includes("postMessage({type:'SKIP_WAITING'})"),'un worker en attente doit pouvoir être activé explicitement');
 assert(manager.includes("addEventListener('controllerchange'"),'l’installation doit observer la prise de contrôle du nouveau worker');

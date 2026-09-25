@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Store Runner">
   <meta name="application-name" content="Store Runner">
-  <link rel="manifest" href="./manifest.webmanifest?rev=20260925-cartes259">
-  <link rel="icon" href="./app-icon.svg?rev=20260925-cartes259" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="./app-icon.svg?rev=20260925-cartes259">
+  <link rel="manifest" href="./manifest.webmanifest?rev=20260925-pwa260">
+  <link rel="icon" href="./app-icon.svg?rev=20260925-pwa260" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./app-icon.svg?rev=20260925-pwa260">
   <style>
     html,body{margin:0;min-height:100%;background:#fbfaf8;color:#111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
   </style>
@@ -29,10 +29,10 @@
   </style>
 </head>
 <body>
-  <div id="storeRunnerBoot" data-store-runner-boot role="status" aria-live="polite"><div class="srBootInner"><img src="./app-icon.svg?rev=20260925-cartes259" alt="S-RUNNER"><strong>Store Runner</strong><span class="srBootSig">S-RUNNER By Red①</span><span id="bootText" class="srBootText" data-boot-text>Chargement de ton espace terrain…</span></div></div>
+  <div id="storeRunnerBoot" data-store-runner-boot role="status" aria-live="polite"><div class="srBootInner"><img src="./app-icon.svg?rev=20260925-pwa260" alt="S-RUNNER"><strong>Store Runner</strong><span class="srBootSig">S-RUNNER By Red①</span><span id="bootText" class="srBootText" data-boot-text>Chargement de ton espace terrain…</span></div></div>
   <script>
   (async function(){
-    const BUILD_REV='20260925-cartes259';
+    const BUILD_REV='20260925-pwa260';
     const withRev=(path)=>path+'?rev='+BUILD_REV;
 
     /* V234 — un seul écran de chargement, du tout premier octet jusqu'à l'accueil final.
@@ -341,12 +341,12 @@
       window.__STORE_RUNNER_BUILD_REV=BUILD_REV;
       document.documentElement.dataset.storeRunnerBuild=BUILD_REV;
       if ('serviceWorker' in navigator) {
-        const reloadKey='store-runner-sw-reload:'+BUILD_REV;
-        navigator.serviceWorker.addEventListener('controllerchange',function(){
-          if(window.__storeRunnerUpdateApplying)return;
-          try{if(sessionStorage.getItem(reloadKey))return;sessionStorage.setItem(reloadKey,'1')}catch(e){}
-          window.location.reload();
-        });
+        /* V260 — le bootloader ne recharge plus jamais la page de lui-même. Son ancien
+           rechargement au `controllerchange` partait surtout à la toute première
+           installation (clients.claim), quelques secondes après l'ouverture, alors que la
+           page venait déjà du réseau. La prise de contrôle appartient à update-manager.js :
+           même révision → rien ; autre révision → proposition, jamais un rechargement
+           sous les doigts pendant une visite. */
         navigator.serviceWorker.register('./sw.js', {updateViaCache:'none'}).then(function(reg){return reg.update()}).catch(function(e){console.warn('Mise à jour hors ligne indisponible',e)});
       }
       const r=await fetch(withRev('./src/chef-secteur.html'));
