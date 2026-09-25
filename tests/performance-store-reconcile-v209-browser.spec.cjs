@@ -16,17 +16,22 @@ test('V209 crée explicitement un magasin performance manquant sans toucher au p
   });
   const sheet=page.locator('#srPerfSheet');await expect(sheet).toBeVisible();
   await expect(sheet).toContainText('0 rattaché sur 1');
+  // V261 : le magasin manquant passe par l'écran unique d'ajout, recherche préremplie.
+  const queries=[];
+  await page.route('https://nominatim.openstreetmap.org/**',route=>{queries.push(new URL(route.request().url()).searchParams.get('q'));return route.fulfill({json:[{osm_type:'node',osm_id:9209,lat:'45.751',lon:'3.112',category:'shop',type:'electronics',name:'Boulanger Aubière',address:{house_number:'10',road:'Rue des Chazots',town:'Aubière',postcode:'63170'},extratags:{brand:'Boulanger'},namedetails:{}}]})});
   await page.getByRole('button',{name:'＋ Ajouter ce magasin à mon secteur'}).click();
-  await expect(page.locator('[data-v209-field="ville"]')).toHaveValue('AUBIERE');
-  await page.locator('[data-v209-field="adresse"]').fill('10 rue des Chazots');
-  await page.locator('[data-v209-field="codePostal"]').fill('63170');
-  await page.locator('[data-v209-field="lat"]').fill('45.751');
-  await page.locator('[data-v209-field="lon"]').fill('3.112');
-  await page.getByRole('button',{name:'＋ Ajouter au secteur'}).click();
+  const add=page.locator('#storeAddDlg');await expect(add).toBeVisible();
+  await expect(page.locator('#sraQuery')).toHaveValue('BOULANGER AUBIERE / Clermont');
+  await add.locator('.sraResult').first().click();
+  await expect(add.locator('[data-sra-address]')).toHaveText('10 Rue des Chazots');
+  expect(await page.evaluate(()=>window.state.stores.length)).toBe(0);
+  await add.getByRole('button',{name:'Ajouter ce magasin'}).click();
+  await add.getByRole('button',{name:'Terminé'}).click();await expect(add).toBeHidden();
+  expect(queries).toEqual(['BOULANGER AUBIERE / Clermont']);
   await expect(sheet).toContainText('1 rattaché sur 1');
   const result=await page.evaluate((before)=>{
     const P=window.StoreRunnerPerformanceV190,db=window.__chefStorage,store=window.state.stores[0],mapping=P.readStore(db).mapping;
     return{count:window.state.stores.length,store,mapped:mapping['boulanger|boulanger aubiere clermont'],planStable:JSON.stringify(window.state.plan)===before,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};
   },before);
-  expect(result.count).toBe(1);expect(result.store.enseigne).toBe('Boulanger');expect(result.store.ville).toBe('AUBIERE');expect(result.mapped).toBe(result.store.id);expect(result.planStable).toBe(true);expect(result.overflow).toBeLessThanOrEqual(1);expect(errors).toEqual([]);
+  expect(result.count).toBe(1);expect(result.store.enseigne).toBe('Boulanger');expect(result.store.ville).toBe('Aubière');expect(result.store.lat).toBe(45.751);expect(result.mapped).toBe(result.store.id);expect(result.planStable).toBe(true);expect(result.overflow).toBeLessThanOrEqual(1);expect(errors).toEqual([]);
 });

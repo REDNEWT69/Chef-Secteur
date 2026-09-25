@@ -37,7 +37,7 @@ function fixture() {
     ChefReliability: Object.fromEntries(['capture', 'checkpoint', 'persist'].map(key =>
       [key, (...args) => { calls[key]++; return R[key](...args); }]))};
   const document = {readyState: 'complete', body, querySelector: () => host,
-    getElementById: () => null, createElement: () => new Element()};
+    getElementById: id => id === 'storeToolsHost' ? host : null, createElement: () => new Element()};
   vm.runInNewContext(source, {window: root, document, setTimeout: () => 0});
   const dialog = body.children[0];
   return {root, old, other, calls, db, data, open: () => host.children[0].onclick(),

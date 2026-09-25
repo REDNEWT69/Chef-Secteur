@@ -1,4 +1,4 @@
-const BUILD_REV = "20260925-pwa260";
+const BUILD_REV = "20260925-pwa261";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 /* V260 — tout ce que index.html charge au démarrage est OBLIGATOIRE : un worker ne
    s'active jamais avec une version incomplète. Avant, 70 modules sur 80 étaient
@@ -13,7 +13,7 @@ const CORE_SHELL = [
   "./performance-ui-v190.js", "./assistant-performance-context-v192.js", "./weekly-brief-v246.js",
   "./weekly-brief-ui-v246.js", "./weekly-brief-import-v246b.js", "./visit-mobile-ux-v215.js",
   "./visit-mobile-tabs-v216.js", "./cuisiniste-contracts-v193.js",
-  "./cuisiniste-contract-proposal-v225.js", "./cuisiniste-followup-v229.js", "./region-stores.js",
+  "./cuisiniste-contract-proposal-v225.js", "./cuisiniste-followup-v229.js", "./region-stores.js", "./store-add-v261.js",
   "./region-stores.css", "./region-fetch-resilience.js", "./official-catalog.js",
   "./manifest.webmanifest", "./app-icon.svg", "./store-runner-branding.js",
   "./navigation-controller.js", "./profile-controller.js", "./calendar-oauth.js",

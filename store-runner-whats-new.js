@@ -25,6 +25,17 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'261',
+      title:'Ajouter un magasin en trois gestes',
+      items:[
+        'Dans Magasins, « + Ajouter un magasin » ouvre une simple recherche : tape par exemple « Darty Villefranche ».',
+        'Touche le bon résultat : nom, adresse, ville et position sont remplis pour toi. Il ne reste qu’à confirmer.',
+        'Si le magasin est déjà dans ton secteur, Store Runner te le signale et t’ouvre sa fiche au lieu de créer un doublon.',
+        'Introuvable ? « Saisir manuellement » ne demande que le nom, l’adresse et la ville. Hors ligne, ta position peut situer le magasin.',
+        'L’import en nombre, le carnet officiel et la gestion du secteur sont rangés dans Plus → Données → Outils avancés.'
+      ]
+    },
+    {
       version:'260',
       title:'Des mises à jour sans surprise',
       items:[
