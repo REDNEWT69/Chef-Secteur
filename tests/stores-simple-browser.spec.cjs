@@ -1,7 +1,6 @@
 const {test,expect}=require('@playwright/test');
 const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
 test.use({viewport:{width:390,height:844},isMobile:true,hasTouch:true,serviceWorkers:'block'});
-const hit={lat:'45.76',lon:'4.84',name:'Schmidt Centre',address:{house_number:'12',road:'rue de Test',postcode:'69002',city:'Lyon'}};
 async function boot(page){
  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>window.RegionStores&&window.StoreRunnerStoreContacts&&window.ChefSectorAdmin&&window.state&&window.storage);
@@ -14,12 +13,6 @@ async function boot(page){
   state.settings.brands=['Darty'];state.included={old:true};state.excluded={kitchen:true};state.plan={Samedi:[]};
   save();renderAll();goTab('storesPanel');
  });
-}
-async function fill(page,brand='Schmidt'){
- await page.locator('#addStoreBtn').click();
- await page.locator('#createBrand').fill(brand);
- await page.locator('#createName').fill(brand+' Centre');
- await page.locator('#createCity').fill('Lyon');
 }
 test('channel filters combine with search, dynamic catalog brands, preserved business state and contacts',async({page})=>{
  await boot(page);
@@ -38,7 +31,14 @@ test('channel filters combine with search, dynamic catalog brands, preserved bus
  await page.getByRole('button',{name:'Tous',exact:true}).click();
  await expect(page.locator('#storeList .storeline')).toHaveCount(2);
  expect(await page.evaluate(()=>JSON.stringify({stores:state.stores,settings:state.settings,included:state.included,excluded:state.excluded,plan:state.plan}))).toBe(before);
- await page.evaluate(()=>{ChefNationalSectors.loadCatalog=async()=>state.stores});
+ // V261 : la gestion du secteur vit dans Données › Outils avancés, plus dans Magasins.
+ await expect(page.locator('#storesPanel #sectorAdminBtn')).toHaveCount(0);
+ await expect(page.locator('#storesPanel #officialCatalogBtn')).toHaveCount(0);
+ await page.evaluate(()=>{ChefNationalSectors.loadCatalog=async()=>state.stores;goTab('importPanel')});
+ await expect(page.locator('#sectorAdminBtn')).toBeHidden();
+ await page.locator('#storeToolsAdvanced > summary').click();
+ await expect(page.locator('#storeToolsHost #officialCatalogBtn')).toBeVisible();
+ await page.screenshot({path:'test-results/stores-simple-advanced-tools-390.png'});
  await page.locator('#sectorAdminBtn').click();
  await expect(page.locator('#saBrandFilter option').filter({hasText:/^Schmidt$/})).toHaveCount(1);
  await page.locator('#saBrandFilter').selectOption('Schmidt');
@@ -58,52 +58,6 @@ test('channel filters combine with search, dynamic catalog brands, preserved bus
  expect(await page.evaluate(()=>state.storeContacts.old[0].email)).toBe('alice.updated@example.com');
  expect(await page.evaluate(()=>state.stores.find(s=>s.id==='old').channel)).toBe('cuisiniste');
 });
-test('creation preview, modify/cancel, confirmation, defaults, duplicate and reload at 390px',async({page})=>{
- await boot(page);let query='';
- await page.route('https://nominatim.openstreetmap.org/**',route=>{query=new URL(route.request().url()).searchParams.get('q');return route.fulfill({json:[hit]})});
- await fill(page);await expect(page.locator('#createStoreDlg input:visible')).toHaveCount(4);
- await page.screenshot({path:'test-results/stores-simple-form-390.png'});
- await page.locator('#locateStoreBtn').click();await expect(page.locator('#createStorePreview')).toBeVisible();
- await page.screenshot({path:'test-results/stores-simple-preview-390.png'});
- expect(query).toContain('Schmidt Centre');expect(query).toContain('Lyon');
- await expect(page.locator('#createFoundAddress')).toHaveText('12 rue de Test');
- expect(await page.evaluate(()=>state.stores.length)).toBe(4);
- await page.getByRole('button',{name:'Modifier la recherche',exact:true}).click();
- expect(await page.evaluate(()=>state.stores.length)).toBe(4);
- await page.locator('#locateStoreBtn').click();await expect(page.locator('#createStorePreview')).toBeVisible();
- await page.locator('#createStoreDlg').getByRole('button',{name:'Annuler',exact:true}).click();
- expect(await page.evaluate(()=>state.stores.length)).toBe(4);
- await fill(page);await page.locator('#locateStoreBtn').click();await expect(page.locator('#confirmCreateStore')).toBeVisible();
- const box=await page.locator('#createStoreDlg').boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(390);
- await page.locator('#confirmCreateStore').click();
- expect(await page.evaluate(()=>state.stores.at(-1))).toMatchObject({lat:45.76,lon:4.84,channel:'cuisiniste',freq:'Mensuel',intervalDays:30,priority:3,active:true,products:['À confirmer'],sourceName:'Schmidt Centre'});
- await page.reload();await page.waitForFunction(()=>window.storage&&window.state&&window.RegionStores);expect(await page.evaluate(()=>state.stores.length)).toBe(5);
- await page.evaluate(()=>goTab('storesPanel'));await fill(page);await page.locator('#locateStoreBtn').click();await expect(page.locator('#confirmCreateStore')).toBeVisible();await page.locator('#confirmCreateStore').click();
- await expect(page.locator('#createStoreStatus')).toContainText('déjà présent');expect(await page.evaluate(()=>state.stores.length)).toBe(5);
-});
-test('no result and cancelled pending lookup never create a store',async({page})=>{
- await boot(page);await page.route('https://nominatim.openstreetmap.org/**',r=>r.fulfill({json:[]}));
- await fill(page);await page.locator('#locateStoreBtn').click();
- await expect(page.locator('#createStoreStatus')).toHaveText('Magasin introuvable. Vérifie le nom, la ville ou l’adresse.');
- expect(await page.evaluate(()=>state.stores.length)).toBe(4);
- await page.unroute('https://nominatim.openstreetmap.org/**');
- let release;await page.route('https://nominatim.openstreetmap.org/**',async r=>{await new Promise(resolve=>release=resolve);await r.fulfill({json:[hit]})});
- await page.locator('#locateStoreBtn').click();await expect.poll(()=>!!release).toBe(true);
- await page.locator('#createStoreDlg').getByRole('button',{name:'Annuler',exact:true}).click();release();
- await page.waitForTimeout(1400);expect(await page.evaluate(()=>state.stores.length)).toBe(4);await expect(page.locator('#createStoreDlg')).toBeHidden();
-});
-test('AI analysis prefills sequential shared creation and ignores invented coordinates',async({page})=>{
- await boot(page);let requests=0;
- await page.route('https://nominatim.openstreetmap.org/**',r=>{requests++;return r.fulfill({json:[{...hit,lat:String(45+requests)}]})});
- await page.evaluate(()=>{aiConfig.gateway='https://example.test';callAIGateway=async()=>({stores:[{enseigne:'Schmidt',nom:'Centre',ville:'Lyon',lat:1,lon:1},{enseigne:'Darty',ville:'Lyon',lat:2,lon:2}]});document.getElementById('aiStoreText').value='Deux magasins';return aiParseStores()});
- await expect(page.locator('#createStoreProgress')).toContainText('1 / 2');await expect(page.locator('#createName')).toHaveValue('Centre');
- expect(await page.evaluate(()=>state.stores.length)).toBe(4);expect(requests).toBe(0);
- await page.locator('#locateStoreBtn').click();await expect(page.locator('#confirmCreateStore')).toBeVisible();expect(await page.evaluate(()=>state.stores.length)).toBe(4);
- await page.locator('#confirmCreateStore').click();await expect(page.locator('#createStoreProgress')).toContainText('2 / 2');
- await expect(page.locator('#createBrand')).toHaveValue('Darty');expect(await page.evaluate(()=>state.stores.at(-1).lat)).toBe(46);
- await page.locator('#locateStoreBtn').click();await expect(page.locator('#confirmCreateStore')).toBeVisible();await page.locator('#confirmCreateStore').click();
- expect(requests).toBe(2);expect(await page.evaluate(()=>state.stores.length)).toBe(6);await expect(page.locator('#createStoreDlg')).toBeHidden();
-});
 test('cached PWA reload preserves stores and filters offline; lookup cannot create without a result',async({browser})=>{
  const context=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'allow'});
  try{
@@ -119,8 +73,10 @@ test('cached PWA reload preserves stores and filters offline; lookup cannot crea
   await page.evaluate(()=>goTab('storesPanel'));
   await page.getByRole('button',{name:'Cuisinistes',exact:true}).click();
   await expect(page.locator('#storeList .storeline')).toHaveCount(3);
-  await fill(page);await page.locator('#locateStoreBtn').click();
-  await expect(page.locator('#createStoreStatus')).toHaveText('Localisation indisponible. Réessaie dans quelques instants.');
+  // V261 : hors ligne, l'ajout ne lance aucune recherche et le dit simplement.
+  await page.locator('#addStoreBtn').click();
+  await expect(page.locator('#sraStatus')).toContainText('la recherche nécessite une connexion');
+  await expect(page.locator('#storeAddDlg').getByRole('button',{name:'Saisir manuellement'})).toBeVisible();
   expect(await page.evaluate(()=>state.stores.length)).toBe(4);
  }finally{await context.close()}
 });

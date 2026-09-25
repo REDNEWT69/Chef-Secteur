@@ -20,6 +20,7 @@ Ce dépôt est l’application **Store Runner**. Le dépôt historique s’appel
 - `planning-ui-fixes.js` possède la hiérarchie d’affichage du planning.
 - `planning-manual-visits.js` possède les modifications manuelles du planning (ajout, retrait, déplacement, ordre de passage) ; `planning-reorder-v254.js` ne possède que le geste tactile qui les déclenche.
 - `store-runner-branding.js` ne doit gérer que le branding.
+- `store-add-v261.js` (`StoreRunnerStoreAdd`) possède l’ajout d’un magasin au secteur : une seule porte (« + Ajouter un magasin »), recherche à la demande via Nominatim, aperçu, doublons, saisie manuelle réduite. Le noyau, l’import IA et le pilotage performance l’ouvrent ; aucun autre écran ne crée de magasin à l’unité. Aucune base de magasins ne doit être embarquée pour cette recherche.
 - Les enrichissements assistant utilisent `storeRunnerRegisterAssistantResolver`, `storeRunnerRegisterAssistantContextTransform` et les événements publics existants.
 - Les rafraîchissements doivent être événementiels et ciblés. Éviter les réinstallations globales au `focus`, au `visibilitychange` ou par boucles de temporisation quand un événement métier existe déjà.
 
@@ -94,7 +95,7 @@ Ne pas développer KitchenCRM, ServiceCase ou des workflows spécialisés tant q
 
 Ce sont deux choses distinctes et elles ne se mélangent pas.
 
-- **V1 = la production.** `index.html` + `src/chef-secteur.html` + les modules racine, publiés sur `https://store-runner.fr/`. Version courante V260 (`version.json`).
+- **V1 = la production.** `index.html` + `src/chef-secteur.html` + les modules racine, publiés sur `https://store-runner.fr/`. Version courante V261 (`version.json`).
 - **`/v2/` = chantier parallèle incomplet** (issue #115), isolé : aucun fichier de `v2/` n'est chargé par `index.html` ni mis en cache par `sw.js`. Il a son propre point d'entrée `v2/public/index.html` et ses propres tests, exécutés par Reliability. Aucune bascule n'est décidée.
 
 Un lot V1 ne touche pas `v2/`, et un lot V2 ne touche pas le runtime V1. L'état réel du chantier V2 est dans `v2/STATUS.md`.
