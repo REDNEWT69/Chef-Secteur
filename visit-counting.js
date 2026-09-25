@@ -201,6 +201,23 @@ const LABELS={
   activeStores:n=>plural(n,'magasin actif','magasins actifs'),
   target:n=>'objectif '+n+' magasin'+(n>1?'s':'')
 };
+/* V259 — une seule mise en forme de « Cette semaine », partagée par la carte d'accueil
+   et le bandeau historique du noyau (#smartBrief). V258 : dès qu'une visite est terminée,
+   le réalisé passe devant le planifié ; crédits et objectif restent lisibles dessous.
+   Ne lit que les métriques déjà calculées : aucun recomptage. */
+function weekSummary(m){
+  const bits=[];let value='';
+  if(!m)return{value,bits};
+  if(m.completedVisitsWeek){
+    value=LABELS.completed(m.completedVisitsWeek);
+    if(m.plannedStoresWeek)bits.push(LABELS.plannedStores(m.plannedStoresWeek),LABELS.credits(m.plannedVisitCreditsWeek));
+  }else if(m.plannedStoresWeek){
+    value=LABELS.plannedStores(m.plannedStoresWeek);
+    bits.push(LABELS.credits(m.plannedVisitCreditsWeek));
+  }
+  if(m.target!=null){if(value)bits.push(LABELS.target(m.target));else value='Objectif '+plural(m.target,'magasin','magasins')}
+  return{value,bits};
+}
 /* La tournée du jour se lit sur la vraie date : state.plan peut contenir une autre
    semaine quand l'utilisateur navigue dans le planning ; l'archive de la semaine courante
    prend alors le relais. Aucune donnée n'est écrite. */
@@ -273,7 +290,7 @@ function onPlanningUpdated(e){
 }
 function boot(){ensureRules();window.assistantSummary=formatAssistantSummary;hookReliability();observeUi();schedulePatch();document.addEventListener('store-runner:planning-updated',onPlanningUpdated);document.addEventListener('store-runner:data-restored',()=>{ensureRules();schedulePatch()});document.addEventListener('chef-range-generated',schedulePatch);document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('.proMonthPrev,.proMonthNext'))schedulePatch()});document.addEventListener('touchend',e=>{if(e.target&&e.target.closest&&e.target.closest('#proMonthBody'))schedulePatch()},{passive:true})}
 
-const ActivityMetrics={compute:activityMetrics,todayTour,completedVisitDays,summaryHtml,labels:LABELS};
+const ActivityMetrics={compute:activityMetrics,todayTour,completedVisitDays,summaryHtml,weekSummary,labels:LABELS};
 if(typeof module!=='undefined'&&module.exports)module.exports={StoreRunnerActivityMetrics:ActivityMetrics,credit:visitCredit,planStores,planCredits};
 if(typeof window==='undefined'||typeof document==='undefined')return;
 window.StoreRunnerActivityMetrics=ActivityMetrics;
