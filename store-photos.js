@@ -114,9 +114,13 @@ function openDb(){
       if(!os.indexNames.contains('storeId'))os.createIndex('storeId','storeId',{unique:false});
       if(!os.indexNames.contains('createdAt'))os.createIndex('createdAt','createdAt',{unique:false});
     };
-    req.onsuccess=()=>resolve(req.result);
-    req.onerror=()=>reject(req.error||new Error('Impossible d’ouvrir le stockage photo.'));
+    /* V257 — une connexion fermée (iOS en arrière-plan) ou sommée de céder la place
+       (mise à niveau, suppression) n'est plus gardée en cache : la prochaine opération
+       rouvre la base. Sans cela, les photos restaient inaccessibles jusqu'au redémarrage. */
+    req.onsuccess=()=>{const db=req.result;db.onversionchange=()=>{try{db.close()}catch(e){}if(dbPromise===opened)dbPromise=null};db.onclose=()=>{if(dbPromise===opened)dbPromise=null};resolve(db)};
+    req.onerror=()=>{if(dbPromise===opened)dbPromise=null;reject(req.error||new Error('Impossible d’ouvrir le stockage photo.'))};
   });
+  const opened=dbPromise;
   return dbPromise;
 }
 function txDone(tx){return new Promise((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=tx.onabort=()=>reject(tx.error||new Error('Écriture photo interrompue.'))})}
@@ -231,7 +235,7 @@ async function addPhoto(storeId,file,visitId){
   const moment=['avant','apres'].includes(pendingMoment)?pendingMoment:'';
   const category=normalizeCategory(family,pendingCategory);
   askPersistentStorage();
-  return putRecord({id:uid(),storeId:String(storeId),visitId:linked||null,createdAt:now,updatedAt:now,note:'',family,moment,category,blob:packed.blob,thumb:packed.thumb||null,type:packed.type,width:packed.width,height:packed.height,size:packed.size,originalName:String(file&&file.name||'')});
+  return putRecord({id:uid(),storeId:String(storeId),visitId:linked||null,createdAt:now,updatedAt:now,note:'',family,moment,category,blob:packed.blob,thumb:packed.thumb||null,type:packed.type,width:packed.width,height:packed.height,size:packed.size,originalName:String(file&&file.name||'')}).catch(err=>{throw friendlyStorageError(err)});
 }
 /* Une photo non étiquetée est volontairement rendue pour les deux familles : mieux vaut une
    photo en trop dans un compte rendu qu'une photo manquante. */
@@ -731,10 +735,235 @@ function installStoreDialogButton(){
   syncStoreButton();return true;
 }
 function installButtons(){installQuickButton();installStoreDialogButton()}
-function boot(){ensureDialog();installButtons()}
+function boot(){ensureDialog();installButtons();installBackupCard()}
 
-const api={DB_NAME,STORE,MAX_EDGE,THUMB_EDGE,PAGE_SIZE,CATEGORY_CATALOG,safePart,scaleSize,defaultSelection,shareFileName,openDb,list,listByFamily,listStrictByFamily,listByVisitId,addPhoto,removeRecord,updateNote,updateTags,open,render,shareRecords,installQuickButton,installStoreDialogButton,moveRecords,visitStoreId,keepsVisitLink,movableStores,openMoveDialog,closeMoveDialog,confirmMove,renderMoveList,syncMoveButton,categoriesFor,categoryLabel,normalizeCategory,registerCategory,groupKeyOf,groupRows,groupLabel,filterRows,familyCounts,localDay,frenchDay,ensureThumb,openViewer,closeViewer,stepViewer};
+/* ---------------------------------------------------------------------------
+   V257 — archive photo : export / restauration hors de l'appareil.
+
+   Les photos vivent dans IndexedDB, hors de `state` et donc hors de la sauvegarde
+   JSON : perdre le téléphone, c'était perdre les photos. L'archive est un .zip
+   « stocké » (sans compression : un JPEG ne se compresse plus) que n'importe quel
+   ordinateur ouvre, avec :
+   - `manifest.json` : pour chaque photo, TOUTES ses métadonnées (magasin, visite,
+     famille, moment, catégorie, note, dates, dimensions) et le CRC32 du fichier ;
+   - `photos/<id>.<ext>` : l'image telle qu'elle est stockée.
+   Rien n'est recompressé ni renommé : une photo restaurée est la même photo.
+
+   La restauration FUSIONNE : une photo dont l'identifiant existe déjà est laissée en
+   place, jamais écrasée. Restaurer deux fois la même archive ne crée aucun doublon.
+   Le fichier n'est jamais chargé en entier : chaque image est lue par tranche
+   (`Blob.slice`), vérifiée (taille + CRC32), puis écrite.
+
+   Les très gros volumes partent en plusieurs archives (PART_MAX_BYTES), chacune
+   restaurable seule. « Nouvelles photos » n'exporte que ce qui a été pris ou modifié
+   depuis le dernier export photo : chaque export retient l'identifiant et la date de
+   modification des photos parties (aucune horloge en jeu, une photo à date future ou
+   un téléphone mal réglé ne trompent pas le compte). Une photo restaurée depuis une
+   archive est, par définition, déjà exportée.
+   --------------------------------------------------------------------------- */
+const ARCHIVE_FORMAT='StoreRunnerPhotos';
+const PART_MAX_BYTES=150*1024*1024;
+const PART_MAX_PHOTOS=2000;
+const EXPORT_MARK_KEY='store-runner-photo-export-v1';
+let crcTable=null;
+function crc32(bytes,crc=0){
+  if(!crcTable){crcTable=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;crcTable[n]=c>>>0}}
+  crc=(crc^0xFFFFFFFF)>>>0;for(let i=0;i<bytes.length;i++)crc=crcTable[(crc^bytes[i])&0xFF]^(crc>>>8);return (crc^0xFFFFFFFF)>>>0;
+}
+function utf8(text){return new TextEncoder().encode(String(text))}
+async function blobBytes(blob){if(blob&&typeof blob.arrayBuffer==='function')return new Uint8Array(await blob.arrayBuffer());if(blob instanceof Uint8Array)return blob;throw new Error('Contenu photo illisible.')}
+function dosTime(date){const d=new Date(date);if(!Number.isFinite(d.getTime())||d.getFullYear()<1980)return{time:0,date:33};return{time:(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1),date:((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate()}}
+function header(size){const buf=new ArrayBuffer(size);return{buf,view:new DataView(buf),bytes:new Uint8Array(buf)}}
+/* Zip « stocké » minimal. `entries` : [{name, data (Blob|Uint8Array), crc, size, when}]. */
+function zipBlob(entries){
+  const parts=[],central=[];let offset=0;
+  for(const e of entries){
+    const name=utf8(e.name),t=dosTime(e.when),h=header(30+name.length);
+    h.view.setUint32(0,0x04034b50,true);h.view.setUint16(4,20,true);h.view.setUint16(6,0x0800,true);h.view.setUint16(8,0,true);
+    h.view.setUint16(10,t.time,true);h.view.setUint16(12,t.date,true);h.view.setUint32(14,e.crc,true);h.view.setUint32(18,e.size,true);h.view.setUint32(22,e.size,true);
+    h.view.setUint16(26,name.length,true);h.view.setUint16(28,0,true);h.bytes.set(name,30);
+    parts.push(h.buf,e.data);
+    const c=header(46+name.length);
+    c.view.setUint32(0,0x02014b50,true);c.view.setUint16(4,20,true);c.view.setUint16(6,20,true);c.view.setUint16(8,0x0800,true);c.view.setUint16(10,0,true);
+    c.view.setUint16(12,t.time,true);c.view.setUint16(14,t.date,true);c.view.setUint32(16,e.crc,true);c.view.setUint32(20,e.size,true);c.view.setUint32(24,e.size,true);
+    c.view.setUint16(28,name.length,true);c.view.setUint32(42,offset,true);c.bytes.set(name,46);central.push(c.buf);
+    offset+=30+name.length+e.size;
+  }
+  const centralSize=central.reduce((n,b)=>n+b.byteLength,0),end=header(22);
+  end.view.setUint32(0,0x06054b50,true);end.view.setUint16(8,entries.length,true);end.view.setUint16(10,entries.length,true);end.view.setUint32(12,centralSize,true);end.view.setUint32(16,offset,true);
+  return new Blob(parts.concat(central,[end.buf]),{type:'application/zip'});
+}
+/* Lecture d'un zip sans le charger : fin de fichier, répertoire central, puis tranches. */
+async function readZip(file){
+  if(!file||typeof file.slice!=='function')throw new Error('Archive photo illisible.');
+  const tailSize=Math.min(file.size,22+65535),tail=await blobBytes(file.slice(file.size-tailSize));
+  let at=-1;for(let i=tail.length-22;i>=0;i--)if(tail[i]===0x50&&tail[i+1]===0x4b&&tail[i+2]===0x05&&tail[i+3]===0x06){at=i;break}
+  if(at<0)throw new Error('Ce fichier n’est pas une archive photo Store Runner.');
+  const endView=new DataView(tail.buffer,tail.byteOffset+at,22),count=endView.getUint16(10,true),cdSize=endView.getUint32(12,true),cdOffset=endView.getUint32(16,true);
+  const cd=await blobBytes(file.slice(cdOffset,cdOffset+cdSize)),view=new DataView(cd.buffer,cd.byteOffset,cd.byteLength),decoder=new TextDecoder(),entries=new Map();
+  let p=0;
+  for(let i=0;i<count;i++){
+    if(view.getUint32(p,true)!==0x02014b50)throw new Error('Archive photo abîmée (répertoire).');
+    const method=view.getUint16(p+10,true),crc=view.getUint32(p+16,true),size=view.getUint32(p+20,true),usize=view.getUint32(p+24,true),nameLen=view.getUint16(p+28,true),extraLen=view.getUint16(p+30,true),commentLen=view.getUint16(p+32,true),local=view.getUint32(p+42,true);
+    const name=decoder.decode(cd.subarray(p+46,p+46+nameLen));
+    entries.set(name,{name,method,crc,size,usize,local});p+=46+nameLen+extraLen+commentLen;
+  }
+  async function body(entry){
+    if(entry.method!==0||entry.size!==entry.usize)throw new Error('Archive recompressée par un autre outil : utilise le fichier d’origine exporté par Store Runner.');
+    const lh=await blobBytes(file.slice(entry.local,entry.local+30)),lv=new DataView(lh.buffer,lh.byteOffset,30);
+    if(lv.getUint32(0,true)!==0x04034b50)throw new Error('Archive photo abîmée (entrée).');
+    const start=entry.local+30+lv.getUint16(26,true)+lv.getUint16(28,true);
+    return file.slice(start,start+entry.size);
+  }
+  return{entries,body};
+}
+function extFor(type){return extensionFor(type)}
+/* Métadonnées exportées : tout l'enregistrement sauf les octets (le blob part en
+   fichier, la miniature se refabrique à l'affichage). */
+function manifestRow(r,file,crc){
+  const store=storeById(r.storeId);
+  return{id:String(r.id),file,crc,storeId:String(r.storeId==null?'':r.storeId),storeLabel:store?[store.enseigne,store.ville].filter(Boolean).join(' · '):'',
+    visitId:r.visitId==null||r.visitId===''?null:String(r.visitId),createdAt:String(r.createdAt||''),updatedAt:String(r.updatedAt||r.createdAt||''),
+    note:String(r.note||''),family:String(r.family||''),moment:String(r.moment||''),category:String(r.category||''),
+    type:String(r.type||(r.blob&&r.blob.type)||'image/jpeg'),width:Number(r.width)||0,height:Number(r.height)||0,size:Number(r.blob&&r.blob.size)||Number(r.size)||0,originalName:String(r.originalName||'')};
+}
+async function listAll(){
+  const db=await openDb(),tx=db.transaction(STORE,'readonly'),rows=[];
+  await new Promise((resolve,reject)=>{const req=tx.objectStore(STORE).openCursor();req.onsuccess=()=>{const cur=req.result;if(!cur){resolve();return}rows.push(cur.value);cur.continue()};req.onerror=()=>reject(req.error||new Error('Lecture des photos impossible.'))});
+  rows.sort(compareRows);return rows;
+}
+/* Découpe en archives restaurables seules : taille et nombre bornés. */
+function planParts(rows,maxBytes=PART_MAX_BYTES,maxPhotos=PART_MAX_PHOTOS){
+  const parts=[];let cur=[],bytes=0;
+  for(const r of rows){const n=Number(r.blob&&r.blob.size)||Number(r.size)||0;if(cur.length&&(bytes+n>maxBytes||cur.length>=maxPhotos)){parts.push(cur);cur=[];bytes=0}cur.push(r);bytes+=n}
+  if(cur.length)parts.push(cur);return parts;
+}
+async function buildArchive(rows,meta){
+  const entries=[],manifest={format:ARCHIVE_FORMAT,version:1,createdAt:new Date().toISOString(),part:meta&&meta.part||1,parts:meta&&meta.parts||1,count:rows.length,photos:[]};
+  for(const r of rows){
+    if(!r||!r.blob)continue;
+    const file='photos/'+safePart(r.id)+'.'+extFor(r.type||r.blob.type),bytes=await blobBytes(r.blob),crc=crc32(bytes);
+    entries.push({name:file,data:r.blob,crc,size:bytes.length,when:r.createdAt});
+    manifest.photos.push(manifestRow(r,file,crc));
+  }
+  manifest.count=manifest.photos.length;
+  const text=utf8(JSON.stringify(manifest));
+  entries.unshift({name:'manifest.json',data:text,crc:crc32(text),size:text.length,when:manifest.createdAt});
+  return{blob:zipBlob(entries),manifest};
+}
+function exportMark(){try{const s=root.__chefStorage||root.localStorage,m=JSON.parse(s&&s.getItem(EXPORT_MARK_KEY)||'null');return m&&typeof m==='object'?Object.assign({seen:{}},m,{seen:m.seen&&typeof m.seen==='object'?m.seen:{}}):null}catch(e){return null}}
+function versionOf(r){return String(r&&(r.updatedAt||r.createdAt)||'')}
+/* Ajoute des photos à l'index des photos déjà sorties de l'appareil. */
+function markExported(rows){const mark=exportMark()||{seen:{}};for(const r of rows)mark.seen[String(r.id)]=versionOf(r);mark.at=new Date().toISOString();mark.count=Object.keys(mark.seen).length;try{const s=root.__chefStorage||root.localStorage;if(s)s.setItem(EXPORT_MARK_KEY,JSON.stringify(mark))}catch(e){}}
+function isPending(r,mark){return !mark||mark.seen[String(r.id)]!==versionOf(r)}
+/* `onlyNew` : seules les photos jamais exportées, ou modifiées depuis, partent. */
+async function exportArchives(options){
+  const opts=options||{},mark=opts.onlyNew?exportMark():null;
+  const rows=(await listAll()).filter(r=>!opts.onlyNew||isPending(r,mark));
+  const parts=planParts(rows,opts.maxBytes,opts.maxPhotos),out=[],stamp=new Date().toISOString().replace(/[:.]/g,'-');
+  for(let i=0;i<parts.length;i++){
+    const built=await buildArchive(parts[i],{part:i+1,parts:parts.length});
+    const name='Store-Runner-photos-'+stamp+(parts.length>1?'-partie-'+(i+1)+'-sur-'+parts.length:'')+'.zip';
+    out.push({name,blob:built.blob,count:built.manifest.count});
+    if(typeof opts.onPart==='function')await opts.onPart(out[out.length-1],i,parts.length);
+  }
+  if(opts.mark!==false&&rows.length)markExported(rows);
+  return{parts:out,count:rows.length};
+}
+function checkManifestRow(p){
+  if(!p||typeof p!=='object'||typeof p.id!=='string'||!p.id||p.id.length>200||typeof p.file!=='string'||!/^photos\//.test(p.file))throw new Error('Manifeste photo invalide.');
+  if(typeof p.storeId!=='string'||!p.storeId)throw new Error('Photo sans magasin dans le manifeste.');
+  if(!Number.isFinite(Date.parse(p.createdAt)))throw new Error('Date de photo invalide dans le manifeste.');
+  if(!String(p.type||'').startsWith('image/'))throw new Error('Type de fichier inattendu dans l’archive.');
+}
+/* Fusion : n'écrit que les photos absentes. Rend {added, skipped, total}. */
+async function importArchive(file,options){
+  const opts=options||{},zip=await readZip(file),entry=zip.entries.get('manifest.json');
+  if(!entry)throw new Error('Ce fichier n’est pas une archive photo Store Runner.');
+  const mf=await blobBytes(await zip.body(entry));if(crc32(mf)!==entry.crc)throw new Error('Archive photo abîmée (manifeste).');
+  let manifest;try{manifest=JSON.parse(new TextDecoder().decode(mf))}catch(e){throw new Error('Manifeste photo illisible.')}
+  if(!manifest||manifest.format!==ARCHIVE_FORMAT||manifest.version!==1||!Array.isArray(manifest.photos))throw new Error('Ce fichier n’est pas une archive photo Store Runner.');
+  for(const p of manifest.photos){checkManifestRow(p);const e=zip.entries.get(p.file);if(!e||e.crc!==p.crc)throw new Error('Archive photo incomplète : '+p.file+' manque ou ne correspond pas.')}
+  const db=await openDb();let added=0,skipped=0,done=0;
+  for(const p of manifest.photos){
+    const exists=await new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readonly'),req=tx.objectStore(STORE).get(p.id);req.onsuccess=()=>resolve(!!req.result);req.onerror=()=>reject(req.error)});
+    if(exists){skipped++}
+    else{
+      const e=zip.entries.get(p.file),slice=await zip.body(e),bytes=await blobBytes(slice);
+      if(bytes.length!==e.size||crc32(bytes)!==p.crc)throw new Error('Photo abîmée dans l’archive : '+p.file+'. Rien d’autre n’a été modifié pour cette photo.');
+      const blob=new Blob([bytes],{type:p.type});
+      const record={id:p.id,storeId:p.storeId,visitId:p.visitId||null,createdAt:p.createdAt,updatedAt:p.updatedAt||p.createdAt,note:String(p.note||''),family:'',moment:'',category:'',blob,thumb:null,type:p.type,width:Number(p.width)||0,height:Number(p.height)||0,size:bytes.length,originalName:String(p.originalName||'')};
+      applyTags(record,{family:p.family,moment:p.moment,category:p.category});
+      try{await putRecord(record)}catch(err){throw friendlyStorageError(err)}
+      added++;
+    }
+    done++;if(typeof opts.onProgress==='function')opts.onProgress(done,manifest.photos.length);
+  }
+  if(opts.mark!==false)markExported(manifest.photos);
+  return{added,skipped,total:manifest.photos.length,part:manifest.part||1,parts:manifest.parts||1};
+}
+/* Comptes pour l'écran Données : sans lire un seul octet d'image. */
+async function stats(){
+  const rows=await listAll(),known=new Set((root.state&&root.state.stores||[]).map(s=>String(s.id)));let bytes=0,orphans=0,linked=0;
+  for(const r of rows){bytes+=Number(r.blob&&r.blob.size)||Number(r.size)||0;if(!known.has(String(r.storeId)))orphans++;if(r.visitId)linked++}
+  const mark=exportMark(),pending=rows.filter(r=>isPending(r,mark)).length;
+  return{count:rows.length,bytes,orphans,linked,lastExport:mark&&mark.at||null,pending};
+}
+function friendlyStorageError(err){
+  const name=err&&err.name||'',msg=err&&err.message||String(err);
+  if(/quota/i.test(name+' '+msg))return new Error('Stockage du téléphone plein : photo non enregistrée. Exporte tes photos (Plus → Données) puis libère de l’espace.');
+  return err instanceof Error?err:new Error(msg);
+}
+
+/* --- Écran Données : section Photos ----------------------------------------------- */
+function saveBlob(name,blob){const url=URL.createObjectURL(blob),a=root.document.createElement('a');a.href=url;a.download=name;root.document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},4000)}
+function mbText(n){return (Math.round(n/1024/1024*10)/10).toLocaleString('fr-FR')+' Mo'}
+async function refreshBackupCard(){
+  const info=root.document&&root.document.getElementById('photoBackupInfo');if(!info)return;
+  try{const s=await stats();info.textContent=s.count?plural(s.count,'photo')+' sur ce téléphone · '+mbText(s.bytes)+(s.lastExport?' · dernier export photo le '+new Date(s.lastExport).toLocaleDateString('fr-FR')+(s.pending?' · '+s.pending+(s.pending>1?' nouvelles photos':' nouvelle photo')+' à exporter':' · tout est exporté'):' · aucune photo exportée pour l’instant')+(s.orphans?' · '+plural(s.orphans,'photo')+' d’un magasin retiré du secteur (conservées)':''):'Aucune photo sur ce téléphone.'}
+  catch(e){info.textContent=e.message||String(e)}
+}
+function backupStatus(text,error){const n=root.document.getElementById('photoBackupFeedback');if(n){n.textContent=text||'';n.classList.toggle('sr-photoError',!!error)}}
+async function runExport(onlyNew){
+  try{
+    backupStatus('Préparation de l’archive photo…');
+    const res=await exportArchives({onlyNew,onPart:async(part,i,n)=>{backupStatus('Archive '+(i+1)+' / '+n+' : '+plural(part.count,'photo')+'…');saveBlob(part.name,part.blob)}});
+    backupStatus(res.count?plural(res.count,'photo')+' exportée'+(res.count>1?'s':'')+' en '+plural(res.parts.length,'archive')+'. Vérifie que '+(res.parts.length>1?'les fichiers sont bien enregistrés':'le fichier est bien enregistré')+' dans Fichiers.':'Aucune nouvelle photo à exporter.');
+  }catch(e){backupStatus(e.message||String(e),true)}
+  refreshBackupCard();
+}
+async function runImport(file){
+  if(!file)return;
+  try{backupStatus('Lecture de l’archive photo…');const r=await importArchive(file,{onProgress:(d,t)=>backupStatus('Restauration des photos : '+d+' / '+t+'…')});
+    backupStatus('Archive '+r.part+(r.parts>1?' / '+r.parts:'')+' restaurée : '+plural(r.added,'photo')+' ajoutée'+(r.added>1?'s':'')+(r.skipped?', '+r.skipped+' déjà présente'+(r.skipped>1?'s':'')+' (non modifiée'+(r.skipped>1?'s':'')+')':'')+'.')}
+  catch(e){backupStatus('Restauration photo refusée : '+(e.message||String(e)),true)}
+  finally{const input=root.document.getElementById('photoBackupFile');if(input)input.value=''}
+  refreshBackupCard();
+}
+function installBackupCard(){
+  if(!root.document)return false;const host=root.document.getElementById('importPanel');if(!host)return false;
+  if(root.document.getElementById('photoBackupTools'))return true;
+  ensureStyle();
+  const box=el('section',undefined,'card');box.id='photoBackupTools';
+  box.append(el('h2','Photos'),el('p','Les photos ne sont pas dans la sauvegarde JSON : exporte-les ici, dans une archive .zip avec leur magasin, leur visite, leur famille et leur date. La restauration ajoute les photos absentes sans jamais remplacer celles déjà présentes.'));
+  const info=el('p','',undefined);info.id='photoBackupInfo';
+  const actions=el('div',undefined,'sr-photoReportActions');
+  const all=btn('Exporter toutes les photos',()=>runExport(false),'primary');all.id='photoExportAll';
+  const fresh=btn('Exporter les nouvelles',()=>runExport(true),'secondary');fresh.id='photoExportNew';
+  actions.append(all,fresh);
+  const label=el('label','Restaurer une archive photo (.zip)'),input=el('input');input.type='file';input.id='photoBackupFile';input.accept='.zip,application/zip';input.onchange=e=>runImport(e.target.files[0]);label.append(input);
+  const feedback=el('p','','sr-photoStatus');feedback.id='photoBackupFeedback';feedback.setAttribute('role','status');
+  box.append(info,actions,label,feedback);
+  const after=root.document.getElementById('backupTools');if(after&&after.parentNode===host)after.insertAdjacentElement('afterend',box);else host.insertBefore(box,host.firstChild);
+  /* Comptes relus à chaque ouverture de l'écran Données : un observateur borné à la
+     classe de ce seul panneau, aucune boucle. */
+  /* Rien n'est lu au démarrage : parcourir toutes les photos ne sert qu'à cet écran. */
+  if(typeof root.MutationObserver==='function'){let wasActive=host.classList.contains('active');new root.MutationObserver(()=>{const active=host.classList.contains('active');if(active&&!wasActive)refreshBackupCard();wasActive=active}).observe(host,{attributes:true,attributeFilter:['class']})}
+  if(host.classList.contains('active'))refreshBackupCard();return true;
+}
+
+const api={DB_NAME,STORE,MAX_EDGE,THUMB_EDGE,PAGE_SIZE,CATEGORY_CATALOG,ARCHIVE_FORMAT,PART_MAX_BYTES,PART_MAX_PHOTOS,crc32,zipBlob,readZip,planParts,manifestRow,checkManifestRow,listAll,exportArchives,importArchive,stats,installBackupCard,safePart,scaleSize,defaultSelection,shareFileName,openDb,list,listByFamily,listStrictByFamily,listByVisitId,addPhoto,removeRecord,updateNote,updateTags,open,render,shareRecords,installQuickButton,installStoreDialogButton,moveRecords,visitStoreId,keepsVisitLink,movableStores,openMoveDialog,closeMoveDialog,confirmMove,renderMoveList,syncMoveButton,categoriesFor,categoryLabel,normalizeCategory,registerCategory,groupKeyOf,groupRows,groupLabel,filterRows,familyCounts,localDay,frenchDay,ensureThumb,openViewer,closeViewer,stepViewer};
 root.StorePhotosV1=api;
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
-if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();root.document.addEventListener('store-runner:data-restored',installButtons);root.document.addEventListener('store-runner:planning-updated',installButtons)}
+if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();root.document.addEventListener('store-runner:data-restored',()=>{installButtons();const panel=root.document.getElementById('importPanel');if(panel&&panel.classList.contains('active'))refreshBackupCard()});root.document.addEventListener('store-runner:planning-updated',installButtons)}
 })(typeof window!=='undefined'?window:globalThis);
