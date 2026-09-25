@@ -165,16 +165,21 @@
 
     const perfP1=(performance.rows||[]).filter(r=>r&&r.prio==='P1'&&r.storeId),plannedIds=plannedStoreIds(s);
     if(m){
-      const L=api&&api.labels,credits=n=>L?L.credits(n):plural(n,'crédit de visite','crédits de visite'),done=n=>L?L.completed(n,'cette semaine'):plural(n,'visite réalisée','visites réalisées')+' cette semaine';
-      const weekBits=[];
-      if(m.plannedStoresWeek)weekBits.push(credits(m.plannedVisitCreditsWeek));
-      if(m.completedVisitsWeek)weekBits.push(done(m.completedVisitsWeek));
-      if(m.target!=null)weekBits.push('objectif '+plural(m.target,'magasin','magasins'));
+      const L=api&&api.labels,credits=n=>L?L.credits(n):plural(n,'crédit de visite','crédits de visite'),planned=n=>L?L.plannedStores(n):plural(n,'magasin planifié','magasins planifiés'),done=n=>L?L.completed(n):plural(n,'visite réalisée','visites réalisées');
+      /* V258 — le travail réellement fait passe devant le prévu : dès qu'une visite est
+         terminée cette semaine, le gros chiffre est `completedVisitsWeek` ; le planifié,
+         les crédits et l'objectif restent lisibles en dessous. Tous les nombres viennent
+         de StoreRunnerActivityMetrics, aucun n'est recompté ici. */
+      const weekBits=[];let weekValue='';
+      if(m.completedVisitsWeek){
+        weekValue=done(m.completedVisitsWeek);
+        if(m.plannedStoresWeek)weekBits.push(planned(m.plannedStoresWeek),credits(m.plannedVisitCreditsWeek));
+      }else if(m.plannedStoresWeek){
+        weekValue=planned(m.plannedStoresWeek);
+        weekBits.push(credits(m.plannedVisitCreditsWeek));
+      }
+      if(m.target!=null){const goal=plural(m.target,'magasin','magasins');if(weekValue)weekBits.push('objectif '+goal);else weekValue='Objectif '+goal}
       if(perfP1.length&&plannedIds.size){const n=perfP1.filter(r=>plannedIds.has(String(r.storeId))).length;weekBits.push('P1 : '+n+'/'+perfP1.length+' planifiés')}
-      let weekValue='';
-      if(m.plannedStoresWeek)weekValue=plural(m.plannedStoresWeek,'magasin planifié','magasins planifiés');
-      else if(m.completedVisitsWeek)weekValue=plural(m.completedVisitsWeek,'visite réalisée','visites réalisées');
-      else if(m.target!=null)weekValue='Objectif '+plural(m.target,'magasin','magasins');
       if(weekValue)candidates.push(card('week','Cette semaine',weekValue,weekBits.join(' · ')||'Suivi hebdomadaire',30,'chart','plan'));
     }
 
@@ -192,6 +197,9 @@
      data-sr-start ouvre la visite 6P par StoreRunnerVisits.start (même gestionnaire que
      le bouton du terrainPanel), openMapsStore l'itinéraire et openTerrain le panneau.
      Aucun second moteur : la tournée vient de StoreRunnerActivityMetrics.todayTour. */
+  /* V258 — vocabulaire Runner à l'écran. Le bouton ouvre toujours la visite 6P
+     (StoreRunnerVisits.start) ; seuls les libellés visibles changent. */
+  const RUN_LABELS={start:'Démarrer le run',resume:'Reprendre le run'};
   function buildTerrainCard(tour,extra){
     if(!tour||!tour.total)return'';
     const x=extra||{},credits=n=>plural(n,'crédit de visite','crédits de visite');
@@ -202,7 +210,7 @@
     const place=[text(c.adresse),Number.isFinite(x.distanceKm)?'~'+Math.round(x.distanceKm)+' km à vol d’oiseau':''].filter(Boolean).join(' · ');
     const summary='Aujourd’hui : '+tour.done+'/'+plural(tour.total,'magasin','magasins')+' faits · '+credits(tour.credits)+km;
     const next=tour.next?`<div class="phTerrainNext">Prochaine : <b>${esc([text(tour.next.enseigne),text(tour.next.ville)].filter(Boolean).join(' '))}</b></div>`:`<div class="phTerrainNext">Dernier magasin de la tournée.</div>`;
-    return `<section class="phTerrain" data-home-terrain="active" data-terrain-store="${id}" aria-label="Mode Runner">${head}<div class="phTerrainDay">${esc(tour.day)} · visite ${position} / ${tour.total}</div><div class="phTerrainStore">${esc([text(c.enseigne),text(c.ville)].filter(Boolean).join(' ')||'Magasin')}</div>${place?`<div class="phTerrainMeta">${esc(place)}</div>`:''}<div class="phTerrainBtns"><button type="button" class="phTerrainMain" data-sr-start="${id}">${x.draft?'Reprendre la visite 6P':'Démarrer la visite 6P'}</button><button type="button" class="phTerrainRoute" data-store-id="${id}" onclick="openMapsStore(this.dataset.storeId)">➤ Itinéraire</button></div><div class="phTerrainSummary">${esc(summary)}</div>${next}<button type="button" class="phTerrainOpen" onclick="openTerrain()">Ouvrir le mode Runner ›</button></section>`;
+    return `<section class="phTerrain" data-home-terrain="active" data-terrain-store="${id}" aria-label="Mode Runner">${head}<div class="phTerrainDay">${esc(tour.day)} · visite ${position} / ${tour.total}</div><div class="phTerrainStore">${esc([text(c.enseigne),text(c.ville)].filter(Boolean).join(' ')||'Magasin')}</div>${place?`<div class="phTerrainMeta">${esc(place)}</div>`:''}<div class="phTerrainBtns"><button type="button" class="phTerrainMain" data-sr-start="${id}">${x.draft?RUN_LABELS.resume:RUN_LABELS.start}</button><button type="button" class="phTerrainRoute" data-store-id="${id}" onclick="openMapsStore(this.dataset.storeId)">➤ Itinéraire</button></div><div class="phTerrainSummary">${esc(summary)}</div>${next}<button type="button" class="phTerrainOpen" onclick="openTerrain()">Ouvrir le mode Runner ›</button></section>`;
   }
   function archiveSnapshot(){try{const db=window.__chefStorage||window.localStorage;return JSON.parse(db.getItem('chef_sector_plan_archive_v1')||'{}')||{}}catch(e){return{}}}
   function runtimeTodayTour(now){const api=metricsApi();if(!api)return null;try{return api.todayTour(state,{now,archive:archiveSnapshot})}catch(e){return null}}

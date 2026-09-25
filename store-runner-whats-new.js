@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'258',
+      title:'Ta semaine, d’abord ce que tu as fait',
+      items:[
+        'Sur l’accueil, la carte « Cette semaine » affiche en grand le nombre de visites réellement réalisées dès la première visite terminée.',
+        'Les magasins planifiés, les crédits de visite et l’objectif restent affichés juste en dessous.',
+        'Une visite terminée n’est comptée qu’une fois, même si elle apparaît aussi dans l’historique du magasin.',
+        'Dans le Mode Runner, le bouton devient « Démarrer le run », puis « Reprendre le run » quand une visite est en cours.'
+      ]
+    },
+    {
       version:'257',
       title:'Tes photos sauvegardées hors du téléphone',
       items:[

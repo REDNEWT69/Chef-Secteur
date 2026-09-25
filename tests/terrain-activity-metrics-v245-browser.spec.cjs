@@ -56,7 +56,7 @@ test('Accueil : carte noire Mode terrain, 6P, itinéraire, magasin suivant et fi
   await expect.poll(()=>page.evaluate(()=>state.businessV2.visits.filter(v=>v.storeId==='t1'&&v.status==='draft').length)).toBe(1);
   await page.locator('#srVisitDialog').getByRole('button',{name:'Fermer',exact:true}).first().click();
   await expect(page.locator('#srVisitDialog')).toHaveJSProperty('open',false);
-  await expect(card.locator('.phTerrainMain')).toHaveText('Reprendre la visite 6P');
+  await expect(card.locator('.phTerrainMain')).toHaveText('Reprendre le run');
 
   // Visite terminée par le 6P → carte au magasin suivant, sans recharger.
   await page.evaluate(()=>{const M=window.StoreRunnerVisitModel,v=state.businessV2.visits.find(x=>x.storeId==='t1'&&x.status==='draft');M.editVisit(state,v.id,'conclusion',null,'Visite terrain V245');M.complete(state,v.id,'2026-09-23');try{save()}catch(e){}renderAll()});

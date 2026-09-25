@@ -122,12 +122,12 @@ const complete=(st,storeId,date)=>st.businessV2.visits.push({id:'v-'+storeId+'-'
   assert.match(html,/Mercredi · visite 1 \/ 3/,'4. visite X / Y');
   assert.match(html,/Boulanger Ville-Test A/,'3. magasin courant');
   assert.match(html,/1 avenue Alpha · ~73 km à vol d’oiseau/,'distance géographique annoncée comme telle');
-  assert.match(html,/data-sr-start="b1">Démarrer la visite 6P</,'5. le CTA passe par le workflow 6P existant (data-sr-start → StoreRunnerVisits.start)');
+  assert.match(html,/data-sr-start="b1">Démarrer le run</,'5. le CTA passe par le workflow 6P existant (data-sr-start → StoreRunnerVisits.start), libellé Runner V258');
   assert.match(html,/data-store-id="b1" onclick="openMapsStore\(this\.dataset\.storeId\)"/,'6. itinéraire sur le magasin courant via openMapsStore');
   assert.match(html,/Aujourd’hui : 0\/3 magasins faits · 5 crédits de visite · ~121 km estimés/,'résumé du jour depuis les métriques centrales');
   assert.match(html,/Prochaine : <b>Darty Ville-Test A<\/b>/);
   assert.match(html,/onclick="openTerrain\(\)"/,'accès au terrainPanel existant');
-  assert.match(Home.buildTerrainCard(tour,{draft:true}),/Reprendre la visite 6P/,'une visite en brouillon se reprend');
+  assert.match(Home.buildTerrainCard(tour,{draft:true}),/Reprendre le run/,'une visite en brouillon se reprend (V258 : vocabulaire Runner)');
   assert.doesNotMatch(Home.buildTerrainCard(tour,{}),/km estimés|vol d’oiseau/,'sans calcul disponible, aucune distance inventée');
   complete(st,'b1','2026-09-23');complete(st,'d1','2026-09-23');complete(st,'s1','2026-09-23');
   const done=Home.buildTerrainCard(M.todayTour(st,{now:NOW}),{});
@@ -168,8 +168,9 @@ const complete=(st,storeId,date)=>st.businessV2.visits.push({id:'v-'+storeId+'-'
   const st=baseState();complete(st,'b1','2026-09-23');
   const cards=Home.buildActivityCards(st,{now:NOW,pilotage:{rows:[]},performance:{rows:[]},opportunities:[],recommended:null,appointment:null});
   const week=cards.find(c=>c.id==='week');
-  assert.equal(week.value,'4 magasins planifiés');
-  assert.equal(week.sub,'7 crédits de visite · 1 visite réalisée cette semaine · objectif 15 magasins');
+  /* V258 : dès qu'une visite est réalisée, elle passe au premier plan. */
+  assert.equal(week.value,'1 visite réalisée');
+  assert.equal(week.sub,'4 magasins planifiés · 7 crédits de visite · objectif 15 magasins');
 }
 
 console.log('terrain-activity-metrics-v245: OK · source unique des compteurs, target en magasins, tournée du jour, carte terrain, planning, Plus');
