@@ -11,11 +11,17 @@
    6. navigation : réseau qui traîne → version installée après le délai ; réseau plus
       ancien que la version installée → version installée ; hors ligne → version installée ;
    7. activate() ne remplace que les caches de fichiers de l'application ;
-   8. aucune donnée utilisateur (IndexedDB, localStorage) n'est lue ni écrite par le worker. */
+   8. aucune donnée utilisateur (IndexedDB, localStorage) n'est lue ni écrite par le worker.
+
+   V261.1 : le namespace de cache peut aussi porter un suffixe technique de hotfix tout en
+   gardant le même BUILD_REV visible. Cela permet de renouveler atomiquement un module du
+   shell sans prétendre à une nouvelle version utilisateur. */
 const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('assert/strict');
 const SOURCE=fs.readFileSync(path.join(__dirname,'..','sw.js'),'utf8');
 const INDEX=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 const REV=SOURCE.match(/const BUILD_REV = "([^"]+)"/)[1];
+const CACHE_SUFFIX=(SOURCE.match(/const CACHE_NAME = "chef-secteur-stable-" \+ BUILD_REV(?: \+ "([^"]*)")?;/)||[])[1]||'';
+const cacheName=rev=>'chef-secteur-stable-'+rev+CACHE_SUFFIX;
 const SCOPE='https://store-runner.test/';
 
 const CODE=SOURCE.replace(/\/\*[\s\S]*?\*\//g,'').replace(/^\s*\/\/.*$/gm,'');
@@ -80,7 +86,7 @@ function boot(o={}){
     fetch:async(url,mode)=>{const request=mode==='navigate'?{url:new URL(url,SCOPE).href,method:'GET',mode:'navigate'}:new Request(new URL(url,SCOPE).href);
       let p=null;handlers.fetch({request,respondWith(x){p=x},waitUntil(){}});return p?await p:'passthrough'}};
 }
-const NAME='chef-secteur-stable-'+REV;
+const NAME=cacheName(REV);
 const OTHER='20200101-ancienne100';
 
 let finished=false,step='début';
@@ -183,7 +189,7 @@ process.on('beforeExit',()=>{if(!finished){console.error('FAIL: bloqué à : '+s
     const w=boot();
     for(const n of ['chef-secteur-stable-'+OTHER,'chef-secteur-stable-'+REV,'store-runner-autre','photos-utilisateur'])await w.cs.api.open(n);
     await w.run('activate');
-    assert.deepEqual((await w.cs.api.keys()).sort(),['chef-secteur-stable-'+REV,'photos-utilisateur','store-runner-autre'].sort());
+    assert.deepEqual((await w.cs.api.keys()).sort(),[NAME,'photos-utilisateur','store-runner-autre'].sort());
     assert.equal(w.claimed(),1);
   }
   step='8. messages';
@@ -194,5 +200,5 @@ process.on('beforeExit',()=>{if(!finished){console.error('FAIL: bloqué à : '+s
     w.handlers.message({data:{type:'SKIP_WAITING'}});assert.equal(w.skipped(),1);
   }
   finished=true;
-  console.log('PASS: V260 — service worker : précache versionné et vérifié, version complète ou rien, aucun mélange de révisions, quota plein toléré, cache borné, navigation bornée dans le temps, données jamais touchées.');
+  console.log('PASS: V260/V261.1 — service worker : précache versionné et vérifié, cache hotfix atomique accepté, version complète ou rien, aucun mélange de révisions, quota plein toléré, cache borné, navigation bornée dans le temps, données jamais touchées.');
 })().catch(e=>{console.error(e);process.exit(1)});
