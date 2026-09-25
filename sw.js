@@ -1,4 +1,4 @@
-const BUILD_REV = "20260924-photos255";
+const BUILD_REV = "20260925-sortievisite255";
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV;
 const CORE_SHELL = [
   "./",

@@ -53,8 +53,12 @@ function fakeIndexedDB(rows){
 /* Horodatages strictement croissants : l'ordre attendu est createdAt puis id,
    jamais l'index du tableau. */
 function horodatage(n){const minute=String(n%60).padStart(2,'0'),heure=String(6+Math.floor(n/60)).padStart(2,'0');return '2026-09-20T'+heure+':'+minute+':00.000Z'}
-function photo(n,famille,magasin){
-  return {id:'ph-'+famille+'-'+String(n).padStart(3,'0'),storeId:magasin||'mag-235',family:famille,
+/* V255.1 — la Sortie magasin ne partage que les photos de SA visite. Une photo prise
+   pendant la visite porte son visitId : `COURANTE` est remplacé par le vrai identifiant
+   quand le banc crée la visite. `visite` explicite = autre visite, ou aucune. */
+const COURANTE='@visite-courante';
+function photo(n,famille,magasin,visite){
+  return {id:'ph-'+famille+'-'+String(n).padStart(3,'0'),storeId:magasin||'mag-235',visitId:visite===undefined?COURANTE:visite,family:famille,
           moment:n%2?'avant':'apres',createdAt:horodatage(n),type:'image/jpeg',blob:{type:'image/jpeg'}};
 }
 function lot(quantite,famille,depart){const debut=depart||1,out=[];for(let i=debut;i<debut+quantite;i++)out.push(photo(i,famille));return out}
@@ -111,9 +115,15 @@ function makeDocument(){
 /* ---------------------------------------------------------------------------
    Un banc d'essai = un magasin, ses photos, et la vraie feuille Sortie magasin.
    --------------------------------------------------------------------------- */
-function banc(rows){
+function banc(rows,options){
+  const opts=options||{};
+  const etat={schemaVersion:5,profile:{baseName:'Ville-Base'},settings:{days:['Lundi']},
+    stores:[{id:'mag-235',enseigne:opts.enseigne||'Enseigne-Test',ville:'Ville-Test'}],
+    notes:{},visits:{},plan:{Lundi:[]},appointments:[],calendarEvents:[]};
+  etat.businessV2=MODELE.empty();
+  const visitId=MODELE.start(etat,'mag-235');
   const photos=chargerPhotos();
-  globalThis.indexedDB=fakeIndexedDB(rows);
+  globalThis.indexedDB=fakeIndexedDB(rows.map(r=>r.visitId===COURANTE?Object.assign({},r,{visitId}):r));
   globalThis.IDBKeyRange={only:v=>({only:v})};
   class FakeFile{constructor(parts,name,opts){this.parts=parts;this.name=name;this.type=opts&&opts.type;this.lastModified=opts&&opts.lastModified}}
   Object.defineProperty(globalThis,'File',{configurable:true,writable:true,value:FakeFile});
@@ -130,16 +140,13 @@ function banc(rows){
     share:async charge=>{appels.push((charge.files||[]).map(f=>f.name));if(reponse)reponse()}
   }});
 
-  const etat={schemaVersion:5,profile:{baseName:'Ville-Base'},settings:{days:['Lundi']},
-    stores:[{id:'mag-235',enseigne:'Enseigne-Test',ville:'Ville-Test'}],
-    notes:{},visits:{},plan:{Lundi:[]},appointments:[],calendarEvents:[]};
-  etat.businessV2=MODELE.empty();
-  const visitId=MODELE.start(etat,'mag-235');
   globalThis.state=etat;
 
   const doc=makeDocument();
   const ctx={console,JSON,Date,Math,String,Number,Boolean,Object,Array,Set,Map,RegExp,Error,Promise,Symbol,
              setTimeout,clearTimeout,queueMicrotask};
+  const ia={charges:[]};
+  if(opts.ia){ctx.aiConfig={gateway:'https://passerelle.invalid'};ctx.callAIGateway=async charge=>{ia.charges.push(charge);return {text:opts.ia}}}
   ctx.window=ctx;ctx.self=ctx;ctx.globalThis=ctx;
   ctx.document=doc;ctx.state=etat;ctx.StorePhotosV1=photos;ctx.StoreRunnerVisitModel=MODELE;
   vm.runInNewContext(SOURCE_RAPPORT,ctx);
@@ -149,7 +156,8 @@ function banc(rows){
   const bouton=()=>feuille().querySelector('#srReportSharePhotos');
   const onglet=fam=>feuille().querySelector('#srReportTabs').children.filter(b=>b.dataset.family===fam)[0];
 
-  return {photos,partage,etat,visitId,R,doc,
+  return {photos,partage,etat,visitId,R,doc,ia,
+    genererIA:async()=>{feuille().querySelector('#srReportAI').dispatch('click');await repos()},
     ouvrir:()=>R.open(visitId),
     bouton,
     statut:()=>feuille().querySelector('#srReportStatus').textContent,
@@ -273,7 +281,7 @@ async function test3(){
 
 /* ============ 4 — 12 BRUN + 7 BLANC + 4 sans famille : séparation ============ */
 async function test4(){
-  const nonClassees=[1,2,3,4].map(n=>({id:'ph-nu-'+n,storeId:'mag-235',family:'',
+  const nonClassees=[1,2,3,4].map(n=>({id:'ph-nu-'+n,storeId:'mag-235',visitId:COURANTE,family:'',
     createdAt:'2026-09-20T0'+n+':30:00.000Z',type:'image/jpeg',blob:{type:'image/jpeg'}}));
   const b=banc([].concat(lot(12,'brun'),lot(7,'blanc'),nonClassees));
   await b.ouvrir();
@@ -333,7 +341,7 @@ async function test6(){
   const lot1=b.noms()[0];
 
   /* Trois photos BRUN arrivent après le début du partage. */
-  for(const p of lot(3,'brun',90))globalThis.indexedDB.__data.set(p.id,p);
+  for(const p of lot(3,'brun',90))globalThis.indexedDB.__data.set(p.id,Object.assign(p,{visitId:b.visitId}));
 
   /* Rouvrir le compte rendu ne remet pas la progression à zéro. */
   await b.ouvrir();
@@ -354,7 +362,7 @@ async function test6(){
 async function test7(){
   const b=banc(lot(3,'blanc'));
   await b.ouvrir();
-  assert.equal(b.libelle(),'Aucune photo pour cette famille.','BRUN vide le dit clairement');
+  assert.equal(b.libelle(),'Aucune photo BRUN pour cette visite.','BRUN vide le dit clairement');
   assert.equal(b.actif(),false);
   await b.partager();
   assert.equal(b.noms().length,0,'un bouton désactivé ne déclenche aucun partage');
@@ -374,6 +382,9 @@ function test8(){
   const src=SOURCE_RAPPORT;
   assert.ok(src.includes('const SHARE_BATCH_MAX=10;'),'le lot maximum doit rester de 10 photos');
   assert.ok(src.includes('api.listStrictByFamily(storeId,family)'),'la Sortie magasin lit la famille en strict');
+  assert.equal(src.split('photosFor(v.storeId,v.id,activeTab,merged)').length-1,3,'texte local, charge IA et partage lisent tous les photos de la visite');
+  assert.ok(!/photosFor\(v\.storeId,activeTab/.test(src),'plus aucune lecture des photos du magasin entier');
+  assert.ok(src.includes('return ofVisit(rows,visitId)'),'le filtre de visite s’applique à toutes les lectures');
   assert.ok(src.includes('nextShareBatch(rows,done,SHARE_BATCH_MAX)'),'le partage passe par la file de lots');
   assert.ok(src.includes('api.shareRecords(batch)'),'seul le lot courant part au partage système');
   assert.ok(!/shareRecords\(rows\)/.test(src),'la totalité des photos ne doit plus partir en un seul appel');
@@ -393,10 +404,71 @@ function test8(){
   console.log('  8 · contrat de source : ok');
 }
 
+/* ======= 9 — V255.1 : seules les photos de la visite courante partent ======= */
+async function test9(){
+  const ancienne=[1,2,3,4].map(n=>photo(40+n,'brun',undefined,'visite-ancienne'));
+  const sansVisite=[
+    Object.assign(photo(61,'brun'),{visitId:undefined}),        // d'avant V255 : pas de champ du tout
+    Object.assign(photo(62,'brun',undefined,'')),
+    Object.assign(photo(63,'brun',undefined,null)),
+    Object.assign(photo(64,'blanc',undefined,null))
+  ];
+  delete sansVisite[0].visitId;
+  const autreMagasin=[photo(70,'brun','mag-autre')];
+  const b=banc([].concat(lot(3,'brun'),lot(2,'blanc',10),ancienne,sansVisite,autreMagasin),{ia:
+    'Résumé BRUN\n\nPassage terrain reformulé à partir des seules notes de la visite, avec les photos de cette visite uniquement.\n\nFormation / prochain passage\n\nRevoir le mural au prochain passage.'});
+  const avant=[...globalThis.indexedDB.__data.values()].map(r=>JSON.stringify(r)).sort();
+  await b.ouvrir();
+  assert.equal(b.libelle(),'Partager les 3 photos BRUN','BRUN ne compte que les 3 photos de la visite');
+  assert.match(b.rapport(),/\*\*Photos :\*\* 2 avant \/ 1 après jointes à ce message\./,'le CR local compte les mêmes 3 photos');
+  await b.genererIA();
+  assert.equal(b.ia.charges.length,1,'la génération IA est bien partie');
+  assert.deepEqual(JSON.parse(JSON.stringify(b.ia.charges[0].context.visit.photos)),{total:3,before:2,after:1,other:0},'la charge IA ne compte que la visite');
+  await b.partager();
+  const brun=b.noms()[0];
+  assert.equal(brun.length,3,'3 fichiers BRUN, pas 3 + 4 anciens + 3 sans visite');
+  assert.equal(b.libelle(),'Toutes les photos BRUN ont été partagées');
+
+  await b.famille('blanc');
+  assert.equal(b.libelle(),'Partager les 2 photos BLANC','BLANC ne compte que les 2 photos de la visite');
+  await b.partager();
+  const blanc=b.noms()[1];
+  assert.equal(blanc.length,2);
+  /* Les noms portent l'horodatage : on retrouve exactement les photos attendues. */
+  const attendus=lot(3,'brun').concat(lot(2,'blanc',10)).map(r=>r.createdAt.replace(/[:.]/g,'-').replace('T','_').replace('Z',''));
+  const partis=brun.concat(blanc);
+  assert.equal(partis.length,5);
+  for(const stamp of attendus)assert.equal(partis.filter(n=>n.includes(stamp)).length,1,'photo de la visite partagée une seule fois : '+stamp);
+  const exclus=ancienne.concat(sansVisite,autreMagasin).map(r=>r.createdAt.replace(/[:.]/g,'-').replace('T','_').replace('Z',''));
+  for(const stamp of exclus)assert.ok(!partis.some(n=>n.includes(stamp)),'jamais une photo d’une autre visite ou sans visitId : '+stamp);
+  const apres=[...globalThis.indexedDB.__data.values()].map(r=>JSON.stringify(r)).sort();
+  assert.deepEqual(apres,avant,'aucune photo n’est modifiée, rattachée ni supprimée par la Sortie magasin');
+  console.log('  9 · visite courante seule, anciennes visites et photos sans visitId exclues : ok');
+}
+
+/* === 10 — compte rendu fusionné : toutes familles, mais la visite seulement === */
+async function test10(){
+  const vide=banc([photo(1,'brun',undefined,'visite-ancienne'),Object.assign(photo(2,'blanc'),{visitId:null})],{enseigne:'Schmidt'});
+  await vide.ouvrir();
+  assert.equal(vide.libelle(),'Aucune photo pour cette visite.','le magasin a des photos, mais aucune de cette visite');
+  assert.equal(vide.actif(),false);
+  await vide.partager();
+  assert.equal(vide.noms().length,0,'rien ne part');
+
+  const b=banc([].concat(lot(2,'brun'),lot(1,'blanc',5),[photo(6,'')],[photo(7,'brun',undefined,'visite-ancienne')],[Object.assign(photo(8,''),{visitId:null})]),{enseigne:'Schmidt'});
+  await b.ouvrir();
+  assert.equal(b.libelle(),'Partager les 4 photos','fusionné : les 4 photos de la visite, familles confondues');
+  await b.partager();
+  assert.equal(b.noms()[0].length,4);
+  assert.equal(b.libelle(),'Toutes les photos ont été partagées');
+  console.log('  10 · compte rendu fusionné limité à la visite : ok');
+}
+
 function fatal(e){console.error(e);process.exit(1)}
 
 (async function main(){
   await test0();await test1();await test2();await test3();
   await test4();await test5();await test6();await test7();test8();
-  console.log('partage photo V235 : lots de 10, familles strictes, aucun doublon · ok');
+  await test9();await test10();
+  console.log('partage photo V235 / V255.1 : lots de 10, familles strictes, visite courante seule, aucun doublon · ok');
 })().catch(fatal);
