@@ -14,13 +14,18 @@
       version complète.
    4. Une fiche est ouverte quand la mise à jour est prête : aucun rechargement sous les
       doigts ; « Recharger » une fois la saisie terminée.
-   5. Réseau qui ne répond pas : l'application installée s'ouvre en quelques secondes. */
+   5. Réseau qui ne répond pas : l'application installée s'ouvre en quelques secondes.
+
+   V261.1 : un suffixe technique de cache peut renouveler atomiquement le shell sans
+   changer le BUILD_REV visible. Le test dérive donc le vrai nom du cache depuis sw.js. */
 const {test,expect,chromium}=require('@playwright/test');
 const fs=require('fs'),os=require('os'),path=require('path'),http=require('http');
 
 const ROOT=path.join(__dirname,'..');
 const SW=fs.readFileSync(path.join(ROOT,'sw.js'),'utf8');
 const REV=SW.match(/const BUILD_REV = "([^"]+)"/)[1];
+const CACHE_SUFFIX=(SW.match(/const CACHE_NAME = "chef-secteur-stable-" \+ BUILD_REV(?: \+ "([^"]*)")?;/)||[])[1]||'';
+const cacheName=rev=>'chef-secteur-stable-'+rev+CACHE_SUFFIX;
 const NEXT=REV.replace(/(\d+)$/,n=>String(Number(n)+1));
 const PORT=Number(process.env.STORE_RUNNER_PWA_PORT||4174);
 const URL0=`http://127.0.0.1:${PORT}/`;
@@ -151,7 +156,7 @@ test('V260 : application ouverte pendant un déploiement — proposition, un seu
   await page.waitForTimeout(4000);
   expect(nav.n,'exactement un rechargement').toBe(1);
   const after=await snapshot(page);coherent(after,NEXT,'new');
-  expect(after.worker).toBe(NEXT);expect(after.caches).toEqual(['chef-secteur-stable-'+NEXT]);
+  expect(after.worker).toBe(NEXT);expect(after.caches).toEqual([cacheName(NEXT)]);
   expect(await data(page)).toEqual(DATA);
   for(let i=0;i<2;i++){nav.n=0;await page.reload({waitUntil:'domcontentloaded'});await ready(page);await page.waitForTimeout(1500);expect(nav.n,'aucune boucle').toBe(1);coherent(await snapshot(page),NEXT,'new')}
   await context.setOffline(true);await page.reload({waitUntil:'domcontentloaded'});await ready(page);
@@ -169,7 +174,7 @@ test('V260 : fermée pendant le déploiement puis rouverte — alignement sans r
   /* Le nouveau worker s'installe en arrière-plan puis doit être activé (alignement) :
      plus aucun worker en attente, contrôleur sur la nouvelle révision, ancien cache purgé. */
   await expect.poll(async()=>{const x=await snapshot(page);return {worker:x.worker,waiting:x.waiting,caches:x.caches}},{timeout:60000,intervals:[500]})
-    .toEqual({worker:NEXT,waiting:false,caches:['chef-secteur-stable-'+NEXT]});
+    .toEqual({worker:NEXT,waiting:false,caches:[cacheName(NEXT)]});
   expect(nav.n,'alignement du worker sans rechargement').toBe(1);
   coherent(await snapshot(page),NEXT,'new');
   expect(await data(page)).toEqual(DATA);
