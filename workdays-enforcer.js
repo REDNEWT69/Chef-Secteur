@@ -18,7 +18,7 @@
 
   function sanitizeArchive(){
     try{
-      const keep=selected(),a=JSON.parse(localStorage.getItem(ARCHIVE_KEY)||'{}')||{};
+      const keep=selected(),a=JSON.parse((window.__chefStorage||localStorage).getItem(ARCHIVE_KEY)||'{}')||{};
       let changed=false;
       for(const k of Object.keys(a)){
         if(!a[k]||!a[k].plan)continue;
@@ -29,7 +29,7 @@
           }
         }
       }
-      if(changed)localStorage.setItem(ARCHIVE_KEY,JSON.stringify(a));
+      if(changed)(window.__chefStorage||localStorage).setItem(ARCHIVE_KEY,JSON.stringify(a));
     }catch(e){}
   }
 

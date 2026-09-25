@@ -290,7 +290,10 @@ function migrate(data){
 function readStore(db){
   try{const raw=db&&db.getItem(STORE_KEY);return migrate(raw?JSON.parse(raw):null)}catch(e){return emptyStore()}
 }
-function writeStore(db,data){try{if(db)db.setItem(STORE_KEY,JSON.stringify(data))}catch(e){}return data}
+/* V256 — `strict` : un import refusé par le stockage (quota) doit être dit, pas avalé :
+   l'utilisateur croirait sa semaine enregistrée. Les écritures secondaires (appariement,
+   « traité ») gardent leur repli silencieux historique. */
+function writeStore(db,data,strict){try{if(db)db.setItem(STORE_KEY,JSON.stringify(data))}catch(e){if(strict)throw new Error('Import non enregistré : stockage de l’appareil plein. Exporte une sauvegarde puis libère de l’espace. ('+(e&&e.message||e)+')')}return data}
 /* Un import s'ajoute à la pile. Il n'écrase ni l'historique, ni un import antérieur de la
    même semaine, ni le mapping acquis. */
 function saveSnapshot(db,snapshot){
@@ -298,7 +301,7 @@ function saveSnapshot(db,snapshot){
   if(!snapshot||!snapshot.week)throw new Error('Semaine introuvable : renomme le fichier en « … W34.xlsx ».');
   data.imports.push(Object.assign({},snapshot,{importedAt:text(snapshot.importedAt)||new Date().toISOString()}));
   data.imports.sort((a,b)=>text(a.importedAt).localeCompare(text(b.importedAt)));
-  writeStore(db,data);
+  writeStore(db,data,true);
   return data;
 }
 function weeks(db){

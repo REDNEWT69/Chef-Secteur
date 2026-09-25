@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Store Runner">
   <meta name="application-name" content="Store Runner">
-  <link rel="manifest" href="./manifest.webmanifest?rev=20260925-sortievisite255">
-  <link rel="icon" href="./app-icon.svg?rev=20260925-sortievisite255" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="./app-icon.svg?rev=20260925-sortievisite255">
+  <link rel="manifest" href="./manifest.webmanifest?rev=20260925-stockage256">
+  <link rel="icon" href="./app-icon.svg?rev=20260925-stockage256" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./app-icon.svg?rev=20260925-stockage256">
   <style>
     html,body{margin:0;min-height:100%;background:#fbfaf8;color:#111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
   </style>
@@ -29,10 +29,10 @@
   </style>
 </head>
 <body>
-  <div id="storeRunnerBoot" data-store-runner-boot role="status" aria-live="polite"><div class="srBootInner"><img src="./app-icon.svg?rev=20260925-sortievisite255" alt="S-RUNNER"><strong>Store Runner</strong><span class="srBootSig">S-RUNNER By Red①</span><span id="bootText" class="srBootText" data-boot-text>Chargement de ton espace terrain…</span></div></div>
+  <div id="storeRunnerBoot" data-store-runner-boot role="status" aria-live="polite"><div class="srBootInner"><img src="./app-icon.svg?rev=20260925-stockage256" alt="S-RUNNER"><strong>Store Runner</strong><span class="srBootSig">S-RUNNER By Red①</span><span id="bootText" class="srBootText" data-boot-text>Chargement de ton espace terrain…</span></div></div>
   <script>
   (async function(){
-    const BUILD_REV='20260925-sortievisite255';
+    const BUILD_REV='20260925-stockage256';
     const withRev=(path)=>path+'?rev='+BUILD_REV;
 
     /* V234 — un seul écran de chargement, du tout premier octet jusqu'à l'accueil final.
@@ -115,6 +115,27 @@
       console.error(e);
     }
 
+    /* STORAGE-ENGINE:BEGIN
+       V256 — moteur de stockage durable. Ce bloc est extrait et exécuté tel quel par
+       tests/storage-engine-v256.test.cjs : il ne dépend que de `win`.
+
+       Pourquoi : tout `state` (visites 6P comprises) tenait dans UNE clé localStorage.
+       Une visite pèse ~10 Ko ; à 4 visites par jour le secteur dépasse 2,8 Mo en trois
+       mois et 5,5 Mo en six, soit le quota localStorage (~5 Mo) — les sauvegardes et le
+       journal de récupération cassaient bien avant. IndexedDB offre des centaines de Mo.
+
+       Contrat inchangé pour les 60 modules : `window.__chefStorage` reste une interface
+       Storage SYNCHRONE (getItem/setItem/removeItem/key/length), servie depuis une copie
+       mémoire chargée au démarrage.
+       - Écriture : chaque setItem/removeItem part aussitôt dans une transaction
+         IndexedDB. Toutes les écritures d'une même tâche partagent la même transaction :
+         une sauvegarde multi-clés (état + archive + range…) est atomique sur disque.
+       - Échec (quota, base fermée par iOS en arrière-plan) : la clé reste « à écrire »,
+         l'erreur est publiée (`store-runner:storage-status`) et la prochaine écriture ou
+         `flush()` la réessaie après réouverture de la base. Rien n'est jamais avalé.
+       - Bascule : au premier démarrage V256, les clés localStorage sont COPIÉES dans
+         IndexedDB, relues et comparées. localStorage n'est ni vidé ni réécrit : il reste
+         la copie d'avant bascule. Sans IndexedDB utilisable, on reste sur localStorage. */
     function createMemoryStorage(){
       const memory=new Map();
       return {
@@ -127,76 +148,195 @@
       };
     }
 
-    async function createStorageFallback(){
-      try{
-        const nativeStorage=window.localStorage;
-        const key='__chef_storage_test__';
-        nativeStorage.setItem(key,'1');
-        nativeStorage.removeItem(key);
-        window.__chefStorageMode='localStorage';
-        return nativeStorage;
-      }catch(nativeError){
-        console.warn('localStorage indisponible, tentative IndexedDB',nativeError);
+    async function createStorageEngine(win){
+      const DB_NAME='chef-secteur-storage',DB_VERSION=3,STORE='kv';
+      /* Présent dans IndexedDB = la base principale a été initialisée par V256+. */
+      const MARKER='store-runner-storage-engine-v1';
+      /* Présent dans localStorage = la bascule a déjà eu lieu sur cet appareil. */
+      const LEGACY_MARKER='store-runner-storage-engine';
+      /* Jamais recopiés : sondes techniques et jetons OAuth (le module Agenda les lit
+         directement dans localStorage, et un jeton n'a rien à faire dans la base). */
+      const NOT_COPIED=/^(__chef_storage_test__|__t|chef_secteur_google_token_v2|chef_google_token_expiry_v1|chef_google_token_persist_v1|chef_google_token_persist_expiry_v1)$/;
+      const health={engine:'memory',activatedAt:null,activatedFrom:null,recoveredFromLegacy:null,legacyChanged:false,
+        pending:0,failedKeys:[],otherWindow:false,lastError:null,lastErrorName:null,lastErrorAt:null,lastCommitAt:null,openError:null};
+      win.__chefStorageHealth=health;
+      const now=()=>new Date().toISOString();
+      function emit(){
+        try{if(typeof win.CustomEvent==='function'&&typeof win.dispatchEvent==='function')win.dispatchEvent(new win.CustomEvent('store-runner:storage-status',{detail:Object.assign({},health,{failedKeys:health.failedKeys.slice()})}))}catch(e){}
+      }
+      function fingerprint(text){if(text==null)return null;let h=0x811c9dc5;for(let i=0;i<text.length;i++){h^=text.charCodeAt(i);h=Math.imul(h,0x01000193)>>>0}return text.length+':'+h.toString(16)}
+
+      let ls=null;
+      try{const probe='__chef_storage_test__';win.localStorage.setItem(probe,'1');win.localStorage.removeItem(probe);ls=win.localStorage}
+      catch(e){try{ls=win.localStorage&&typeof win.localStorage.getItem==='function'?win.localStorage:null;if(ls)ls.getItem('__probe__')}catch(_){ls=null}}
+      const writableLs=(()=>{try{const k='__chef_storage_test__';win.localStorage.setItem(k,'1');win.localStorage.removeItem(k);return true}catch(e){return false}})();
+
+      function open(){
+        return new Promise((resolve,reject)=>{
+          let req;try{req=win.indexedDB.open(DB_NAME,DB_VERSION)}catch(e){reject(e);return}
+          req.onupgradeneeded=()=>{const d=req.result;if(!d.objectStoreNames.contains(STORE))d.createObjectStore(STORE)};
+          req.onsuccess=()=>resolve(req.result);
+          req.onerror=()=>reject(req.error||new Error('IndexedDB indisponible'));
+          req.onblocked=()=>reject(new Error('IndexedDB bloquée par un autre onglet'));
+        });
+      }
+      function readAll(db){
+        return new Promise((resolve,reject)=>{
+          const out=new Map(),tx=db.transaction(STORE,'readonly'),req=tx.objectStore(STORE).openCursor();
+          req.onsuccess=()=>{const c=req.result;if(c){out.set(String(c.key),String(c.value));c.continue()}else resolve(out)};
+          req.onerror=()=>reject(req.error||new Error('Lecture IndexedDB impossible'));
+        });
+      }
+      function writeEntries(db,entries){
+        return new Promise((resolve,reject)=>{
+          const tx=db.transaction(STORE,'readwrite'),os=tx.objectStore(STORE);
+          tx.oncomplete=()=>resolve();tx.onabort=tx.onerror=()=>reject(tx.error||new Error('Écriture IndexedDB interrompue'));
+          for(const [k,v] of entries){if(v===null)os.delete(k);else os.put(v,k)}
+        });
       }
 
-      if('indexedDB' in window){
+      let db=null,loaded=null;
+      if(win.indexedDB){
+        try{db=await open();loaded=await readAll(db)}
+        catch(e){health.openError=String(e&&e.message||e);try{db&&db.close()}catch(_){}db=null;loaded=null}
+      }
+
+      if(db&&loaded){
         try{
-          const db=await new Promise((resolve,reject)=>{
-            const req=indexedDB.open('chef-secteur-storage',3);
-            req.onupgradeneeded=()=>{
-              const d=req.result;
-              if(!d.objectStoreNames.contains('kv')) d.createObjectStore('kv');
-            };
-            req.onsuccess=()=>resolve(req.result);
-            req.onerror=()=>reject(req.error||new Error('IndexedDB indisponible'));
-          });
-
-          const memory=new Map();
-          await new Promise((resolve,reject)=>{
-            const tx=db.transaction('kv','readonly');
-            const req=tx.objectStore('kv').openCursor();
-            req.onsuccess=()=>{
-              const cursor=req.result;
-              if(cursor){memory.set(String(cursor.key),String(cursor.value));cursor.continue();}
-              else resolve();
-            };
-            req.onerror=()=>reject(req.error||new Error('Lecture IndexedDB impossible'));
-          });
-
-          const persist=(action,key,value)=>{
-            try{
-              const tx=db.transaction('kv','readwrite');
-              const store=tx.objectStore('kv');
-              if(action==='put') store.put(value,key);
-              else if(action==='delete') store.delete(key);
-              else if(action==='clear') store.clear();
-            }catch(e){console.warn('Écriture IndexedDB impossible',e)}
-          };
-
-          window.__chefStorageMode='indexedDB';
-          return {
-            getItem(key){key=String(key);return memory.has(key)?memory.get(key):null},
-            setItem(key,value){key=String(key);value=String(value);memory.set(key,value);persist('put',key,value)},
-            removeItem(key){key=String(key);memory.delete(String(key));persist('delete',key)},
-            clear(){memory.clear();persist('clear')},
-            flush(){const snapshot=new Map(memory);return new Promise((resolve,reject)=>{
-              const tx=db.transaction('kv','readwrite'),store=tx.objectStore('kv');
-              tx.oncomplete=()=>resolve();tx.onerror=tx.onabort=()=>reject(tx.error||new Error('Écriture IndexedDB interrompue'));
-              store.clear();for(const [key,value] of snapshot)store.put(value,key);
-            })},
-            key(index){return Array.from(memory.keys())[Number(index)]??null},
-            get length(){return memory.size}
-          };
-        }catch(e){console.error('IndexedDB indisponible',e)}
+          if(!loaded.has(MARKER)){
+            /* Première activation — ou base IndexedDB perdue après une bascule : dans ce
+               cas la seule copie restante est celle, figée, de localStorage. On la reprend
+               et on le dit, plutôt que de démarrer vide. */
+            let legacy=null;try{legacy=ls&&JSON.parse(ls.getItem(LEGACY_MARKER)||'null')}catch(e){legacy=null}
+            const copy=[];
+            if(ls)for(let i=0;i<ls.length;i++){const k=ls.key(i);if(k==null||NOT_COPIED.test(k)||k===LEGACY_MARKER)continue;const v=ls.getItem(k);if(v!==null)copy.push([k,v])}
+            const at=now(),from=copy.length?'localStorage':'vide';
+            const marker={version:1,activatedAt:at,from,keys:copy.length,legacyMain:ls?fingerprint(ls.getItem('sector_planner_universal_v1')):null,recoveredFromLegacy:legacy&&legacy.at?legacy.at:null};
+            await writeEntries(db,copy.concat([[MARKER,JSON.stringify(marker)]]));
+            const check=await readAll(db);
+            for(const [k,v] of copy)if(check.get(k)!==v)throw new Error('Copie vers IndexedDB non conforme ('+k+')');
+            loaded=check;
+            if(ls&&!legacy&&writableLs){try{ls.setItem(LEGACY_MARKER,JSON.stringify({engine:'indexedDB',at}))}catch(e){}}
+          }
+          const marker=JSON.parse(loaded.get(MARKER)||'{}')||{};
+          health.activatedAt=marker.activatedAt||null;health.activatedFrom=marker.from||null;health.recoveredFromLegacy=marker.recoveredFromLegacy||null;
+          /* Une version antérieure à V256 relancée après la bascule écrit dans
+             localStorage : on le signale, sans rien écraser d'un côté comme de l'autre. */
+          if(ls&&marker.legacyMain!==undefined){try{health.legacyChanged=fingerprint(ls.getItem('sector_planner_universal_v1'))!==marker.legacyMain}catch(e){}}
+        }catch(e){health.openError=String(e&&e.message||e);try{db.close()}catch(_){}db=null;loaded=null}
       }
 
-      window.__chefStorageMode='memory';
-      return createMemoryStorage();
+      if(!db||!loaded){
+        if(ls&&writableLs){health.engine='localStorage';win.__chefStorageMode='localStorage';return ls}
+        health.engine='memory';win.__chefStorageMode='memory';
+        health.lastError='Stockage de l’appareil indisponible : les modifications seront perdues à la fermeture. Exporte tes données.';
+        return createMemoryStorage();
+      }
+
+      const memory=loaded;
+      const failed=new Set(),inflight=new Set();
+      let batch=null,connecting=null,announce=()=>{};
+      function wire(d){d.onclose=()=>{if(db===d)db=null};d.onversionchange=()=>{try{d.close()}catch(e){}if(db===d)db=null}}
+      wire(db);
+      function syncFailed(){health.failedKeys=[...failed]}
+      let pagehideArmed=false;
+      function fail(keys,error){
+        for(const k of keys)failed.add(k);syncFailed();
+        /* Armé au premier échec seulement : un écouteur posé au démarrage serait effacé
+           par le document.open() qui installe l'application. Sur iPhone la PWA peut être
+           suspendue sans préavis : on pousse une dernière fois ce qui reste. */
+        if(!pagehideArmed){pagehideArmed=true;try{win.addEventListener('pagehide',()=>{if(failed.size)rewrite([])})}catch(e){}}
+        health.lastError=String(error&&error.message||error||'Écriture interrompue');health.lastErrorName=error&&error.name||null;health.lastErrorAt=now();
+        emit();
+      }
+      function reconnect(){
+        if(connecting)return connecting;
+        connecting=open().then(d=>{db=d;wire(d);connecting=null;if(failed.size)rewrite([...failed]);return d})
+          .catch(e=>{connecting=null;fail([],e);throw e});
+        return connecting;
+      }
+      function begin(){
+        if(batch)return batch;
+        if(!db)return null;
+        let tx;try{tx=db.transaction(STORE,'readwrite')}catch(e){db=null;return null}
+        const keys=new Set(),current={tx,keys};batch=current;health.pending++;
+        const done=new Promise(resolve=>{
+          let settled=false;
+          tx.oncomplete=()=>{if(settled)return;settled=true;health.pending--;health.lastCommitAt=now();announce();
+            let changed=false;for(const k of keys)if(failed.delete(k))changed=true;
+            if(changed){syncFailed();if(!failed.size){health.lastError=null;health.lastErrorName=null}emit()}
+            resolve(true)};
+          tx.onabort=tx.onerror=()=>{if(settled)return;settled=true;health.pending--;fail(keys,tx.error||new Error('Écriture IndexedDB interrompue'));resolve(false)};
+        });
+        inflight.add(done);done.then(()=>inflight.delete(done));
+        const release=()=>{if(batch===current){batch=null;try{if(typeof tx.commit==='function')tx.commit()}catch(e){}}};
+        if(typeof win.queueMicrotask==='function')win.queueMicrotask(release);else Promise.resolve().then(release);
+        return current;
+      }
+      function put(current,key){
+        const os=current.tx.objectStore(STORE);
+        if(memory.has(key))os.put(memory.get(key),key);else os.delete(key);
+        current.keys.add(key);
+      }
+      /* Écrit la valeur ACTUELLE en mémoire de ces clés (la mémoire fait foi). Les clés en
+         échec voyagent avec l'écriture suivante : elles reprennent dès que le disque
+         accepte à nouveau, dans la même transaction. */
+      function rewrite(keys){
+        const all=new Set(keys);for(const k of failed)all.add(k);
+        for(let attempt=0;attempt<2;attempt++){
+          const current=begin();
+          if(!current)break;
+          try{for(const k of all)put(current,k);return true}
+          catch(e){if(batch===current)batch=null;if(e&&e.name==='TransactionInactiveError')continue;fail(all,e);return false}
+        }
+        fail(all,new Error('Base de l’appareil fermée : nouvelle tentative en cours'));
+        reconnect().catch(()=>{});
+        return false;
+      }
+      const api={
+        engine:'indexedDB',atomic:true,
+        getItem(key){key=String(key);return memory.has(key)?memory.get(key):null},
+        setItem(key,value){key=String(key);value=String(value);memory.set(key,value);rewrite([key])},
+        removeItem(key){key=String(key);memory.delete(key);rewrite([key])},
+        clear(){const keys=[...memory.keys()].filter(k=>k!==MARKER);for(const k of keys)memory.delete(k);rewrite(keys)},
+        key(index){return Array.from(memory.keys())[Number(index)]??null},
+        get length(){return memory.size},
+        /* Résout quand tout ce qui a été écrit est sur disque ; rejette sinon. */
+        async flush(){
+          if(failed.size){if(!db)await reconnect();rewrite([])}
+          await Promise.all([...inflight]);
+          if(failed.size){const e=new Error('Enregistrement sur l’appareil impossible : '+(health.lastError||'erreur inconnue'));e.name=health.lastErrorName||'StorageWriteError';throw e}
+          return true;
+        },
+        /* Relit le disque et le compare à la mémoire, clé par clé. */
+        async verify(keys){
+          await api.flush();
+          const d=db||await reconnect();
+          const disk=await new Promise((resolve,reject)=>{const out=new Map(),tx=d.transaction(STORE,'readonly'),os=tx.objectStore(STORE);let n=0;const list=[...keys];if(!list.length)resolve(out);
+            for(const k of list){const r=os.get(k);r.onsuccess=()=>{out.set(k,r.result===undefined?null:String(r.result));if(++n===list.length)resolve(out)};r.onerror=()=>reject(r.error)}});
+          const mismatched=[...keys].filter(k=>disk.get(k)!==api.getItem(k));
+          return{ok:!mismatched.length,mismatched};
+        },
+        health(){return Object.assign({},health,{failedKeys:[...failed]})},
+        /* Copie figée d'avant bascule, en lecture seule. */
+        legacy(){if(!ls)return null;return{getItem(k){try{return ls.getItem(k)}catch(e){return null}}}}
+      };
+      /* Chaque fenêtre sert sa propre copie mémoire : une seconde fenêtre ouverte sur
+         Store Runner ne verrait plus les écritures de la première, et la dernière à
+         écrire l'emporterait. Chaque validation est annoncée aux autres fenêtres, qui
+         le signalent (`otherWindow`) au lieu d'écraser en silence. */
+      const tabId=Math.random().toString(36).slice(2);
+      try{if(typeof win.BroadcastChannel==='function'){const channel=new win.BroadcastChannel('store-runner-storage');
+        channel.onmessage=e=>{const d=e&&e.data;if(d&&d.from!==tabId&&!health.otherWindow){health.otherWindow=true;emit()}};
+        announce=()=>{try{channel.postMessage({from:tabId,at:Date.now()})}catch(e){}}}}catch(e){}
+      health.engine='indexedDB';win.__chefStorageMode='indexedDB';
+      return api;
     }
+    /* STORAGE-ENGINE:END */
 
     try{
       if(navigator.storage&&navigator.storage.persist){navigator.storage.persist().catch(()=>{});}
-      window.__chefStorage=await createStorageFallback();
+      window.__chefStorage=await createStorageEngine(window);
 
       window.__STORE_RUNNER_BUILD_REV=BUILD_REV;
       document.documentElement.dataset.storeRunnerBuild=BUILD_REV;

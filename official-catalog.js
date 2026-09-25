@@ -6,8 +6,8 @@ const BRANDS=['Boulanger','Darty','Fnac','Conforama','Cuisinella','Carrefour'];
 const PAGE_SIZE=150;
 const norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 const esc=s=>String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-const readLocal=()=>{try{const v=JSON.parse(localStorage.getItem(KEY)||'[]');return Array.isArray(v)?v:[]}catch(e){return []}};
-const writeLocal=v=>localStorage.setItem(KEY,JSON.stringify(v));
+const readLocal=()=>{try{const v=JSON.parse((root.__chefStorage||root.localStorage).getItem(KEY)||'[]');return Array.isArray(v)?v:[]}catch(e){return []}};
+const writeLocal=v=>(root.__chefStorage||root.localStorage).setItem(KEY,JSON.stringify(v));
 const coords=s=>Number.isFinite(Number(s.lat))&&Number.isFinite(Number(s.lon));
 function duplicate(a,list){const R=root.RegionStores;if(R&&R.duplicate)return R.duplicate(a,list);return list.some(b=>norm(a.enseigne)===norm(b.enseigne)&&norm(a.adresse)===norm(b.adresse)&&norm(a.ville)===norm(b.ville))}
 async function officialData(){try{const r=await fetch('./data/official-stores.json?catalog='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error();const d=await r.json();return d&&Array.isArray(d.stores)?d:{generatedAt:null,stores:[]}}catch(e){return {generatedAt:null,stores:[]}}}

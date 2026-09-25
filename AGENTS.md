@@ -94,7 +94,7 @@ Ne pas développer KitchenCRM, ServiceCase ou des workflows spécialisés tant q
 
 Ce sont deux choses distinctes et elles ne se mélangent pas.
 
-- **V1 = la production.** `index.html` + `src/chef-secteur.html` + les modules racine, publiés sur `https://store-runner.fr/`. Version courante V255 (`version.json`).
+- **V1 = la production.** `index.html` + `src/chef-secteur.html` + les modules racine, publiés sur `https://store-runner.fr/`. Version courante V256 (`version.json`).
 - **`/v2/` = chantier parallèle incomplet** (issue #115), isolé : aucun fichier de `v2/` n'est chargé par `index.html` ni mis en cache par `sw.js`. Il a son propre point d'entrée `v2/public/index.html` et ses propres tests, exécutés par Reliability. Aucune bascule n'est décidée.
 
 Un lot V1 ne touche pas `v2/`, et un lot V2 ne touche pas le runtime V1. L'état réel du chantier V2 est dans `v2/STATUS.md`.
