@@ -1,6 +1,21 @@
 (function(){
   'use strict';
 
+  /* V261.1 — la capacité du recalcul appartient à l'utilisateur.
+     Les enseignes gardent leur vrai crédit métier (Boulanger/Darty/BUT/Conforama x2),
+     mais aucune enseigne ne réserve désormais de capacité supplémentaire en cachette.
+     `maxVisitsPerDay` devient donc l'unique plafond de crédits utilisé par les moteurs. */
+  function bindPlanningCreditsToUserLimit(){
+    try{
+      var api=window.StoreVisitCounting;
+      if(!api||typeof api.credit!=='function')return false;
+      window.storeVisitCredit=function(entry){return api.credit(entry)};
+      api.planningCredit=api.credit;
+      return true;
+    }catch(e){return false}
+  }
+  bindPlanningCreditsToUserLimit();
+
   function ensure(){
     try{
       if(!state.settings)state.settings={};
@@ -48,6 +63,7 @@
   }
 
   function installField(){
+    bindPlanningCreditsToUserLimit();
     if(!ensure())return false;
     bindWeeklyTarget();
     if(document.getElementById('maxVisitsPerDay'))return syncField();
@@ -55,7 +71,7 @@
     if(!target)return false;
 
     const label=document.createElement('label');
-    label.textContent='Maximum de visites par jour';
+    label.textContent='Capacité par jour';
 
     const input=document.createElement('input');
     input.id='maxVisitsPerDay';
@@ -66,7 +82,7 @@
 
     const hint=document.createElement('p');
     hint.className='tiny';
-    hint.textContent='La limite s’applique aux prochaines générations. Le planning déjà généré est conservé.';
+    hint.textContent='Ta limite est la seule capacité utilisée au recalcul. Un magasin à 2 crédits consomme 2 unités.';
 
     target.insertAdjacentElement('afterend',hint);
     hint.insertAdjacentElement('beforebegin',input);
@@ -77,8 +93,8 @@
     return true;
   }
 
-  function recover(){if(!document.getElementById('maxVisitsPerDay'))installField();else{bindWeeklyTarget();syncField()}}
-  function boot(){installField()}
+  function recover(){bindPlanningCreditsToUserLimit();if(!document.getElementById('maxVisitsPerDay'))installField();else{bindWeeklyTarget();syncField()}}
+  function boot(){bindPlanningCreditsToUserLimit();installField()}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});
   else boot();
 
