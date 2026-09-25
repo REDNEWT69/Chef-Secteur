@@ -12,7 +12,7 @@ function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
 function monday(d){const x=new Date(d),w=x.getDay()||7;x.setDate(x.getDate()-w+1);return x}
 function mins(t){const p=String(t||'').split(':');return (+p[0]||0)*60+(+p[1]||0)}
 function clock(v){v=Math.round(v);return String(Math.floor(v/60)%24).padStart(2,'0')+':'+String(v%60).padStart(2,'0')}
-function archive(){try{return JSON.parse(localStorage.getItem(ARCHIVE_KEY)||'{}')||{}}catch(e){return{}}}
+function archive(){try{return JSON.parse((window.__chefStorage||localStorage).getItem(ARCHIVE_KEY)||'{}')||{}}catch(e){return{}}}
 function baseMonth(){let d=null;try{d=parseDate(state.settings&&state.settings.weekDate)}catch(e){};d=d||new Date();return new Date(d.getFullYear(),d.getMonth(),1,12)}
 function currentMonth(){if(!viewMonth)viewMonth=baseMonth();return{year:viewMonth.getFullYear(),month:viewMonth.getMonth()}}
 function allStores(){try{return state.stores||[]}catch(e){return[]}}

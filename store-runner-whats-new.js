@@ -25,6 +25,18 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'256',
+      title:'Tes données tiennent l’année',
+      items:[
+        'Tes visites, plannings, actions et opportunités sont maintenant enregistrés dans la base de ton téléphone, avec beaucoup plus de place : des mois de terrain tiennent sans saturer.',
+        'Au premier lancement, tout ce que tu avais est repris automatiquement, sans rien effacer.',
+        'Si le téléphone refuse un jour d’enregistrer (stockage plein), un bandeau te prévient aussitôt et te propose de sauvegarder tes données.',
+        'La sauvegarde contient désormais aussi tes imports performance, tes crédits de visite forcés et ton profil de secteur.',
+        'Chaque sauvegarde est vérifiée avant d’être téléchargée, et chaque restauration est relue sur le téléphone avant d’être confirmée.',
+        'L’écran Données t’indique la place utilisée et te rappelle de refaire un export quand le dernier date de plus de deux semaines.'
+      ]
+    },
+    {
       version:'255',
       title:'Une vraie galerie photo par magasin',
       items:[

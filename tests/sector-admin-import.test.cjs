@@ -93,6 +93,7 @@ async function scenario(byFingerprint) {
   assert.deepEqual(original, before, 'captured state is not mutated in place');
   assert.deepEqual(R.load(f.db), copy(f.root.state), 'saved data round-trips through reliability');
   assert.equal(R.backups(f.db).length, 1);
+  assert.deepEqual(R.backups(f.db)[0].bundle.state.stores, before.stores, 'V256 : « Avant modification du secteur » doit contenir l’état d’AVANT');
   if (byFingerprint) assert.equal(f.root.state.appointments[0].storeId, 'imported');
   else assert.deepEqual(copy(f.root.state.appointments), before.appointments);
 }

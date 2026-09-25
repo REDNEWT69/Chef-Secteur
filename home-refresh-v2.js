@@ -18,7 +18,7 @@
   function nextAppointment(now){try{const ref=now instanceof Date?now:new Date(),arr=(state.appointments||[]).map(a=>{const raw=a.date+(a.time?'T'+a.time+':00':'T12:00:00');return{a,d:new Date(raw)}}).filter(x=>!isNaN(x.d)&&x.d>=ref).sort((a,b)=>a.d-b.d);return arr[0]||null}catch(e){return null}}
   function recommended(){try{return typeof window.nextRecommended==='function'?window.nextRecommended():null}catch(e){return null}}
   function baseName(){try{return (state.profile&&state.profile.baseName)||'Maison'}catch(e){return'Maison'}}
-  function rangeInfo(){try{const r=JSON.parse(localStorage.getItem(RANGE_KEY)||'{}');if(r&&r.start&&r.end)return r}catch(e){}return null}
+  function rangeInfo(){try{const r=JSON.parse((window.__chefStorage||localStorage).getItem(RANGE_KEY)||'{}');if(r&&r.start&&r.end)return r}catch(e){}return null}
 
   function storeIdOf(row){
     if(row==null)return'';
