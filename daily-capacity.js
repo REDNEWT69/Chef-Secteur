@@ -82,7 +82,7 @@
 
     const hint=document.createElement('p');
     hint.className='tiny';
-    hint.textContent='Ta limite est la seule capacité utilisée au recalcul. Un magasin à 2 crédits consomme 2 unités.';
+    hint.textContent='Ta limite est la seule capacité utilisée au recalcul. Un magasin à 2 crédits consomme 2 unités. Le planning déjà généré est conservé.';
 
     target.insertAdjacentElement('afterend',hint);
     hint.insertAdjacentElement('beforebegin',input);
