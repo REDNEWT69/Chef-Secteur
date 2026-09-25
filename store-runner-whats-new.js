@@ -25,6 +25,18 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'257',
+      title:'Tes photos sauvegardées hors du téléphone',
+      items:[
+        'Dans Plus → Données, une section Photos exporte toutes tes photos dans une archive .zip que tu peux garder dans Fichiers ou sur un ordinateur.',
+        'Chaque photo garde son magasin, sa visite, sa famille BRUN ou BLANC, son moment avant/après, sa catégorie, sa note et sa date.',
+        '« Exporter les nouvelles » n’envoie que les photos prises ou modifiées depuis le dernier export.',
+        'La restauration ajoute les photos manquantes sans jamais remplacer celles déjà présentes : tu peux la relancer sans créer de doublon.',
+        'Beaucoup de photos ? L’export se découpe tout seul en plusieurs archives, chacune restaurable seule.',
+        'Si le téléphone est plein au moment d’une photo, un message clair te le dit au lieu d’une erreur technique.'
+      ]
+    },
+    {
       version:'256',
       title:'Tes données tiennent l’année',
       items:[
