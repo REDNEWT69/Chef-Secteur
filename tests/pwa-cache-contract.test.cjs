@@ -25,11 +25,8 @@ const index = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 // Assets morts déjà constatés, tolérés jusqu'à la prochaine vraie mise à jour
 // runtime/PWA qui bumpera BUILD_REV pour une autre raison. Cette liste ne doit que
 // rétrécir. Y ajouter une entrée est une décision, pas un réflexe.
-const MORTS_CONNUS = [
-  // Aucune surface ne le charge : index.html, manifest.webmanifest et
-  // src/chef-secteur.html utilisent tous app-icon.svg.
-  'store-runner-logo.jpg'
-];
+// V260 : store-runner-logo.jpg est sorti du cache avec la mise à jour PWA — liste vide.
+const MORTS_CONNUS = [];
 
 function shell(nom) {
   const bloc = sw.match(new RegExp('const ' + nom + '\\s*=\\s*\\[([\\s\\S]*?)\\];'));

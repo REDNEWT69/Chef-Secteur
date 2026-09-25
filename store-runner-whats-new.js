@@ -25,6 +25,18 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'260',
+      title:'Des mises à jour sans surprise',
+      items:[
+        'Quand une nouvelle version est prête, un bandeau te le propose : « Mettre à jour » ou « Plus tard ». Rien ne se recharge tout seul.',
+        'Si une visite ou une fiche est ouverte, la mise à jour attend que tu aies terminé ta saisie.',
+        'Avant de recharger, Store Runner vérifie que tout ce que tu as saisi est bien enregistré sur l’appareil.',
+        'Réseau faible en magasin : l’app s’ouvre en quelques secondes sur la version installée au lieu de rester bloquée.',
+        'Hors ligne, l’app installée reste complète : jamais un mélange d’ancienne et de nouvelle version.',
+        'Tes données et tes photos ne sont jamais touchées par une mise à jour.'
+      ]
+    },
+    {
       version:'259',
       title:'Ton accueil, tes cartes',
       items:[

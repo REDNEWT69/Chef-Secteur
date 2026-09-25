@@ -13,9 +13,12 @@ const SW=fs.readFileSync(__dirname+'/../sw.js','utf8');
 const CODE=SOURCE.replace(/\/\*[\s\S]*?\*\//g,'').replace(/^\s*\/\/.*$/gm,'');
 
 // --- Contrats statiques ------------------------------------------------------------------
-assert.match(INDEX,/const reloadKey='store-runner-sw-reload:'\+BUILD_REV;/,'la garde du bootloader (claim initial) reste en place');
-assert.match(INDEX,/addEventListener\('controllerchange',function\(\)\{\s*if\(window\.__storeRunnerUpdateApplying\)return;/,
-  'pendant une mise à jour demandée, le bootloader cède le rechargement au gestionnaire');
+// V260 : le bootloader ne recharge plus jamais seul (rechargement parasite à la première
+// installation). La prise de contrôle appartient au gestionnaire de mise à jour.
+assert.doesNotMatch(INDEX,/addEventListener\('controllerchange'/,'le bootloader n’écoute plus controllerchange');
+assert.doesNotMatch(INDEX,/location\.reload\(/,'le bootloader ne recharge jamais la page de lui-même');
+assert.match(CODE,/function watchController\(\)/,'le gestionnaire possède la prise de contrôle');
+assert.match(CODE,/function alignWaitingWorker\(\)/,'le gestionnaire aligne le worker en attente sur la page');
 assert.doesNotMatch(CODE,/store-runner-sw-reload/,'le gestionnaire ne partage pas la clé du bootloader');
 assert.doesNotMatch(CODE,/Ferme et rouvre/,'plus aucune consigne « fermer puis rouvrir »');
 assert.doesNotMatch(CODE,/\.clear\(|deleteDatabase|caches\.delete|removeItem\((?!APPLY_MARKER_KEY)/,
@@ -24,8 +27,6 @@ assert.match(SW,/event\.data\.type === 'GET_BUILD_REV'/,'le worker sait dire que
 const installBlock=SW.slice(SW.indexOf("self.addEventListener('install'"),SW.indexOf("self.addEventListener('activate'"));
 assert.ok(!installBlock.includes('skipWaiting()'),'le worker ne s’active toujours pas seul avant le clic');
 
-const INDEX_LISTENER_SRC=(INDEX.match(/navigator\.serviceWorker\.addEventListener\('controllerchange',(function\(\)\{[\s\S]*?window\.location\.reload\(\);\s*\})\);/)||[])[1];
-assert.ok(INDEX_LISTENER_SRC,'écouteur controllerchange du bootloader introuvable');
 
 // --- Harnais ----------------------------------------------------------------------------
 function makeStore(init){
@@ -44,8 +45,9 @@ function makeDom(){
       set innerHTML(html){for(const m of String(html).match(/data-sru-[a-z-]+/g)||[])kids['['+m+']']=el('stub')},
       get innerHTML(){return ''}};
   }
-  return {byId,document:{readyState:'complete',head:el('head'),body:el('body'),createElement:el,
-    getElementById:id=>byId[id]||null,querySelector:()=>null,addEventListener(){}}};
+  const doc={busy:false,readyState:'complete',head:el('head'),body:el('body'),createElement:el,
+    getElementById:id=>byId[id]||null,querySelector:sel=>sel==='dialog[open]'&&doc.busy?{}:null,addEventListener(){}};
+  return {byId,document:doc};
 }
 function makeClock(){
   let seq=0;const pending=[];
@@ -68,6 +70,8 @@ function makeWorker(state,answersBuild){
   w.postMessage=(m,ports)=>{w.messages.push(m&&m.type);if(m&&m.type==='GET_BUILD_REV'&&answersBuild&&ports&&ports[0])ports[0].postMessage({type:'BUILD_REV',buildRev:answersBuild})};
   return w;
 }
+// Le gestionnaire interroge aussi les workers (GET_BUILD_REV) : seules les activations comptent ici.
+const acts=w=>w.messages.filter(m=>m!=='GET_BUILD_REV');
 const tick=async(n=6)=>{for(let i=0;i<n;i++)await new Promise(r=>setImmediate(r))};
 // update() sans nouveau worker : délai de grâce (2,5 s) puis question au worker actif (1,5 s).
 const settleNoWorker=async app=>{await tick();app.clock.flushUpTo(2500);await tick();app.clock.flushUpTo(1500);await tick()};
@@ -92,20 +96,17 @@ function makeApp(o){
     fetch:async()=>({ok:true,async json(){return{latestBuild:o.latest||'20260922-terrain-activity-metrics245',displayVersion:'245'}}})};
   ctx.window=ctx;ctx.self=ctx;ctx.globalThis=ctx;
   if(o.noServiceWorker)delete ctx.navigator.serviceWorker;
-  if(o.withBootListener&&!o.noServiceWorker){
-    // Le vrai écouteur d'index.html, exécuté dans le même contexte.
-    const reloadKey='store-runner-sw-reload:'+ctx.__STORE_RUNNER_BUILD_REV;
-    const fn=vm.runInNewContext('(function(reloadKey){return '+INDEX_LISTENER_SRC+'})',ctx)(reloadKey);
-    serviceWorker.addEventListener('controllerchange',fn);
-  }
+  if(o.storage)ctx.__chefStorage=o.storage;
   vm.runInNewContext(SOURCE,ctx);
-  return {ctx,clock,local,session,registration,serviceWorker,
+  return {ctx,clock,local,session,registration,serviceWorker,dom,
     api:ctx.StoreRunnerUpdates,
     reloads:()=>reloads,updates:()=>updates,idbDeletes:()=>idbDeletes,cacheDeletes:()=>cacheDeletes,
     marker:()=>{const v=session.getItem('store-runner-update-apply');return v?JSON.parse(v):null},
     banner(){const b=dom.byId['storeRunnerUpdateBanner'];if(!b)return null;
+      const later=b.querySelector('[data-sru-banner-dismiss]');
       return {titre:b.querySelector('[data-sru-banner-title]').textContent,detail:b.querySelector('[data-sru-banner-detail]').textContent,
-              action:b.querySelector('[data-sru-banner-action]').hidden?null:b.querySelector('[data-sru-banner-action]').textContent}}};
+              action:b.querySelector('[data-sru-banner-action]').hidden?null:b.querySelector('[data-sru-banner-action]').textContent,
+              visible:!b.hidden,plusTard:later&&!later.hidden?later:null,clic:()=>b.querySelector('[data-sru-banner-action]').onclick()}}};
 }
 function takeControl(app,worker){if(app.registration.waiting===worker)app.registration.waiting=null;app.registration.active=worker;app.serviceWorker.controller=worker;worker.state='activated';worker.emit('statechange');app.serviceWorker.emit('controllerchange')}
 
@@ -119,18 +120,18 @@ process.on('beforeExit',()=>{if(!finished){console.error('FAIL: test bloqué (pr
   step='1-5. Nouvelle version détectée, worker en attente, activatio';
   {
     const W=makeWorker('installed');
-    const app=makeApp({waiting:W,withBootListener:true});
+    const app=makeApp({waiting:W});
     const localBefore=JSON.stringify([...app.local.map].filter(([k])=>k!=='store-runner-last-seen-build'));
     const p=app.api.installUpdate();
     await tick();
-    assert.deepEqual(W.messages,['SKIP_WAITING'],'le worker en attente reçoit SKIP_WAITING');
+    assert.deepEqual(acts(W),['SKIP_WAITING'],'le worker en attente reçoit SKIP_WAITING');
     assert.equal(app.updates(),1,'update() réellement appelé');
     assert.equal(app.ctx.__storeRunnerUpdateApplying,true,'le gestionnaire prend la main sur le rechargement');
     assert.equal(app.banner().titre,'Mise à jour en cours…');
     app.clock.flushUpTo(400);
     assert.equal(app.reloads(),0,'aucun rechargement avant que le nouveau worker contrôle la page');
     takeControl(app,W);
-    assert.equal(app.reloads(),0,'l’écouteur du bootloader ne recharge pas en parallèle');
+    assert.equal(app.reloads(),0,'aucun rechargement en parallèle du gestionnaire');
     assert.equal(await p,true);
     assert.equal(app.banner().detail,'Store Runner recharge la nouvelle version…');
     app.clock.flushUpTo(400);
@@ -154,16 +155,16 @@ process.on('beforeExit',()=>{if(!finished){console.error('FAIL: test bloqué (pr
     await tick();
     app.clock.flushUpTo(3500);app.clock.flushUpTo(15000);await tick();
     assert.equal(app.reloads(),0);
-    assert.deepEqual(W.messages,[],'pas de SKIP_WAITING avant la fin de l’installation');
+    assert.deepEqual(acts(W),[],'pas de SKIP_WAITING avant la fin de l’installation');
     assert.equal(app.banner().titre,'Mise à jour en cours…','toujours en cours, pas d’abandon à 3,5 s');
-    assert.equal(app.serviceWorker.count('controllerchange'),1,'écouteur toujours présent');
+    assert.equal(app.serviceWorker.count('controllerchange'),2,'écouteur d’installation toujours présent (plus l’écouteur permanent)');
     W.state='installed';app.registration.waiting=W;app.registration.installing=null;W.emit('statechange');
     await tick();
-    assert.deepEqual(W.messages,['SKIP_WAITING'],'activation dès que l’installation se termine');
+    assert.deepEqual(acts(W),['SKIP_WAITING'],'activation dès que l’installation se termine');
     takeControl(app,W);
     assert.equal(await p,true);app.clock.flushUpTo(400);
     assert.equal(app.reloads(),1,'rechargement unique une fois le worker aux commandes');
-    assert.equal(app.serviceWorker.count('controllerchange'),0,'écouteur retiré après usage');
+    assert.equal(app.serviceWorker.count('controllerchange'),1,'écouteur d’installation retiré après usage');
   }
 
   // Worker découvert par update() (updatefound)
@@ -173,7 +174,7 @@ process.on('beforeExit',()=>{if(!finished){console.error('FAIL: test bloqué (pr
     const app=makeApp({onUpdate(reg){reg.installing=W;reg.emit('updatefound')}});
     const p=app.api.installUpdate();await tick();
     W.state='installed';app.registration.waiting=W;app.registration.installing=null;W.emit('statechange');await tick();
-    assert.deepEqual(W.messages,['SKIP_WAITING']);
+    assert.deepEqual(acts(W),['SKIP_WAITING']);
     takeControl(app,W);assert.equal(await p,true);app.clock.flushUpTo(400);
     assert.equal(app.reloads(),1);
   }
@@ -186,7 +187,7 @@ process.on('beforeExit',()=>{if(!finished){console.error('FAIL: test bloqué (pr
     assert.equal(await app.api.installUpdate(),false);
     app.clock.flushUpTo(400);
     assert.equal(app.reloads(),0,'même BUILD_REV : aucun rechargement inutile');
-    assert.deepEqual(W.messages,[],'et aucun worker activé');
+    assert.deepEqual(acts(W),[],'et aucun worker activé');
     assert.equal(app.banner().titre,'Store Runner est à jour');
     assert.equal(app.marker(),null);
   }
@@ -247,13 +248,13 @@ process.on('beforeExit',()=>{if(!finished){console.error('FAIL: test bloqué (pr
   step="Activation qui n'aboutit pas : pas de rechargement vers l'an";
   {
     const W=makeWorker('installed');
-    const app=makeApp({waiting:W,withBootListener:true});
+    const app=makeApp({waiting:W});
     const p=app.api.installUpdate();await tick();
     app.clock.flushUpTo(15000);
     assert.equal(await p,false);app.clock.flushUpTo(400);
     assert.equal(app.reloads(),0,'pas de rechargement trop tôt sur l’ancien worker');
     assert.equal(app.banner().titre,'Mise à jour presque prête');
-    assert.equal(app.serviceWorker.count('controllerchange'),1,'seul l’écouteur du bootloader reste');
+    assert.equal(app.serviceWorker.count('controllerchange'),1,'seul l’écouteur permanent du gestionnaire reste');
     assert.equal(app.ctx.__storeRunnerUpdateApplying,false);
   }
 
@@ -265,7 +266,7 @@ process.on('beforeExit',()=>{if(!finished){console.error('FAIL: test bloqué (pr
     const a=app.api.installUpdate(),b=app.api.installUpdate();
     assert.equal(a,b,'le second clic réutilise l’installation en cours');
     await tick();takeControl(app,W);await a;app.clock.flushUpTo(400);
-    assert.deepEqual(W.messages,['SKIP_WAITING']);assert.equal(app.reloads(),1);
+    assert.deepEqual(acts(W),['SKIP_WAITING']);assert.equal(app.reloads(),1);
   }
 
   // 10. Sans service worker / sans enregistrement : la page n'est servie par aucune copie → un rechargement
@@ -302,6 +303,107 @@ process.on('beforeExit',()=>{if(!finished){console.error('FAIL: test bloqué (pr
     assert.equal(app.reloads(),0);assert.equal(app.banner().titre,'Mise à jour impossible');
   }
 
+  // V260 — première installation : clients.claim() change le contrôleur, même révision → rien
+  step='V260 première installation';
+  {
+    const app=makeApp({controller:null,latest:OLD});
+    const W=makeWorker('activated',OLD);
+    app.serviceWorker.controller=W;app.serviceWorker.emit('controllerchange');await settleNoWorker(app);app.clock.flushUpTo(400);
+    assert.equal(app.reloads(),0,'plus aucun rechargement parasite à la première installation');
+    assert.notEqual((app.banner()||{}).titre,'Nouvelle version prête','ni proposition de rechargement');
+  }
+
+  // V260 — une autre fenêtre active une autre révision : proposition, jamais de rechargement sauvage
+  step='V260 autre fenêtre';
+  {
+    const app=makeApp({latest:NEW});
+    app.clock.flushUpTo(20000);await tick();
+    const W=makeWorker('activated',NEW);
+    app.serviceWorker.controller=W;app.serviceWorker.emit('controllerchange');await tick();
+    app.clock.flushUpTo(20000);await tick();
+    assert.equal(app.reloads(),0,'aucun rechargement automatique');
+    assert.equal(app.banner().titre,'Nouvelle version prête');
+    assert.equal(app.banner().action,'Recharger');
+    assert.ok(app.banner().plusTard,'« Plus tard » disponible');
+    app.banner().clic();app.clock.flushUpTo(400);
+    assert.equal(app.reloads(),1,'rechargement seulement sur demande');
+  }
+
+  // V260 — alignement : le worker en attente sert la révision de la page → activé, sans rechargement
+  step='V260 alignement';
+  {
+    const W=makeWorker('installed',OLD);
+    const app=makeApp({waiting:W,latest:OLD});await tick();
+    assert.deepEqual(acts(W),['SKIP_WAITING'],'worker de la même révision activé tout de suite');
+    takeControl(app,W);await tick();app.clock.flushUpTo(20000);await tick();
+    assert.equal(app.reloads(),0,'aucun rechargement : la page est déjà cette révision');
+    assert.notEqual((app.banner()||{}).titre,'Nouvelle version prête');
+    const X=makeWorker('installed',NEW);
+    const other=makeApp({waiting:X,latest:NEW});await tick();
+    assert.deepEqual(acts(X),[],'un worker d’une AUTRE révision attend le choix de l’utilisateur');
+    const Y=makeWorker('installing');
+    const later=makeApp({latest:OLD});await tick();
+    later.registration.installing=Y;later.registration.emit('updatefound');
+    Y.answers=OLD;Y.postMessage=(m,ports)=>{Y.messages.push(m&&m.type);if(m&&m.type==='GET_BUILD_REV'&&ports&&ports[0])ports[0].postMessage({type:'BUILD_REV',buildRev:OLD})};
+    Y.state='installed';later.registration.waiting=Y;later.registration.installing=null;Y.emit('statechange');await tick();
+    assert.deepEqual(acts(Y),['SKIP_WAITING'],'worker installé pendant la session : aligné dès la fin de l’installation');
+  }
+
+  // V260 — saisie en cours (visite, fiche ouverte) : la mise à jour attend, rien n'est rechargé
+  step='V260 saisie en cours';
+  {
+    const W=makeWorker('installed');
+    const app=makeApp({waiting:W});
+    const p=app.api.installUpdate();await tick();
+    app.dom.document.busy=true;
+    takeControl(app,W);assert.equal(await p,true);app.clock.flushUpTo(20000);await tick();
+    assert.equal(app.reloads(),0,'aucun rechargement pendant une saisie');
+    assert.equal(app.banner().titre,'Mise à jour prête');
+    assert.equal(app.banner().action,'Recharger');
+    app.dom.document.busy=false;app.banner().clic();app.clock.flushUpTo(400);
+    assert.equal(app.reloads(),1,'rechargement quand l’utilisateur le demande, saisie terminée');
+  }
+
+  // V260 — le stockage est vidé sur le disque AVANT de recharger ; un échec bloque le rechargement
+  step='V260 flush avant rechargement';
+  {
+    let flushes=0,release=null;
+    const storage={flush(){flushes++;return new Promise(r=>{release=r})}};
+    const W=makeWorker('installed');
+    const app=makeApp({waiting:W,storage});
+    const p=app.api.installUpdate();await tick();takeControl(app,W);await p;
+    app.clock.flushUpTo(400);await tick();
+    assert.equal(flushes,1,'flush demandé avant de quitter la page');
+    assert.equal(app.reloads(),0,'pas de rechargement tant que les écritures ne sont pas sur le disque');
+    release(true);await tick();
+    assert.equal(app.reloads(),1,'rechargement une fois les données écrites');
+
+    const failing={flush(){return Promise.reject(new Error('QuotaExceededError'))}};
+    const V=makeWorker('installed');
+    const bad=makeApp({waiting:V,storage:failing});
+    const q=bad.api.installUpdate();await tick();takeControl(bad,V);await q;
+    bad.clock.flushUpTo(400);await tick();
+    assert.equal(bad.reloads(),0,'écriture refusée : on ne quitte pas la page');
+    assert.equal(bad.banner().titre,'Mise à jour en attente');
+    assert.equal(bad.marker(),null,'aucun marqueur laissé');
+    assert.equal(bad.local.calls.clear+bad.session.calls.clear+bad.idbDeletes()+bad.cacheDeletes(),0,'rien n’est effacé');
+  }
+
+  // V260 — « Plus tard » : le bandeau se ferme et ne revient pas pour cette révision dans la session
+  step='V260 plus tard';
+  {
+    const app=makeApp({});
+    const r=await app.api.checkForUpdates(true);
+    assert.equal(r.available,true);
+    assert.equal(app.banner().titre,'Nouvelle version disponible');
+    assert.ok(app.banner().plusTard,'« Plus tard » proposé');
+    app.banner().plusTard.onclick();
+    assert.equal(app.banner().visible,false,'bandeau fermé');
+    await app.api.checkForUpdates(true);
+    assert.equal(app.banner().visible,false,'pas de retour du bandeau pour la même révision');
+    assert.equal(app.api.getState().latest,NEW,'la mise à jour reste connue (point du menu)');
+  }
+
   finished=true;
-  console.log('PASS: V244 — activation au controllerchange, un seul rechargement, pas de boucle, données locales intactes.');
+  console.log('PASS: V244/V260 — activation au controllerchange, un seul rechargement, pas de boucle, aucun rechargement parasite, saisie protégée, stockage écrit avant rechargement, données locales intactes.');
 })().catch(e=>{console.error(e);process.exit(1)});

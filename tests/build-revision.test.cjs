@@ -11,8 +11,10 @@ assert.strictEqual(indexMatch[1],swMatch[1],'index.html et sw.js doivent partage
 assert.strictEqual(indexMatch[1],version.latestBuild,'version.json doit publier exactement le BUILD_REV courant');
 assert(!index.includes('20260910-assistant-visits1'),'ancienne révision encore présente dans index.html');
 assert(!sw.includes('20260910-assistant-visits1'),'ancienne révision encore présente dans sw.js');
-assert(index.includes("navigator.serviceWorker.addEventListener('controllerchange'"),'le bootloader doit recharger une fois quand un nouveau service worker prend le contrôle');
-assert(index.includes("store-runner-sw-reload:"),'le rechargement de version doit être borné pour éviter une boucle');
+/* V260 : le bootloader ne recharge plus jamais seul ; update-manager.js possède la prise
+   de contrôle (même révision → rien, autre révision → proposition). */
+assert(!index.includes("addEventListener('controllerchange'"),'le bootloader ne doit plus recharger au changement de service worker');
+assert(fs.readFileSync('update-manager.js','utf8').includes("sw.addEventListener('controllerchange'"),'le gestionnaire de mise à jour doit suivre la prise de contrôle');
 assert(index.includes("window.__STORE_RUNNER_BUILD_REV=BUILD_REV"),'le build réellement exécuté doit être exposé à l’interface de mise à jour');
 /* La révision publie aussi la version visible : store-runner-whats-new.js dérive le
    numéro affiché des derniers chiffres de BUILD_REV. Une révision qui ne finit pas par

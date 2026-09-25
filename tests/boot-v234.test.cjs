@@ -91,16 +91,18 @@ assert.match(index, /fetch\(withRev\('\.\/src\/chef-secteur\.html'\)\)/,
 assert.doesNotMatch(index, /fetch\(withRev\('\.\/src\/chef-secteur\.html'\),\{cache:'no-store'\}\)/,
   'le bootstrap ne doit plus forcer un aller-retour réseau pour le HTML versionné');
 
-const cacheFirstAt = sw.indexOf("url.searchParams.get('rev') === BUILD_REV");
-const networkFirstAt = sw.indexOf('// Les requêtes non versionnées restent network-first');
-assert.ok(cacheFirstAt >= 0, 'le service worker doit reconnaître les assets du BUILD_REV courant');
-assert.ok(networkFirstAt > cacheFirstAt, 'le chemin cache-first versionné doit précéder le fallback network-first historique');
-const versionedBlock = sw.slice(cacheFirstAt, networkFirstAt);
-assert.match(versionedBlock, /cache\.match\(event\.request, \{ignoreSearch:true\}\)/,
-  'un asset préchargé sans query-string doit être retrouvé immédiatement');
-assert.ok(versionedBlock.indexOf('cache.match(event.request') < versionedBlock.indexOf('fetch(event.request'),
+// V260 : le précache est rangé sous l'URL versionnée elle-même (?rev=BUILD_REV) ; un
+// asset de la révision courante est donc retrouvé par correspondance exacte, avant le
+// réseau. La recherche « ignoreSearch » n'est plus utilisée pour un asset versionné :
+// elle pouvait servir la copie d'une autre version (tests/pwa-update-v260.test.cjs).
+assert.ok(sw.indexOf("url.searchParams.get('rev') === BUILD_REV") >= 0, 'le service worker doit reconnaître les assets du BUILD_REV courant');
+const ownStart = sw.indexOf('async function ownRevisionAsset(request)');
+assert.ok(ownStart >= 0, 'stratégie des assets versionnés introuvable');
+const versionedBlock = sw.slice(ownStart, sw.indexOf('\n}\n', ownStart));
+assert.ok(versionedBlock.indexOf('cache.match(request)') >= 0 && versionedBlock.indexOf('cache.match(request)') < versionedBlock.indexOf('fetch(request'),
   'le cache doit être consulté avant le réseau pour un asset versionné');
 assert.match(versionedBlock, /if \(cached\) return cached/, 'un hit cache doit court-circuiter le réseau au démarrage');
+assert.doesNotMatch(versionedBlock, /ignoreSearch/, 'un asset versionné ne doit jamais être remplacé par une copie d’une autre version');
 // Le cache est nominatif par build et les anciens sont purgés à l'activation : un asset
 // repris sans query-string ne peut donc appartenir qu'à la version en cours.
 assert.match(sw, /const CACHE_NAME = "chef-secteur-stable-" \+ BUILD_REV/,

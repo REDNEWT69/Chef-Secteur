@@ -9,6 +9,22 @@
   const currentBuild=String(window.__STORE_RUNNER_BUILD_REV||'inconnue');
   const state={current:currentBuild,latest:currentBuild,displayVersion:displayVersion(currentBuild),status:'idle',lastCheckedAt:0,error:null};
 
+  /* V260 — ordre des révisions : BUILD_REV finit toujours par le numéro de version
+     (tests/build-revision.test.cjs), qui ne fait que croître. Un version.json resté en
+     cache CDN sur une version PLUS ANCIENNE que celle qui tourne n'est jamais proposé
+     comme « nouvelle version ». Numéros égaux ou illisibles : seule la différence compte. */
+  function revisionNumber(build){
+    const m=String(build||'').match(/(\d+)$/);
+    return m?Number(m[1]):NaN;
+  }
+  function olderThanCurrent(build){
+    const a=revisionNumber(build),b=revisionNumber(currentBuild);
+    return Number.isFinite(a)&&Number.isFinite(b)&&a<b;
+  }
+  function updateAvailable(){
+    return !!state.latest&&state.latest!==state.current&&!olderThanCurrent(state.latest);
+  }
+
   function displayVersion(build){
     const m=String(build||'').match(/(\d{2,})$/);
     return m?m[1]:String(build||'inconnue');
@@ -43,8 +59,11 @@
       #${BANNER_ID}[hidden]{display:none!important}
       #${BANNER_ID} .sruBannerText{min-width:0;font-size:13px;line-height:1.35}
       #${BANNER_ID} .sruBannerText strong{display:block;font-size:14px;margin-bottom:2px}
+      #${BANNER_ID} .sruBannerActions{display:flex;gap:8px;flex:0 0 auto}
       #${BANNER_ID} button{flex:0 0 auto;border:0;border-radius:11px;min-height:38px;padding:0 11px;font-weight:850;background:#fff;color:#111827}
-      @media(max-width:520px){#${BANNER_ID}{align-items:flex-start}#${BANNER_ID} button{font-size:12px}#${CENTER_ID} .sruActions{grid-template-columns:1fr}}
+      #${BANNER_ID} button[hidden]{display:none!important}
+      #${BANNER_ID} .sruLater{background:rgba(255,255,255,.14);color:#fff}
+      @media(max-width:520px){#${BANNER_ID}{flex-wrap:wrap;align-items:flex-start}#${BANNER_ID} .sruBannerText{flex:1 1 100%}#${BANNER_ID} .sruBannerActions{flex:1 1 100%;justify-content:flex-end}#${BANNER_ID} button{font-size:12px}#${CENTER_ID} .sruActions{grid-template-columns:1fr}}
     `;
     document.head.appendChild(style);
   }
@@ -110,27 +129,37 @@
     banner.id=BANNER_ID;
     banner.hidden=true;
     banner.setAttribute('role','status');
-    banner.innerHTML='<div class="sruBannerText"><strong data-sru-banner-title></strong><span data-sru-banner-detail></span></div><button type="button" data-sru-banner-action></button>';
+    banner.innerHTML='<div class="sruBannerText"><strong data-sru-banner-title></strong><span data-sru-banner-detail></span></div><div class="sruBannerActions"><button type="button" class="sruLater" data-sru-banner-dismiss hidden>Plus tard</button><button type="button" data-sru-banner-action></button></div>';
     document.body.appendChild(banner);
     return banner;
   }
 
-  function setBanner(title,detail,actionLabel,handler,autoHideMs){
+  /* V260 — `onDismiss` affiche « Plus tard » : une proposition de mise à jour ne reste
+     jamais collée en haut de l'écran, par-dessus l'en-tête, sans moyen de la fermer. */
+  let bannerGeneration=0;
+  function setBanner(title,detail,actionLabel,handler,autoHideMs,onDismiss){
     const banner=ensureBanner();
     delete banner.dataset.sticky;
     banner.querySelector('[data-sru-banner-title]').textContent=title||'';
     banner.querySelector('[data-sru-banner-detail]').textContent=detail||'';
     const action=banner.querySelector('[data-sru-banner-action]');
     if(actionLabel){action.hidden=false;action.textContent=actionLabel;action.onclick=handler||null}else{action.hidden=true;action.onclick=null}
+    const later=banner.querySelector('[data-sru-banner-dismiss]');
+    if(later){
+      if(onDismiss){later.hidden=false;later.onclick=function(){hideBanner();onDismiss()}}else{later.hidden=true;later.onclick=null}
+    }
     banner.hidden=false;
-    if(autoHideMs)window.setTimeout(function(){if(banner&&!banner.dataset.sticky)banner.hidden=true},autoHideMs);
+    /* Le masquage différé ne vise que CE message : un bandeau plus récent reste affiché. */
+    const generation=String(++bannerGeneration);
+    banner.dataset.generation=generation;
+    if(autoHideMs)window.setTimeout(function(){if(banner&&!banner.dataset.sticky&&banner.dataset.generation===generation)banner.hidden=true},autoHideMs);
     return banner;
   }
 
   function hideBanner(){const banner=document.getElementById(BANNER_ID);if(banner){banner.hidden=true;delete banner.dataset.sticky}}
 
   function render(){
-    const available=state.latest&&state.latest!==state.current;
+    const available=updateAvailable();
     const menu=document.getElementById(MENU_BUTTON_ID);
     if(menu)menu.classList.toggle('sruAvailable',!!available);
     const center=document.getElementById(CENTER_ID);
@@ -167,10 +196,23 @@
     return parseManifest(await response.json());
   }
 
+  /* Révision pour laquelle « Plus tard » a été choisi : plus de bandeau pour elle
+     pendant cette session. Le point sur « ↻ Mise à jour » (menu Plus) reste visible, et
+     la proposition revient à la prochaine ouverture de l'application. */
+  let dismissedTarget=null;
+  let readyTarget=null;
+
+  function offerUpdate(){
+    const target=state.latest;
+    const banner=setBanner('Nouvelle version disponible','Version '+state.displayVersion+' prête à installer. Tes données restent sur l’appareil.','Mettre à jour',installUpdate,0,function(){dismissedTarget=target});
+    banner.dataset.sticky='1';
+    return banner;
+  }
+
   async function checkForUpdates(silent){
     /* Une vérification silencieuse (retour au premier plan) n'écrase pas l'état d'une
        installation en cours. */
-    if(silent&&applying)return{available:state.latest!==state.current,current:state.current,latest:state.latest};
+    if(silent&&applying)return{available:updateAvailable(),current:state.current,latest:state.latest};
     if(!silent){state.status='checking';state.error=null;render()}
     try{
       const manifest=await fetchManifest();
@@ -180,9 +222,9 @@
       state.error=null;
       state.status='ready';
       render();
-      if(state.latest!==state.current){
-        const banner=setBanner('Nouvelle version disponible','Version '+state.displayVersion+' peut être installée maintenant.','Mettre à jour',installUpdate);
-        banner.dataset.sticky='1';
+      if(updateAvailable()){
+        /* Déjà téléchargée et prête (bandeau « Recharger ») : on ne la repropose pas. */
+        if(dismissedTarget!==state.latest&&readyTarget!==state.latest)offerUpdate();
         return{available:true,current:state.current,latest:state.latest};
       }
       const existing=document.getElementById(BANNER_ID);
@@ -214,6 +256,7 @@
   const ACTIVATE_TIMEOUT=15000;
   const NO_UPDATE_GRACE=2500;
   const RELOAD_DELAY=350;
+  const FLUSH_TIMEOUT=5000;
   let applying=null;
   let reloadScheduled=false;
 
@@ -270,6 +313,46 @@
     return banner;
   }
 
+  /* V260 — une saisie est en cours quand une fenêtre de travail est ouverte : visite,
+     fiche magasin, rendez-vous, création de magasin… L'installation peut durer une
+     minute sur réseau mobile ; si l'utilisateur a ouvert une visite entre-temps, la
+     nouvelle version attend qu'il ait fini au lieu de recharger sous ses doigts. */
+  function busy(){
+    try{return !!(document.querySelector&&document.querySelector('dialog[open]'))}catch(e){return false}
+  }
+
+  /* V260 — le moteur V256 écrit dans IndexedDB de façon asynchrone. Avant de quitter la
+     page, on attend que tout ce qui a été saisi soit réellement sur le disque. Sans
+     moteur (tests, navigateur sans IndexedDB) : rien à attendre. */
+  function flushStorage(){
+    const s=window.__chefStorage;
+    if(!s||typeof s.flush!=='function')return null;
+    let flushed;
+    try{flushed=Promise.resolve(s.flush()).then(function(){return true},function(){return false})}catch(e){flushed=Promise.resolve(false)}
+    return Promise.race([flushed,delay(FLUSH_TIMEOUT).then(function(){return false})]);
+  }
+
+  function releaseReload(){
+    reloadScheduled=false;
+    clearApplyMarker();
+    window.__storeRunnerUpdateApplying=false;
+    state.status='ready';render();
+  }
+
+  function finishReload(){
+    if(reloadNow())return;
+    releaseReload();
+    stickyBanner('Mise à jour installée','Recharge Store Runner pour ouvrir la nouvelle version.','Recharger',reloadNow);
+  }
+
+  function deferReload(target){
+    readyTarget=target;
+    window.__storeRunnerUpdateApplying=false;
+    state.status='ready';render();
+    stickyBanner('Mise à jour prête','Termine ta saisie en cours, puis recharge : rien ne sera perdu.','Recharger',function(){scheduleReload(target)});
+    return true;
+  }
+
   function scheduleReload(target){
     if(reloadScheduled)return true;
     if(reloadAlreadyTried(target)){
@@ -278,17 +361,20 @@
       setBanner('Nouvelle version pas encore servie','Le rechargement a rouvert l’ancienne version. Réessaie dans quelques minutes.','Réessayer',installUpdate,6000);
       return false;
     }
+    if(busy())return deferReload(target);
     reloadScheduled=true;
     window.__storeRunnerUpdateApplying=true;
     writeApplyMarker(target);
     stickyBanner('Mise à jour installée','Store Runner recharge la nouvelle version…',null,null);
     window.setTimeout(function(){
-      if(reloadNow())return;
-      reloadScheduled=false;
-      clearApplyMarker();
-      window.__storeRunnerUpdateApplying=false;
-      state.status='ready';render();
-      stickyBanner('Mise à jour installée','Recharge Store Runner pour ouvrir la nouvelle version.','Recharger',reloadNow);
+      const flushed=flushStorage();
+      if(!flushed)return finishReload();
+      flushed.then(function(ok){
+        if(ok)return finishReload();
+        /* Données pas encore sur le disque : on ne quitte pas la page. */
+        releaseReload();
+        stickyBanner('Mise à jour en attente','Les dernières modifications s’enregistrent encore sur l’appareil. Réessaie dans un instant.','Réessayer',function(){scheduleReload(target)});
+      });
     },RELOAD_DELAY);
     return true;
   }
@@ -363,7 +449,7 @@
     }
     state.latest=manifest.latestBuild;state.displayVersion=manifest.displayVersion;state.lastCheckedAt=Date.now();
     const target=state.latest;
-    if(target===state.current){
+    if(!updateAvailable()){
       state.status='ready';render();
       setBanner('Store Runner est à jour','Version '+displayVersion(state.current)+' installée.',null,null,2600);
       return false;
@@ -422,6 +508,65 @@
     }
   }
 
+  /* V260 — page et worker de la même révision. Après un déploiement, une ouverture en
+     ligne sert déjà la nouvelle page (réseau d'abord) alors que l'ancien worker reste
+     aux commandes et que le nouveau attend, installé, jusqu'à la fermeture complète de
+     l'application — des jours sur iPhone. Si le worker en attente sert exactement la
+     révision de cette page, l'activer ne change aucun fichier affiché : aucun
+     rechargement, et le hors-ligne passe tout de suite sur la bonne version. */
+  function alignWaitingWorker(){
+    const sw=('serviceWorker' in navigator)?navigator.serviceWorker:null;
+    if(!sw||typeof sw.getRegistration!=='function')return;
+    Promise.resolve().then(function(){return sw.getRegistration()}).then(function(registration){
+      if(!registration)return;
+      const consider=function(worker){
+        if(!worker||applying||reloadScheduled||!sw.controller)return;
+        askWorkerBuild(worker).then(function(build){
+          if(build!==currentBuild||applying||reloadScheduled||registration.waiting!==worker)return;
+          try{worker.postMessage({type:'SKIP_WAITING'})}catch(e){}
+        });
+      };
+      const follow=function(worker){
+        if(!worker||typeof worker.addEventListener!=='function')return;
+        worker.addEventListener('statechange',function(){if(worker.state==='installed')consider(worker)});
+      };
+      consider(registration.waiting);
+      /* Le bootloader lance update() avant que ce module démarre : le nouveau worker peut
+         déjà être en cours d'installation, son updatefound déjà passé. */
+      follow(registration.installing);
+      if(typeof registration.addEventListener==='function')registration.addEventListener('updatefound',function(){follow(registration.installing)});
+    }).catch(function(){});
+  }
+
+  /* Le worker aux commandes a changé hors de installUpdate() : alignement ci-dessus,
+     première installation, ou autre fenêtre. Même révision → rien. Autre révision → on
+     le propose ; plus aucun rechargement automatique (l'ancien bootloader en faisait un). */
+  function watchController(){
+    const sw=('serviceWorker' in navigator)?navigator.serviceWorker:null;
+    if(!sw||typeof sw.addEventListener!=='function')return;
+    sw.addEventListener('controllerchange',function(){
+      if(applying||reloadScheduled)return;
+      askWorkerBuild(sw.controller).then(function(build){
+        if(!build||build===currentBuild||olderThanCurrent(build)||applying||reloadScheduled)return;
+        state.latest=build;state.displayVersion=displayVersion(build);render();
+        readyTarget=build;
+        if(dismissedTarget===build)return;
+        const banner=setBanner('Nouvelle version prête','Version '+displayVersion(build)+' installée. Recharge quand tu veux : tes données restent sur l’appareil.','Recharger',function(){scheduleReload(build)},0,function(){dismissedTarget=build});
+        banner.dataset.sticky='1';
+      });
+    });
+  }
+
+  /* Retour du réseau après une session hors ligne : le worker n'a pas pu se mettre à
+     jour au démarrage. On le relance, et on revérifie la version publiée. */
+  function refreshWorker(){
+    const sw=('serviceWorker' in navigator)?navigator.serviceWorker:null;
+    if(!sw||typeof sw.getRegistration!=='function')return;
+    Promise.resolve().then(function(){return sw.getRegistration()}).then(function(registration){
+      if(registration&&typeof registration.update==='function'&&!applying)return registration.update();
+    }).catch(function(){});
+  }
+
   function announceInstalledBuild(){
     const s=storage();
     if(!s)return;
@@ -430,7 +575,13 @@
     if(previous===currentBuild)return;
     const title=previous?'Mise à jour Store Runner installée':'Store Runner est à jour';
     const detail='Version '+displayVersion(currentBuild)+' installée.';
-    window.setTimeout(function(){if(applying||reloadScheduled)return;setBanner(title,detail,null,null,3600)},700);
+    window.setTimeout(function(){
+      if(applying||reloadScheduled)return;
+      /* Une information ne remplace jamais une proposition en attente d'une réponse. */
+      const current=document.getElementById(BANNER_ID);
+      if(current&&!current.hidden&&current.dataset.sticky)return;
+      setBanner(title,detail,null,null,3600);
+    },700);
   }
 
   function start(){
@@ -441,10 +592,17 @@
     document.addEventListener('store-runner:home-rendered',function(){window.setTimeout(ensureMenuEntry,0)});
     announceInstalledBuild();
     window.setTimeout(function(){checkForUpdates(true)},1200);
+    watchController();
+    alignWaitingWorker();
     let lastVisibilityCheck=0;
     document.addEventListener('visibilitychange',function(){
       if(document.visibilityState!=='visible')return;
       const now=Date.now();if(now-lastVisibilityCheck<60000)return;lastVisibilityCheck=now;checkForUpdates(true);
+    });
+    let lastOnlineCheck=0;
+    if(typeof window.addEventListener==='function')window.addEventListener('online',function(){
+      const now=Date.now();if(now-lastOnlineCheck<60000)return;lastOnlineCheck=now;
+      refreshWorker();checkForUpdates(true);
     });
   }
 
