@@ -80,7 +80,9 @@ async function snapshot(page){
     let worker=null;const c=navigator.serviceWorker.controller;
     if(c)worker=await new Promise(r=>{const ch=new MessageChannel();ch.port1.onmessage=e=>r(e.data&&e.data.buildRev);c.postMessage({type:'GET_BUILD_REV'},[ch.port2]);setTimeout(()=>r(null),1500)});
     const reg=await navigator.serviceWorker.getRegistration();
-    return {build:window.__STORE_RUNNER_BUILD_REV,marks:Object.values(window.__MARKS||{}),worker,waiting:!!(reg&&reg.waiting),caches:(await caches.keys()).filter(k=>k.startsWith('chef-secteur-'))};
+    let waitingBuild=null;
+    if(reg&&reg.waiting)waitingBuild=await new Promise(r=>{const ch=new MessageChannel();ch.port1.onmessage=e=>r(e.data&&e.data.buildRev);reg.waiting.postMessage({type:'GET_BUILD_REV'},[ch.port2]);setTimeout(()=>r('silence'),1500)});
+    return {build:window.__STORE_RUNNER_BUILD_REV,marks:Object.values(window.__MARKS||{}),worker,waiting:!!(reg&&reg.waiting),waitingBuild,caches:(await caches.keys()).filter(k=>k.startsWith('chef-secteur-'))};
   });
 }
 function coherent(s,rev,mark){
@@ -164,10 +166,12 @@ test('V260 : fermée pendant le déploiement puis rouverte — alignement sans r
   site.current='new';
   const {context,page,nav}=await launch('closed');
   await page.goto(URL0,{waitUntil:'domcontentloaded'});await ready(page);
-  await page.waitForFunction(async rev=>{const c=navigator.serviceWorker.controller;if(!c)return false;
-    const b=await new Promise(r=>{const ch=new MessageChannel();ch.port1.onmessage=e=>r(e.data&&e.data.buildRev);c.postMessage({type:'GET_BUILD_REV'},[ch.port2]);setTimeout(()=>r(null),1000)});return b===rev},NEXT,{timeout:60000,polling:500});
+  /* Le nouveau worker s'installe en arrière-plan puis doit être activé (alignement) :
+     plus aucun worker en attente, contrôleur sur la nouvelle révision, ancien cache purgé. */
+  await expect.poll(async()=>{const x=await snapshot(page);return {worker:x.worker,waiting:x.waiting,caches:x.caches}},{timeout:60000,intervals:[500]})
+    .toEqual({worker:NEXT,waiting:false,caches:['chef-secteur-stable-'+NEXT]});
   expect(nav.n,'alignement du worker sans rechargement').toBe(1);
-  const s=await snapshot(page);coherent(s,NEXT,'new');expect(s.waiting).toBe(false);
+  coherent(await snapshot(page),NEXT,'new');
   expect(await data(page)).toEqual(DATA);
   await context.setOffline(true);await page.reload({waitUntil:'domcontentloaded'});await ready(page);
   coherent(await snapshot(page),NEXT,'new');expect(await data(page)).toEqual(DATA);
