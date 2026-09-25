@@ -9,7 +9,7 @@
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]||c))}
   function text(v){return String(v==null?'':v).trim()}
   function numberOrNull(v){const n=Number(v);return Number.isFinite(n)?n:null}
-  function icon(name){const paths={home:'<path d="m3 10 9-8 9 8v11h-6v-7H9v7H3Z" fill="currentColor"/>',calendar:'<rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8 2v6m8-6v6M4 11h16M8 15h2m4 0h2m-8 3h2"/>',store:'<path d="M3 10 5 3h14l2 7c0 4-5 4-6 1-1 3-5 3-6 0-1 3-6 3-6-1ZM5 14v7h14v-7"/>',pin:'<path d="M19 10c0 5-7 12-7 12S5 15 5 10a7 7 0 1 1 14 0Z"/><circle cx="12" cy="9" r="2"/>',navigation:'<path d="m3 11 18-8-7 18-3-8Z" fill="currentColor"/>',spark:'<path d="M12 1c-2 8-3 9-11 11 8 2 9 3 11 11 2-8 3-9 11-11-8-2-9-3-11-11Z" fill="currentColor" stroke="none"/>',chevron:'<path d="m9 4 8 8-8 8"/>',chart:'<rect x="3" y="12" width="4" height="9" rx="1" fill="currentColor" stroke="none"/><rect x="10" y="7" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="17" y="2" width="4" height="19" rx="1" fill="currentColor" stroke="none"/>',check:'<circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/>',more:'<circle cx="4" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="20" cy="12" r="2" fill="currentColor"/>'};return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[name]||paths.spark)+'</svg>'}
+  function icon(name){const paths={home:'<path d="m3 10 9-8 9 8v11h-6v-7H9v7H3Z" fill="currentColor"/>',calendar:'<rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8 2v6m8-6v6M4 11h16M8 15h2m4 0h2m-8 3h2"/>',store:'<path d="M3 10 5 3h14l2 7c0 4-5 4-6 1-1 3-5 3-6 0-1 3-6 3-6-1ZM5 14v7h14v-7"/>',pin:'<path d="M19 10c0 5-7 12-7 12S5 15 5 10a7 7 0 1 1 14 0Z"/><circle cx="12" cy="9" r="2"/>',navigation:'<path d="m3 11 18-8-7 18-3-8Z" fill="currentColor"/>',spark:'<path d="M12 1c-2 8-3 9-11 11 8 2 9 3 11 11 2-8 3-9 11-11-8-2-9-3-11-11Z" fill="currentColor" stroke="none"/>',chevron:'<path d="m9 4 8 8-8 8"/>',chart:'<rect x="3" y="12" width="4" height="9" rx="1" fill="currentColor" stroke="none"/><rect x="10" y="7" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="17" y="2" width="4" height="19" rx="1" fill="currentColor" stroke="none"/>',check:'<circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/>',alert:'<path d="M12 3 2 20h20Z"/><path d="M12 10v4m0 3h.01"/>',more:'<circle cx="4" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="20" cy="12" r="2" fill="currentColor"/>'};return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[name]||paths.spark)+'</svg>'}
   function parse(v){const d=new Date(String(v||'')+'T12:00:00');return isNaN(d)?null:d}
   function fmtDate(v){const d=typeof v==='string'?parse(v):v;if(!d||isNaN(d))return'À planifier';return d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}).replace('.','')}
   function isoLocal(v){const d=v instanceof Date?v:new Date(v);if(isNaN(d))return'';return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
@@ -106,13 +106,35 @@
   function card(id,label,value,sub,importanceScore,iconName,action,storeId){return{id,label,value,sub,importanceScore,icon:iconName,action,storeId:storeId||''}}
   function rankCards(candidates){return(candidates||[]).filter(c=>c&&text(c.label)&&text(c.value)&&Number.isFinite(c.importanceScore)).slice().sort((a,b)=>b.importanceScore-a.importanceScore||String(a.id).localeCompare(String(b.id))).slice(0,4)}
 
-  function buildActivityCards(stateValue,environment){
+  /* V259 — catalogue complet des cartes « Votre activité ».
+     Le classement automatique (rankCards) reste le comportement par défaut et ne voit
+     que les cartes qu'il voyait avant V259 : les cartes ajoutées ici (`auto:false`) et
+     les états vides (`empty:true`) n'apparaissent que si l'utilisateur les épingle.
+     Ordre du catalogue = ordre de présentation dans « Voir tout ». */
+  const CARD_CATALOG=[
+    {id:'week',label:'Cette semaine',icon:'chart',action:'plan',emptyValue:'Semaine à planifier',emptySub:'Génère ton planning'},
+    {id:'action-now',label:'À traiter maintenant',icon:'check',action:'pilotage',emptyValue:'Rien d’urgent',emptySub:'Aucun magasin à traiter maintenant'},
+    {id:'priority',label:'Prochaine priorité',icon:'pin',action:'stores',emptyValue:'À calculer',emptySub:'Génère ton planning pour la voir'},
+    {id:'opportunities',label:'Opportunités',icon:'spark',action:'opportunities',emptyValue:'Aucune ouverte',emptySub:'À créer depuis une fiche magasin'},
+    {id:'appointment',label:'Prochain rendez-vous',icon:'calendar',action:'appointments',emptyValue:'Aucun prévu',emptySub:'Ajouter un rendez-vous'},
+    {id:'watch',label:'À surveiller',icon:'alert',action:'pilotage',emptyValue:'Secteur à jour',emptySub:'Aucun magasin en retard'},
+    {id:'actions',label:'Actions ouvertes',icon:'check',action:'hub',emptyValue:'Aucune action',emptySub:'Rien à relancer'},
+    {id:'month',label:'Ce mois',icon:'chart',action:'history',emptyValue:'0 visite réalisée',emptySub:'Aucune visite terminée ce mois'}
+  ];
+  const CARD_IDS=CARD_CATALOG.map(c=>c.id);
+  const HOME_SLOTS=4;
+  function weekSummaryOf(api,m){
+    if(api&&typeof api.weekSummary==='function')return api.weekSummary(m);
+    return{value:'',bits:[]};
+  }
+
+  function collectActivity(stateValue,environment){
     const s=stateValue||{},env=environment||{},now=env.now instanceof Date?env.now:new Date(env.now||Date.now());
     const api=metricsApi(),m=env.metrics||(api?api.compute(s,{now}):null);
     const pilotage=env.pilotage||{rows:[]},performance=env.performance||{rows:[]},actions=openActions(s,now);
     const opportunities=opportunityFacts(env.opportunities!==undefined?env.opportunities:((((s||{}).businessV2||{}).opportunities)||[]),now);
     const ctx={pilotMap:pilotageMap(pilotage),performanceMap:perfMap(performance),actions,opportunities};
-    const candidates=[];
+    const candidates=[],extras=[];
 
     const urgentIds=new Set();
     for(const id of actions.overdueByStore.keys())urgentIds.add(id);
@@ -147,11 +169,13 @@
     }
 
     const rec=env.recommended||null,recId=storeIdOf(rec);
-    if(rec&&recId&&(!urgent||recId!==urgent.id)){
+    if(rec&&recId){
       const reasons=reasonsForStore(recId,ctx,{includeAge:true});
       if(Array.isArray(rec.reasons))for(const r of rec.reasons)addReason(reasons,r);
       if(rec.reason)addReason(reasons,rec.reason);
-      if(reasons.length)candidates.push(card('priority','Prochaine priorité',storeLabel(s,recId,rec),reasons.slice(0,3).join(' · '),76,'pin','stores',recId));
+      /* Même magasin que « À traiter maintenant » : le classement automatique ne le
+         montre pas deux fois ; la carte reste disponible si l'utilisateur l'épingle. */
+      if(reasons.length){const c=card('priority','Prochaine priorité',storeLabel(s,recId,rec),reasons.slice(0,3).join(' · '),76,'pin','stores',recId);if(urgent&&recId===urgent.id){c.auto=false;extras.push(c)}else candidates.push(c)}
     }
 
     const ap=env.appointment||null;
@@ -165,33 +189,89 @@
 
     const perfP1=(performance.rows||[]).filter(r=>r&&r.prio==='P1'&&r.storeId),plannedIds=plannedStoreIds(s);
     if(m){
-      const L=api&&api.labels,credits=n=>L?L.credits(n):plural(n,'crédit de visite','crédits de visite'),planned=n=>L?L.plannedStores(n):plural(n,'magasin planifié','magasins planifiés'),done=n=>L?L.completed(n):plural(n,'visite réalisée','visites réalisées');
-      /* V258 — le travail réellement fait passe devant le prévu : dès qu'une visite est
-         terminée cette semaine, le gros chiffre est `completedVisitsWeek` ; le planifié,
-         les crédits et l'objectif restent lisibles en dessous. Tous les nombres viennent
-         de StoreRunnerActivityMetrics, aucun n'est recompté ici. */
-      const weekBits=[];let weekValue='';
-      if(m.completedVisitsWeek){
-        weekValue=done(m.completedVisitsWeek);
-        if(m.plannedStoresWeek)weekBits.push(planned(m.plannedStoresWeek),credits(m.plannedVisitCreditsWeek));
-      }else if(m.plannedStoresWeek){
-        weekValue=planned(m.plannedStoresWeek);
-        weekBits.push(credits(m.plannedVisitCreditsWeek));
-      }
-      if(m.target!=null){const goal=plural(m.target,'magasin','magasins');if(weekValue)weekBits.push('objectif '+goal);else weekValue='Objectif '+goal}
+      /* V258 — le travail réellement fait passe devant le prévu. V259 : la mise en forme
+         vient de StoreRunnerActivityMetrics.weekSummary, partagée avec le bandeau
+         historique du noyau ; aucun nombre n'est recompté ici. */
+      const week=weekSummaryOf(api,m),weekBits=week.bits.slice(),weekValue=week.value;
       if(perfP1.length&&plannedIds.size){const n=perfP1.filter(r=>plannedIds.has(String(r.storeId))).length;weekBits.push('P1 : '+n+'/'+perfP1.length+' planifiés')}
       if(weekValue)candidates.push(card('week','Cette semaine',weekValue,weekBits.join(' · ')||'Suivi hebdomadaire',30,'chart','plan'));
     }
 
-    return rankCards(candidates);
+    /* Cartes disponibles seulement sur choix de l'utilisateur (hors classement auto). */
+    const lateRows=(pilotage.rows||[]).filter(r=>r&&r.store&&r.store.id!=null&&(r.late||0)>0),alertStores=(pilotage.rows||[]).filter(r=>r&&(r.alerts||0)>0).length;
+    const overdueCount=m?m.overdueActions:actions.overdue.length,openCount=m?m.openActions:actions.open.length;
+    if(lateRows.length||alertStores||overdueCount){
+      const bits=[];if(alertStores)bits.push(plural(alertStores,'magasin avec point terrain','magasins avec points terrain'));if(overdueCount)bits.push(plural(overdueCount,'action échue','actions échues'));
+      const worst=lateRows.slice().sort((a,b)=>(b.late||0)-(a.late||0))[0];if(worst&&bits.length<2)bits.push('plus ancien : '+storeLabel(s,worst.store.id,worst.store));
+      const c=card('watch','À surveiller',lateRows.length?plural(lateRows.length,'magasin en retard','magasins en retard'):'0 magasin en retard',bits.join(' · ')||'Visites à rattraper',0,'alert','pilotage');c.auto=false;extras.push(c);
+    }
+    if(openCount){
+      const c=card('actions','Actions ouvertes',plural(openCount,'action ouverte','actions ouvertes'),overdueCount?plural(overdueCount,'échue','échues'):'Aucune en retard',0,'check','hub');c.auto=false;extras.push(c);
+    }
+    if(m&&m.completedVisitsMonth){
+      const L=api&&api.labels,done=(n,when)=>L?L.completed(n,when):plural(n,'visite réalisée','visites réalisées')+(when?' '+when:'');
+      const c=card('month','Ce mois',done(m.completedVisitsMonth),plural(m.completedUniqueStoresMonth,'magasin distinct','magasins distincts')+' · '+done(m.completedVisitsToday,'aujourd’hui'),0,'chart','history');c.auto=false;extras.push(c);
+    }
+    return{candidates,extras};
   }
 
-  function runtimeActivityCards(now){
+  function buildActivityCards(stateValue,environment){return rankCards(collectActivity(stateValue,environment).candidates)}
+
+  /* Toutes les cartes, dans l'ordre du catalogue ; une carte sans donnée garde un état
+     vide explicite, jamais un chiffre inventé. */
+  function buildActivityCatalog(stateValue,environment){
+    const {candidates,extras}=collectActivity(stateValue,environment),byId=new Map();
+    for(const c of extras.concat(candidates))byId.set(c.id,c);
+    return CARD_CATALOG.map(def=>{
+      const c=byId.get(def.id);
+      if(c)return Object.assign({auto:true,empty:false},c);
+      return Object.assign(card(def.id,def.label,def.emptyValue,def.emptySub,0,def.icon,def.action),{auto:false,empty:true});
+    });
+  }
+
+  /* V259 — préférences d'accueil. Une seule clé, dans le moteur durable V256
+     (window.__chefStorage) ; aucune écriture dans state, donc aucune migration.
+     Absence de clé = mode automatique d'avant V259 : les utilisateurs existants ne
+     voient aucun changement tant qu'ils ne personnalisent pas.
+       pinned : cartes épinglées, dans l'ordre choisi — toujours sur l'accueil, en tête ;
+       hidden : cartes retirées — jamais proposées par le classement automatique. */
+  const PREFS_KEY='store-runner-home-cards-v1';
+  function uniqueKnown(list,exclude){const out=[];for(const id of Array.isArray(list)?list:[]){const k=String(id);if(CARD_IDS.includes(k)&&!out.includes(k)&&!(exclude&&exclude.includes(k)))out.push(k)}return out}
+  function normalizePrefs(raw){const r=raw&&typeof raw==='object'?raw:{},pinned=uniqueKnown(r.pinned);return{version:1,pinned,hidden:uniqueKnown(r.hidden,pinned)}}
+  function isCustomPrefs(p){const n=normalizePrefs(p);return n.pinned.length>0||n.hidden.length>0}
+  function prefsStore(){try{return window.__chefStorage||window.localStorage}catch(e){return null}}
+  function readPrefs(db){const store=db||prefsStore();try{const raw=store&&store.getItem(PREFS_KEY);return normalizePrefs(raw?JSON.parse(raw):null)}catch(e){return normalizePrefs(null)}}
+  function writePrefs(prefs,db){
+    const store=db||prefsStore(),p=normalizePrefs(prefs);if(!store)return p;
+    if(!isCustomPrefs(p))store.removeItem(PREFS_KEY);
+    else store.setItem(PREFS_KEY,JSON.stringify(Object.assign({},p,{updatedAt:new Date().toISOString()})));
+    try{if(typeof store.flush==='function'){const f=store.flush();if(f&&typeof f.catch==='function')f.catch(e=>console.warn('Préférences accueil non synchronisées',e))}}catch(e){console.warn('Préférences accueil non synchronisées',e)}
+    return p;
+  }
+  const prefsOps={
+    pin(p,id){const n=normalizePrefs(p);if(!CARD_IDS.includes(id)||n.pinned.includes(id))return n;return normalizePrefs({pinned:n.pinned.concat(id),hidden:n.hidden.filter(x=>x!==id)})},
+    unpin(p,id){const n=normalizePrefs(p);return normalizePrefs({pinned:n.pinned.filter(x=>x!==id),hidden:n.hidden})},
+    add(p,id){return prefsOps.pin(p,id)},
+    remove(p,id){const n=normalizePrefs(p);return normalizePrefs({pinned:n.pinned.filter(x=>x!==id),hidden:n.hidden.includes(id)?n.hidden:n.hidden.concat(id)})},
+    move(p,id,delta){const n=normalizePrefs(p),list=n.pinned.slice(),i=list.indexOf(id),j=i+(delta<0?-1:1);if(i<0||j<0||j>=list.length)return n;list.splice(i,1);list.splice(j,0,id);return normalizePrefs({pinned:list,hidden:n.hidden})},
+    reset(){return normalizePrefs(null)}
+  };
+  /* Accueil = cartes épinglées (ordre utilisateur, même vides), puis classement
+     automatique inchangé pour compléter les emplacements, sans les cartes retirées. */
+  function composeHomeCards(catalog,prefs,slots){
+    const p=normalizePrefs(prefs),max=Number.isFinite(slots)?slots:HOME_SLOTS,byId=new Map((catalog||[]).map(c=>[c.id,c]));
+    const pinned=p.pinned.map(id=>byId.get(id)).filter(Boolean).map(c=>Object.assign({},c,{pinned:true,placement:'pinned'}));
+    const used=new Set(p.pinned),hidden=new Set(p.hidden);
+    const auto=rankCards((catalog||[]).filter(c=>c.auto!==false&&!c.empty&&!used.has(c.id)&&!hidden.has(c.id))).slice(0,Math.max(0,max-pinned.length)).map(c=>Object.assign({},c,{pinned:false,placement:'auto'}));
+    return pinned.concat(auto);
+  }
+
+  function runtimeActivityCatalog(now){
     const ref=now instanceof Date?now:new Date();let pilotage={rows:[]},performance={rows:[]},opportunities=[];
     try{if(window.StoreRunnerSectorPilotage&&typeof window.StoreRunnerSectorPilotage.compute==='function')pilotage=window.StoreRunnerSectorPilotage.compute(state,{now:ref})||pilotage}catch(e){}
     try{if(window.StoreRunnerPerformanceV190&&typeof window.StoreRunnerPerformanceV190.dashboard==='function'){const db=window.__chefStorage||window.localStorage;performance=window.StoreRunnerPerformanceV190.dashboard(db,{state,stores:activeStores()})||performance}}catch(e){}
     try{if(window.StoreRunnerOpportunities&&typeof window.StoreRunnerOpportunities.list==='function')opportunities=window.StoreRunnerOpportunities.list(state,{openOnly:true})||[];else opportunities=((((state||{}).businessV2||{}).opportunities)||[])}catch(e){}
-    return buildActivityCards(state,{now:ref,pilotage,performance,opportunities,recommended:recommended(),appointment:nextAppointment(ref)});
+    return buildActivityCatalog(state,{now:ref,pilotage,performance,opportunities,recommended:recommended(),appointment:nextAppointment(ref)});
   }
   /* V245 — Mode terrain contextuel. La carte réutilise le workflow terrain existant :
      data-sr-start ouvre la visite 6P par StoreRunnerVisits.start (même gestionnaire que
@@ -272,20 +352,113 @@
     try{const id=tour.current&&String(tour.current.id);extra.draft=!!(id&&(((state.businessV2||{}).visits)||[]).some(v=>v&&String(v.storeId)===id&&v.status==='draft'))}catch(e){}
     return buildTerrainCard(tour,extra);
   }
-  function actionCode(action){
-    if(action==='pilotage')return"if(window.StoreRunnerSectorPilotage&&StoreRunnerSectorPilotage.open)StoreRunnerSectorPilotage.open(window);else goTab('storesPanel')";
-    if(action==='opportunities')return"if(window.StoreRunnerOpportunities&&StoreRunnerOpportunities.open)StoreRunnerOpportunities.open('','')";
-    if(action==='appointments')return"goTab('appointmentsPanel')";
-    if(action==='stores')return"goTab('storesPanel')";
-    return"goTab('planPanel')";
+  /* Un tap ouvre le contenu logique de la carte. V259 : une carte qui nomme un magasin
+     (À traiter maintenant, Prochaine priorité) ouvre la fiche de ce magasin ; l'ancienne
+     destination reste le repli si la fiche n'est pas disponible. */
+  function openStoreCard(storeId){try{if(storeId&&typeof window.openStoreQuick==='function'&&(state.stores||[]).some(s=>String(s.id)===String(storeId))){window.openStoreQuick(storeId);return true}}catch(e){}return false}
+  function goPanel(id){if(typeof window.goTab==='function')window.goTab(id)}
+  function openCardTarget(action,storeId){
+    if((action==='pilotage'||action==='stores')&&storeId&&openStoreCard(storeId))return;
+    if(action==='pilotage'){if(window.StoreRunnerSectorPilotage&&typeof StoreRunnerSectorPilotage.open==='function')StoreRunnerSectorPilotage.open(window);else goPanel('storesPanel');return}
+    if(action==='opportunities'){if(window.StoreRunnerOpportunities&&typeof StoreRunnerOpportunities.open==='function')StoreRunnerOpportunities.open('','');return}
+    if(action==='appointments'){goPanel('appointmentsPanel');return}
+    if(action==='stores'){goPanel('storesPanel');return}
+    if(action==='hub'){if(window.StoreRunnerVisits&&typeof StoreRunnerVisits.openHub==='function')StoreRunnerVisits.openHub();else goPanel('historyPanel');return}
+    if(action==='history'){goPanel('historyPanel');return}
+    goPanel('planPanel');
   }
-  function activityMarkup(cards){return cards.map(c=>`<button type="button" class="phCard" data-home-card="${esc(c.id)}" onclick="${actionCode(c.action)}"><span class="phIcon">${icon(c.icon)}</span><span class="phLabel">${esc(c.label)}</span><strong class="phValue${c.storeId?' phStoreValue':''}">${esc(c.value)}</strong><span class="phSub">${esc(c.sub)}</span></button>`).join('')}
+  function cardBody(c){return `<span class="phIcon">${icon(c.icon)}</span><span class="phLabel">${esc(c.label)}</span><strong class="phValue${c.storeId?' phStoreValue':''}">${esc(c.value)}</strong><span class="phSub">${esc(c.sub)}</span>`}
+  function activityMarkup(cards){return cards.map(c=>`<button type="button" class="phCard${c.pinned?' phPinned':''}${c.empty?' phEmpty':''}" data-home-card="${esc(c.id)}" data-home-action="${esc(c.action)}" data-store-id="${esc(c.storeId||'')}"${c.pinned?' data-home-pinned="1"':''}>${c.pinned?`<span class="phPinMark" title="Épinglée">${icon('pin')}</span>`:''}${cardBody(c)}</button>`).join('')}
+
+  /* V259 — feuille « Votre activité » : « Voir tout » (toutes les cartes, ajout/retrait
+     de l'accueil) et « Personnaliser » (épingler, ordre, masquer, réinitialiser).
+     Une seule feuille, deux vues ; elle ne possède que les préférences d'affichage. */
+  let sheetView='all',lastCatalog=[];
+  function sheetNode(){
+    let d=document.getElementById('homeCardsSheet');if(d)return d;
+    d=document.createElement('dialog');d.id='homeCardsSheet';d.className='phSheet';d.setAttribute('aria-labelledby','homeCardsSheetTitle');
+    document.body.appendChild(d);
+    d.addEventListener('click',onSheetClick);
+    d.addEventListener('cancel',e=>{e.preventDefault();closeSheet()});
+    return d;
+  }
+  function closeSheet(){const d=document.getElementById('homeCardsSheet');if(d&&d.open){try{d.close()}catch(e){d.removeAttribute('open')}}}
+  function openSheet(view){
+    sheetView=view==='edit'?'edit':'all';const d=sheetNode();renderSheet();
+    if(!d.open){try{d.showModal()}catch(e){d.setAttribute('open','')}}
+    const body=d.querySelector('.phSheetBody');if(body)body.scrollTop=0;
+  }
+  function sheetRow(c,placement,index,count){
+    const id=esc(c.id),tools=[];
+    if(placement==='pinned'){
+      tools.push(`<button type="button" class="phTool" data-home-move="-1" data-card-id="${id}" aria-label="Monter ${esc(c.label)}"${index===0?' disabled':''}>↑</button>`);
+      tools.push(`<button type="button" class="phTool" data-home-move="1" data-card-id="${id}" aria-label="Descendre ${esc(c.label)}"${index===count-1?' disabled':''}>↓</button>`);
+      tools.push(`<button type="button" class="phTool on" data-home-unpin="${id}" aria-pressed="true" aria-label="Désépingler ${esc(c.label)}">${icon('pin')}</button>`);
+      tools.push(`<button type="button" class="phTool" data-home-remove="${id}" aria-label="Retirer ${esc(c.label)} de l’accueil">✕</button>`);
+    }else if(placement==='auto'){
+      tools.push(`<button type="button" class="phTool" data-home-pin="${id}" aria-pressed="false" aria-label="Épingler ${esc(c.label)}">${icon('pin')}</button>`);
+      tools.push(`<button type="button" class="phTool" data-home-remove="${id}" aria-label="Retirer ${esc(c.label)} de l’accueil">✕</button>`);
+    }else{
+      tools.push(`<button type="button" class="phTool phAdd" data-home-add="${id}" aria-label="Ajouter ${esc(c.label)} à l’accueil">+ Ajouter</button>`);
+    }
+    return `<li class="phEditRow" data-card-id="${id}" data-placement="${placement}"><span class="phEditIcon">${icon(c.icon)}</span><span class="phEditText"><b>${esc(c.label)}</b><small>${esc(c.value)}</small></span><span class="phEditTools">${tools.join('')}</span></li>`;
+  }
+  function renderSheet(){
+    const d=document.getElementById('homeCardsSheet');if(!d)return;
+    const prefs=readPrefs(),custom=isCustomPrefs(prefs),catalog=lastCatalog.length?lastCatalog:runtimeActivityCatalog(new Date()),home=composeHomeCards(catalog,prefs),onHome=new Set(home.map(c=>c.id)),hidden=new Set(prefs.hidden);
+    const mode=custom?'Personnalisé · '+plural(prefs.pinned.length,'carte épinglée','cartes épinglées'):'Automatique · les cartes suivent tes priorités';
+    let body='';
+    if(sheetView==='all'){
+      body=`<div class="phSheetGrid">${catalog.map(c=>{const on=onHome.has(c.id);return `<div class="phSheetCard${on?' on':''}${c.empty?' phEmpty':''}" data-card-id="${esc(c.id)}"><button type="button" class="phSheetOpen" data-home-open="${esc(c.id)}" data-home-action="${esc(c.action)}" data-store-id="${esc(c.storeId||'')}">${cardBody(c)}</button><button type="button" class="phSheetToggle" ${on?`data-home-remove="${esc(c.id)}" aria-pressed="true"`:`data-home-add="${esc(c.id)}" aria-pressed="false"`}>${on?'✓ Sur l’accueil':'+ Ajouter'}</button></div>`}).join('')}</div><button type="button" class="phSheetLink" data-home-history>Historique des visites ${icon('chevron')}</button>`;
+    }else{
+      const pinned=home.filter(c=>c.placement==='pinned'),auto=home.filter(c=>c.placement==='auto'),rest=catalog.filter(c=>!onHome.has(c.id));
+      body=`<p class="phSheetHint">Les cartes épinglées restent sur l’accueil dans cet ordre. Les places restantes suivent tes priorités du moment.</p>`+
+        `<h4>Épinglées</h4>`+(pinned.length?`<ul class="phEditList">${pinned.map((c,i)=>sheetRow(c,'pinned',i,pinned.length)).join('')}</ul>`:`<p class="phSheetEmpty">Aucune carte épinglée. Touche ${icon('pin')} pour en garder une.</p>`)+
+        `<h4>Automatiques</h4>`+(auto.length?`<ul class="phEditList">${auto.map(c=>sheetRow(c,'auto')).join('')}</ul>`:`<p class="phSheetEmpty">Aucune place automatique restante.</p>`)+
+        `<h4>Autres cartes</h4>`+(rest.length?`<ul class="phEditList">${rest.map(c=>sheetRow(c,hidden.has(c.id)?'hidden':'available')).join('')}</ul>`:`<p class="phSheetEmpty">Toutes les cartes sont sur l’accueil.</p>`)+
+        `<button type="button" class="phSheetReset" data-home-reset${custom?'':' disabled'}>Réinitialiser · mode automatique</button>`;
+    }
+    const html=`<div class="phSheetHead"><div><h3 id="homeCardsSheetTitle">Votre activité</h3><p data-home-mode="${custom?'custom':'auto'}">${esc(mode)}</p></div><button type="button" class="phSheetClose" data-home-close>Fermer</button></div><div class="phSheetTabs" role="group" aria-label="Vue"><button type="button" data-home-view="all" aria-pressed="${sheetView==='all'}">Toutes les cartes</button><button type="button" data-home-view="edit" aria-pressed="${sheetView==='edit'}">Personnaliser</button></div><div class="phSheetBody">${body}</div>`;
+    const scroller=d.querySelector('.phSheetBody'),top=scroller?scroller.scrollTop:0;
+    if(d.__lastHtml!==html){d.innerHTML=html;d.__lastHtml=html;const next=d.querySelector('.phSheetBody');if(next)next.scrollTop=top}
+  }
+  function updatePrefs(fn){writePrefs(fn(readPrefs()));run();renderSheet();document.dispatchEvent(new CustomEvent('store-runner:home-cards-changed',{detail:readPrefs()}))}
+  function onSheetClick(e){
+    const t=e.target&&e.target.closest?e.target.closest('button'):null;
+    if(!t){if(e.target===e.currentTarget)closeSheet();return}
+    const ds=t.dataset;
+    if(ds.homeClose!==undefined){closeSheet();return}
+    if(ds.homeView){sheetView=ds.homeView==='edit'?'edit':'all';renderSheet();return}
+    if(ds.homeOpen){closeSheet();openCardTarget(ds.homeAction,ds.storeId);return}
+    if(ds.homeHistory!==undefined){closeSheet();goPanel('historyPanel');return}
+    if(ds.homeReset!==undefined){updatePrefs(()=>prefsOps.reset());return}
+    if(ds.homeAdd){const id=ds.homeAdd;updatePrefs(p=>prefsOps.add(p,id));return}
+    if(ds.homeRemove){const id=ds.homeRemove;updatePrefs(p=>prefsOps.remove(p,id));return}
+    if(ds.homePin){const id=ds.homePin;updatePrefs(p=>prefsOps.pin(p,id));return}
+    if(ds.homeUnpin){const id=ds.homeUnpin;updatePrefs(p=>prefsOps.unpin(p,id));return}
+    if(ds.homeMove){const id=ds.cardId,delta=Number(ds.homeMove);updatePrefs(p=>prefsOps.move(p,id,delta));return}
+  }
+  function onHomeClick(e){
+    const t=e.target&&e.target.closest?e.target.closest('#premiumHomeV2 [data-home-customize],#premiumHomeV2 [data-home-all],#premiumHomeV2 .phCard[data-home-card]'):null;if(!t)return;
+    if(t.dataset.homeCustomize!==undefined){openSheet('edit');return}
+    if(t.dataset.homeAll!==undefined){openSheet('all');return}
+    openCardTarget(t.dataset.homeAction,t.dataset.storeId);
+  }
 
   function ensureCss(){if(document.getElementById('home-refresh-v2-css'))return;const s=document.createElement('style');s.id='home-refresh-v2-css';s.textContent=`
 #homePanel{max-width:980px;margin:0 auto}.homeHero,#homeKpis,#homePriority,#homeNext,#homePanel>.sectionTitle{display:none!important}
 #premiumHomeV2{display:block}.phTop{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin:2px 0 22px}.phEyebrow{font-size:14px;color:#858991}.phTitle{font-size:clamp(42px,7vw,72px);line-height:.98;letter-spacing:-.065em;margin:7px 0 0;font-weight:820}.phBase{border:0;background:transparent;color:#777c85;font-size:14px;padding:2px 0}.phGrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.phCard{box-sizing:border-box;width:100%;min-width:0;min-height:184px;padding:20px;border:1px solid rgba(255,255,255,.84);border-radius:28px;background:rgba(255,255,255,.72);box-shadow:0 14px 42px rgba(35,40,55,.08);backdrop-filter:blur(24px) saturate(1.15);-webkit-backdrop-filter:blur(24px) saturate(1.15);display:flex;flex-direction:column;align-items:flex-start;text-align:left;overflow:hidden;color:inherit}.phIcon{width:48px;height:48px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(195,224,255,.82),rgba(228,239,251,.66));font-size:24px;color:#0a84ff;margin-bottom:28px}.phIcon svg{width:24px;height:24px}.phLabel{font-size:15px;color:#30333a}.phValue{display:block;max-width:100%;font-size:38px;line-height:1.02;font-weight:790;letter-spacing:-.055em;margin-top:8px;overflow-wrap:anywhere}.phValue.phStoreValue{font-size:26px;line-height:1.08;letter-spacing:-.035em}.phSub{display:block;font-size:13px;color:#777c85;margin-top:8px;line-height:1.35;overflow-wrap:anywhere}.phWide{margin-top:14px;padding:22px;border:1px solid rgba(255,255,255,.84);border-radius:30px;background:rgba(255,255,255,.72);box-shadow:0 14px 42px rgba(35,40,55,.08);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px)}.phWideLabel{font-size:16px;color:#6f747d}.phWideValue{font-size:42px;font-weight:790;letter-spacing:-.055em;margin:5px 0 16px}.phButton{width:100%;min-height:54px;border:0;border-radius:19px;background:rgba(180,211,247,.58);color:#0878e8;font-size:17px;font-weight:700}.phRange{margin-top:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 18px;border-radius:22px;background:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.72)}.phRange b{font-size:15px}.phRange span{display:block;font-size:12px;color:#777c85;margin-top:4px}.phRange button{border:0;background:#111217;color:#fff;border-radius:15px;padding:10px 13px;font-weight:700}.phActions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.phActions button{min-height:50px;border-radius:18px;border:1px solid rgba(120,125,140,.14);background:rgba(255,255,255,.70);color:#176fd0;font-weight:720}
 #premiumHomeV2 .phTerrain{order:2;box-sizing:border-box;width:100%;margin:0 0 14px;padding:22px 20px 18px;border-radius:28px;background:#111;color:#fff;box-shadow:0 20px 50px rgba(0,0,0,.18)}#premiumHomeV2 .phTerrainEyebrow{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#d6d2cd}#premiumHomeV2 .phTerrainDay{font-size:13px;color:#b9b5af;margin-top:6px}#premiumHomeV2 .phTerrainStore{font-family:Georgia,serif;font-size:32px;line-height:1.08;margin:10px 0 6px;overflow-wrap:anywhere}#premiumHomeV2 .phTerrainMeta{font-size:14px;line-height:1.4;color:#e8e4de;overflow-wrap:anywhere}#premiumHomeV2 .phTerrainBtns{display:grid;grid-template-columns:1fr;gap:8px;margin-top:16px}#premiumHomeV2 .phTerrainBtns button{min-height:52px;border-radius:17px;font-size:16px;font-weight:800;border:0}#premiumHomeV2 .phTerrainMain{background:#fff;color:#111}#premiumHomeV2 .phTerrainRoute{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.22)!important}#premiumHomeV2 .phTerrainSummary{margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.14);font-size:13px;color:#d6d2cd;line-height:1.4}#premiumHomeV2 .phTerrainNext{font-size:13px;color:#d6d2cd;margin-top:4px;line-height:1.4}#premiumHomeV2 .phTerrainNext b{color:#fff}#premiumHomeV2 .phVisitCard .phAssistant:first-child{margin-top:0}#premiumHomeV2 .phTerrainOpen{margin-top:10px;padding:6px 0;border:0;background:none;color:#fff;font-size:13px;font-weight:700;opacity:.8}@media(min-width:701px){#premiumHomeV2 .phTerrainBtns{grid-template-columns:2fr 1fr}}
 #premiumHomeV2 .phNextDay{box-sizing:border-box;width:100%;margin:0 0 14px;padding:20px;border-radius:28px;background:#111;color:#fff;box-shadow:0 20px 50px rgba(0,0,0,.18)}#premiumHomeV2 .phNextEyebrow{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#d6d2cd}#premiumHomeV2 .phNextMeta{margin-top:7px;font-size:14px;line-height:1.4;color:#fff}#premiumHomeV2 .phNextWarn{margin-top:12px;padding:10px 12px;border-radius:14px;background:rgba(255,184,77,.15);border:1px solid rgba(255,184,77,.28);color:#ffd59a;font-size:13px;font-weight:750}#premiumHomeV2 .phNextList{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:7px}#premiumHomeV2 .phNextList li{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:8px;min-height:38px;padding:6px 8px;border-radius:13px;background:rgba(255,255,255,.08)}#premiumHomeV2 .phNextList li>span{display:grid;place-items:center;width:25px;height:25px;border-radius:999px;background:rgba(255,255,255,.12);font-size:12px;color:#d6d2cd}#premiumHomeV2 .phNextList b{font-size:14px;min-width:0;overflow-wrap:anywhere}#premiumHomeV2 .phNextList small{font-size:11px;color:#d6d2cd;text-align:right}#premiumHomeV2 .phNextOpen{width:100%;margin-top:14px;min-height:48px;border:0;border-radius:16px;background:#fff;color:#111;font-size:14px;font-weight:800}
+#premiumHomeV2 .phActivityTools{display:flex;align-items:center;gap:14px;flex-shrink:0}#premiumHomeV2 .phActivityTools button{min-height:44px}#premiumHomeV2 .phActivityTools [data-home-customize]{color:#1686ff;font-weight:700}#premiumHomeV2 .phCard{position:relative}#premiumHomeV2 .phPinMark{position:absolute;top:10px;right:11px;color:#1686ff;opacity:.85}#premiumHomeV2 .phPinMark svg{width:14px;height:14px}#premiumHomeV2 .phCard.phEmpty .phValue{color:#8a93a6}
+#homeCardsSheet{box-sizing:border-box;width:min(100% - 16px,560px);max-width:none;max-height:min(88dvh,760px);margin:auto auto calc(8px + env(safe-area-inset-bottom));padding:0;border:1px solid rgba(255,255,255,.9);border-radius:28px;background:#f6f8fc;color:#13213a;box-shadow:0 28px 80px rgba(20,25,35,.28);overflow:hidden}#homeCardsSheet[open]{display:flex;flex-direction:column}#homeCardsSheet::backdrop{background:rgba(20,24,32,.28);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+#homeCardsSheet .phSheetHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:18px 18px 8px}#homeCardsSheet h3{margin:0;font-size:20px;letter-spacing:-.035em}#homeCardsSheet .phSheetHead p{margin:3px 0 0;font-size:12px;color:#6d7890}#homeCardsSheet .phSheetClose{min-height:44px;border:0;border-radius:14px;background:#111217;color:#fff;font-weight:750;padding:0 14px;flex-shrink:0}
+#homeCardsSheet .phSheetTabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:6px 18px 10px;padding:4px;border-radius:14px;background:#e6ebf3}#homeCardsSheet .phSheetTabs button{min-height:40px;border:0;border-radius:11px;background:transparent;color:#52627c;font-weight:700;font-size:13px}#homeCardsSheet .phSheetTabs button[aria-pressed="true"]{background:#fff;color:#13213a;box-shadow:0 2px 8px rgba(35,45,65,.1)}
+#homeCardsSheet .phSheetBody{overflow:auto;-webkit-overflow-scrolling:touch;padding:0 14px 16px;min-height:0}#homeCardsSheet .phSheetGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}#homeCardsSheet .phSheetCard{display:flex;flex-direction:column;min-width:0;border-radius:18px;background:#fff;border:1px solid #e4e9f1;overflow:hidden}#homeCardsSheet .phSheetCard.on{border-color:#9cc9ff;box-shadow:0 0 0 1px #9cc9ff inset}#homeCardsSheet .phSheetOpen{flex:1;display:flex;flex-direction:column;align-items:flex-start;text-align:left;min-width:0;padding:12px 12px 8px;border:0;background:none;color:inherit}#homeCardsSheet .phIcon{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(140deg,#c8e2ffa3,#eef8ffb8);color:#1686ff;margin-bottom:6px}#homeCardsSheet .phIcon svg{width:18px;height:18px}#homeCardsSheet .phLabel{font-size:12px;color:#6d7890}#homeCardsSheet .phValue{display:block;max-width:100%;font-size:17px;line-height:1.1;font-weight:780;letter-spacing:-.035em;margin-top:3px;overflow-wrap:anywhere}#homeCardsSheet .phSub{display:block;font-size:11px;line-height:1.3;color:#6d7890;margin-top:3px;overflow-wrap:anywhere}#homeCardsSheet .phEmpty .phValue{color:#8a93a6}#homeCardsSheet .phSheetToggle{min-height:44px;border:0;border-top:1px solid #edf0f5;background:#f7f9fc;color:#1686ff;font-weight:750;font-size:13px}#homeCardsSheet .phSheetCard.on .phSheetToggle{background:#eaf4ff;color:#0b63c5}
+#homeCardsSheet .phSheetLink{display:flex;align-items:center;justify-content:center;gap:4px;width:100%;min-height:44px;margin-top:10px;border:0;background:none;color:#52627c;font-size:13px;font-weight:700}#homeCardsSheet .phSheetLink svg{width:14px;height:14px}
+#homeCardsSheet h4{margin:14px 4px 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#6d7890}#homeCardsSheet .phSheetHint{margin:0 4px 4px;font-size:12px;line-height:1.4;color:#52627c}#homeCardsSheet .phSheetEmpty{margin:0 4px;font-size:12px;color:#8a93a6}#homeCardsSheet .phSheetEmpty svg{width:12px;height:12px;vertical-align:-1px}
+#homeCardsSheet .phEditList{list-style:none;margin:0;padding:0;display:grid;gap:6px}#homeCardsSheet .phEditRow{display:flex;align-items:center;gap:8px;min-height:56px;padding:6px 6px 6px 10px;border-radius:16px;background:#fff;border:1px solid #e4e9f1}#homeCardsSheet .phEditRow[data-placement="pinned"]{border-color:#9cc9ff}#homeCardsSheet .phEditIcon{display:grid;place-items:center;width:30px;height:30px;flex-shrink:0;border-radius:10px;background:#eef5ff;color:#1686ff}#homeCardsSheet .phEditIcon svg{width:17px;height:17px}#homeCardsSheet .phEditText{flex:1;min-width:0}#homeCardsSheet .phEditText b{display:block;font-size:14px;line-height:1.2}#homeCardsSheet .phEditText small{display:block;font-size:11px;color:#6d7890;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#homeCardsSheet .phEditTools{display:flex;gap:4px;flex-shrink:0}#homeCardsSheet .phTool{display:grid;place-items:center;min-width:40px;height:44px;padding:0 6px;border:0;border-radius:12px;background:#f0f3f8;color:#33405a;font-size:16px;font-weight:750}#homeCardsSheet .phTool svg{width:16px;height:16px}#homeCardsSheet .phTool.on{background:#1686ff;color:#fff}#homeCardsSheet .phTool:disabled{opacity:.35}#homeCardsSheet .phTool.phAdd{font-size:13px;color:#1686ff;padding:0 12px}
+#homeCardsSheet .phSheetReset{width:100%;min-height:48px;margin-top:16px;border:1px solid #d7deea;border-radius:16px;background:#fff;color:#c2410c;font-weight:750}#homeCardsSheet .phSheetReset:disabled{color:#9aa3b5}
 #moreSheetV2{display:none;position:fixed;inset:0;z-index:190;background:rgba(20,24,32,.20);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}#moreSheetV2.open{display:block}.moreSheetCard{position:absolute;left:12px;right:12px;bottom:calc(82px + env(safe-area-inset-bottom));padding:10px;border-radius:28px;background:rgba(249,250,252,.94);border:1px solid rgba(255,255,255,.9);box-shadow:0 28px 80px rgba(20,25,35,.24)}.moreSheetCard>div:first-child{width:42px;height:5px;border-radius:999px;background:#d3d6dc;margin:2px auto 12px}.moreSheetGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.moreSheetGrid button{border:0;background:rgba(235,238,244,.76);border-radius:18px;min-height:58px;font-weight:720;color:#333941}.moreClose{width:100%;margin-top:8px;border:0;background:#111217;color:#fff;border-radius:18px;min-height:48px;font-weight:750}
 @media(max-width:700px){.top .tabs{display:none!important}.top{padding-bottom:10px!important}.phTop{margin-top:10px}.phTitle{font-size:48px}.phGrid{gap:10px}.phCard{min-height:166px;padding:17px;border-radius:24px}.phIcon{margin-bottom:22px;width:44px;height:44px}.phValue{font-size:31px}.phValue.phStoreValue{font-size:22px}.phWide{border-radius:26px;padding:19px}.phWideValue{font-size:38px}.bottomAppNav{grid-template-columns:repeat(5,1fr)!important}.bottomNavBtn{font-size:10px!important}.bottomNavBtn .bnIcon{font-size:22px!important}#premiumHomeV2 .phNextList li{grid-template-columns:26px minmax(0,1fr)}#premiumHomeV2 .phNextList small{grid-column:2;text-align:left;margin-top:-5px}}
 `;
@@ -295,8 +468,8 @@
   function buildHome(){
     const panel=document.getElementById('homePanel');if(!panel)return false;
     let box=document.getElementById('premiumHomeV2');if(!box){box=document.createElement('div');box.id='premiumHomeV2';const install=document.getElementById('installCard');if(install&&install.parentNode===panel)panel.insertBefore(box,install.nextSibling);else panel.insertBefore(box,panel.firstChild)}
-    const range=rangeInfo(),today=new Date(),cards=runtimeActivityCards(today),tour=runtimeTodayTour(today),archive=archiveSnapshot(),context=buildHomeContext(state,today,tour,archive),showNext=context.mode==='next'&&context.next,terrain=showNext?'':runtimeTerrainCard(tour),nextCard=showNext?buildNextDayCard(context,state):'';let rangeHtml='Aucune période générée',rangeSub='Crée ton prochain planning';
-    scheduleContextBoundary(today);
+    const range=rangeInfo(),today=new Date(),catalog=runtimeActivityCatalog(today),prefs=readPrefs(),custom=isCustomPrefs(prefs),cards=composeHomeCards(catalog,prefs),tour=runtimeTodayTour(today),archive=archiveSnapshot(),context=buildHomeContext(state,today,tour,archive),showNext=context.mode==='next'&&context.next,terrain=showNext?'':runtimeTerrainCard(tour),nextCard=showNext?buildNextDayCard(context,state):'';let rangeHtml='Aucune période générée',rangeSub='Crée ton prochain planning';
+    lastCatalog=catalog;scheduleContextBoundary(today);
     if(range){rangeHtml=fmtDate(range.start)+' → '+fmtDate(range.end);rangeSub=(range.weeks||'')+(range.weeks?' semaines':'')+(range.uniqueStores?' · '+range.uniqueStores+' magasins distincts':'')}
     const day=DAYS[(today.getDay()+6)%7];let todayRoute=[];
     /* dateForDay n'est pas exposé hors du noyau : la tournée du jour vient de la même
@@ -310,10 +483,11 @@
     const sector=String((state.profile&&state.profile.sectorName)||'Mon secteur').replace(/^samsung\s*[·:–—-]?\s*/i,'').trim()||'Mon secteur';
     const markup=`<div class="phTop"><div class="phBrandRow"><div class="phBrand"><img class="srBrandLogo" src="./app-icon.svg" alt="S-RUNNER"><span class="srBrandName">Store Runner</span><span class="srBrandSignature">S-RUNNER By Red①</span></div><div class="phHeaderContext"><button class="phBase" type="button" onclick="openDepartureSettings()" aria-label="Modifier le point de départ">${icon('pin')}<span class="phDepartureCopy"><span>${/^(ma position(?: actuelle)?)$/i.test(baseName())?'Ma position actuelle':'Départ'}</span><span class="phDepartureAddress"></span></span></button><span class="phSector">${esc(sector)} · ${activeStores().length} magasins</span></div></div><h2 class="phTitle">${esc(context.title)}</h2><p class="phTagline">${esc(daySummary)}</p></div>
     ${nextCard}${terrain}<section class="phVisitCard" aria-label="Vos visites">${showNext?'':(terrain?'':`<button class="phVisitLink" type="button" onclick="goTab('planPanel')"><span class="phVisitIcon">${icon('navigation')}</span><span class="phVisitText"><strong>${todayRoute.length?'Ta journée est prête':'Prépare ta journée'}</strong><span>${esc(summary)}</span></span><span class="phArrow">${icon('chevron')}</span></button>`)}<button class="phAssistant" type="button" onclick="toggleAssistant()"><span class="phSpark">${icon('spark')}</span><span>Tes magasins, tes priorités,<br>préparons ta prochaine tournée…</span>${icon('chevron')}</button></section>
-    <div class="phActivityHeading"><div><h3>Votre activité</h3></div><button type="button" onclick="goTab('historyPanel')">Voir tout ${icon('chevron')}</button></div>
+    <div class="phActivityHeading" data-home-mode="${custom?'custom':'auto'}"><div><h3>Votre activité</h3>${custom?'<p>Personnalisée</p>':''}</div><div class="phActivityTools"><button type="button" data-home-customize>Personnaliser</button><button type="button" data-home-all>Voir tout ${icon('chevron')}</button></div></div>
     <div class="phGrid" data-home-cards="${cards.length}">${activityMarkup(cards)}</div>
     <div class="phRange"><div><b>Planning actif</b><span>${esc(rangeHtml)} · ${esc(rangeSub)}</span></div><button type="button" onclick="goTab('planPanel')">Voir</button></div>`;
-    if(box.__lastMarkup!==markup){box.innerHTML=markup;box.__lastMarkup=markup;document.dispatchEvent(new CustomEvent('store-runner:home-rendered'))}return true
+    if(box.__lastMarkup!==markup){box.innerHTML=markup;box.__lastMarkup=markup;document.dispatchEvent(new CustomEvent('store-runner:home-rendered'))}
+    const sheet=document.getElementById('homeCardsSheet');if(sheet&&sheet.open)renderSheet();return true
   }
 
   function installMoreSheet(){if(document.getElementById('moreSheetV2'))return;const s=document.createElement('div');s.id='moreSheetV2';s.innerHTML='<div class="moreSheetCard"><div></div><div class="moreSheetGrid"><button data-go="appointmentsPanel">◷ Rendez-vous</button><button data-go="terrainPanel" data-terrain-fallback>➤ Mode Runner</button><button data-go="historyPanel">◴ Historique</button><button data-go="profilePanel">◎ Secteur</button><button data-go="importPanel">⇅ Données</button><button data-go="storesPanel">▤ Magasins</button></div><button class="moreClose" type="button">Fermer</button></div>';document.body.appendChild(s);s.addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b){s.classList.remove('open');if(typeof window.goTab==='function')window.goTab(b.dataset.go);return}if(e.target===s||e.target.closest('.moreClose'))s.classList.remove('open')})}
@@ -328,10 +502,12 @@
   async function boot(){for(let i=0;i<60;i++){run();observeHomeSignals();observePanels();if(document.getElementById('homePanel')&&document.getElementById('bottomAppNav')&&homeObserver)break;await new Promise(r=>setTimeout(r,100))}run();observeHomeSignals();observePanels()}
   function refreshWhenVisible(){if(document.hidden)return;run();observeHomeSignals();observePanels()}
 
-  const publicApi={buildActivityCards,buildTerrainCard,rankCards,openActions,opportunityFacts,plannedRouteForDate,nextPlannedTour,buildHomeContext};
+  const publicApi={buildActivityCards,buildActivityCatalog,composeHomeCards,normalizePrefs,isCustomPrefs,readPrefs,writePrefs,prefsOps,PREFS_KEY,CARD_IDS,buildTerrainCard,rankCards,openActions,opportunityFacts,plannedRouteForDate,nextPlannedTour,buildHomeContext};
   if(typeof module!=='undefined'&&module.exports)module.exports=publicApi;
   if(typeof window==='undefined'||typeof document==='undefined')return;
+  publicApi.openCards=openSheet;publicApi.closeCards=closeSheet;
   window.StoreRunnerHomeV204=publicApi;
+  document.addEventListener('click',onHomeClick);
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
   window.addEventListener('focus',refreshWhenVisible);
   window.addEventListener('pageshow',refreshWhenVisible);

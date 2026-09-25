@@ -25,6 +25,18 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'259',
+      title:'Ton accueil, tes cartes',
+      items:[
+        'Sur l’accueil, « Personnaliser » te laisse choisir les cartes de « Votre activité » : épingle celles qui comptent, change leur ordre, retire celles dont tu n’as pas besoin.',
+        '« Voir tout » montre toutes les cartes disponibles, même celles absentes de l’accueil, et permet de les ajouter ou de les retirer d’un geste.',
+        'Les places non épinglées continuent de suivre tes priorités du moment. « Réinitialiser » revient au mode automatique.',
+        'Tes choix restent enregistrés sur l’appareil, même après fermeture de l’app.',
+        'Toucher « À traiter maintenant » ou « Prochaine priorité » ouvre directement la fiche du magasin.',
+        'Le bandeau « Cette semaine » au-dessus de l’historique affiche les mêmes chiffres que l’accueil.'
+      ]
+    },
+    {
       version:'258',
       title:'Ta semaine, d’abord ce que tu as fait',
       items:[

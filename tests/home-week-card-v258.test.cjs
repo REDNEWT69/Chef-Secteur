@@ -81,11 +81,17 @@ let n=0;const pass=m=>{n++;console.log('PASS '+n+' · '+m)};
 
 /* --------------------------------------- 4. une seule source, aucun compteur ajouté */
 {
-  const home=read('home-refresh-v2.js');
-  const block=home.slice(home.indexOf("const L=api&&api.labels"),home.indexOf("candidates.push(card('week'"));
+  /* V259 : la mise en forme est StoreRunnerActivityMetrics.weekSummary, partagée par
+     l'accueil et le bandeau historique du noyau. */
+  const home=read('home-refresh-v2.js'),counting=read('visit-counting.js');
+  const block=home.slice(home.indexOf("if(m){\n      /* V258"),home.indexOf("candidates.push(card('week'"));
   assert(block.length>200);
   assert.doesNotMatch(block,/businessV2|\.visits\b|history|status==='completed'/,'la carte semaine ne relit aucune visite : elle n’affiche que les métriques');
-  assert.match(block,/m\.completedVisitsWeek/);assert.match(block,/m\.plannedStoresWeek/);assert.match(block,/m\.plannedVisitCreditsWeek/);
+  assert.match(block,/weekSummaryOf\(api,m\)/);
+  const fmt=counting.slice(counting.indexOf('function weekSummary(m)'),counting.indexOf('function todayTour'));
+  assert(fmt.length>200);
+  assert.doesNotMatch(fmt,/businessV2|\.visits\b|history|status==='completed'/,'le formateur ne relit aucune visite');
+  assert.match(fmt,/m\.completedVisitsWeek/);assert.match(fmt,/m\.plannedStoresWeek/);assert.match(fmt,/m\.plannedVisitCreditsWeek/);
   pass('la carte ne lit que StoreRunnerActivityMetrics (aucun recomptage dans l’accueil)');
 }
 
