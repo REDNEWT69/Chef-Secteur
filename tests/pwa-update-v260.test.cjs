@@ -187,7 +187,7 @@ process.on('beforeExit',()=>{if(!finished){console.error('FAIL: bloqué à : '+s
   step='7. activate : seuls les anciens caches de fichiers sont remplacés';
   {
     const w=boot();
-    for(const n of ['chef-secteur-stable-'+OTHER,'chef-secteur-stable-'+REV,'store-runner-autre','photos-utilisateur'])await w.cs.api.open(n);
+    for(const n of ['chef-secteur-stable-'+OTHER,cacheName(OTHER),NAME,'store-runner-autre','photos-utilisateur'])await w.cs.api.open(n);
     await w.run('activate');
     assert.deepEqual((await w.cs.api.keys()).sort(),[NAME,'photos-utilisateur','store-runner-autre'].sort());
     assert.equal(w.claimed(),1);
