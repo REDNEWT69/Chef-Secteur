@@ -101,10 +101,14 @@ assert.equal(firstRun.hasRealUserData(utilisateurExistant),true,'un utilisateur 
 assert.equal(firstRun.isPristineDemoState(utilisateurExistant),false,'une vraie sauvegarde ne doit jamais être prise pour la démo');
 
 /* 4. Le parcours doit nettoyer la graine AVANT l'onboarding, réutiliser l'ajout magasin
-   officiel et mémoriser son état hors du schéma métier. */
+   officiel, mémoriser son état hors du schéma métier et distinguer clairement une
+   restauration d'un utilisateur déjà existant. */
 assert.match(navSrc,/sanitizePristineDemoState\(state\)/,'la graine de démonstration doit être retirée au premier lancement');
 assert.match(navSrc,/StoreRunnerStoreAdd/,'le premier magasin doit passer par StoreRunnerStoreAdd');
 assert.match(navSrc,/store-runner-onboarding-v1/,'un marqueur dédié doit mémoriser le parcours');
+assert.match(navSrc,/data-srfr-import/,'la restauration doit rester accessible depuis le premier écran');
+assert.match(navSrc,/marker&&marker\.status==='importing'[\s\S]*?hasRealUserData\(state\)[\s\S]*?reason:'restored-data'/,'une restauration réelle doit terminer l’onboarding au redémarrage');
+assert.match(navSrc,/if\(hasRealUserData\(state\)\)[\s\S]*?reason:'existing-user'/,'un utilisateur existant sans marqueur doit être reconnu silencieusement');
 assert.doesNotMatch(navSrc,/localStorage\.setItem\([^\n]*onboarding/i,'le marqueur onboarding ne doit pas contourner __chefStorage');
 
-console.log('PASS: premier lancement sans fausses données, graine historique reconnue, sauvegardes existantes protégées.');
+console.log('PASS: premier lancement sans fausses données, restauration et sauvegardes existantes protégées.');
