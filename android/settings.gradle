@@ -1,0 +1,20 @@
+// Enveloppe Android (Trusted Web Activity) de la PWA Store Runner.
+// Aucun code métier ici : l'application ouvre https://store-runner.fr/ dans Chrome.
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'store-runner-twa'
+include ':app'

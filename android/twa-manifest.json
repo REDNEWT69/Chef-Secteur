@@ -1,0 +1,43 @@
+{
+  "packageId": "fr.storerunner.app",
+  "host": "store-runner.fr",
+  "name": "Store Runner",
+  "launcherName": "Store Runner",
+  "display": "standalone",
+  "orientation": "portrait",
+  "themeColor": "#F2F5FA",
+  "themeColorDark": "#F2F5FA",
+  "navigationColor": "#F2F5FA",
+  "navigationColorDark": "#F2F5FA",
+  "navigationDividerColor": "#00000000",
+  "navigationDividerColorDark": "#00000000",
+  "backgroundColor": "#F4F6FA",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://store-runner.fr/app-icon-512.png",
+  "maskableIconUrl": "https://store-runner.fr/app-icon-maskable-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./signing/upload-keystore.jks",
+    "alias": "upload"
+  },
+  "appVersion": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://store-runner.fr/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://store-runner.fr/",
+  "minSdkVersion": 24,
+  "additionalTrustedOrigins": [],
+  "displayOverride": [],
+  "retainedBundles": [],
+  "fingerprints": []
+}

@@ -1,0 +1,30 @@
+# Artefacts de build Gradle / Android : régénérés, jamais versionnés.
+.gradle/
+build/
+app/build/
+.kotlin/
+*.apk
+*.aab
+*.idsig
+*.ap_
+output-metadata.json
+
+# Machine locale et IDE.
+local.properties
+.idea/
+*.iml
+captures/
+.cxx/
+.externalNativeBuild/
+
+# Signature : aucune clé, aucun mot de passe dans Git (voir README.md).
+keystore.properties
+signing/
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.der
+*.pepk
+*.zip

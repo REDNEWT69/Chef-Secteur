@@ -1,0 +1,4 @@
+// Version du plugin Android fixée (jamais de « + ») : voir android/README.md.
+plugins {
+    id 'com.android.application' version '9.4.0' apply false
+}
