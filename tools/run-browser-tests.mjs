@@ -36,7 +36,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HOST = process.env.STORE_RUNNER_E2E_HOST || '127.0.0.1';
 const PORT = Number(process.env.STORE_RUNNER_E2E_PORT || 4173);
 const WORKFLOW = path.join(ROOT, '.github/workflows/reliability-checks.yml');
-const ONBOARDING_SKIP_PARAM = 'e2eOnboarding';
+const ONBOARDING_MODE_PARAM = 'e2eOnboarding';
 
 const TYPES = new Map(Object.entries({
   '.html': 'text/html; charset=utf-8',
@@ -104,7 +104,8 @@ async function indexAvecUtilisateurExistant(fichier) {
   return Buffer.from(source.replace('<head>', '<head>'+injection));
 }
 
-function creerServeur() {
+function creerServeur(options = {}) {
+  const skipOnboardingParDefaut = options.skipOnboarding === true;
   const serveur = http.createServer(async (req, res) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.setHeader('Allow', 'GET, HEAD');
@@ -133,12 +134,12 @@ function creerServeur() {
 
     // Les anciens specs navigateur testent chacun une fonction précise et partaient
     // historiquement d'un secteur déjà utilisable. Le nouveau premier lancement ne doit
-    // pas transformer 130 tests sans rapport en tests d'onboarding. Pour la suite locale
-    // uniquement, le serveur injecte donc AVANT le boot le même marqueur qu'aurait un
-    // utilisateur ayant déjà terminé l'accueil. Aucun code de production ne connaît ce
-    // mécanisme. Les specs premier-lancement retirent le paramètre et reçoivent le vrai
-    // index, ce qui teste bien le comportement automatique d'une installation neuve.
-    if (path.basename(fichier) === 'index.html' && url.searchParams.get(ONBOARDING_SKIP_PARAM) === 'skip') {
+    // pas transformer 130 tests sans rapport en tests d'onboarding. Pendant la suite E2E
+    // seulement, le serveur injecte AVANT le boot le même marqueur qu'aurait un utilisateur
+    // ayant déjà terminé l'accueil. `?e2eOnboarding=first-run` restitue l'index strictement
+    // réel pour le scénario dédié. Le mode --serve n'injecte jamais ce marqueur.
+    const scenarioPremierLancement = url.searchParams.get(ONBOARDING_MODE_PARAM) === 'first-run';
+    if (skipOnboardingParDefaut && !scenarioPremierLancement && path.basename(fichier) === 'index.html') {
       const corps = await indexAvecUtilisateurExistant(fichier);
       res.writeHead(200, {
         'Content-Type': typeDe(fichier),
@@ -227,9 +228,8 @@ async function principal(argv) {
   const serveulement = argv.includes('--serve');
   const specs = argv.filter(a => !a.startsWith('--'));
   const baseUrl = `http://${HOST}:${PORT}/`;
-  const testBaseUrl = `${baseUrl}?${ONBOARDING_SKIP_PARAM}=skip`;
 
-  const serveur = creerServeur();
+  const serveur = creerServeur({skipOnboarding:!serveulement});
   try {
     await demarrer(serveur);
   } catch (erreur) {
@@ -262,7 +262,7 @@ async function principal(argv) {
 
   let code;
   try {
-    code = await lancerPlaywright(aLancer, testBaseUrl);
+    code = await lancerPlaywright(aLancer, baseUrl);
   } finally {
     await arreter(serveur);
   }
