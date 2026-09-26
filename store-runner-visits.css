@@ -48,3 +48,13 @@
 #planPanel .timelineShell .pmvHead{background:transparent!important;padding-bottom:4px!important}
 #planPanel .timelineShell .pmvHint[hidden]{display:none!important}
 #planPanel .timelineShell .pmvHint{display:block!important;background:transparent!important;padding:1px 13px 0!important;margin:0 0 16px!important;line-height:1.35!important;position:relative;z-index:2}
+
+
+/* Mobile focus guard V261 */
+/* Safari/iOS agrandit automatiquement la page quand un contrôle focalisé fait
+   moins de 16 px. On ne grossit que le texte des champs, sans bloquer le pinch zoom. */
+@media(max-width:700px){
+  html body input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"]),
+  html body select,
+  html body textarea{font-size:16px!important}
+}
