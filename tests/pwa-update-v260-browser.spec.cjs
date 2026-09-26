@@ -24,8 +24,8 @@ const fs=require('fs'),os=require('os'),path=require('path'),http=require('http'
 const ROOT=path.join(__dirname,'..');
 const SW=fs.readFileSync(path.join(ROOT,'sw.js'),'utf8');
 const REV=SW.match(/const BUILD_REV = "([^"]+)"/)[1];
-const OLD='20260925-pwa261';
-const TARGET='20260926-pwa261';
+const OLD='20260926-pwa261';
+const TARGET=REV;
 const CACHE_SUFFIX=(SW.match(/const CACHE_NAME = "chef-secteur-stable-" \+ BUILD_REV(?: \+ "([^"]*)")?;/)||[])[1]||'';
 const cacheName=rev=>'chef-secteur-stable-'+rev+CACHE_SUFFIX;
 const NEXT=TARGET;
@@ -134,7 +134,7 @@ test('V260 : première installation sans rechargement parasite, hors ligne, réo
   await again.context.close();
 });
 
-test('V261.3 : 20260925-pwa261 → 20260926-pwa261 — proposition, activation et nouveau code malgré un index CDN ancien',async()=>{
+test('PR #439 : 20260926-pwa261 → build courant — nouveau shell malgré un index CDN #438 ancien',async()=>{
   test.setTimeout(150000);
   const {context,page,nav}=await install('open');
   await seed(page);

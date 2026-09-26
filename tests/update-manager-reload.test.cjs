@@ -413,6 +413,14 @@ process.on('beforeExit',()=>{if(!finished){console.error('FAIL: test bloqué (pr
     assert.notEqual((app.banner()||{}).titre,'Nouvelle version disponible','aucune rétrogradation proposée');
   }
 
+  step='PR #439 manifeste CDN ancien du même jour et de même version visible';
+  {
+    const app=makeApp({current:'20260926-r1-pwa-shell-order-261',latest:'20260926-pwa261'});
+    const r=await app.api.checkForUpdates(true);
+    assert.equal(r.available,false,'le build sans ordinal est antérieur au build r1 du même jour');
+    assert.notEqual((app.banner()||{}).titre,'Nouvelle version disponible','aucune rétrogradation vers le build #438');
+  }
+
   finished=true;
   console.log('PASS: V244/V260 — activation au controllerchange, un seul rechargement, pas de boucle, aucun rechargement parasite, saisie protégée, stockage écrit avant rechargement, données locales intactes.');
 })().catch(e=>{console.error(e);process.exit(1)});

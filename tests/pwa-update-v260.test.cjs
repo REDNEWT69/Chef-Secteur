@@ -174,6 +174,8 @@ process.on('beforeExit',()=>{if(!finished){console.error('FAIL: bloqué à : '+s
     assert.equal(await (await older.fetch('./','navigate')).text(),page(REV),'page réseau plus ancienne (CDN en retard) : la version installée passe devant');
     const sameVisibleOlder=clone(makeNet(defaultRoutes('20260924-hotfix261')));
     assert.equal(await (await sameVisibleOlder.fetch('./','navigate')).text(),page(REV),'hotfix daté plus ancien avec le même suffixe 261 : le shell installé passe devant');
+    const sameDayOlder=clone(makeNet(defaultRoutes('20260926-pwa261')));
+    assert.equal(await (await sameDayOlder.fetch('./','navigate')).text(),page(REV),'build sans ordinal du même jour et de même version : le shell r1 installé passe devant');
     const error=clone(makeNet(defaultRoutes(REV,[[u=>new URL(u).pathname==='/',()=>new Response('err',{status:502})]])));
     assert.equal(await (await error.fetch('./','navigate')).text(),page(REV),'erreur serveur : la version installée');
     const hang=clone(makeNet(defaultRoutes(REV,[[u=>new URL(u).pathname==='/',()=>new Promise(()=>{})]])),{timeScale:40});

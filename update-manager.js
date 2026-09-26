@@ -9,18 +9,19 @@
   const currentBuild=String(window.__STORE_RUNNER_BUILD_REV||'inconnue');
   const state={current:currentBuild,latest:currentBuild,displayVersion:displayVersion(currentBuild),status:'idle',lastCheckedAt:0,error:null};
 
-  /* La date de publication départage les hotfixes qui conservent la même version
-     visible (20260925-pwa261 → 20260926-pwa261). Sans elle, un version.json CDN ancien
-     était pris pour une autre mise à jour 261 et pouvait faire repartir vers l'arrière. */
+  /* La date puis l'ordinal rN départagent les hotfixes qui conservent la même version
+     visible. Sans ordinal, un build vaut r0 pour rester compatible avec les révisions
+     publiées avant #439. Un version.json CDN ancien ne peut donc plus faire rétrograder. */
   function revisionParts(build){
     const value=String(build||'');
-    const date=value.match(/^(\d{8})(?:-|$)/),version=value.match(/(\d+)$/);
-    return{date:date?Number(date[1]):NaN,version:version?Number(version[1]):NaN};
+    const date=value.match(/^(\d{8})(?:-|$)/),version=value.match(/(\d+)$/),sequence=value.match(/^\d{8}-r(\d+)(?:-|$)/);
+    return{date:date?Number(date[1]):NaN,version:version?Number(version[1]):NaN,sequence:sequence?Number(sequence[1]):0};
   }
   function olderThanCurrent(build){
     const a=revisionParts(build),b=revisionParts(currentBuild);
     if(Number.isFinite(a.date)&&Number.isFinite(b.date)&&a.date!==b.date)return a.date<b.date;
-    return Number.isFinite(a.version)&&Number.isFinite(b.version)&&a.version<b.version;
+    if(Number.isFinite(a.version)&&Number.isFinite(b.version)&&a.version!==b.version)return a.version<b.version;
+    return a.sequence<b.sequence;
   }
   function updateAvailable(){
     return !!state.latest&&state.latest!==state.current&&!olderThanCurrent(state.latest);
