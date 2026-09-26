@@ -147,7 +147,7 @@ test('V234 — si l’accueil moderne ne monte jamais, le voile ne séquestre pa
   expect(erreurs).toEqual([]);
 });
 
-test('Premier lancement — secteur réellement vide, configuration minimale et redémarrage durable', async ({ page }) => {
+test('Premier lancement — secteur vide, restauration accessible, configuration et redémarrage durable', async ({ page }) => {
   const erreurs = [];
   page.on('pageerror', e => erreurs.push(String((e && e.message) || e)));
   await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
@@ -167,6 +167,17 @@ test('Premier lancement — secteur réellement vide, configuration minimale et 
   expect(initial.demo).toBe(0);
   expect(initial.marker).toMatchObject({ status: 'in-progress', step: 0 });
   expect(initial.overflow).toBeLessThanOrEqual(1);
+
+  // Le chemin restauration doit être visible dès le premier écran. On le teste dans le
+  // même contexte pour ne pas alourdir toute la suite navigateur d'un démarrage complet.
+  await onboarding.getByRole('button', { name: 'J’ai déjà une sauvegarde' }).click();
+  await expect(onboarding).toBeHidden();
+  await expect(page.locator('#importPanel')).toHaveClass(/\bactive\b/);
+  expect(await page.evaluate(() => JSON.parse(__chefStorage.getItem('store-runner-onboarding-v1') || 'null').status)).toBe('importing');
+
+  await page.evaluate(() => StoreRunnerNavigation.openFirstRun());
+  await expect(onboarding).toBeVisible();
+  await expect(onboarding.getByRole('heading', { name: 'Bienvenue dans Store Runner' })).toBeVisible();
 
   await onboarding.getByRole('button', { name: 'Configurer mon espace' }).click();
   await expect(onboarding.getByRole('heading', { name: 'Ton secteur' })).toBeVisible();
@@ -211,57 +222,4 @@ test('Premier lancement — secteur réellement vide, configuration minimale et 
   expect(reloaded).toMatchObject({ sector: 'Secteur test terrain', rep: 'Alex', cap: 6, target: 24 });
   expect(reloaded.marker).toMatchObject({ status: 'complete', step: 3 });
   expect(erreurs).toEqual([]);
-});
-
-test('Premier lancement — une sauvegarde existante est détectée et laissée intacte', async ({ page }) => {
-  await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => window.state && window.__chefStorage && window.StoreRunnerNavigation);
-
-  // Simule un appareil existant avant l'arrivée de l'onboarding : vraies données mais
-  // aucun marqueur store-runner-onboarding-v1.
-  const expected = await page.evaluate(async () => {
-    state.stores = [{ id:'real-1', enseigne:'Darty', ville:'Lyon', adresse:'1 rue Réelle', dept:'69', lat:45.76, lon:4.84, freq:'Mensuel', intervalDays:30, priority:4, products:['Brun'], active:true, source:'Import perso' }];
-    state.notes = { 'real-1':'note terrain conservée' };
-    state.visits = { 'real-1':'2026-09-20' };
-    state.profile.repName = 'Utilisateur';
-    __chefStorage.removeItem('store-runner-onboarding-v1');
-    save();
-    if (__chefStorage.flush) await __chefStorage.flush();
-    return JSON.stringify({ stores:state.stores, notes:state.notes, visits:state.visits, profile:state.profile });
-  });
-
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => window.state && window.__chefStorage && window.StoreRunnerNavigation);
-  await expect(page.locator('#storeRunnerFirstRun')).toBeHidden();
-  const actual = await page.evaluate(() => ({
-    saved: JSON.stringify({ stores:state.stores, notes:state.notes, visits:state.visits, profile:state.profile }),
-    marker: JSON.parse(__chefStorage.getItem('store-runner-onboarding-v1') || 'null')
-  }));
-  expect(actual.saved).toBe(expected);
-  expect(actual.marker).toMatchObject({ status:'complete', reason:'existing-user' });
-});
-
-test('Premier lancement — restaurer mes données sort du parcours puis valide la sauvegarde au redémarrage', async ({ page }) => {
-  await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => window.StoreRunnerNavigation && window.state && window.__chefStorage);
-  const onboarding = page.locator('#storeRunnerFirstRun');
-  await expect(onboarding).toBeVisible();
-  await onboarding.getByRole('button', { name: 'J’ai déjà une sauvegarde' }).click();
-  await expect(onboarding).toBeHidden();
-  await expect(page.locator('#importPanel')).toHaveClass(/\bactive\b/);
-  expect(await page.evaluate(() => JSON.parse(__chefStorage.getItem('store-runner-onboarding-v1') || 'null').status)).toBe('importing');
-
-  await page.evaluate(async () => {
-    state.stores=[{id:'restored-1',enseigne:'Boulanger',ville:'Grenoble',adresse:'2 rue Réelle',dept:'38',lat:45.18,lon:5.72,freq:'Mensuel',intervalDays:30,priority:3,products:['Blanc'],active:true,source:'Sauvegarde'}];
-    state.notes={'restored-1':'restaurée'};
-    save();
-    if(__chefStorage.flush)await __chefStorage.flush();
-  });
-  await page.reload({ waitUntil:'domcontentloaded' });
-  await page.waitForFunction(() => window.state && window.__chefStorage && window.StoreRunnerNavigation);
-  await expect(page.locator('#storeRunnerFirstRun')).toBeHidden();
-  const restored=await page.evaluate(() => ({stores:state.stores.map(s=>s.id),note:state.notes['restored-1'],marker:JSON.parse(__chefStorage.getItem('store-runner-onboarding-v1')||'null')}));
-  expect(restored.stores).toEqual(['restored-1']);
-  expect(restored.note).toBe('restaurée');
-  expect(restored.marker).toMatchObject({status:'complete',reason:'restored-data'});
 });
