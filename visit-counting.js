@@ -71,25 +71,10 @@ function visitDuration(entry,stateArg){
   return Math.max(15,Math.min(480,Math.round(fallback)))
 }
 function routeVisitMinutes(route,stateArg){return (route||[]).reduce((n,s)=>n+visitDuration(s,stateArg),0)}
-function isBoulanger(entry){const store=canonicalStore(entry),brand=norm(store&&store.enseigne);return /(^| )boulanger( |$)/.test(brand)}
-/*
- * Boulanger garde sa réserve de capacité uniquement quand CE magasin compte réellement
- * double. Si l'utilisateur règle un Boulanger précis à 1 visite, le planificateur respecte
- * aussi ce choix au lieu de conserver une règle cachée contradictoire.
- */
-function planningCapacityActive(){
-  try{
-    if(window.__storeRunnerPlanningGenerationActive)return true;
-    const button=document.getElementById('generateRangeBtn');
-    return !!(button&&button.disabled);
-  }catch(e){return false}
-}
-function planningVisitCredit(store){
-  const actual=visitCredit(store);
-  if(actual<=1||!isBoulanger(store)||!planningCapacityActive())return actual;
-  const max=Math.max(1,Math.min(8,Number(window.state&&state.settings&&state.settings.maxVisitsPerDay)||4));
-  return Math.max(actual,Math.max(1,max-1));
-}
+/* V261.2 — la capacité planning n'a plus de règle cachée par enseigne.
+   Un passage consomme exactement son vrai crédit métier ; le seul plafond est
+   settings.maxVisitsPerDay, choisi par l'utilisateur dans Réglages. */
+function planningVisitCredit(store){return visitCredit(store)}
 function planStores(plan,days){return (days||DAYS).reduce((n,d)=>n+((plan&&Array.isArray(plan[d]))?plan[d].length:0),0)}
 function planCredits(plan,days){return (days||DAYS).reduce((n,d)=>n+routeCredits((plan&&plan[d])||[]),0)}
 /* Un magasin ne doit pas compter pour deux magasins distincts selon que l'archive en a
