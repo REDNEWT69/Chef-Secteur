@@ -52,7 +52,10 @@ test('V261.4 : recalcul du planning respecte seulement le plafond de crédits sa
 test('V261.4 : cas terrain Boulanger 2 + Carrefour 1 + Darty 2 tient dans une capacité 6',async({page})=>{
   page.on('dialog',d=>d.accept());
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>window.state&&window.StoreVisitCounting&&typeof window.storeRunnerRecalculateRemainingWeek==='function');
+  /* Le recalcul lit les jours travaillés dans le DOM : attendre la fin du parsing, comme le
+     fait le voile de démarrage pour l'utilisateur (V262 : sans cela le test dépendait du
+     moment exact où Chromium repeint pendant le chargement). */
+  await page.waitForFunction(()=>window.state&&window.StoreVisitCounting&&typeof window.storeRunnerRecalculateRemainingWeek==='function'&&document.readyState!=='loading'&&document.querySelector('input[data-day]'));
   const seeded=await page.evaluate(()=>{
     const mk=(id,enseigne,ville)=>({id,enseigne,ville,adresse:'1 rue test',dept:'99',active:true,lat:45.7,lon:4.8,priority:3});
     const boulanger=mk('boulanger-fixed','Boulanger','Lyon Les Cordeliers'),carrefour=mk('carrefour-fixed','Carrefour','Vénissieux'),darty=mk('darty-fixed','Darty','Bron');

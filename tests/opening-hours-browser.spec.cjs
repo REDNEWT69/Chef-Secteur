@@ -68,6 +68,8 @@ test('V1 horaires : saisie, défauts Boulanger/Darty, planning et hors ligne à 
 
   await page.evaluate(() => window.openStoreQuick('hours-1','Lundi','08:30'));
   const hoursButton=page.locator('#openingHoursQuickBtn');
+  /* V262 — Horaires est rangé dans « Plus d'actions ». */
+  await page.locator('#sqMoreBtn').tap();
   await expect(hoursButton).toBeVisible();
   const buttonBox=await hoursButton.boundingBox();
   if(!buttonBox)throw new Error('Bouton Horaires introuvable');

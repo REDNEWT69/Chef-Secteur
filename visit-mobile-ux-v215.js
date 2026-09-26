@@ -16,7 +16,10 @@ function ensureStyle(){
   if(!root.document||root.document.getElementById('sr-visit-v215-style'))return;
   const s=root.document.createElement('style');s.id='sr-visit-v215-style';
   s.textContent=`
-#${DIALOG_ID}.srVisitV215{position:relative;scroll-behavior:smooth;scroll-padding-top:126px}
+/* V262 — la visite reste ancrée à l'écran : en « relative », une modale de la couche
+   supérieure est positionnée par rapport au document ; ouverte depuis une page défilée,
+   son en-tête (Fermer, onglets) sortait de l'écran. « fixed » garde le repère des enfants. */
+#${DIALOG_ID}.srVisitV215{position:fixed;scroll-behavior:smooth;scroll-padding-top:126px}
 #${DIALOG_ID} .srVisitPerfFoldV215{margin:10px 0 12px;border:1px solid #dfe5ef;border-radius:16px;background:#f8faff;overflow:hidden}
 #${DIALOG_ID} .srVisitPerfFoldV215>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:48px;padding:9px 11px;cursor:pointer}
 #${DIALOG_ID} .srVisitPerfFoldV215>summary::-webkit-details-marker{display:none}

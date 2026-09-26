@@ -8,12 +8,20 @@ assert.match(planning,/#planPanel #dayTabs\{[^}]*display:flex!important;[^}]*ove
 assert.match(planning,/#planPanel #dayTabs \.dayTab\{[^}]*flex:1 1 0!important;[^}]*touch-action:pan-x/,'les boutons de jour ne doivent pas absorber le geste horizontal');
 assert.match(planning,/#planPanel #dayTabs \.dayTab\{[^}]*min-width:56px!important;[^}]*max-width:96px!important/,'les jours doivent se répartir sur la largeur disponible pour éviter qu’un jour soit tronqué à 390px');
 
-assert.match(visits,/#storeQuickSheet \.sheetActions\{grid-template-columns:1fr 1fr!important\}/,'la fiche magasin doit rester une grille compacte à deux colonnes');
-assert.match(visits,/#pinQuickStoreBtn\{order:40\}/,'Poser ce magasin doit ouvrir la rangée compacte terrain');
-assert.match(visits,/#storePhotosQuickBtn\{order:41;grid-column:auto!important\}/,'Photos doit rester à côté de Poser ce magasin');
-assert.match(visits,/button\[onclick\*="fullStoreFromQuick"\]\{order:50;grid-column:auto!important\}/,'Voir la fiche doit ouvrir la rangée de sortie');
-assert.match(visits,/#srReportQuickBtn\{order:51;grid-column:auto!important\}/,'Sortie magasin doit rester à côté de Voir la fiche');
-assert.match(visits,/#openingHoursQuickBtn\{order:60;grid-column:1\/-1!important\}/,'Horaires doit occuper toute la dernière ligne');
+/* V262 — fiche magasin : Démarrer seul en tête, puis Itinéraire | Note | Photos, puis
+   Opportunités | Plus d'actions ; tout autre bouton (présent ou futur) est replié. */
+const core=fs.readFileSync(__dirname+'/../src/chef-secteur.html','utf8');
+assert.match(visits,/#storeQuickSheet \.sheetActions\[data-sr-more\]\{grid-template-columns:repeat\(6,minmax\(0,1fr\)\)!important/,'la fiche magasin doit rester une grille compacte');
+assert.match(visits,/\[data-sr-more\]>#srQuickStart\{order:10;grid-column:1\/-1!important/,'Démarrer la visite doit rester la seule action pleine largeur en tête');
+assert.match(visits,/\[data-sr-more\]>button\[onclick\*="mapsFromQuick"\]\{order:20;grid-column:span 2!important\}/,'Itinéraire doit ouvrir la rangée du quotidien');
+assert.match(visits,/\[data-sr-more\]>button\[onclick\*="focusQuickNote"\]\{order:21;grid-column:span 2!important\}/,'Note doit suivre Itinéraire');
+assert.match(visits,/\[data-sr-more\]>#storePhotosQuickBtn\{order:22;grid-column:span 2!important\}/,'Photos doit fermer la rangée du quotidien');
+assert.match(visits,/\[data-sr-more="closed"\]>:not\(#srQuickStart\):not\(\[onclick\*="mapsFromQuick"\]\):not\(\[onclick\*="focusQuickNote"\]\):not\(#storePhotosQuickBtn\):not\(#srOpportunityQuickBtn\):not\(#sqMoreBtn\)\{display:none!important\}/,'les actions rares doivent être repliées par défaut, y compris celles ajoutées plus tard');
+assert.match(core,/<div class="sheetActions" data-sr-more="closed">/,'la fiche doit s’ouvrir repliée');
+assert.match(core,/id="sqMoreBtn" aria-expanded="false"[^>]*onclick="toggleQuickMore\(\)"/,'« Plus d’actions » doit être un vrai bouton de dépliage accessible');
+assert.match(core,/<div class="sheetNoteSave"><button type="button" class="primary" onclick="saveQuickNote\(\)">Enregistrer la note<\/button><\/div>/,'Enregistrer la note doit suivre directement la note');
+assert.doesNotMatch(core,/class="sheetBottom"/,'plus de rangée du bas séparée de la note');
+assert.match(core,/window\.closeStoreQuick=[^\n]*window\.toggleQuickMore\(false\)/,'la fiche doit se rouvrir repliée');
 
 assert.match(profile,/function acquireBestPosition\(/,'la localisation doit passer par une phase d’affinage');
 assert.match(profile,/watchPosition\(/,'la localisation doit pouvoir recevoir plusieurs fixes GPS');

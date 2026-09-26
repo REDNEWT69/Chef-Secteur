@@ -162,6 +162,9 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
     return {id,day,before:route.map(s=>s.id)};
   });
   const start=page.locator('#startQuickStoreFirstBtn');
+  /* V262 — les actions de journée sont rangées dans « Plus d'actions ». */
+  await expect(start).toBeHidden();
+  await page.locator('#sqMoreBtn').tap();
   await expect(start).toBeVisible();
   const startBox=await start.boundingBox();
   if(!startBox)throw new Error('Bouton Commencer par ici introuvable');

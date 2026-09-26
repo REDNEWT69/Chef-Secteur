@@ -1,4 +1,4 @@
-const BUILD_REV = "20260926-r4-onboarding-261";
+const BUILD_REV = "20260926-r5-mobile-262";
 /* V261.2 hotfix : même révision applicative, nouveau namespace de cache afin que les
    PWA déjà installées récupèrent le correctif de capacité à la source (visit-counting.js)
    sans mélanger ancien et nouveau shell. Le BUILD_REV reste V261 : aucune migration. */
@@ -16,7 +16,7 @@ const CORE_SHELL = [
   "./performance-ui-v190.js", "./assistant-performance-context-v192.js", "./weekly-brief-v246.js",
   "./weekly-brief-ui-v246.js", "./weekly-brief-import-v246b.js", "./visit-mobile-ux-v215.js",
   "./visit-mobile-tabs-v216.js", "./cuisiniste-contracts-v193.js",
-  "./cuisiniste-contract-proposal-v225.js", "./cuisiniste-followup-v229.js", "./region-stores.js", "./store-add-v261.js",
+  "./cuisiniste-contract-proposal-v225.js", "./cuisiniste-followup-v229.js", "./region-stores.js", "./store-add-v261.js", "./mobile-ux-v262.js",
   "./region-stores.css", "./region-fetch-resilience.js", "./official-catalog.js",
   "./manifest.webmanifest", "./app-icon.svg", "./store-runner-branding.js",
   "./navigation-controller.js", "./profile-controller.js", "./calendar-oauth.js",
