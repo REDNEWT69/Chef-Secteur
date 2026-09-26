@@ -7,6 +7,11 @@
 const { test, expect } = require('@playwright/test');
 
 const APP_URL = process.env.STORE_RUNNER_E2E_URL || 'http://127.0.0.1:4173/';
+const FIRST_RUN_URL = (() => {
+  const url = new URL(APP_URL);
+  url.searchParams.delete('e2eOnboarding');
+  return url.toString();
+})();
 const ANCIEN_ACCUEIL = ['#homePanel .homeHero', '#homeKpis', '#homePriority', '#homeNext', '#homePanel>.sectionTitle'];
 
 test.use({
@@ -150,7 +155,7 @@ test('V234 — si l’accueil moderne ne monte jamais, le voile ne séquestre pa
 test('Premier lancement — secteur vide, restauration accessible, configuration et redémarrage durable', async ({ page }) => {
   const erreurs = [];
   page.on('pageerror', e => erreurs.push(String((e && e.message) || e)));
-  await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+  await page.goto(FIRST_RUN_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.StoreRunnerNavigation && window.state && document.getElementById('storeRunnerFirstRun'));
 
   const onboarding = page.locator('#storeRunnerFirstRun');
