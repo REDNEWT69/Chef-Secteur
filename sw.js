@@ -1,4 +1,4 @@
-const BUILD_REV = "20260926-r5-mobile-262";
+const BUILD_REV = "20260926-r6-twa-icons-262";
 /* V261.2 hotfix : même révision applicative, nouveau namespace de cache afin que les
    PWA déjà installées récupèrent le correctif de capacité à la source (visit-counting.js)
    sans mélanger ancien et nouveau shell. Le BUILD_REV reste V261 : aucune migration. */
@@ -18,7 +18,8 @@ const CORE_SHELL = [
   "./visit-mobile-tabs-v216.js", "./cuisiniste-contracts-v193.js",
   "./cuisiniste-contract-proposal-v225.js", "./cuisiniste-followup-v229.js", "./region-stores.js", "./store-add-v261.js", "./mobile-ux-v262.js",
   "./region-stores.css", "./region-fetch-resilience.js", "./official-catalog.js",
-  "./manifest.webmanifest", "./app-icon.svg", "./store-runner-branding.js",
+  "./manifest.webmanifest", "./app-icon.svg", "./app-icon-192.png", "./app-icon-512.png",
+  "./app-icon-maskable-512.png", "./store-runner-branding.js",
   "./navigation-controller.js", "./profile-controller.js", "./calendar-oauth.js",
   "./planning-generation-controller.js", "./planning-cascade-v181.js",
   "./calendar-enhancements.js", "./ui-polish.js", "./route-polish.js", "./planning-ui-fixes.js",
