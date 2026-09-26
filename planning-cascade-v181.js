@@ -18,13 +18,11 @@ function dayName(date){const d=parse(date),n=d&&d.getDay();return n>=1&&n<=6?DAY
 function storeId(s){return String((s&&s.id)||'')}
 function storeName(s){return (String((s&&s.enseigne)||'Magasin')+' '+String((s&&s.ville)||'').trim()).trim()}
 function actualCredit(s){try{if(window.StoreVisitCounting&&typeof StoreVisitCounting.credit==='function')return Math.max(1,Number(StoreVisitCounting.credit(s))||1)}catch(e){}return 1}
-function planningCredit(s){try{if(typeof window.storeVisitCredit==='function')return Math.max(1,Number(window.storeVisitCredit(s))||1)}catch(e){}return actualCredit(s)}
+/* V261.4 : le recalcul propriétaire suit exactement les crédits métier. Il n'a plus
+   aucune réserve ou incompatibilité cachée par enseigne : maxVisitsPerDay est le seul plafond. */
+function planningCredit(s){return actualCredit(s)}
 function routeCapacity(route){return (route||[]).reduce((n,s)=>n+planningCredit(s),0)}
 function actualRouteCredits(route){return (route||[]).reduce((n,s)=>n+actualCredit(s),0)}
-function currentStore(s){return (state.stores||[]).find(row=>storeId(row)===storeId(s))||s}
-function isBoulanger(s){return /\bboulanger\b/.test(norm(currentStore(s).enseigne))}
-function boulangerCount(route){return (route||[]).filter(isBoulanger).length}
-function boulangerConflict(route){const list=route||[],count=boulangerCount(list);return count>1||(count===1&&list.some(s=>!isBoulanger(s)&&actualCredit(s)>1))}
 function routeFits(route,day,date){const api=window.StoreOpeningHoursV1;return !api||typeof api.routeFits!=='function'||api.routeFits(route,day,state,{date})}
 function count(plan){return DAYS.reduce((n,d)=>n+((plan&&plan[d])||[]).length,0)}
 function planSignature(plan){return DAYS.map(day=>((plan&&plan[day])||[]).map(storeId).join('|')).join('||')}
@@ -34,8 +32,7 @@ function lockDay(id,week){try{if(typeof window.storeRunnerLockDayForWeek==='func
 function appointmentDay(id,mon){for(const day of DAYS){const date=dayDate(mon,day);if((state.appointments||[]).some(a=>String(a&&a.storeId)===String(id)&&String(a&&a.date||'').slice(0,10)===date))return day}return''}
 function blocks(e){if(!e)return false;if(e.inferredAway)return true;const text=norm((e.title||'')+' '+(e.location||'')+' '+(e.calendar||'')),hard=['formation','deplacement','seminaire','conge','vacances','salon professionnel','indisponible','indisponibilite','absence','absent','journee bloquee','jour bloque','repos','hors secteur'];if(hard.some(w=>text.includes(w))||/\bparis\b/.test(text))return true;return !!(e.planningBlock&&!e.allDay)}
 function blocked(date){try{return (typeof window.calendarEventsForDate==='function'?window.calendarEventsForDate(date):[]).some(blocks)}catch(e){return false}}
-function fixedError(day,route,max){const actual=actualRouteCredits(route),cap=routeCapacity(route),rows=(route||[]).map(s=>storeName(s)+' ('+actualVisitCreditSafe(s)+')');let m=day+' contient déjà '+actual+' crédit'+(actual>1?'s':'')+' fixe'+(actual>1?'s':'')+(rows.length?' : '+rows.join(' + '):'')+'. Ton maximum est réglé sur '+max+'. ';if(boulangerConflict(route)||cap>max&&actual<=max)m+='La règle Boulanger n’autorise qu’un seul magasin à 1 crédit à ses côtés. Libère ou déplace le magasin incompatible. ';else if(actual>max)m+=(actual<=8?'Passe-le à '+actual+' dans Réglages ou libère une visite. ':'Augmente le maximum dans Réglages si c’est volontaire, ou libère une visite. ');return m+'Rien n’a été changé.'}
-function actualVisitCreditSafe(s){return actualCredit(s)}
+function fixedError(day,route,max){const actual=actualRouteCredits(route),rows=(route||[]).map(s=>storeName(s)+' ('+actualCredit(s)+')');let m=day+' contient déjà '+actual+' crédit'+(actual>1?'s':'')+' fixe'+(actual>1?'s':'')+(rows.length?' : '+rows.join(' + '):'')+'. Ton maximum est réglé sur '+max+'. ';if(actual>max)m+=(actual<=8?'Passe-le à '+actual+' dans Réglages ou libère une visite. ':'Augmente le maximum dans Réglages si c’est volontaire, ou libère une visite. ');return m+'Rien n’a été changé.'}
 function keyOf(s){const id=storeId(s);return id?'id|'+id:norm(s&&s.enseigne)+'|'+norm(s&&s.ville)+'|'+norm(s&&s.adresse)}
 function stats(archive,start,end){let stores=0,visits=0;const unique=new Set();for(const [key,snap] of Object.entries(archive||{})){const mon=parse((snap&&snap.weekMonday)||key);if(!mon||!snap||!snap.plan)continue;for(let i=0;i<DAYS.length;i++){const date=iso(add(mon,i));if(date<start||date>end)continue;for(const s of snap.plan[DAYS[i]]||[]){stores++;visits+=actualCredit(s);unique.add(keyOf(s))}}}return{stores,visits,uniqueStores:unique.size}}
 function cascadeRange(archive,startWeek,lastWeek,days){const previous=load(RANGE_KEY,null)||{},priorEnd=parse(previous.end),cascadeEnd=add(parse(lastWeek)||parse(startWeek),5),end=iso(priorEnd&&priorEnd>cascadeEnd?priorEnd:cascadeEnd),start=startWeek,startMon=monday(parse(start)),endMon=monday(parse(end)),weeks=Math.max(1,Math.round((endMon-startMon)/604800000)+1),s=stats(archive,start,end);return Object.assign({},previous,{start,end,weeks,workDays:days.slice(),uniqueStores:s.uniqueStores,totalStores:s.stores,totalVisits:s.visits,rotation:'cascade-credit-v181',updatedAt:new Date().toISOString()})}
@@ -43,7 +40,7 @@ function canStay(plan,store,day,date,max,days){
   if(!days.includes(day)||blocked(date))return false;
   const id=storeId(store),route=plan[day]||[],trial=route.concat(store);
   if(DAYS.some(d=>(plan[d]||[]).some(s=>storeId(s)===id)))return false;
-  return boulangerCount(trial)<=1&&routeCapacity(trial)<=max&&routeFits(trial,day,date);
+  return routeCapacity(trial)<=max&&routeFits(trial,day,date);
 }
 function build(){
   if(!window.state||!state.plan)return{ok:false,error:'Aucun planning à recalculer.'};
@@ -78,7 +75,7 @@ function build(){
 
   /* Puis on relit chaque journée dans son ordre d'origine. Les éléments fixes restés sur
      le même jour gardent leur position relative ; chaque autre visite future est conservée
-     si la journée reste compatible avec capacité, Boulanger, horaires et Agenda. */
+     si la journée reste compatible avec capacité, horaires et Agenda. */
   for(const key of Object.keys(entries).sort())for(const day of DAYS){
     const plan=weekPlan(key),rows=entries[key].filter(item=>item.day===day).sort((a,b)=>a.index-b.index);
     for(const item of rows){
@@ -89,13 +86,12 @@ function build(){
     }
   }
 
-  /* V254.2 : une journée déjà fixée aujourd'hui peut avoir été volontairement chargée
+  /* V261.4 : une journée déjà fixée aujourd'hui peut avoir été volontairement chargée
      au-delà du plafond. On la conserve telle quelle, mais elle devient fermée à tout ajout.
-     Les futures journées surchargées restent refusées, et la règle Boulanger reste stricte. */
+     Pour les jours futurs, le seul critère de capacité est le total de crédits métier. */
   for(const [key,plan] of Object.entries(weeks)){const wm=parse(key);for(const day of DAYS){
     const date=dayDate(wm,day),route=plan[day]||[],actual=actualRouteCredits(route),cap=routeCapacity(route);
     if(date<today)continue;
-    if(boulangerConflict(route)||(cap>max&&actual<=max))return{ok:false,error:fixedError(day,route,max)};
     if(cap>max){if(date===today&&actual>max){overCapacityKept.push({week:key,day,date,actual,max});continue}return{ok:false,error:fixedError(day,route,max)}}
   }}
 
@@ -107,7 +103,7 @@ function build(){
       const date=iso(cursor),day=dayName(date);
       if(day&&days.includes(day)&&!blocked(date)){
         const wk=iso(monday(cursor)),plan=weekPlan(wk),route=plan[day],id=storeId(item.store),trial=route.concat(item.store);
-        if(!DAYS.some(d=>plan[d].some(s=>storeId(s)===id))&&boulangerCount(trial)<=1&&routeCapacity(trial)<=max&&routeFits(trial,day,date)){
+        if(!DAYS.some(d=>plan[d].some(s=>storeId(s)===id))&&routeCapacity(trial)<=max&&routeFits(trial,day,date)){
           route.push(item.store);placed=true;if(date>latest)latest=date;break;
         }
       }
