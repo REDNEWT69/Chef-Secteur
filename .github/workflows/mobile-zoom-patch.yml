@@ -43,27 +43,12 @@ jobs:
           if marker not in css:
               css += '''\n\n/* Mobile focus guard V261 */\n/* Safari/iOS agrandit automatiquement la page quand un contrôle focalisé fait\n   moins de 16 px. On ne grossit que le texte des champs, sans bloquer le pinch zoom. */\n@media(max-width:700px){\n  html body input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"]),\n  html body select,\n  html body textarea{font-size:16px!important}\n}\n'''
               css_path.write_text(css)
-
-          workflow_path = Path('.github/workflows/reliability-checks.yml')
-          workflow = workflow_path.read_text()
-          spec = 'tests/mobile-focus-zoom-browser.spec.cjs'
-          if spec not in workflow:
-              needle = 'tests/mobile-browser.spec.cjs '
-              if needle not in workflow:
-                  raise SystemExit('point insertion navigateur introuvable')
-              workflow = workflow.replace(needle, needle + spec + ' ', 1)
-              workflow_path.write_text(workflow)
-
-          # Les deux workflows ci-dessous étaient uniquement des échafaudages de
-          # reproduction/patch. Ils ne doivent pas rester dans la PR finale.
-          for helper in ('.github/workflows/mobile-zoom-repro.yml', '.github/workflows/mobile-zoom-patch.yml'):
-              Path(helper).unlink(missing_ok=True)
           PY
-      - name: Committer le correctif
+      - name: Committer le correctif applicatif
         run: |
           git config user.name "REDNEWT69"
           git config user.email "103671138+REDNEWT69@users.noreply.github.com"
-          git add -A
+          git add index.html sw.js version.json store-runner-visits.css
           git diff --cached --check
           git commit -m "Zoom mobile: empêcher l’auto-zoom des champs au focus"
           git push origin HEAD:chatgpt/mobile-focus-zoom-fix
