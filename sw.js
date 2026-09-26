@@ -1,4 +1,4 @@
-const BUILD_REV = "20260926-pwa261";
+const BUILD_REV = "20260926-r1-pwa-shell-order-261";
 /* V261.2 hotfix : même révision applicative, nouveau namespace de cache afin que les
    PWA déjà installées récupèrent le correctif de capacité à la source (visit-counting.js)
    sans mélanger ancien et nouveau shell. Le BUILD_REV reste V261 : aucune migration. */
@@ -150,8 +150,21 @@ self.addEventListener('fetch', event => {
 async function putSafely(cache, key, response){
   try { await cache.put(key, response); } catch (error) {}
 }
-/* BUILD_REV finit toujours par le numéro de version, qui ne fait que croître. */
-function revisionNumber(rev){const m = String(rev || '').match(/(\d+)$/); return m ? Number(m[1]) : NaN;}
+/* La date puis l'ordinal rN départagent les hotfixes qui gardent la même version visible.
+   Sans ordinal, un build vaut r0 pour rester compatible avec 20260926-pwa261. Comparer
+   seulement le suffixe 261 faisait accepter un ancien index encore servi par le CDN. */
+function revisionParts(rev){
+  const value = String(rev || '');
+  const date = value.match(/^(\d{8})(?:-|$)/), version = value.match(/(\d+)$/), sequence = value.match(/^\d{8}-r(\d+)(?:-|$)/);
+  return {date: date ? Number(date[1]) : NaN, version: version ? Number(version[1]) : NaN, sequence: sequence ? Number(sequence[1]) : 0};
+}
+function olderRevision(candidate, current){
+  const a = revisionParts(candidate), b = revisionParts(current);
+  if (Number.isFinite(a.date) && Number.isFinite(b.date) && a.date !== b.date) return a.date < b.date;
+  if (Number.isFinite(a.version) && Number.isFinite(b.version) && a.version !== b.version) return a.version < b.version;
+  if (a.sequence !== b.sequence) return a.sequence < b.sequence;
+  return false;
+}
 function pageRevision(html){const m = String(html || '').match(/const BUILD_REV='([^']+)'/); return m ? m[1] : null;}
 async function cachedShell(cache){
   for (const key of SHELL_KEYS) {
@@ -187,8 +200,7 @@ async function appShellNavigation(request){
   try {
     const fresh = await Promise.race([network, timeout]);
     if (fresh) {
-      const served = revisionNumber(pageRevision(fresh.html));
-      if (!(served < revisionNumber(BUILD_REV))) return fresh.page;
+      if (!olderRevision(pageRevision(fresh.html), BUILD_REV)) return fresh.page;
     }
   } catch (error) {
   } finally {

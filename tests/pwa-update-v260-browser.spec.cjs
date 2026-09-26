@@ -24,9 +24,11 @@ const fs=require('fs'),os=require('os'),path=require('path'),http=require('http'
 const ROOT=path.join(__dirname,'..');
 const SW=fs.readFileSync(path.join(ROOT,'sw.js'),'utf8');
 const REV=SW.match(/const BUILD_REV = "([^"]+)"/)[1];
+const OLD='20260926-pwa261';
+const TARGET=REV;
 const CACHE_SUFFIX=(SW.match(/const CACHE_NAME = "chef-secteur-stable-" \+ BUILD_REV(?: \+ "([^"]*)")?;/)||[])[1]||'';
 const cacheName=rev=>'chef-secteur-stable-'+rev+CACHE_SUFFIX;
-const NEXT=REV.replace(/(\d+)$/,n=>String(Number(n)+1));
+const NEXT=TARGET;
 const PORT=Number(process.env.STORE_RUNNER_PWA_PORT||4174);
 const URL0=`http://127.0.0.1:${PORT}/`;
 const DEVICE={viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1,serviceWorkers:'allow'};
@@ -44,19 +46,20 @@ function publish(dir,rev,mark){
   }
 }
 const TYPES={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.webmanifest':'application/manifest+json','.svg':'image/svg+xml'};
-const site={current:'old',hangNavigation:false,dirs:{}};
+const site={current:'old',hangNavigation:false,staleNavigation:false,dirs:{}};
 let server=null,tmp=null;
 
 test.beforeAll(async()=>{
   tmp=fs.mkdtempSync(path.join(os.tmpdir(),'sr-pwa-v260-'));
   site.dirs.old=path.join(tmp,'old');site.dirs.new=path.join(tmp,'new');
-  publish(site.dirs.old,REV,'old');publish(site.dirs.new,NEXT,'new');
+  publish(site.dirs.old,OLD,'old');publish(site.dirs.new,NEXT,'new');
   server=http.createServer((req,res)=>{
     const u=new URL(req.url,URL0);const file=u.pathname==='/'?'/index.html':u.pathname;
     const navigation=file==='/index.html'&&!u.searchParams.has('rev');
     if(navigation&&site.hangNavigation)return;/* ne répond jamais */
-    const full=path.join(site.dirs[site.current],decodeURIComponent(file));
-    if(!full.startsWith(site.dirs[site.current])||!fs.existsSync(full)||!fs.statSync(full).isFile()){res.writeHead(404);res.end('nf');return}
+    const publication=navigation&&site.staleNavigation?'old':site.current;
+    const full=path.join(site.dirs[publication],decodeURIComponent(file));
+    if(!full.startsWith(site.dirs[publication])||!fs.existsSync(full)||!fs.statSync(full).isFile()){res.writeHead(404);res.end('nf');return}
     res.writeHead(200,{'Content-Type':TYPES[path.extname(full)]||'application/octet-stream','Cache-Control':'max-age=600'});
     fs.createReadStream(full).pipe(res);
   });
@@ -67,7 +70,7 @@ test.afterAll(async()=>{
   if(server){server.closeAllConnections?.();await new Promise(r=>server.close(r))}
   if(tmp)fs.rmSync(tmp,{recursive:true,force:true});
 });
-test.beforeEach(()=>{site.current='old';site.hangNavigation=false});
+test.beforeEach(()=>{site.current='old';site.hangNavigation=false;site.staleNavigation=false});
 
 async function launch(name,offline){
   const dir=path.join(tmp,'profile-'+name);
@@ -119,23 +122,26 @@ test('V260 : première installation sans rechargement parasite, hors ligne, réo
   const {context,page,nav}=await install('first');
   await page.waitForTimeout(3000);
   expect(nav.n,'une seule navigation : plus de rechargement au clients.claim()').toBe(1);
-  const first=await snapshot(page);coherent(first,REV,'old');expect(first.worker).toBe(REV);
+  const first=await snapshot(page);coherent(first,OLD,'old');expect(first.worker).toBe(OLD);
   for(let i=0;i<3;i++){nav.n=0;await page.reload({waitUntil:'domcontentloaded'});await ready(page);expect(nav.n).toBe(1)}
   await context.setOffline(true);await page.reload({waitUntil:'domcontentloaded'});await ready(page);
-  coherent(await snapshot(page),REV,'old');
+  coherent(await snapshot(page),OLD,'old');
   await context.close();
   const again=await launch('first',true);
   await again.page.goto(URL0,{waitUntil:'domcontentloaded'});await ready(again.page);
-  coherent(await snapshot(again.page),REV,'old');
+  coherent(await snapshot(again.page),OLD,'old');
   expect(nav.errors).toEqual([]);
   await again.context.close();
 });
 
-test('V260 : application ouverte pendant un déploiement — proposition, un seul rechargement, données et photo intactes',async()=>{
+test('PR #439 : 20260926-pwa261 → build courant — nouveau shell malgré un index CDN #438 ancien',async()=>{
   test.setTimeout(150000);
   const {context,page,nav}=await install('open');
   await seed(page);
   site.current='new';
+  /* Le manifeste et le worker sont déjà ceux du nouveau déploiement, mais le CDN peut
+     encore répondre l'ancien index à la navigation déclenchée après activation. */
+  site.staleNavigation=true;
   await page.evaluate(()=>StoreRunnerUpdates.checkForUpdates(true));
   const banner=page.locator('#storeRunnerUpdateBanner');
   await expect(banner).toBeVisible();await expect(banner).toContainText('Nouvelle version disponible');
@@ -209,7 +215,7 @@ test('V260 : réseau qui ne répond pas — la version installée s’ouvre en q
   const t=Date.now();
   await page.reload({waitUntil:'commit',timeout:30000});await ready(page);
   expect(Date.now()-t).toBeLessThan(12000);
-  coherent(await snapshot(page),REV,'old');
+  coherent(await snapshot(page),OLD,'old');
   site.hangNavigation=false;
   await context.close();
 });
