@@ -3,7 +3,7 @@ const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
 test.use({viewport:{width:390,height:844},hasTouch:true,isMobile:true,serviceWorkers:'block'});
 // Le message détaillé est garanti dans errorBox, la zone de statut courte peut ne pas être montée dans la feuille Réglages.
 
-test('V181 : recalcul du planning sépare les Boulanger sans perdre de magasin',async({page})=>{
+test('V261.4 : recalcul du planning respecte seulement le plafond de crédits sans séparer les Boulanger',async({page})=>{
   page.on('dialog',d=>d.accept());
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.state&&typeof window.storeRunnerRecalculateRemainingWeek==='function'&&document.getElementById('recalculateRemainingWeekBtn')&&document.getElementById('planningSettingsShortcut'));
@@ -38,14 +38,49 @@ test('V181 : recalcul du planning sépare les Boulanger sans perdre de magasin',
 
   const result=await page.evaluate(()=>({
     after:Object.values(state.plan).flat().map(s=>s.id).sort(),
-    routes:Object.fromEntries(Object.entries(state.plan).map(([d,r])=>[d,(r||[]).map(s=>({id:s.id,enseigne:s.enseigne}))])),
+    routes:Object.fromEntries(Object.entries(state.plan).map(([d,r])=>[d,(r||[]).map(s=>({id:s.id,enseigne:s.enseigne,credit:StoreVisitCounting.credit(s)}))])),
     manual:!!(state.manualWeekEdits&&Object.keys(state.manualWeekEdits).length),
     overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth
   }));
   expect(result.after).toEqual(before);
-  for(const route of Object.values(result.routes))expect(route.filter(s=>/boulanger/i.test(s.enseigne)).length).toBeLessThanOrEqual(1);
+  expect(Object.values(result.routes).some(route=>route.filter(s=>/boulanger/i.test(s.enseigne)).length===2)).toBeTruthy();
+  for(const route of Object.values(result.routes))expect(route.reduce((n,s)=>n+s.credit,0)).toBeLessThanOrEqual(4);
   expect(result.manual).toBeTruthy();
   expect(result.overflow).toBeLessThanOrEqual(1);
+});
+
+test('V261.4 : cas terrain Boulanger 2 + Carrefour 1 + Darty 2 tient dans une capacité 6',async({page})=>{
+  page.on('dialog',d=>d.accept());
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.state&&window.StoreVisitCounting&&typeof window.storeRunnerRecalculateRemainingWeek==='function');
+  const seeded=await page.evaluate(()=>{
+    const mk=(id,enseigne,ville)=>({id,enseigne,ville,adresse:'1 rue test',dept:'99',active:true,lat:45.7,lon:4.8,priority:3});
+    const boulanger=mk('boulanger-fixed','Boulanger','Lyon Les Cordeliers'),carrefour=mk('carrefour-fixed','Carrefour','Vénissieux'),darty=mk('darty-fixed','Darty','Bron');
+    const now=new Date(),nextMonday=new Date(now),weekday=now.getDay()||7,delta=(8-weekday)%7||7;nextMonday.setDate(now.getDate()+delta);
+    const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),week=iso(nextMonday);
+    state.stores=[boulanger,carrefour,darty];state.visits={};
+    state.businessV2=window.StoreRunnerVisitModel&&typeof StoreRunnerVisitModel.empty==='function'?StoreRunnerVisitModel.empty():{version:2,revision:0,visits:[],actions:[],storeSnapshots:{}};
+    state.locks={
+      'boulanger-fixed':{day:'Lundi',week},
+      'carrefour-fixed':{day:'Lundi',week},
+      'darty-fixed':{day:'Lundi',week}
+    };
+    state.appointments=[];state.manualWeekEdits={};state.calendarEvents=[];
+    state.settings=Object.assign({},state.settings,{weekDate:week,days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],maxVisitsPerDay:6});
+    state.plan={Lundi:[boulanger,carrefour,darty],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
+    const input=document.getElementById('weekDate');if(input)input.value=week;
+    if(typeof renderAll==='function')renderAll();
+    return{credits:state.plan.Lundi.map(s=>StoreVisitCounting.credit(s)),total:state.plan.Lundi.reduce((n,s)=>n+StoreVisitCounting.credit(s),0),before:JSON.stringify(state.plan)};
+  });
+  expect(seeded.credits).toEqual([2,1,2]);
+  expect(seeded.total).toBe(5);
+  const recalc=await page.evaluate(async()=>await window.storeRunnerRecalculateRemainingWeek());
+  expect(recalc&&recalc.ok,JSON.stringify(recalc)).toBeTruthy();
+  expect(String(recalc.error||'')).not.toMatch(/règle Boulanger/i);
+  const after=await page.evaluate(()=>JSON.stringify(state.plan));
+  expect(after).toBe(seeded.before);
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
 });
 
 test('V179 : un dépassement fixe explique les vrais crédits sans casser le planning à 390px',async({page})=>{
