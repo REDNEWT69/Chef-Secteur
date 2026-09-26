@@ -38,7 +38,7 @@ Google Play (AAB signé)
 | Orientation | portrait (ignorée par Android 16 sur grands écrans ≥ 600 dp) |
 | Couleurs | barre d'état et navigation `#F2F5FA`, démarrage `#F4F6FA` (manifest PWA) |
 | Icônes | `app-icon-512.png` et `app-icon-maskable-512.png` de la PWA (PR #445) |
-| Permissions Android | aucune (géolocalisation et caméra : permissions Chrome du site) |
+| Permissions Android | aucune déclarée ; AndroidX ajoute seulement `fr.storerunner.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` (interne, niveau signature). Géolocalisation et caméra : permissions Chrome du site |
 | Version de la coque | `versionCode 1`, `versionName 1.0.0` (indépendante de `BUILD_REV`) |
 
 `twa-manifest.json` garde les paramètres Bubblewrap. `app/build.gradle` en est la
