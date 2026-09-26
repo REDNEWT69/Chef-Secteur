@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+require('./mobile-focus-zoom-browser.spec.cjs');
 
 const APP_URL = process.env.STORE_RUNNER_E2E_URL || 'http://127.0.0.1:4173/';
 
