@@ -9,7 +9,7 @@ const { test, expect } = require('@playwright/test');
 const APP_URL = process.env.STORE_RUNNER_E2E_URL || 'http://127.0.0.1:4173/';
 const FIRST_RUN_URL = (() => {
   const url = new URL(APP_URL);
-  url.searchParams.delete('e2eOnboarding');
+  url.searchParams.set('e2eOnboarding', 'first-run');
   return url.toString();
 })();
 const ANCIEN_ACCUEIL = ['#homePanel .homeHero', '#homeKpis', '#homePriority', '#homeNext', '#homePanel>.sectionTitle'];
