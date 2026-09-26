@@ -23,9 +23,9 @@ test('cascade respects current store hours even when archived snapshots omit the
   t.state.stores=[a];t.state.plan.Lundi=[store('closed')];
   const r=t.build();assert.equal(r.ok,true,r.error);assert.equal(r.plan.Lundi.length,0);assert.equal(r.plan.Mardi[0].id,'closed');
 });
-test('cascade keeps two one-credit Boulanger on distinct days',()=>{
+test('cascade accepts two one-credit Boulanger on the same day when capacity allows',()=>{
   const t=env();t.state.stores=[store('b1',{enseigne:'Boulanger',visitCreditOverride:1}),store('b2',{enseigne:'Boulanger',visitCreditOverride:1})];t.state.plan.Lundi=t.state.stores;
-  const r=t.build();assert.equal(r.ok,true,r.error);assert.equal(r.plan.Lundi.length,1);assert.equal(r.plan.Mardi.length,1);
+  const r=t.build();assert.equal(r.ok,true,r.error);assert.equal(r.plan.Lundi.length,2);assert.equal(r.plan.Mardi.length,0);
 });
 test('spillover preserves recurring occurrences without repeating a store within a week',()=>{
   const t=env(),a=store('repeat');t.state.settings.days=['Jeudi','Vendredi'];t.state.settings.maxVisitsPerDay=1;t.state.stores=[a,store('fixed')];t.state.plan.Vendredi=[t.state.stores[1],a];t.state.locks.fixed={day:'Vendredi',week:'2026-09-21'};

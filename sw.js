@@ -1,4 +1,4 @@
-const BUILD_REV = "20260926-r1-pwa-shell-order-261";
+const BUILD_REV = "20260926-r2-recalc-capacity-261";
 /* V261.2 hotfix : même révision applicative, nouveau namespace de cache afin que les
    PWA déjà installées récupèrent le correctif de capacité à la source (visit-counting.js)
    sans mélanger ancien et nouveau shell. Le BUILD_REV reste V261 : aucune migration. */
