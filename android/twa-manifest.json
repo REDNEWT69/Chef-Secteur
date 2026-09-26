@@ -39,5 +39,10 @@
   "additionalTrustedOrigins": [],
   "displayOverride": [],
   "retainedBundles": [],
-  "fingerprints": []
+  "fingerprints": [
+    {
+      "name": "Play App Signing",
+      "value": "5F:01:E0:52:26:4F:64:32:0B:8C:88:17:0F:A1:3D:1B:D2:BE:85:9B:F5:A4:59:2A:1D:BC:C6:C2:3C:60:45:59"
+    }
+  ]
 }
