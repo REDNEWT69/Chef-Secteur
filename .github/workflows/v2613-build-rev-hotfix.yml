@@ -1,0 +1,64 @@
+name: V261.3 build revision hotfix helper
+
+on:
+  push:
+    branches:
+      - chatgpt/v2613-build-rev-hotfix
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v2613-build-rev-hotfix
+          fetch-depth: 0
+
+      - name: Bump real build revision without changing visible V261
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          old = '20260925-pwa261'
+          new = '20260926-pwa261'
+
+          for name in ('index.html', 'sw.js'):
+              path = Path(name)
+              text = path.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'{old} absent de {name}')
+              path.write_text(text.replace(old, new), encoding='utf-8')
+
+          version_path = Path('version.json')
+          data = json.loads(version_path.read_text(encoding='utf-8'))
+          if data.get('latestBuild') != old:
+              raise SystemExit(f"version.json latestBuild inattendu: {data.get('latestBuild')}")
+          data['latestBuild'] = new
+          data['displayVersion'] = '261'
+          data['releasedAt'] = '2026-09-26'
+          version_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+
+      - name: Validate build and PWA update contract
+        run: |
+          node tests/build-revision.test.cjs
+          node tests/pwa-cache-contract.test.cjs
+          node tests/update-manager.test.cjs
+          node tests/pwa-update-v260.test.cjs
+
+      - name: Commit targeted hotfix and remove helper workflow
+        shell: bash
+        run: |
+          rm .github/workflows/v2613-build-rev-hotfix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html sw.js version.json .github/workflows/v2613-build-rev-hotfix.yml
+          git commit -m "V261.3: publier une vraie révision de build pour livrer V261.2"
+          git push origin HEAD:chatgpt/v2613-build-rev-hotfix
