@@ -107,27 +107,23 @@
   function dateBlocked(date){
     try{const rows=typeof window.calendarEventsForDate==='function'?window.calendarEventsForDate(date):[];return rows.some(eventBlocksPlanning)}catch(e){return false}
   }
-  function planningCredit(store){
-    try{if(typeof window.storeVisitCredit==='function')return Math.max(1,Number(window.storeVisitCredit(store))||1)}catch(e){}
-    return 1;
-  }
-  function routePlanningCredits(route){return (route||[]).reduce(function(n,s){return n+planningCredit(s)},0)}
   function actualVisitCredit(store){
     try{if(window.StoreVisitCounting&&typeof window.StoreVisitCounting.credit==='function')return Math.max(1,Number(window.StoreVisitCounting.credit(store))||1)}catch(e){}
     return 1;
   }
+  /* V261.4 : aucun crédit de capacité caché dans le recalcul de secours. */
+  function planningCredit(store){return actualVisitCredit(store)}
+  function routePlanningCredits(route){return (route||[]).reduce(function(n,s){return n+planningCredit(s)},0)}
   function actualRouteCredits(route){return (route||[]).reduce(function(n,s){return n+actualVisitCredit(s)},0)}
   function candidateName(store){return (String((store&&store.enseigne)||'Magasin')+' '+String((store&&store.ville)||'').trim()).trim()}
   function storeId(store){return String((store&&store.id)||'')}
   function fixedCapacityError(day,route,max){
     const rows=(route||[]).map(function(store){return candidateName(store)+' ('+actualVisitCredit(store)+')'});
-    const actual=actualRouteCredits(route),capacity=routePlanningCredits(route);
+    const actual=actualRouteCredits(route);
     let message=day+' contient déjà '+actual+' crédit'+(actual>1?'s':'')+' fixe'+(actual>1?'s':'')+(rows.length?' : '+rows.join(' + '):'')+'. Ton maximum est réglé sur '+max+'. ';
     if(actual>max){
       if(actual<=8)message+='Passe-le à '+actual+' dans Réglages ou libère une visite. ';
       else message+='Augmente le maximum dans Réglages si c’est volontaire, ou libère une visite. ';
-    }else if(capacity>max){
-      message+='La règle Boulanger n’autorise qu’un seul magasin à 1 crédit à ses côtés. Libère ou déplace le magasin incompatible. ';
     }
     return message+'Rien n’a été changé.';
   }
