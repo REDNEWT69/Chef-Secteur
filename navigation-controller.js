@@ -274,6 +274,15 @@
     if(rep)rep.value=String(p.repName||'');
   }
 
+  function focusOnNextFrame(id){
+    const run=function(){
+      const input=document.getElementById(id);
+      if(!input)return;
+      try{input.focus({preventScroll:true})}catch(e){try{input.focus()}catch(err){}}
+    };
+    if(typeof window.requestAnimationFrame==='function')window.requestAnimationFrame(run);else run();
+  }
+
   function renderOnboarding(){
     const root=onboardingRoot();
     root.innerHTML=onboardingMarkup(onboardingStep);
@@ -281,8 +290,7 @@
     onboardingOpen=true;
     document.documentElement.classList.add('srFirstRunOpen');
     fillOnboardingInputs();
-    const focus=document.getElementById(onboardingStep===1?'srfrSector':'');
-    if(focus)setTimeout(function(){try{focus.focus({preventScroll:true})}catch(e){focus.focus()}},60);
+    if(onboardingStep===1)focusOnNextFrame('srfrSector');
   }
 
   function closeOnboarding(){
@@ -333,9 +341,7 @@
     if(destination==='profile'){
       if(typeof window.goTab==='function')window.goTab('profilePanel');
       else if(typeof window.switchTab==='function')window.switchTab('profilePanel',null);
-      setTimeout(function(){
-        const input=document.getElementById('pBaseName');if(input)input.focus();
-      },100);
+      focusOnNextFrame('pBaseName');
     }else if(typeof window.goTab==='function')window.goTab('homePanel');
   }
 
