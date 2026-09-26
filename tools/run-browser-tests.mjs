@@ -36,6 +36,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HOST = process.env.STORE_RUNNER_E2E_HOST || '127.0.0.1';
 const PORT = Number(process.env.STORE_RUNNER_E2E_PORT || 4173);
 const WORKFLOW = path.join(ROOT, '.github/workflows/reliability-checks.yml');
+const ONBOARDING_SKIP_PARAM = 'e2eOnboarding';
 
 const TYPES = new Map(Object.entries({
   '.html': 'text/html; charset=utf-8',
@@ -96,6 +97,13 @@ function repondreVide(res, code, message) {
   res.end(corps);
 }
 
+async function indexAvecUtilisateurExistant(fichier) {
+  const source = await fsp.readFile(fichier, 'utf8');
+  const marker = JSON.stringify({version:1,status:'complete',step:3,reason:'e2e-fixture'});
+  const injection = `<script>try{localStorage.setItem('store-runner-onboarding-v1',${JSON.stringify(marker)})}catch(e){}</script>`;
+  return Buffer.from(source.replace('<head>', '<head>'+injection));
+}
+
 function creerServeur() {
   const serveur = http.createServer(async (req, res) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -104,8 +112,8 @@ function creerServeur() {
       return;
     }
 
-    let pathname;
-    try { pathname = new URL(req.url, `http://${HOST}:${PORT}`).pathname; }
+    let url, pathname;
+    try { url = new URL(req.url, `http://${HOST}:${PORT}`); pathname = url.pathname; }
     catch { repondreVide(res, 400, 'Bad Request'); return; }
 
     const trouve = await resoudre(pathname);
@@ -120,6 +128,25 @@ function creerServeur() {
     if (depuis && Date.parse(depuis) >= Math.floor(infos.mtimeMs / 1000) * 1000) {
       res.writeHead(304, { 'Last-Modified': lastModified });
       res.end();
+      return;
+    }
+
+    // Les anciens specs navigateur testent chacun une fonction précise et partaient
+    // historiquement d'un secteur déjà utilisable. Le nouveau premier lancement ne doit
+    // pas transformer 130 tests sans rapport en tests d'onboarding. Pour la suite locale
+    // uniquement, le serveur injecte donc AVANT le boot le même marqueur qu'aurait un
+    // utilisateur ayant déjà terminé l'accueil. Aucun code de production ne connaît ce
+    // mécanisme. Les specs premier-lancement retirent le paramètre et reçoivent le vrai
+    // index, ce qui teste bien le comportement automatique d'une installation neuve.
+    if (path.basename(fichier) === 'index.html' && url.searchParams.get(ONBOARDING_SKIP_PARAM) === 'skip') {
+      const corps = await indexAvecUtilisateurExistant(fichier);
+      res.writeHead(200, {
+        'Content-Type': typeDe(fichier),
+        'Content-Length': corps.length,
+        'Last-Modified': lastModified
+      });
+      if (req.method === 'HEAD') { res.end(); return; }
+      res.end(corps);
       return;
     }
 
@@ -200,6 +227,7 @@ async function principal(argv) {
   const serveulement = argv.includes('--serve');
   const specs = argv.filter(a => !a.startsWith('--'));
   const baseUrl = `http://${HOST}:${PORT}/`;
+  const testBaseUrl = `${baseUrl}?${ONBOARDING_SKIP_PARAM}=skip`;
 
   const serveur = creerServeur();
   try {
@@ -234,7 +262,7 @@ async function principal(argv) {
 
   let code;
   try {
-    code = await lancerPlaywright(aLancer, baseUrl);
+    code = await lancerPlaywright(aLancer, testBaseUrl);
   } finally {
     await arreter(serveur);
   }
