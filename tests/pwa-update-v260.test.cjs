@@ -36,7 +36,7 @@ const CORE=list('CORE_SHELL'),OPTIONAL=list('OPTIONAL_SHELL');
 const injected=[...new Set(Array.from(INDEX.matchAll(/'(\.\/[A-Za-z0-9_.-]+\.(?:js|css))'/g)).map(m=>m[1]))];
 const optionalButInjected=injected.filter(a=>a!=='./sw.js'&&!CORE.includes(a));
 assert.deepEqual(optionalButInjected,[],'modules chargés au démarrage mais non obligatoires : '+optionalButInjected.join(', '));
-for(const a of ['./','./index.html','./src/chef-secteur.html','./manifest.webmanifest','./app-icon.svg'])assert.ok(CORE.includes(a),a+' doit être obligatoire');
+for(const a of ['./','./index.html','./src/chef-secteur.html','./manifest.webmanifest','./app-icon.svg','./app-icon-192.png','./app-icon-512.png','./app-icon-maskable-512.png'])assert.ok(CORE.includes(a),a+' doit être obligatoire');
 
 function key(input){return typeof input==='string'?input:input.url}
 function strip(u){const x=new URL(u);return x.origin+x.pathname}
@@ -176,6 +176,8 @@ process.on('beforeExit',()=>{if(!finished){console.error('FAIL: bloqué à : '+s
     assert.equal(await (await sameVisibleOlder.fetch('./','navigate')).text(),page(REV),'hotfix daté plus ancien avec le même suffixe 261 : le shell installé passe devant');
     const sameDayOlder=clone(makeNet(defaultRoutes('20260926-pwa261')));
     assert.equal(await (await sameDayOlder.fetch('./','navigate')).text(),page(REV),'build sans ordinal du même jour et de même version : le shell r1 installé passe devant');
+    const v262OldShell=clone(makeNet(defaultRoutes('20260926-r5-mobile-262')));
+    assert.equal(await (await v262OldShell.fetch('./?source=home-screen','navigate')).text(),page(REV),'après activation de r6, le CDN qui sert encore le shell V262 r5 ne peut pas reprendre la main');
     const error=clone(makeNet(defaultRoutes(REV,[[u=>new URL(u).pathname==='/',()=>new Response('err',{status:502})]])));
     assert.equal(await (await error.fetch('./','navigate')).text(),page(REV),'erreur serveur : la version installée');
     const hang=clone(makeNet(defaultRoutes(REV,[[u=>new URL(u).pathname==='/',()=>new Promise(()=>{})]])),{timeScale:40});

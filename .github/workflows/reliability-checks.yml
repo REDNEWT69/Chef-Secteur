@@ -90,6 +90,7 @@ jobs:
       - run: node tests/boot-v234.test.cjs
       - run: node tests/build-revision.test.cjs
       - run: node tests/pwa-cache-contract.test.cjs
+      - run: node tests/twa-manifest-icons.test.cjs
       - run: node tests/update-manager.test.cjs
       - run: node tests/update-manager-reload.test.cjs
       - run: node tests/pwa-update-v260.test.cjs
