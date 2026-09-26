@@ -32,7 +32,8 @@
         '« Enregistrer la note » est maintenant juste sous la note.',
         'Sur Android, le bouton retour referme la fiche, le menu ou l’assistant, puis revient à l’accueil, au lieu de quitter l’application.',
         'Pendant la saisie, la barre du bas s’efface : le clavier ne cache plus le champ.',
-        'Historique, Mode Runner et menu Plus sont plus compacts et plus lisibles.'
+        'Historique, Mode Runner et menu Plus sont plus compacts et plus lisibles.',
+        'Sur Android, la barre tout en haut prend la couleur claire de l’application au lieu d’une bande bleue.'
       ]
     },
     {

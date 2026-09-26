@@ -27,6 +27,10 @@ const CSS=[
    Historique, Données, Rendez-vous, Secteur et Mode Runner. Déjà masqué sur l'accueil
    et le planning ; l'accueil « Votre activité » porte ces informations. */
 '#smartBrief{display:none!important}',
+/* Haut d'écran : la barre système prend la couleur de l'en-tête (theme-color #f2f5fa).
+   Si un jour l'app est dessinée sous la barre (edge-to-edge), l'en-tête s'en écarte. */
+'html body .top{padding-top:calc(11px + env(safe-area-inset-top,0px))!important}html body.glassHome .top{padding-top:calc(18px + env(safe-area-inset-top,0px))!important}',
+'#premiumHomeV2 .phTop{margin-top:calc(10px + env(safe-area-inset-top,0px))}',
 /* Chiffres clés (historique, magasins) : une rangée de 4 tuiles au lieu de 4 cartes de 150 px. */
 '#historyKpis.kpis,#storeKpis.kpis{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:6px!important;margin-bottom:14px!important}',
 '.kpis .kpi{min-height:0!important;padding:10px 8px!important;border-radius:16px!important;text-align:center}',

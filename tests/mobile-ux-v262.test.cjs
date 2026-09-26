@@ -52,3 +52,13 @@ for(const f of fs.readdirSync(path.join(__dirname,'..')).filter(f=>/\.(js|html|c
 // /v2/ reste isolé.
 assert.doesNotMatch(mod,/v2\//);
 console.log('PASS: V262 — clavier, retour Android, modales ancrées et retouches mobiles verrouillés.');
+
+// Barre système : même couleur claire que l'en-tête partout, plus de bande bleue détachée.
+const manifest=JSON.parse(read('manifest.webmanifest'));
+const themeOf=src=>(src.match(/<meta name="theme-color" content="([^"]+)">/)||[])[1];
+assert.equal(themeOf(index),'#f2f5fa','index.html : theme-color du démarrage');
+assert.equal(themeOf(core),'#f2f5fa','document de l’app : sans theme-color, Chrome retombait sur le bleu du manifeste');
+assert.equal(manifest.theme_color,'#f2f5fa','manifeste : barre système de la PWA installée et écran de lancement');
+assert.equal((index+core).match(/<meta name="theme-color"[^>]*>/g).length,2,'un seul theme-color par document');
+assert.match(css,/html body \.top\{padding-top:calc\(11px \+ env\(safe-area-inset-top,0px\)\)!important\}/,'l’en-tête respecte la safe area haute');
+console.log('PASS: V262 — barre système fondue dans l’en-tête (#f2f5fa), safe area haute respectée.');
