@@ -31,17 +31,31 @@
 /* La fiche magasin reste une grille compacte à deux colonnes. Les modules ajoutent
    leurs boutons séparément ; l'ordre visuel est donc fixé ici pour éviter les cases
    fantômes quand Photos, Sortie magasin et Horaires sont présents ensemble. */
-#storeQuickSheet .sheetActions{grid-template-columns:1fr 1fr!important}
-#storeQuickSheet .sheetActions>#srQuickStart{order:10}
-#storeQuickSheet .sheetActions>button[onclick*="focusQuickNote"]{order:11}
-#storeQuickSheet .sheetActions>button[onclick*="appointmentFromQuick"]{order:20;grid-column:1/-1!important}
-#storeQuickSheet .sheetActions>#startQuickStoreFirstBtn{order:30}
-#storeQuickSheet .sheetActions>#changeQuickStoreBtn{order:31}
-#storeQuickSheet .sheetActions>#pinQuickStoreBtn{order:40}
-#storeQuickSheet .sheetActions>#storePhotosQuickBtn{order:41;grid-column:auto!important}
-#storeQuickSheet .sheetActions>button[onclick*="fullStoreFromQuick"]{order:50;grid-column:auto!important}
-#storeQuickSheet .sheetActions>#srReportQuickBtn{order:51;grid-column:auto!important}
-#storeQuickSheet .sheetActions>#openingHoursQuickBtn{order:60;grid-column:1/-1!important}
+/* V262 — fiche magasin : une action principale, trois gestes du quotidien, le reste replié.
+   Grille de 6 colonnes : Démarrer (pleine largeur) · Itinéraire | Note | Photos ·
+   Opportunités | Plus d'actions. Tout bouton ajouté par un module (présent ou futur) tombe
+   par défaut dans « Plus d'actions » : la fiche ne se rallonge plus à chaque nouveauté. */
+#storeQuickSheet .sheetActions[data-sr-more]{grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:8px!important}
+#storeQuickSheet .sheetActions[data-sr-more]>*{order:60;grid-column:span 3!important;min-width:0;min-height:48px!important;margin:0!important;padding-left:8px;padding-right:8px;font-size:14px;line-height:1.2;overflow-wrap:anywhere}
+#storeQuickSheet .sheetActions[data-sr-more]>#srQuickStart{order:10;grid-column:1/-1!important;min-height:52px!important;font-size:16px}
+#storeQuickSheet .sheetActions[data-sr-more]>button[onclick*="mapsFromQuick"]{order:20;grid-column:span 2!important}
+#storeQuickSheet .sheetActions[data-sr-more]>button[onclick*="focusQuickNote"]{order:21;grid-column:span 2!important}
+#storeQuickSheet .sheetActions[data-sr-more]>#storePhotosQuickBtn{order:22;grid-column:span 2!important}
+#storeQuickSheet .sheetActions[data-sr-more]:not(:has(>#storePhotosQuickBtn))>button:is([onclick*="mapsFromQuick"],[onclick*="focusQuickNote"]){grid-column:span 3!important}
+#storeQuickSheet .sheetActions[data-sr-more]>#srOpportunityQuickBtn{order:30;grid-column:span 3!important}
+#storeQuickSheet .sheetActions[data-sr-more]>#sqMoreBtn{order:31;grid-column:span 3!important}
+#storeQuickSheet .sheetActions[data-sr-more]:not(:has(>#srOpportunityQuickBtn))>#sqMoreBtn{grid-column:1/-1!important}
+#storeQuickSheet .sheetActions[data-sr-more]>#sqMoreBtn::after{content:' ⌄';color:#8e8e93}
+#storeQuickSheet .sheetActions[data-sr-more="open"]>#sqMoreBtn::after{content:' ⌃'}
+#storeQuickSheet .sheetActions[data-sr-more]>button[onclick*="appointmentFromQuick"]{order:40;grid-column:span 3!important}
+#storeQuickSheet .sheetActions[data-sr-more]>button[onclick*="fullStoreFromQuick"]{order:41;grid-column:span 3!important}
+#storeQuickSheet .sheetActions[data-sr-more]>#openingHoursQuickBtn{order:42;grid-column:span 3!important}
+#storeQuickSheet .sheetActions[data-sr-more]>#srReportQuickBtn{order:43;grid-column:span 3!important}
+#storeQuickSheet .sheetActions[data-sr-more]>#startQuickStoreFirstBtn{order:50;grid-column:span 3!important}
+#storeQuickSheet .sheetActions[data-sr-more]>#changeQuickStoreBtn{order:51;grid-column:span 3!important}
+#storeQuickSheet .sheetActions[data-sr-more]>#pinQuickStoreBtn{order:52;grid-column:span 3!important}
+#storeQuickSheet .sheetActions[data-sr-more="closed"]>:not(#srQuickStart):not([onclick*="mapsFromQuick"]):not([onclick*="focusQuickNote"]):not(#storePhotosQuickBtn):not(#srOpportunityQuickBtn):not(#sqMoreBtn){display:none!important}
+#storeQuickSheet #sqLastNote{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 
 /* Finition V174 : l'aide au swipe doit rester une indication discrète, pas un bloc
    blanc collé à la première carte du planning. */
@@ -58,3 +72,6 @@
   html body select,
   html body textarea{font-size:16px!important}
 }
+
+/* V262 — « Réessayer l'enregistrement » n'apparaît que si l'enregistrement a échoué. */
+#srVisitDialog>.sr-status:not(.sr-error)+button{display:none}

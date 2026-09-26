@@ -25,6 +25,18 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'262',
+      title:'Plus simple à une main sur le terrain',
+      items:[
+        'La fiche magasin va à l’essentiel : « Démarrer la visite », puis Itinéraire, Note et Photos. Le reste est rangé dans « Plus d’actions ».',
+        '« Enregistrer la note » est maintenant juste sous la note.',
+        'Sur Android, le bouton retour referme la fiche, le menu ou l’assistant, puis revient à l’accueil, au lieu de quitter l’application.',
+        'Pendant la saisie, la barre du bas s’efface : le clavier ne cache plus le champ.',
+        'Historique, Mode Runner et menu Plus sont plus compacts et plus lisibles.',
+        'Sur Android, la barre tout en haut prend la couleur claire de l’application au lieu d’une bande bleue.'
+      ]
+    },
+    {
       version:'261',
       title:'Ajouter un magasin en trois gestes',
       items:[

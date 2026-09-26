@@ -69,13 +69,17 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA F
   await page.evaluate(()=>window.openStoreQuick('photo-store','Lundi','09:30'));
   const sheet=page.locator('#storeQuickSheet'),hoursButton=page.locator('#openingHoursQuickBtn'),photoButton=page.locator('#storePhotosQuickBtn'),pinButton=page.locator('#pinQuickStoreBtn'),fullButton=page.locator('#storeQuickSheet .sheetActions>button[onclick*="fullStoreFromQuick"]'),reportQuick=page.locator('#srReportQuickBtn');
   await expect(sheet).toHaveClass(/open/);await page.waitForTimeout(350);
-  await expect(hoursButton).toBeVisible();await expect(photoButton).toBeVisible();await expect(photoButton).toBeInViewport();await expect(reportQuick).toBeVisible();
-  const photoBox=await photoButton.boundingBox(),pinBox=await pinButton.boundingBox(),fullBox=await fullButton.boundingBox(),quickReportBox=await reportQuick.boundingBox();
-  expect(photoBox.height).toBeGreaterThanOrEqual(44);expect(pinBox).toBeTruthy();expect(fullBox).toBeTruthy();expect(quickReportBox).toBeTruthy();
-  expect(Math.abs(photoBox.y-pinBox.y)).toBeLessThanOrEqual(2);
-  expect(pinBox.x+pinBox.width).toBeLessThanOrEqual(photoBox.x+2);
-  expect(Math.abs(quickReportBox.y-fullBox.y)).toBeLessThanOrEqual(2);
-  expect(fullBox.x+fullBox.width).toBeLessThanOrEqual(quickReportBox.x+2);
+  /* V262 — Photos reste dans la rangée du quotidien ; Horaires, Poser, Voir la fiche et
+     Sortie magasin sont rangés derrière « Plus d'actions ». */
+  await expect(photoButton).toBeVisible();await expect(photoButton).toBeInViewport();
+  await expect(hoursButton).toBeHidden();await expect(reportQuick).toBeHidden();await expect(pinButton).toBeHidden();
+  await page.locator('#sqMoreBtn').tap();
+  await expect(hoursButton).toBeVisible();await expect(reportQuick).toBeVisible();await expect(pinButton).toBeVisible();await expect(fullButton).toBeVisible();
+  const photoBox=await photoButton.boundingBox(),pinBox=await pinButton.boundingBox(),fullBox=await fullButton.boundingBox(),quickReportBox=await reportQuick.boundingBox(),hoursBox=await hoursButton.boundingBox();
+  expect(photoBox.height).toBeGreaterThanOrEqual(44);expect(pinBox.height).toBeGreaterThanOrEqual(44);expect(fullBox.height).toBeGreaterThanOrEqual(44);
+  expect(pinBox.y).toBeGreaterThan(photoBox.y);
+  expect(Math.abs(quickReportBox.y-hoursBox.y)).toBeLessThanOrEqual(2);
+  expect(hoursBox.x+hoursBox.width).toBeLessThanOrEqual(quickReportBox.x+2);
 
   await hoursButton.tap();
   const hoursDialog=page.locator('#storeHoursDialog');await expect(hoursDialog).toBeVisible();
