@@ -25,6 +25,15 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'262',
+      title:'La saisie reste à la bonne taille',
+      items:[
+        'Sur iPhone comme sur Android, toucher un champ ne zoome plus l’application comme une page Web.',
+        'Après le clavier, une fiche magasin, un panneau ou une fenêtre se referme à l’échelle normale.',
+        'Le zoom à deux doigts reste disponible lorsque tu en as besoin.'
+      ]
+    },
+    {
       version:'261',
       title:'Ajouter un magasin en trois gestes',
       items:[

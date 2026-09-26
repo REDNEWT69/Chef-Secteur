@@ -9,6 +9,9 @@
 html{background:var(--bg);scroll-behavior:smooth}
 body{margin:0;background:radial-gradient(circle at 20% -10%,#eef5ff 0,transparent 30%),var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Segoe UI",Arial,sans-serif;font-size:15px;letter-spacing:-.01em}
 button,input,select,textarea{font:inherit}button{cursor:pointer;color:inherit}button:active{transform:scale(.985)}
+/* Safari iOS zoome au focus sous 16 px. Garder le zoom utilisateur disponible,
+   mais garantir cette taille minimale uniquement aux champs de saisie mobiles. */
+@media(max-width:650px){input:not([type]),input[type=text],input[type=search],input[type=email],input[type=tel],input[type=url],input[type=password],input[type=number],input[type=date],input[type=time],input[type=datetime-local],input[type=month],input[type=week],select,textarea{font-size:16px!important}}
 .top{position:sticky;top:0;z-index:30;background:rgba(247,249,252,.88);color:var(--ink);padding:14px 18px 11px;border-bottom:1px solid rgba(214,220,232,.78);backdrop-filter:blur(22px) saturate(1.45);-webkit-backdrop-filter:blur(22px) saturate(1.45);box-shadow:0 2px 15px rgba(25,42,80,.045)}
 .toprow{max-width:1240px;margin:auto;display:flex;gap:14px;align-items:center;justify-content:space-between}
 .toprow>div:first-child{position:relative;padding-left:54px;min-height:44px;display:flex;flex-direction:column;justify-content:center}

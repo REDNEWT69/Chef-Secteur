@@ -1,7 +1,6 @@
-const BUILD_REV = "20260926-r2-recalc-capacity-261";
-/* V261.2 hotfix : même révision applicative, nouveau namespace de cache afin que les
-   PWA déjà installées récupèrent le correctif de capacité à la source (visit-counting.js)
-   sans mélanger ancien et nouveau shell. Le BUILD_REV reste V261 : aucune migration. */
+const BUILD_REV = "20260926-mobile-zoom-262";
+/* Chaque révision applicative utilise son propre namespace afin qu'une PWA installée
+   récupère un shell complet sans mélanger les versions. */
 const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV + "-capacity2612";
 /* V260 — tout ce que index.html charge au démarrage est OBLIGATOIRE : un worker ne
    s'active jamais avec une version incomplète. Avant, 70 modules sur 80 étaient
