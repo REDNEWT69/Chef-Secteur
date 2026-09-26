@@ -404,6 +404,15 @@ process.on('beforeExit',()=>{if(!finished){console.error('FAIL: test bloqué (pr
     assert.equal(app.api.getState().latest,NEW,'la mise à jour reste connue (point du menu)');
   }
 
+  // V261.3 — un manifeste CDN daté d'hier ne doit pas proposer un retour vers l'ancien build
+  step='V261.3 manifeste CDN ancien avec même version visible';
+  {
+    const app=makeApp({current:'20260926-pwa261',latest:'20260925-pwa261'});
+    const r=await app.api.checkForUpdates(true);
+    assert.equal(r.available,false,'20260925-pwa261 est plus ancien que 20260926-pwa261 malgré le même suffixe 261');
+    assert.notEqual((app.banner()||{}).titre,'Nouvelle version disponible','aucune rétrogradation proposée');
+  }
+
   finished=true;
   console.log('PASS: V244/V260 — activation au controllerchange, un seul rechargement, pas de boucle, aucun rechargement parasite, saisie protégée, stockage écrit avant rechargement, données locales intactes.');
 })().catch(e=>{console.error(e);process.exit(1)});

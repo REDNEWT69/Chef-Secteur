@@ -9,17 +9,18 @@
   const currentBuild=String(window.__STORE_RUNNER_BUILD_REV||'inconnue');
   const state={current:currentBuild,latest:currentBuild,displayVersion:displayVersion(currentBuild),status:'idle',lastCheckedAt:0,error:null};
 
-  /* V260 — ordre des révisions : BUILD_REV finit toujours par le numéro de version
-     (tests/build-revision.test.cjs), qui ne fait que croître. Un version.json resté en
-     cache CDN sur une version PLUS ANCIENNE que celle qui tourne n'est jamais proposé
-     comme « nouvelle version ». Numéros égaux ou illisibles : seule la différence compte. */
-  function revisionNumber(build){
-    const m=String(build||'').match(/(\d+)$/);
-    return m?Number(m[1]):NaN;
+  /* La date de publication départage les hotfixes qui conservent la même version
+     visible (20260925-pwa261 → 20260926-pwa261). Sans elle, un version.json CDN ancien
+     était pris pour une autre mise à jour 261 et pouvait faire repartir vers l'arrière. */
+  function revisionParts(build){
+    const value=String(build||'');
+    const date=value.match(/^(\d{8})(?:-|$)/),version=value.match(/(\d+)$/);
+    return{date:date?Number(date[1]):NaN,version:version?Number(version[1]):NaN};
   }
   function olderThanCurrent(build){
-    const a=revisionNumber(build),b=revisionNumber(currentBuild);
-    return Number.isFinite(a)&&Number.isFinite(b)&&a<b;
+    const a=revisionParts(build),b=revisionParts(currentBuild);
+    if(Number.isFinite(a.date)&&Number.isFinite(b.date)&&a.date!==b.date)return a.date<b.date;
+    return Number.isFinite(a.version)&&Number.isFinite(b.version)&&a.version<b.version;
   }
   function updateAvailable(){
     return !!state.latest&&state.latest!==state.current&&!olderThanCurrent(state.latest);
