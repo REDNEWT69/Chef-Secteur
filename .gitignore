@@ -17,3 +17,15 @@ __pycache__/
 node_modules/
 test-results/
 playwright-report/
+
+# Enveloppe Android (android/) : aucune clé de signature, aucun mot de passe ni binaire
+# Android dans ce dépôt public, où qu'ils soient posés. Détail dans android/.gitignore.
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pepk
+keystore.properties
+*.apk
+*.aab
+*.idsig

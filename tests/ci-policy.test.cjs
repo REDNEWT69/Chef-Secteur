@@ -23,7 +23,19 @@ assert.match(deploy,/^\s{2}push:\s*$/m,'Pages doit rester déclenché par les pu
 assert.match(legacyNative,/^\s{2}workflow_dispatch:\s*$/m,'le workflow natif legacy doit rester lançable manuellement');
 assert.doesNotMatch(legacyNative,/^\s{2}push:\s*$/m,'le workflow natif legacy ne doit plus se déclencher sur un push main');
 
+// L'enveloppe Android se compile en lecture seule : ni secret, ni signature, ni publication.
+const androidBuild=fs.readFileSync('.github/workflows/android-twa-build.yml','utf8');
+assert.match(androidBuild,/^permissions:\s*\n\s+contents:\s*read\s*$/m,'le build Android doit rester en lecture seule');
+assert.doesNotMatch(androidBuild,/\b(write|admin)\s*$/m,'le build Android ne demande aucun droit d’écriture');
+assert.doesNotMatch(androidBuild,/\$\{\{\s*secrets\./,'le build Android ne lit aucun secret : la signature reste hors CI');
+assert.doesNotMatch(androidBuild,/keystore|\.jks\b|signingConfig|storePassword|base64\s+-d/i,'aucune clé de signature n’est reconstruite en CI');
+assert.doesNotMatch(androidBuild,/\bgit\s+push\b|\bgh\s+pr\s+create\b|deploy-pages|upload-google-play|r0adkll/i,'le build Android ne pousse, ne déploie ni ne publie rien');
+assert.doesNotMatch(androidBuild,/^\s{2}schedule:\s*$/m,'le build Android n’est pas planifié');
+assert.match(androidBuild,/paths:\s*\n\s+- 'android\/\*\*'/,'le build Android ne se déclenche que sur android/');
+assert.match(reliability,/node tests\/android-twa\.test\.cjs/,'Reliability doit exécuter le garde-fou TWA');
+assert.doesNotMatch(deploy,/android/,'le déploiement Pages ne dépend pas du build Android');
+
 assert.match(reliability,/python tests\/official_catalog_test\.py/,'Reliability doit conserver le test du catalogue officiel');
 assert.match(reliability,/node tests\/ci-policy\.test\.cjs/,'Reliability doit exécuter son garde-fou CI/CD');
 
-console.log('PASS: scans annuaires en lecture seule, candidats en artefact, Pages/main et workflow legacy protégés.');
+console.log('PASS: scans annuaires en lecture seule, candidats en artefact, Pages/main, workflow legacy et build Android sans secret protégés.');

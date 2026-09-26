@@ -1,0 +1,153 @@
+/*
+ * Copyright 2019 Google Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// Généré par Bubblewrap 1.25.0 à partir de ../twa-manifest.json, puis porté sur le
+// DSL AGP 9 (voir android/README.md). Ne pas écraser avec `bubblewrap update`.
+
+plugins {
+    id 'com.android.application'
+}
+
+def twaManifest = [
+    applicationId: 'fr.storerunner.app',
+    hostName: 'store-runner.fr', // Le domaine ouvert dans la Trusted Web Activity.
+    launchUrl: '/', // Chemin de lancement, relatif au domaine.
+    name: 'Store Runner',
+    launcherName: 'Store Runner',
+    themeColor: '#F2F5FA', // Barre d'état : theme_color de la PWA (V262).
+    themeColorDark: '#F2F5FA', // La PWA n'a pas de thème sombre.
+    navigationColor: '#F2F5FA',
+    navigationColorDark: '#F2F5FA',
+    // Transparent, écrit en ARGB : Bubblewrap le réduisait à '#000000' (trait noir).
+    navigationDividerColor: '#00000000',
+    navigationDividerColorDark: '#00000000',
+    backgroundColor: '#F4F6FA', // Écran de démarrage : background_color de la PWA.
+    enableNotifications: false, // Store Runner n'envoie aucune notification.
+    splashScreenFadeOutDuration: 300,
+    generatorApp: 'bubblewrap-cli',
+    // Si la TWA n'est pas disponible : onglet personnalisé Chrome, jamais une WebView.
+    fallbackType: 'customtabs',
+    enableSiteSettingsShortcut: 'true',
+    orientation: 'portrait',
+]
+
+// Signature de publication : lue dans keystore.properties (ignoré par Git) s'il existe.
+// Sans ce fichier, la release est construite non signée ; la debug garde la clé de debug.
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
+android {
+    namespace = 'fr.storerunner.app'
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = twaManifest.applicationId
+        minSdk = 24
+        targetSdk = 36
+        versionCode = 1
+        versionName = '1.0.0'
+
+        // The name for the application
+        resValue 'string', 'appName', twaManifest.name
+
+        // The name for the application on the Android Launcher
+        resValue 'string', 'launcherName', twaManifest.launcherName
+
+        // The URL that will be used when launching the TWA from the Android Launcher
+        def launchUrl = 'https://' + twaManifest.hostName + twaManifest.launchUrl
+        resValue 'string', 'launchUrl', launchUrl
+
+        // The URL the Web Manifest for the Progressive Web App that the TWA points to. This
+        // is used by Chrome OS and Meta Quest to open the Web version of the PWA instead of
+        // the TWA, as it will probably give a better user experience for non-mobile devices.
+        resValue 'string', 'webManifestUrl', 'https://store-runner.fr/manifest.webmanifest'
+
+        // This is used by Meta Quest.
+        resValue 'string', 'fullScopeUrl', 'https://store-runner.fr/'
+
+        // The hostname is used when building the intent-filter, so the TWA is able to
+        // handle Intents to open host url of the application.
+        resValue 'string', 'hostName', twaManifest.hostName
+
+        // Status bar, navigation bar and splash screen colors.
+        resValue 'color', 'colorPrimary', twaManifest.themeColor
+        resValue 'color', 'colorPrimaryDark', twaManifest.themeColorDark
+        resValue 'color', 'navigationColor', twaManifest.navigationColor
+        resValue 'color', 'navigationColorDark', twaManifest.navigationColorDark
+        resValue 'color', 'navigationDividerColor', twaManifest.navigationDividerColor
+        resValue 'color', 'navigationDividerColorDark', twaManifest.navigationDividerColorDark
+        resValue 'color', 'backgroundColor', twaManifest.backgroundColor
+
+        // Defines a provider authority for the Splash Screen
+        resValue 'string', 'providerAuthority', twaManifest.applicationId + '.fileprovider'
+
+        // The enableNotification resource is used to enable or disable the
+        // TrustedWebActivityService, by changing the android:enabled and android:exported
+        // attributes
+        resValue 'bool', 'enableNotification', twaManifest.enableNotifications.toString()
+
+        // The duration of fade out animation in milliseconds to be played when removing
+        // splash screen.
+        resValue 'integer', 'splashScreenFadeOutDuration', twaManifest.splashScreenFadeOutDuration.toString()
+
+        resValue 'string', 'generatorApp', twaManifest.generatorApp
+        resValue 'string', 'fallbackType', twaManifest.fallbackType
+        resValue 'bool', 'enableSiteSettingsShortcut', twaManifest.enableSiteSettingsShortcut
+        resValue 'string', 'orientation', twaManifest.orientation
+    }
+
+    // AGP 9 n'active plus resValue par défaut ; tout le contrat TWA ci-dessus en dépend.
+    buildFeatures {
+        resValues = true
+    }
+
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create('upload') {
+                storeFile = rootProject.file(keystoreProperties.getProperty('storeFile'))
+                storePassword = keystoreProperties.getProperty('storePassword')
+                keyAlias = keystoreProperties.getProperty('keyAlias')
+                keyPassword = keystoreProperties.getProperty('keyPassword')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled = true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName('upload')
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    lint {
+        checkReleaseBuilds = false
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.7.3'
+}
