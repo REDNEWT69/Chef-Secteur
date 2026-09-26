@@ -1,8 +1,8 @@
 const BUILD_REV = "20260925-pwa261";
-/* V261.1 hotfix : même révision applicative, nouveau namespace de cache afin que les
-   PWA déjà installées récupèrent bien daily-capacity.js corrigé sans mélanger ancien et
-   nouveau shell. Le BUILD_REV reste V261 : aucune migration ni changement de données. */
-const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV + "-capacity2611";
+/* V261.2 hotfix : même révision applicative, nouveau namespace de cache afin que les
+   PWA déjà installées récupèrent le correctif de capacité à la source (visit-counting.js)
+   sans mélanger ancien et nouveau shell. Le BUILD_REV reste V261 : aucune migration. */
+const CACHE_NAME = "chef-secteur-stable-" + BUILD_REV + "-capacity2612";
 /* V260 — tout ce que index.html charge au démarrage est OBLIGATOIRE : un worker ne
    s'active jamais avec une version incomplète. Avant, 70 modules sur 80 étaient
    « optionnels » : un seul échec réseau pendant install() laissait une version qui

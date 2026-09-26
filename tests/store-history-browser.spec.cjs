@@ -1,6 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
 const APP_URL = process.env.STORE_RUNNER_E2E_URL || 'http://127.0.0.1:4173/';
+function futureIso(days=7){const d=new Date();d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)}
 
 test.use({
   viewport: { width: 390, height: 844 },
@@ -14,12 +15,13 @@ test.use({
 
 test('La fiche magasin retrouve notes, visites et actions à 390 px', async ({ page }) => {
   const pageErrors=[];
+  const nextApptDate=futureIso();
   page.on('pageerror', e => pageErrors.push(String(e && e.message || e)));
 
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(() => typeof window.openStoreQuick==='function' && window.StoreRunnerVisits && window.StoreRunnerVisitModel);
 
-  await page.evaluate(() => {
+  await page.evaluate((nextApptDate) => {
     const st=window.state;
     const M=window.StoreRunnerVisitModel;
     const store={id:'memory-1',enseigne:'Darty',ville:'Ville-Test A',adresse:'10 rue Mémoire',dept: '99',lat:43.66,lon:-0.66,active:true,priority:4};
@@ -27,7 +29,7 @@ test('La fiche magasin retrouve notes, visites et actions à 390 px', async ({ p
     st.notes=Object.assign({},st.notes||{},{'memory-1':'Responsable Julien · PLV à revoir'});
     st.visits={};
     st.businessV2=M.empty();
-    st.appointments=[{id:'memory-rdv',storeId:'memory-1',date:'2026-09-25',time:'10:00',duration:60,type:'Rendez-vous responsable'}];
+    st.appointments=[{id:'memory-rdv',storeId:'memory-1',date:nextApptDate,time:'10:00',duration:60,type:'Rendez-vous responsable'}];
     const rows=[
       ['2026-08-20','Implantation corrigée'],
       ['2026-08-27','Stock gamme X faible'],
@@ -41,7 +43,7 @@ test('La fiche magasin retrouve notes, visites et actions à 390 px', async ({ p
         M.editAnomaly(st,visitId,anomaly,'Installer la nouvelle PLV');
         const actionId=M.actionFromAnomaly(st,visitId,anomaly);
         M.editAction(st,actionId,'owner','Julien');
-        M.editAction(st,actionId,'dueDate','2026-09-25');
+        M.editAction(st,actionId,'dueDate',nextApptDate);
       }
       M.editVisit(st,visitId,'conclusion',null,conclusion);
       M.complete(st,visitId,day);
@@ -51,12 +53,12 @@ test('La fiche magasin retrouve notes, visites et actions à 390 px', async ({ p
     });
     try{if(typeof save==='function')save()}catch(_){}
     window.openStoreQuick('memory-1','Lundi','09:30');
-  });
+  },nextApptDate);
 
   const sheet=page.locator('#storeQuickSheet');
   await expect(sheet).toHaveClass(/open/);
   await expect(page.locator('#sqLastNote')).toContainText('Responsable Julien');
-  await expect(page.locator('#sqNextAppt')).toContainText('2026-09-25');
+  await expect(page.locator('#sqNextAppt')).toContainText(nextApptDate);
 
   const memory=page.locator('#srStoreMemory');
   await expect(memory).toBeVisible();

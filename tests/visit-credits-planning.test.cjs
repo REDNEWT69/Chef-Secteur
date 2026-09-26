@@ -1,6 +1,6 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 
-/* V261.1 — le plafond journalier est entièrement choisi par l'utilisateur.
+/* V261.2 — le plafond journalier est entièrement choisi par l'utilisateur.
    Les crédits métier restent inchangés (Boulanger/Darty/BUT/Conforama x2), mais aucune
    enseigne ne réserve de capacité supplémentaire pendant une génération/recalcul. */
 const plannerSource=fs.readFileSync(__dirname+'/../range-planner-v2.js','utf8')
@@ -11,7 +11,9 @@ const capacitySource=fs.readFileSync(__dirname+'/../daily-capacity.js','utf8');
 assert.doesNotMatch(plannerSource,/DEFAULT_RULES|visitCreditsByBrand/,'le planificateur ne redéfinit pas les règles de crédit');
 assert.match(plannerSource,/window\.storeVisitCredit/,'le planificateur consomme l’API publique des crédits');
 assert.match(plannerSource,/routeCredits\(plan\[day\]\)\+cost>max/,'la limite réglée doit rester le seul budget journalier');
-assert.match(capacitySource,/bindPlanningCreditsToUserLimit/,'daily-capacity doit supprimer la réserve cachée par enseigne');
+assert.match(countingSource,/function planningVisitCredit\(store\)\{return visitCredit\(store\)\}/,'visit-counting doit exposer le vrai crédit comme crédit planning');
+assert.doesNotMatch(countingSource,/planningCapacityActive|max-1|Boulanger garde sa réserve/,'aucune réserve Boulanger ne doit subsister dans la source de vérité');
+assert.match(capacitySource,/bindPlanningCreditsToUserLimit/,'daily-capacity garde un filet de compatibilité pour les sessions déjà chargées');
 assert.match(capacitySource,/api\.planningCredit=api\.credit/,'l’API planning doit exposer le vrai crédit métier');
 assert.doesNotMatch(capacitySource,/max-1/,'aucune réserve Boulanger ne doit être recréée dans le module de capacité');
 
