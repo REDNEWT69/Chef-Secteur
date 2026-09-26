@@ -1,4 +1,4 @@
-const BUILD_REV = "20260925-pwa261";
+const BUILD_REV = "20260926-pwa261";
 /* V261.2 hotfix : même révision applicative, nouveau namespace de cache afin que les
    PWA déjà installées récupèrent le correctif de capacité à la source (visit-counting.js)
    sans mélanger ancien et nouveau shell. Le BUILD_REV reste V261 : aucune migration. */
