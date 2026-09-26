@@ -24,7 +24,7 @@ const fs=require('fs'),os=require('os'),path=require('path'),http=require('http'
 const ROOT=path.join(__dirname,'..');
 const SW=fs.readFileSync(path.join(ROOT,'sw.js'),'utf8');
 const REV=SW.match(/const BUILD_REV = "([^"]+)"/)[1];
-const OLD='20260926-pwa261';
+const OLD='20260926-r1-pwa-shell-order-261';
 const TARGET=REV;
 const CACHE_SUFFIX=(SW.match(/const CACHE_NAME = "chef-secteur-stable-" \+ BUILD_REV(?: \+ "([^"]*)")?;/)||[])[1]||'';
 const cacheName=rev=>'chef-secteur-stable-'+rev+CACHE_SUFFIX;
@@ -134,13 +134,13 @@ test('V260 : première installation sans rechargement parasite, hors ligne, réo
   await again.context.close();
 });
 
-test('PR #439 : 20260926-pwa261 → build courant — nouveau shell malgré un index CDN #438 ancien',async()=>{
+test('V261.4 : build r1 → r2 — nouveau shell malgré un index CDN r1 ancien',async()=>{
   test.setTimeout(150000);
   const {context,page,nav}=await install('open');
   await seed(page);
   site.current='new';
   /* Le manifeste et le worker sont déjà ceux du nouveau déploiement, mais le CDN peut
-     encore répondre l'ancien index à la navigation déclenchée après activation. */
+     encore répondre l'ancien index r1 à la navigation déclenchée après activation. */
   site.staleNavigation=true;
   await page.evaluate(()=>StoreRunnerUpdates.checkForUpdates(true));
   const banner=page.locator('#storeRunnerUpdateBanner');
