@@ -12,43 +12,25 @@ jobs:
         with:
           ref: chatgpt/mobile-focus-zoom-fix
           fetch-depth: 0
-      - name: Appliquer le correctif ciblé
+      - name: Chaîner le test zoom dans la suite mobile existante
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import json
-
-          old = '20260926-r2-recalc-capacity-261'
-          new = '20260926-r3-mobile-zoom-261'
-
-          for name in ('index.html', 'sw.js'):
-              path = Path(name)
-              text = path.read_text()
-              if old not in text:
-                  raise SystemExit(f'{old} absent de {name}')
-              path.write_text(text.replace(old, new))
-
-          version_path = Path('version.json')
-          version = json.loads(version_path.read_text())
-          if version.get('latestBuild') != old:
-              raise SystemExit(f"version.json inattendu: {version.get('latestBuild')}")
-          version['latestBuild'] = new
-          version['displayVersion'] = '261'
-          version['releasedAt'] = '2026-09-26'
-          version_path.write_text(json.dumps(version, ensure_ascii=False, indent=2) + '\n')
-
-          css_path = Path('store-runner-visits.css')
-          css = css_path.read_text()
-          marker = '/* Mobile focus guard V261 */'
-          if marker not in css:
-              css += '''\n\n/* Mobile focus guard V261 */\n/* Safari/iOS agrandit automatiquement la page quand un contrôle focalisé fait\n   moins de 16 px. On ne grossit que le texte des champs, sans bloquer le pinch zoom. */\n@media(max-width:700px){\n  html body input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"]),\n  html body select,\n  html body textarea{font-size:16px!important}\n}\n'''
-              css_path.write_text(css)
+          path = Path('tests/mobile-browser.spec.cjs')
+          text = path.read_text()
+          marker = "require('./mobile-focus-zoom-browser.spec.cjs');"
+          if marker not in text:
+              needle = "const { test, expect } = require('@playwright/test');\n"
+              if needle not in text:
+                  raise SystemExit('entête Playwright introuvable')
+              text = text.replace(needle, needle + marker + '\n', 1)
+              path.write_text(text)
           PY
-      - name: Committer le correctif applicatif
+      - name: Committer le chaînage du test
         run: |
           git config user.name "REDNEWT69"
           git config user.email "103671138+REDNEWT69@users.noreply.github.com"
-          git add index.html sw.js version.json store-runner-visits.css
+          git add tests/mobile-browser.spec.cjs
           git diff --cached --check
-          git commit -m "Zoom mobile: empêcher l’auto-zoom des champs au focus"
+          git commit -m "test: couvrir le zoom dans la suite mobile"
           git push origin HEAD:chatgpt/mobile-focus-zoom-fix
