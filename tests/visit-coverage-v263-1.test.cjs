@@ -201,9 +201,10 @@ function weeklySector(){
 
   await scenario('d — croisé : cycle puis V185 puis V251 → aucun magasin sur un jour bloqué ; figé, RDV et posé intacts',async()=>{
     // Mercredi 30/09 : lundi et mardi sont passés (figés). W hebdo visité lundi 28 hors planning.
-    const s={};for(const [id,d] of Object.entries({W:1,R1:2,R2:3,D:4,E:5,L1:6,L2:7,L3:8,L4:9}))s[id]=store(id,d,id==='W'?{intervalDays:7}:{});
+    // W est loin, juste à côté de D posé mercredi : V185 a tout intérêt à les regrouper.
+    const s={};for(const [id,d] of Object.entries({W:20,R1:2,R2:3,D:20.5,E:5,L1:6,L2:7,L3:8,L4:9}))s[id]=store(id,d,id==='W'?{intervalDays:7}:{});
     const plan=emptyPlan();plan.Lundi=[s.R1,s.L1];plan.Mardi=[s.R2];
-    const o={today:'2026-09-30',weekDate:'2026-09-28',target:6,max:3,stores:Object.values(s),plan,
+    const o={today:'2026-09-30',weekDate:'2026-09-28',target:9,max:3,stores:Object.values(s),plan,
       visits:history({W:['2026-09-28'],R1:['2026-09-01','2026-09-28'],R2:['2026-09-01','2026-09-29'],D:['2026-09-24'],E:['2026-09-24'],L1:['2026-08-10'],L2:['2026-08-10'],L3:['2026-08-10'],L4:['2026-08-10']}),
       locks:{D:{day:'Mercredi',week:'2026-09-28'}},appointments:[{id:'rdv-e',storeId:'E',date:'2026-10-01',time:'10:00',duration:60}]};
     const r=await runThreeWeeks(o);
