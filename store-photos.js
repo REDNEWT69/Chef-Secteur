@@ -608,7 +608,7 @@ function renderBrowse(keepPages){
 }
 async function render(){
   ensureDialog();const rows=await list(activeStoreId);allRows=rows;
-  const ids=new Set(rows.map(r=>String(r.id)));selectedIds=new Set([...selectedIds].filter(id=>ids.has(id)));if(!selectedIds.size&&rows.length)selectedIds=defaultSelection(rows,currentVisitId(activeStoreId));
+  const ids=new Set(rows.map(r=>String(r.id)));selectedIds=new Set([...selectedIds].filter(id=>ids.has(id)));
   renderPendingTags();
   renderBrowse();
   return rows;
@@ -715,7 +715,7 @@ async function open(storeId,options){
   dialog.scrollTop=0;
   try{await render();return true}catch(e){report(e);return false}
 }
-function closeDialog(){galleryDirty=false;closeViewer();clearUrls();allRows=[];viewRows=[];if(dialog&&typeof dialog.close==='function'&&dialog.open)dialog.close();else if(dialog)dialog.removeAttribute('open')}
+function closeDialog(){galleryDirty=false;closeViewer();closeMoveDialog();selectedIds.clear();syncMoveButton();clearUrls();allRows=[];viewRows=[];if(dialog&&typeof dialog.close==='function'&&dialog.open)dialog.close();else if(dialog)dialog.removeAttribute('open')}
 function openFromQuick(){const start=root.document&&root.document.getElementById('srQuickStart'),id=start&&start.dataset&&start.dataset.srStart;if(!id){setStatus('Magasin introuvable.',true);return false}open(id);return true}
 function installQuickButton(){
   if(!root.document)return false;const actions=root.document.querySelector('#storeQuickSheet .sheetActions');if(!actions)return false;if(root.document.getElementById('storePhotosQuickBtn'))return true;

@@ -17,6 +17,53 @@ async function reopenQuickAndTapPhotos(page){
   await photo.tap();
 }
 
+async function seedRestoredPhotos(page){
+  await page.evaluate(async png=>{
+    await new Promise(r=>{const req=indexedDB.deleteDatabase('store-runner-store-photos-v1');req.onsuccess=req.onerror=req.onblocked=()=>r()});
+    const bytes=Uint8Array.from(png);
+    const db=await window.StorePhotosV1.openDb(),tx=db.transaction('photos','readwrite'),os=tx.objectStore('photos');
+    for(const id of ['restored-a','restored-b']){
+      os.put({id,storeId:'photo-store',visitId:null,createdAt:'2026-09-27T10:00:00.000Z',updatedAt:'2026-09-27T10:00:00.000Z',note:'',family:'',moment:'',category:'',type:'image/png',width:1,height:1,size:bytes.length,originalName:id+'.png',blob:new Blob([bytes],{type:'image/png'})});
+    }
+    await new Promise((ok,ko)=>{tx.oncomplete=ok;tx.onerror=tx.onabort=()=>ko(tx.error)});
+  },Array.from(PNG));
+}
+
+test('V1 galerie photos : fermer puis rouvrir remet toujours la sélection à zéro',async({page})=>{
+  test.setTimeout(60000);
+  const pageErrors=[];page.on('pageerror',e=>pageErrors.push(String(e&&e.message||e)));
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>document.readyState==='complete'&&window.StorePhotosV1&&window.StoreRunnerVisitModel&&window.state);
+  await page.evaluate(()=>{
+    const st=window.state;
+    st.stores=[{id:'photo-store',enseigne:'Boulanger',ville:'Villetest',adresse:'1 rue Photo',dept:'99',lat:43.66,lon:-0.66,active:true,priority:3}];
+    st.businessV2=window.StoreRunnerVisitModel.empty();st.plan={};st.appointments=[];st.calendarEvents=[];
+    if(typeof save==='function')save();
+  });
+  await seedRestoredPhotos(page);
+
+  await page.evaluate(()=>window.StorePhotosV1.open('photo-store'));
+  const dialog=page.locator('#storePhotosDialog');await expect(dialog).toBeVisible();
+  await expect(dialog.locator('.sr-photoCard')).toHaveCount(2);
+  await expect(dialog.locator('[data-photo-select]:checked')).toHaveCount(0);
+
+  await dialog.locator('[data-photo-select]').first().check();
+  await dialog.locator('[data-photo-select]').nth(1).check();
+  await expect(dialog.locator('[data-photo-select]:checked')).toHaveCount(2);
+  await dialog.locator('[data-photo-select]').first().uncheck();
+  await dialog.locator('[data-photo-select]').nth(1).uncheck();
+  await expect(dialog.locator('[data-photo-select]:checked')).toHaveCount(0);
+
+  await dialog.locator('#srPhotoClose').tap();await expect(dialog).not.toBeVisible();
+  await page.evaluate(()=>window.StorePhotosV1.open('photo-store'));
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('.sr-photoCard')).toHaveCount(2);
+  await expect(dialog.locator('[data-photo-select]:checked')).toHaveCount(0);
+  await dialog.locator('#srSharePhotos').tap();
+  await expect(dialog.locator('#srPhotoStatus')).toContainText('Sélectionne au moins une photo');
+  expect(pageErrors).toEqual([]);
+});
+
 test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA FMT',async({page,context})=>{
   test.setTimeout(90000);
   const pageErrors=[];page.on('pageerror',e=>pageErrors.push(String(e&&e.message||e)));
