@@ -35,6 +35,25 @@ async function boot(page) {
 
 const noOverflow = page => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
+test('fiche magasin — aucune visite active affiche « Démarrer la visite »', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => openStoreQuick('m1'));
+  await expect(page.locator('#srQuickStart')).toHaveText('Démarrer la visite');
+  await page.evaluate(() => { closeStoreQuick(); openStore('m1') });
+  await expect(page.locator('#srStoreStart')).toHaveText('Démarrer la visite');
+});
+
+test('fiche magasin — une visite en cours affiche « Reprendre la visite »', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    window.StoreRunnerVisitModel.start(window.state, 'm1');
+    openStoreQuick('m1');
+  });
+  await expect(page.locator('#srQuickStart')).toHaveText('Reprendre la visite');
+  await page.evaluate(() => { closeStoreQuick(); openStore('m1') });
+  await expect(page.locator('#srStoreStart')).toHaveText('Reprendre la visite');
+});
+
 for (const [platform, userAgent] of [['Android', ANDROID_UA], ['iPhone', IPHONE_UA]]) {
   test.describe(platform, () => {
     test.use({ userAgent });
