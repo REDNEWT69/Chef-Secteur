@@ -193,6 +193,15 @@ function unpinStore(id){
 }
 /* Le rang forcé dépend de la semaine construite : une pose datée sur une autre semaine ne
    doit ni réserver un créneau, ni consommer de crédits, ni passer devant le vivier frais. */
+/* V263.1 : un rendez-vous enregistré dans la semaine est une contrainte explicite, comme un
+   magasin posé ou imposé. Il passe outre la garde anti-sur-visite et fixe le jour de visite.
+   `forcedRank` n'est pas modifié : ses messages d'erreur ne parlent que des magasins posés,
+   imposés ou verrouillés, et un rendez-vous hors des jours disponibles ne bloque rien. */
+function appointmentDayForWeek(id,weekKey){
+  const mon=parse(weekKey);if(!mon)return'';const start=iso(mon),end=iso(addDays(mon,7));
+  const a=(state.appointments||[]).find(x=>x&&String(x.storeId)===String(id)&&String(x.date||'')>=start&&String(x.date||'')<end);
+  const d=a&&parse(String(a.date).slice(0,10));return d?DAYS[(d.getDay()||7)-1]||'':'';
+}
 function forcedRank(s,weekKey){const id=s&&s.id;return (lockDayForWeek(id,weekKey)?2:0)+(state.included&&state.included[id]?1:0)}
 function forcedCount(pool,weekKey){return (pool||[]).reduce((n,s)=>n+(forcedRank(s,weekKey)>0?1:0),0)}
 function forcedCredits(pool,weekKey){return (pool||[]).reduce((n,s)=>n+(forcedRank(s,weekKey)>0?visitCredit(s):0),0)}
@@ -232,7 +241,8 @@ function repeatReadinessV211(s,lastUsedWeek,weekIndex){
 function chooseStores(pool,usedKeys,useCount,lastUsedWeek,targetCount,creditBudget,weekKey,weekIndex=0){
   const chosen=[],keys=new Set();let credits=0;
   const needFn=coverageNeedFn();
-  if(needFn)pool=pool.filter(s=>forcedRank(s,weekKey)>0||!coverageBlocked(needFn,s,weekKey));
+  const hasAppointment=s=>!!appointmentDayForWeek(s&&s.id,weekKey);
+  if(needFn)pool=pool.filter(s=>forcedRank(s,weekKey)>0||hasAppointment(s)||!coverageBlocked(needFn,s,weekKey));
   const add=(s,isForced=false)=>{
     const k=storeKey(s),cost=visitCredit(s);
     if(!k||keys.has(k)||chosen.length>=targetCount)return false;
@@ -241,6 +251,7 @@ function chooseStores(pool,usedKeys,useCount,lastUsedWeek,targetCount,creditBudg
   };
   const forced=pool.filter(s=>forcedRank(s,weekKey)>0).sort((a,b)=>forcedRank(b,weekKey)-forcedRank(a,weekKey)||compareNeedV211(a,b,weekKey));
   for(const s of forced)add(s,true);
+  for(const s of pool.filter(s=>forcedRank(s,weekKey)===0&&hasAppointment(s)).sort((a,b)=>compareNeedV211(a,b,weekKey)))add(s,true);
 
   /* Une cadence réellement arrivée à échéance peut reprendre une petite part de la
      semaine, mais jamais avaler toute la rotation. 30 % maximum laisse au moins 70 %
@@ -323,7 +334,8 @@ function buildWeekUnique(chosen,days,weekKey){
   const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
   const free=[];
   for(const store of unique){
-    const locked=lockDayForWeek(store.id,weekKey);
+    const appointment=appointmentDayForWeek(store.id,weekKey);
+    const locked=lockDayForWeek(store.id,weekKey)||(days.includes(appointment)?appointment:'');
     if(!locked){free.push(store);continue}
     if(!days.includes(locked))throw new Error((store.enseigne||'Magasin')+' '+(store.ville||'')+' est verrouillé sur '+locked+', mais ce jour n’est pas disponible. Le planning précédent est conservé.');
     plan[locked].push(store);
