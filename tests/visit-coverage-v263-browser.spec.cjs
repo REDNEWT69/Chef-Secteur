@@ -105,3 +105,48 @@ test('V263 : le recalcul montre ce qu’il retire et ce qu’il ajoute avant de 
   expect(after.ids).toContain('cov-weekly');
   expect(after.ids).not.toContain('cov-ok');
 });
+
+test('V263 : le graphique du Pilotage résume le planning et filtre la liste d’un tap, à 390 px',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.state&&window.StoreRunnerVisitCoverage&&window.StoreRunnerSectorPilotage&&document.readyState!=='loading'&&document.getElementById('planPanel'));
+  await seed(page);
+  const block=page.locator('#planningCoverageV263');
+  await block.locator('summary').click();
+  await expect(block.locator('.cov263Month')).toContainText('Ce mois-ci');
+  await block.locator('.cov263Link').click();
+
+  const panel=page.locator('#pilotagePanel');
+  await expect(panel).toBeVisible();
+  await expect(panel.locator('.spHead')).toContainText('Planning et suivi terrain');
+  await expect(panel.locator('.spKpi')).toHaveCount(4);
+  await expect(panel.locator('.spKpi').first()).toContainText('3/5 magasins à jour');
+  await expect(panel.locator('[data-sp-cov="todo"].spKpi')).toContainText('2');
+  await expect(panel.locator('[data-sp-cov="todo"].spKpi')).toContainText('1 en retard · 1 jamais vus');
+  await expect(panel.locator('.spKpi').nth(2)).toContainText('visites faites cette semaine');
+  await expect(panel.locator('.spKpi').nth(2)).toContainText('0 prévue cette semaine');
+  await expect(panel.locator('.spRingCenter')).toContainText('60%');
+  // Ouvert depuis le planning : directement sur les magasins restants à voir.
+  await expect(panel.locator('.spCovFilter')).toContainText('Restants à voir · 2 magasins');
+  await expect(panel.locator('.spTableRow')).toHaveCount(2);
+
+  await panel.locator('.spCovLegend [data-sp-cov="covered"]').click();
+  await expect(panel.locator('.spCovLegend [data-sp-cov="covered"]')).toHaveAttribute('aria-pressed','true');
+  await expect(panel.locator('.spCovFilter')).toContainText('Déjà bien couverts · 2 magasins');
+  await expect(panel.locator('.spTableRow[data-sp-store="cov-over"]')).toContainText('Sur-visité');
+  await expect(panel.locator('.spTableRow[data-sp-store="cov-late"]')).toHaveCount(0);
+
+  await panel.locator('.spCovFilter button').click();
+  await expect(panel.locator('.spCovFilter')).toHaveCount(0);
+  await expect(panel.locator('.spTableRow')).toHaveCount(5);
+  const late=panel.locator('.spTableRow[data-sp-store="cov-late"]');
+  await expect(late).toContainText('retard 10 j');
+  await expect(late).toContainText('En retard');
+
+  const layout=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,minLegend:Math.min(...[...document.querySelectorAll('#pilotagePanel .spCovLegend button')].map(b=>b.getBoundingClientRect().height))}));
+  expect(layout.overflow).toBeLessThanOrEqual(1);
+  expect(layout.minLegend).toBeGreaterThanOrEqual(44);
+  await late.click();
+  await expect(page.locator('#sqCoverageV263')).toContainText('En retard');
+  expect(errors).toEqual([]);
+});

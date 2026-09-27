@@ -32,7 +32,8 @@
         'Les magasins en retard ou jamais visités passent en premier, avant la simple proximité.',
         'Nouveau bloc « Couverture » dans le planning : à rattraper, à jour, déjà bien couverts — et pourquoi, en une ligne.',
         '« Recalculer le reste du planning » retire les magasins déjà faits, comble les trous avec ceux qui manquent et te montre le détail avant de valider.',
-        'Les journées déjà passées de la semaine ne bougent plus. Rendez-vous et magasins posés restent toujours en place.'
+        'Les journées déjà passées de la semaine ne bougent plus. Rendez-vous et magasins posés restent toujours en place.',
+        'Le graphique du Pilotage devient ton résumé terrain : couverture, restants, visites de la semaine. Touche une catégorie pour voir les magasins concernés.'
       ]
     },
     {

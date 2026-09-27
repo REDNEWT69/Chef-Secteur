@@ -391,6 +391,27 @@ function mainSector(){
     }finally{global.state=prev.state;global.localStorage=prev.localStorage}
   });
 
+  await scenario('Pilotage : le graphique existant résume couverture, restants, semaine — mêmes statuts que le planning, filtrables',async()=>{
+    const C=require(path.join(ROOT,COVERAGE_FILE)),P=require(path.join(ROOT,'sector-pilotage.js'));
+    const {StoreRunnerActivityMetrics:M}=require(path.join(ROOT,'visit-counting.js'));
+    const stores=[store('late',1,{products:['Brun']}),store('never',2,{products:['Brun']}),store('soon',3,{products:['Brun']}),store('ok',4,{products:['Brun']}),store('boul',5,{products:['Brun']})];
+    const st=makeState({weekDate:'2026-09-21',stores,visits:history({late:['2026-08-20'],soon:['2026-08-31'],ok:['2026-09-07'],boul:['2026-09-03','2026-09-12','2026-09-22']})});
+    st.plan.Lundi=[stores[0]];st.plan.Mardi=[stores[1],stores[2]];
+    const now=new Date(2026,8,25,12);
+    const data=P.compute(st,{now,coverageApi:C,activityMetrics:M});
+    assert.deepEqual(Object.assign({},data.coverageCounts),{late:1,never:1,soon:1,ok:1,covered:1});
+    assert.equal(data.total,5);assert.equal(data.upToDate,3);assert.equal(data.remaining,2);
+    assert.equal(Math.round(data.coverage),60,'taux = magasins vus dans leur fréquence / total');
+    assert.deepEqual(Object.assign({},data.week),{done:1,planned:3},'semaine réelle : visites faites (compteurs V245) / magasins prévus cette semaine');
+    const planning=C.compute(st,{today:'2026-09-25'});
+    for(const r of data.rows)assert.equal(r.coverage.status,planning.rows.find(x=>x.id===String(r.store.id)).status,'même statut que le planning pour '+r.store.id);
+    assert.deepEqual(data.rows.filter(r=>P.matchesCoverage(r,'todo')).map(r=>r.store.id).sort(),['late','never'],'« restants » = en retard + jamais visités');
+    assert.deepEqual(data.rows.filter(r=>P.matchesCoverage(r,'covered')).map(r=>r.store.id),['boul']);
+    assert.equal(data.rows.filter(r=>P.matchesCoverage(r,'')).length,5,'sans filtre, toute la liste');
+    const legacy=P.compute(st,{now,coverageApi:{},activityMetrics:{}});
+    assert.equal(legacy.coverageCounts,null,'sans le module couverture, le Pilotage garde son affichage d’origine');
+  });
+
   await scenario('Sans aucune visite enregistrée, le cycle 3 semaines reste exactement radial',async()=>{
     const stores=Array.from({length:20},(_,i)=>store('s'+(i+1),i+1));
     const r=await runThreeWeeks({today:FRIDAY,target:5,stores});

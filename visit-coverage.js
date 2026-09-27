@@ -213,9 +213,8 @@ function ensureCss(doc){
 .cov263Chip{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:750;line-height:1.3;white-space:nowrap}
 .cov263Chip.catchup{background:#fff1f0;color:#b42318}.cov263Chip.ok{background:#ecfdf3;color:#067647}.cov263Chip.covered{background:#eff4ff;color:#1849a9}
 .cov263Body{padding:0 14px 14px}
-.cov263Kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
-.cov263Kpi{background:#f7f9fc;border-radius:12px;padding:8px 9px;min-width:0}
-.cov263Kpi b{display:block;font-size:18px;color:#1d2939}.cov263Kpi span{display:block;font-size:10.5px;color:#667085;line-height:1.25}
+.cov263Month{margin:0;padding:9px 10px;border-radius:12px;background:#f7f9fc;font-size:12px;line-height:1.45;color:#475467}.cov263Month b{color:#1d2939}
+.cov263Link{display:block;width:100%;min-height:44px;margin-top:10px;border:1px solid #d0d5dd;border-radius:12px;background:#fff;color:#1849a9;font:inherit;font-size:13px;font-weight:800}
 .cov263Section{margin-top:12px}.cov263Section h4{margin:0 0 6px;font-size:13px;color:#344054}.cov263Section h4 small{font-weight:600;color:#98a2b3}
 .cov263Hint{margin:-2px 0 6px;font-size:11px;color:#667085;line-height:1.35}
 .cov263Row{display:flex;align-items:flex-start;gap:8px;width:100%;box-sizing:border-box;text-align:left;border:1px solid #eaecf0;background:#fff;border-radius:12px;padding:9px 10px;margin:0 0 6px;font:inherit;color:inherit;min-height:44px}
@@ -227,7 +226,7 @@ function ensureCss(doc){
 .cov263More{font-size:11.5px;color:#667085;margin:2px 2px 0}
 #${QUICK_ID}{margin-top:6px;font-size:12px;line-height:1.4;color:#475467}
 #${QUICK_ID} .cov263Chip{margin-right:6px}
-@media(max-width:700px){.cov263Kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.cov263Row{padding:9px}}`;
+@media(max-width:700px){.cov263Row{padding:9px}}`;
   doc.head.appendChild(s);
 }
 function chip(status,text){return '<span class="cov263Chip '+esc(status)+'">'+esc(text||statusLabel(status))+'</span>'}
@@ -241,16 +240,16 @@ function listHtml(rows,limit){
 }
 function blockHtml(data){
   const c=data.counts,catchUp=c.never+c.late+c.soon,covered=c.enough+c.over;
-  const kpi=(value,label)=>'<div class="cov263Kpi"><b>'+value+'</b><span>'+label+'</span></div>';
   const summary='<summary><span class="cov263Title"><b>Couverture du secteur</b><span class="cov263Chips">'+
     '<span class="cov263Chip catchup">'+plural(catchUp,'à rattraper','à rattraper')+'</span>'+
     '<span class="cov263Chip ok">'+c.ok+' à jour</span>'+
     '<span class="cov263Chip covered">'+plural(covered,'déjà bien couvert','déjà bien couverts')+'</span></span></span></summary>';
-  let body='<div class="cov263Body"><div class="cov263Kpis">'+
-    kpi(data.monthStores,'magasins visités ce mois')+kpi(data.monthVisits,'visites ce mois')+kpi(c.never,'jamais visités')+
-    kpi(c.late,'en retard')+kpi(c.ok,'à jour')+kpi(covered,'déjà beaucoup visités')+'</div>';
+  /* Le résumé visuel (anneau, taux, semaine, filtres) est le graphique du Pilotage
+     secteur : ce bloc reste une ligne de faits et les deux listes utiles au planning. */
+  let body='<div class="cov263Body"><p class="cov263Month"><b>Ce mois-ci</b> · '+plural(data.monthStores,'magasin visité','magasins visités')+' · '+plural(data.monthVisits,'visite','visites')+' · '+plural(c.never,'jamais visité','jamais visités')+' · '+c.late+' en retard · '+c.ok+' à jour · '+plural(covered,'déjà beaucoup visité','déjà beaucoup visités')+'</p>';
   body+='<div class="cov263Section"><h4>À rattraper <small>('+catchUp+')</small></h4>'+(catchUp?'<p class="cov263Hint">Passent en priorité à la prochaine génération ou au prochain recalcul.</p>'+listHtml(data.catchUp,8):'<p class="cov263Hint">Aucun magasin en retard : le secteur est à jour.</p>')+'</div>';
   if(covered)body+='<div class="cov263Section"><h4>Déjà bien couverts <small>('+covered+')</small></h4><p class="cov263Hint">Pas reproposés automatiquement tant que leur fréquence n’est pas revenue. Un rendez-vous ou un magasin posé reste toujours prioritaire.</p>'+listHtml(data.covered,6)+'</div>';
+  body+='<button type="button" class="cov263Link" data-pilotage="1" data-sp-cov="todo">Voir le suivi magasins ›</button>';
   return summary+body+'</div>';
 }
 function computeForWin(win,today){
