@@ -351,7 +351,9 @@ function buildThreeWeekSnail(options){
       const todayName=DAYS.find(day=>dateOf(day)===today);
       if(todayName)for(const raw of (existing[todayName]||[])){
         const s=byId.get(String(raw&&raw.id))||raw,k=storeKey(s);if(!k||weekPlaced.has(k)||!completedOn(s.id,today))continue;
-        plan[todayName].push(s);weekPlaced.add(k);used.add(k);
+        /* Un jour inactif (non travaillé, bloqué par l'agenda) n'est pas compté par count() :
+           la visite gardée compte alors dans l'objectif comme une journée figée. */
+        plan[todayName].push(s);weekPlaced.add(k);used.add(k);if(!days.includes(todayName)||blocked(today))frozenCount++;
       }
     }
     const activeDays=days.filter(day=>!frozenSet.has(day)&&!blocked(dateOf(day))),weekTarget=Math.max(0,target-frozenCount),quotas=dayQuotas(activeDays,weekTarget);
