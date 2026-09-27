@@ -63,7 +63,7 @@ function makeState(o){
     profile:{baseLat:45,baseLon:4,overnightMode:'never'},
     settings:{days:WORK.slice(),target:o.target||6,maxVisitsPerDay:o.max||4,weekDate:o.weekDate||'2026-09-28',startTime:'08:30',endTime:'18:00',visitMinutes:45},
     stores:o.stores,visits:o.visits||{},businessV2:{visits:o.businessVisits||[],actions:[],storeSnapshots:{}},
-    plan:o.plan||emptyPlan(),included:o.included||{},excluded:o.excluded||{},locks:o.locks||{},appointments:o.appointments||[],calendarEvents:[],manualWeekEdits:o.manualWeekEdits||{}
+    plan:o.plan||emptyPlan(),included:o.included||{},excluded:o.excluded||{},locks:o.locks||{},appointments:o.appointments||[],calendarEvents:o.calendarEvents||[],manualWeekEdits:o.manualWeekEdits||{}
   };
 }
 
@@ -175,6 +175,34 @@ function weeklySector(){
     assert.deepEqual(ids(t.proposals[0].plan.Jeudi),['E']);
   });
 
+  /* Revue Codex #456 : conflits de contraintes autour d'un rendez-vous V211. */
+  await scenario('b4 — V211 : verrou mardi + rendez-vous jeudi → le rendez-vous fixe le jour',async()=>{
+    const sector=appointmentSector(false);sector.locks={E:{day:'Mardi',week:'2026-09-28'}};
+    const t=rangeEnv(Object.assign({today:FRIDAY,weekDate:'2026-09-28',target:4},sector));
+    const r=await t.ctx.testV2631.strictSingleWeek();
+    assert.equal(r.ok,true,r.error);
+    const plan=t.proposals[0].plan;
+    assert.ok(ids(plan.Jeudi).includes('E'),'le rendez-vous prime sur le verrou : '+DAYS.map(d=>d+'='+ids(plan[d]).join(',')).join(' '));
+  });
+
+  await scenario('b5 — V211 : deux rendez-vous pour un objectif de 1 → les deux sont planifiés',async()=>{
+    const stores=[store('E',3),store('F',4),store('L1',1)];
+    const t=rangeEnv({today:FRIDAY,weekDate:'2026-09-28',target:1,stores,visits:history({E:['2026-09-22'],F:['2026-09-22'],L1:['2026-08-10']}),
+      appointments:[{id:'r1',storeId:'E',date:'2026-10-01',time:'10:00',duration:60},{id:'r2',storeId:'F',date:'2026-09-29',time:'10:00',duration:60}]});
+    const r=await t.ctx.testV2631.strictSingleWeek();
+    assert.equal(r.ok,true,r.error);
+    const plan=t.proposals[0].plan;
+    assert.ok(ids(plan.Jeudi).includes('E')&&ids(plan.Mardi).includes('F'),'chaque rendez-vous sur son jour : '+DAYS.map(d=>d+'='+ids(plan[d]).join(',')).join(' '));
+  });
+
+  await scenario('b6 — V211 : rendez-vous un jour non travaillé → pas déplacé sur un autre jour malgré la garde',async()=>{
+    const t=rangeEnv(Object.assign({today:FRIDAY,weekDate:'2026-09-28',target:4,days:['Lundi','Mardi','Mercredi','Vendredi']},appointmentSector(false)));
+    const r=await t.ctx.testV2631.strictSingleWeek();
+    assert.equal(r.ok,true,r.error);
+    const plan=t.proposals[0].plan;
+    assert.ok(!weekIds(plan).includes('E'),'E visité il y a 3 j, rendez-vous un jeudi non travaillé : il ne doit pas être posé un autre jour ('+DAYS.map(d=>d+'='+ids(plan[d]).join(',')).join(' ')+')');
+  });
+
   await scenario('c — cycle : hebdo visité vendredi, bloqué lundi mais proposé plus tard dans la même semaine, jamais un jour bloqué',async()=>{
     const r=await runThreeWeeks(Object.assign({today:FRIDAY,target:4,max:2},weeklySector()));
     const first=r.weeks[0].plan;
@@ -232,6 +260,18 @@ function weeklySector(){
     assert.ok(ids(r.weeks[0].plan.Lundi).includes('X'),'X visité ce lundi doit rester lundi : '+DAYS.map(d=>d+'='+ids(r.weeks[0].plan[d]).join(',')).join(' '));
     const later=r.weeks.slice(1).flatMap(w=>weekIds(w.plan));
     assert.ok(!later.includes('X'),'X vient d’être visité : il ne revient pas dans le cycle');
+  });
+
+  await scenario('e2 — visite faite aujourd’hui un jour bloqué par l’agenda : comptée dans l’objectif, pas en plus',async()=>{
+    // Lundi 28/09 bloqué (congé) mais X y a été visité : il reste, et l'objectif de 4 n'est pas dépassé.
+    const s={X:store('X',5),L1:store('L1',1),L2:store('L2',2),L3:store('L3',3),L4:store('L4',4)};
+    const plan=emptyPlan();plan.Lundi=[s.X];
+    const r=await runThreeWeeks({today:'2026-09-28',weekDate:'2026-09-28',start:'2026-09-28',target:4,stores:Object.values(s),plan,
+      calendarEvents:[{id:'c1',date:'2026-09-28',title:'Congé',allDay:true}],
+      visits:history({X:['2026-08-01','2026-09-28'],L1:['2026-08-10'],L2:['2026-08-10'],L3:['2026-08-10'],L4:['2026-08-10']})});
+    const w=r.weeks[0].plan;
+    assert.ok(ids(w.Lundi).includes('X'),'X visité aujourd’hui reste sur aujourd’hui');
+    assert.ok(weekIds(w).length<=4,'objectif 4 dépassé : '+DAYS.map(d=>d+'='+ids(w[d]).join(',')).join(' '));
   });
 
   await scenario('f — Pilotage : un magasin exclu sort du total, de l’anneau, des restants et des filtres',async()=>{
