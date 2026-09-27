@@ -4,11 +4,12 @@
    identifiant, `openStoreCreation(drafts)`), l'assistant, l'import IA et le pilotage
    performance ouvrent tous ce même écran.
 
-   Source : Nominatim (OpenStreetMap), interrogé à la demande, uniquement quand
-   l'utilisateur valide sa recherche. Aucune base de magasins n'est embarquée ni mise en
-   cache : seuls les résultats de la session restent en mémoire. Politique Nominatim
-   respectée — pas d'autocomplétion, au plus une requête par seconde, en-tête Referer du
-   navigateur, attribution OpenStreetMap affichée. Aucune clé, aucun proxy.
+   Deux modes restent réunis ici : sélection multiple depuis le carnet officiel déjà
+   existant (`official-catalog.js` / `data/official-stores.json`), et recherche libre
+   Nominatim (OpenStreetMap) interrogée à la demande. La recherche libre n'embarque et ne
+   met en cache aucune base : seuls ses résultats de session restent en mémoire. Politique
+   Nominatim respectée — pas d'autocomplétion, au plus une requête par seconde, en-tête
+   Referer du navigateur, attribution OpenStreetMap affichée. Aucune clé, aucun proxy.
 
    L'enregistrement passe par `RegionStores.commit` : sauvegarde préalable, validation,
    écriture atomique, et refus des doublons certains. Le magasin ajouté garde la forme
@@ -183,6 +184,10 @@ function finalizeStore(store,stores){
   s.sourceFetchedAt=new Date().toISOString();
   return s;
 }
+function catalogRows(rows,stores,duplicateFn){
+  const duplicate=duplicateFn||((a,list)=>{const R=root.RegionStores;return !!(R&&typeof R.duplicate==='function'&&R.duplicate(a,list))});
+  return (Array.isArray(rows)?rows:[]).map(store=>{const complete=hasCoords(store)&&!!text(store.adresse)&&!!text(store.ville),exists=duplicate(store,stores||[]);return{store,complete,exists,selectable:complete&&!exists}});
+}
 
 /* ------------------------------------------------------------------ réseau */
 function isOffline(){return !!(root.navigator&&root.navigator.onLine===false)}
@@ -254,6 +259,27 @@ const CSS=`
 #storeAddDlg .sraProgress{display:flex;justify-content:space-between;align-items:center;margin:0 0 10px;font-size:13px;color:#6e6e73}
 #storeAddDlg .sraProgress button{min-height:36px;border:0;background:none;color:#0a66d8;font-size:14px;padding:0 4px;box-shadow:none;width:auto;height:auto}
 #storeAddDlg .sraLabel{display:block;margin:14px 0 10px;font-size:26px;font-weight:700;letter-spacing:-.025em;line-height:1.15;color:#1d1d1f}
+#storeAddDlg .sraAssisted{padding:16px;border:1px solid #d9e6f5;border-radius:18px;background:#f2f7fd}
+#storeAddDlg .sraAssisted h3{margin:0 0 4px;font-size:19px}#storeAddDlg .sraAssistedIntro{margin:0 0 12px;color:#5c6675;font-size:14px;line-height:1.4}
+#storeAddDlg .sraAssisted label{display:block;margin:10px 0 5px;font-size:14px;font-weight:600}
+#storeAddDlg .sraAssisted select{display:block;width:100%;min-height:48px;padding:0 12px;border:1px solid #c8d4e2;border-radius:13px;background:#fff;color:#1d1d1f;font:inherit}
+#storeAddDlg .sraAssisted .sraPrimary{margin-top:12px}
+#storeAddDlg .sraCoverage{margin:12px 0 0;padding:10px 12px;border-radius:12px;background:#fff;color:#3a3a3c;font-size:14px;line-height:1.4}
+#storeAddDlg .sraCoverage[data-level=partial],#storeAddDlg .sraCoverage[data-level=unavailable]{background:#fff6e8;color:#7a4300}
+#storeAddDlg .sraCatalogTools{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0 6px}
+#storeAddDlg .sraSelectAll{display:flex;align-items:center;gap:10px;min-height:44px;font-size:15px;font-weight:600}
+#storeAddDlg .sraSelectAll input,#storeAddDlg .sraCatalogCheck{width:22px;height:22px;min-width:22px;accent-color:#0a66d8}
+#storeAddDlg .sraCatalogCount{font-size:13px;color:#6e6e73;text-align:right}
+#storeAddDlg .sraCatalogList{display:grid;gap:8px;margin-top:8px}
+#storeAddDlg .sraCatalogItem{display:grid;grid-template-columns:32px minmax(0,1fr);align-items:center;min-height:64px;padding:10px 12px;border:1px solid #e1e5ea;border-radius:14px;background:#fff}
+#storeAddDlg .sraCatalogItem.is-disabled{background:#f6f6f8;color:#777}
+#storeAddDlg .sraCatalogItem b,#storeAddDlg .sraCatalogItem span,#storeAddDlg .sraCatalogItem small{display:block;overflow-wrap:anywhere}
+#storeAddDlg .sraCatalogItem b{font-size:15px;line-height:1.3}#storeAddDlg .sraCatalogItem span{margin-top:2px;font-size:13px;color:#5e6877;line-height:1.35}#storeAddDlg .sraCatalogItem small{margin-top:4px;color:#986000;font-weight:600}
+#storeAddDlg .sraBatchBar{position:sticky;bottom:-1px;margin:12px -4px -10px;padding:8px 4px calc(4px + env(safe-area-inset-bottom));background:linear-gradient(transparent,#fbfbfd 12px);z-index:2}
+#storeAddDlg .sraBatchBar .sraPrimary{margin-top:8px;box-shadow:0 8px 22px rgba(10,102,216,.22)}
+#storeAddDlg .sraFallbacks{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}#storeAddDlg .sraFallbacks .sraLink{flex:1 1 180px}
+#storeAddDlg .sraDivider{display:flex;align-items:center;gap:10px;margin:18px 0 4px;color:#8e8e93;font-size:13px}#storeAddDlg .sraDivider::before,#storeAddDlg .sraDivider::after{content:"";height:1px;flex:1;background:#dedee3}
+#storeAddDlg .sraBatchSummary{display:grid;gap:8px;margin:16px 0;text-align:left}.sraBatchSummary div{padding:12px 14px;border-radius:13px;background:#f2f2f7;font-size:15px}.sraBatchSummary b{font-size:19px;margin-right:5px}
 #storeAddDlg .sraField{position:relative}
 #storeAddDlg input[type=search],#storeAddDlg input[type=text]{display:block;width:100%;height:52px;min-height:52px;margin:0;padding:0 16px;border:1px solid #d2d2d7;border-radius:14px;background:#fff;color:#1d1d1f;font-size:17px;accent-color:auto;-webkit-appearance:none;appearance:none}
 #storeAddDlg input[type=search]{padding-right:48px}
@@ -297,6 +323,21 @@ const MARKUP=`
 <div class="sraBody">
  <div class="sraProgress" data-sra-progress hidden><span data-sra-progress-text></span><button type="button" data-sra-skip>Passer</button></div>
  <section data-sra-step="search">
+  <div class="sraAssisted">
+   <h3>Ajouter depuis le carnet officiel</h3>
+   <p class="sraAssistedIntro">Choisis une enseigne et une région, puis sélectionne plusieurs magasins connus.</p>
+   <label for="sraCatalogBrand">Enseigne</label><select id="sraCatalogBrand"><option value="">Choisir une enseigne</option></select>
+   <label for="sraCatalogRegion">Région française</label><select id="sraCatalogRegion" disabled><option value="">Choisir une région</option></select>
+   <button type="button" class="sraPrimary" data-sra-catalog-show disabled>Afficher les magasins</button>
+   <p class="sraCoverage" data-sra-coverage hidden role="status" aria-live="polite"></p>
+   <div data-sra-catalog-results hidden>
+    <div class="sraCatalogTools"><label class="sraSelectAll"><input type="checkbox" data-sra-select-all> Tout sélectionner</label><span class="sraCatalogCount" data-sra-catalog-count></span></div>
+    <div class="sraCatalogList" data-sra-catalog-list></div>
+    <div class="sraBatchBar"><button type="button" class="sraPrimary" data-sra-add-batch disabled>Ajouter 0 magasin</button></div>
+   </div>
+   <div class="sraFallbacks"><button type="button" class="sraLink" data-sra-focus-search>Utiliser la recherche libre</button></div>
+  </div>
+  <div class="sraDivider">ou recherche libre</div>
   <form data-sra-search-form role="search" novalidate>
    <label class="sraLabel" for="sraQuery">Rechercher un magasin</label>
    <div class="sraField"><input id="sraQuery" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" placeholder="Nom, enseigne ou adresse" aria-describedby="sraStatus"><span class="sraSpinner" data-sra-spinner hidden aria-hidden="true"></span></div>
@@ -329,13 +370,14 @@ const MARKUP=`
  <section data-sra-step="done" class="sraDone" hidden>
   <div class="sraCheck" aria-hidden="true">✓</div>
   <h3 data-sra-done-name></h3>
-  <p>Ajouté à ton secteur, prêt pour le planning et les visites.</p>
+  <p data-sra-done-single>Ajouté à ton secteur, prêt pour le planning et les visites.</p>
+  <div class="sraBatchSummary" data-sra-batch-summary hidden><div><b data-sra-batch-added>0</b> <span data-sra-added-label>magasins ajoutés</span></div><div><b data-sra-batch-duplicates>0</b> <span data-sra-duplicate-label>déjà présents</span></div><div><b data-sra-batch-ignored>0</b> <span data-sra-ignored-label>ignorés / incomplets</span></div></div>
   <button type="button" class="sraPrimary" data-sra-finish>Terminé</button>
   <button type="button" class="sraLink" data-sra-open-new>Voir la fiche</button>
  </section>
 </div>`;
 
-const ui={dlg:null,step:'search',results:[],preview:null,duplicate:null,queue:[],index:0,onAdded:null,added:null,located:null,busy:false,searchSeq:0};
+const ui={dlg:null,step:'search',results:[],preview:null,duplicate:null,queue:[],index:0,onAdded:null,added:null,located:null,busy:false,searchSeq:0,catalogSnapshot:null,catalogRows:[],batch:false};
 
 function q(sel){return ui.dlg&&ui.dlg.querySelector(sel)}
 function ensureDialog(){
@@ -346,6 +388,12 @@ function ensureDialog(){
   q('[data-sra-nav]').addEventListener('click',back);
   d.addEventListener('cancel',e=>{e.preventDefault();close()});
   q('[data-sra-search-form]').addEventListener('submit',e=>{e.preventDefault();runSearch()});
+  q('#sraCatalogBrand').addEventListener('change',()=>{q('#sraCatalogRegion').disabled=!q('#sraCatalogBrand').value;resetCatalogResults();syncCatalogButton()});
+  q('#sraCatalogRegion').addEventListener('change',()=>{resetCatalogResults();syncCatalogButton()});
+  q('[data-sra-catalog-show]').addEventListener('click',showCatalog);
+  q('[data-sra-select-all]').addEventListener('change',e=>{for(const c of ui.dlg.querySelectorAll('.sraCatalogCheck:not(:disabled)'))c.checked=e.target.checked;updateCatalogCount()});
+  q('[data-sra-add-batch]').addEventListener('click',addCatalogBatch);
+  q('[data-sra-focus-search]').addEventListener('click',()=>{q('#sraQuery').focus();q('#sraQuery').scrollIntoView({block:'center'})});
   q('#sraQuery').addEventListener('input',()=>{if(!ui.busy&&!q('#sraQuery').value.trim()){ui.results=[];renderResults();say('')}});
   q('[data-sra-manual]').addEventListener('click',()=>openManual());
   q('[data-sra-add]').addEventListener('click',()=>add(false));
@@ -359,6 +407,7 @@ function ensureDialog(){
   q('[data-sra-finish]').addEventListener('click',finish);
   q('[data-sra-open-new]').addEventListener('click',()=>{if(ui.added)openFiche(ui.added.id)});
   q('[data-sra-skip]').addEventListener('click',nextDraft);
+  prepareCatalog();
   return d;
 }
 function say(message,warn){const s=q('#sraStatus');if(!s)return;s.textContent=message||'';s.classList.toggle('sraWarn',!!warn)}
@@ -366,7 +415,7 @@ function setStep(step){
   ui.step=step;
   for(const sec of ui.dlg.querySelectorAll('[data-sra-step]'))sec.hidden=sec.dataset.sraStep!==step;
   const nav=q('[data-sra-nav]');nav.style.visibility=step==='done'?'hidden':'';nav.textContent=step==='search'?'Annuler':'Retour';
-  q('#sraTitle').textContent=step==='manual'?'Saisir un magasin':step==='done'?'Magasin ajouté':'Ajouter un magasin';
+  q('#sraTitle').textContent=step==='manual'?'Saisir un magasin':step==='done'?(ui.batch?'Magasins ajoutés':'Magasin ajouté'):'Ajouter un magasin';
   const body=q('.sraBody');if(body)body.scrollTop=0;
 }
 function setBusy(on){
@@ -379,6 +428,82 @@ function progress(){
   const box=q('[data-sra-progress]'),many=ui.queue.length>1;
   box.hidden=!many;
   if(many)q('[data-sra-progress-text]').textContent='Magasin '+(ui.index+1)+' sur '+ui.queue.length;
+}
+function syncCatalogButton(){const brand=q('#sraCatalogBrand'),region=q('#sraCatalogRegion'),button=q('[data-sra-catalog-show]');if(button)button.disabled=!(brand&&brand.value&&region&&region.value)}
+function resetCatalogResults(){
+  ui.catalogRows=[];
+  const results=q('[data-sra-catalog-results]'),coverage=q('[data-sra-coverage]'),list=q('[data-sra-catalog-list]'),all=q('[data-sra-select-all]');
+  if(results)results.hidden=true;if(coverage)coverage.hidden=true;if(list)list.replaceChildren();if(all){all.checked=false;all.indeterminate=false}
+}
+async function prepareCatalog(){
+  const brand=q('#sraCatalogBrand'),region=q('#sraCatalogRegion'),C=root.StoreRunnerOfficialCatalog;
+  if(!brand||!region)return;
+  brand.innerHTML='<option value="">Chargement du carnet…</option>';brand.disabled=true;
+  if(!C||typeof C.load!=='function'){
+    brand.innerHTML='<option value="">Carnet indisponible</option>';
+    return;
+  }
+  try{
+    ui.catalogSnapshot=await C.load();
+    const brands=C.brands(ui.catalogSnapshot),regions=C.regions(ui.catalogSnapshot);
+    brand.replaceChildren(new Option('Choisir une enseigne',''),...brands.map(x=>new Option(x,x)));
+    region.replaceChildren(new Option('Choisir une région',''),...regions.map(x=>new Option(x.name,x.code)));
+    brand.disabled=false;region.disabled=true;syncCatalogButton();
+  }catch(e){
+    brand.innerHTML='<option value="">Carnet indisponible</option>';
+    const coverage=q('[data-sra-coverage]');coverage.hidden=false;coverage.dataset.level='unavailable';coverage.textContent='Le carnet officiel ne peut pas être chargé. Utilise la recherche ou la saisie manuelle.';
+  }
+}
+function updateCatalogCount(){
+  const boxes=[...ui.dlg.querySelectorAll('.sraCatalogCheck:not(:disabled)')],selected=boxes.filter(c=>c.checked).length,all=q('[data-sra-select-all]');
+  q('[data-sra-catalog-count]').textContent=selected+' sélectionné'+(selected>1?'s':'');
+  q('[data-sra-add-batch]').disabled=!selected;q('[data-sra-add-batch]').textContent='Ajouter '+selected+' magasin'+(selected>1?'s':'');
+  all.disabled=!boxes.length;all.checked=!!boxes.length&&selected===boxes.length;all.indeterminate=selected>0&&selected<boxes.length;
+}
+function renderCatalogRows(){
+  const list=q('[data-sra-catalog-list]');list.replaceChildren();
+  ui.catalogRows.forEach((item,i)=>{
+    const label=root.document.createElement('label');label.className='sraCatalogItem'+(item.selectable?'':' is-disabled');
+    const check=root.document.createElement('input');check.type='checkbox';check.className='sraCatalogCheck';check.dataset.sraCatalogIndex=String(i);check.disabled=!item.selectable;check.addEventListener('change',updateCatalogCount);
+    const copy=root.document.createElement('span'),name=root.document.createElement('b'),address=root.document.createElement('span'),note=root.document.createElement('small');
+    name.textContent=item.store.sourceName||item.store.enseigne;address.textContent=[item.store.adresse,[item.store.codePostal,item.store.ville].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
+    if(item.exists)note.textContent='Déjà dans ton secteur';else if(!item.complete)note.textContent='Fiche incomplète · utilise la recherche ou la saisie manuelle';else note.textContent='Prêt à ajouter';
+    copy.append(name,address,note);label.append(check,copy);list.append(label);
+  });
+  if(!ui.catalogRows.length){const empty=root.document.createElement('p');empty.className='sraStatus sraWarn';empty.textContent='Aucun magasin connu dans le carnet pour ce choix.';list.append(empty)}
+  q('[data-sra-catalog-results]').hidden=false;updateCatalogCount();
+}
+async function showCatalog(){
+  const C=root.StoreRunnerOfficialCatalog,brand=q('#sraCatalogBrand').value,region=q('#sraCatalogRegion').value,coverageBox=q('[data-sra-coverage]'),button=q('[data-sra-catalog-show]');
+  if(!C||!brand||!region)return;
+  button.disabled=true;button.textContent='Chargement…';
+  try{
+    if(!ui.catalogSnapshot)ui.catalogSnapshot=await C.load();
+    const coverage=C.coverage(ui.catalogSnapshot,brand,region),rows=C.filter(ui.catalogSnapshot,brand,region);
+    ui.catalogRows=catalogRows(rows,currentStores());
+    coverageBox.hidden=false;coverageBox.dataset.level=coverage.level;coverageBox.textContent=rows.length+' magasin'+(rows.length>1?'s':'')+' connu'+(rows.length>1?'s':'')+'. '+coverage.message+(coverage.level==='complete'?'':' Recherche libre et saisie manuelle disponibles en secours.');
+    renderCatalogRows();
+  }catch(e){coverageBox.hidden=false;coverageBox.dataset.level='unavailable';coverageBox.textContent='Le carnet officiel ne peut pas être chargé. Utilise la recherche ou la saisie manuelle.';resetCatalogResults();coverageBox.hidden=false}
+  finally{button.textContent='Afficher les magasins';syncCatalogButton()}
+}
+function addCatalogBatch(){
+  const R=root.RegionStores,status=q('[data-sra-coverage]');if(!R||typeof R.commit!=='function')return;
+  const chosen=[...ui.dlg.querySelectorAll('.sraCatalogCheck:checked')].map(c=>ui.catalogRows[Number(c.dataset.sraCatalogIndex)]&&ui.catalogRows[Number(c.dataset.sraCatalogIndex)].store).filter(Boolean);
+  const existing=currentStores(),accepted=[],duplicates=[],ignored=[];
+  for(const store of chosen){if(!R.complete(store)){ignored.push(store);continue}if(R.duplicate(store,existing.concat(accepted))){duplicates.push(store);continue}accepted.push(JSON.parse(JSON.stringify(store)))}
+  let added=0;
+  try{added=accepted.length?R.commit(accepted):0}catch(e){status.hidden=false;status.dataset.level='unavailable';status.textContent='Ajout interrompu : '+text(e&&e.message);return}
+  if(added<accepted.length)duplicates.push(...accepted.slice(added));
+  const addedRows=accepted.slice(0,added);ui.batch=true;ui.added=addedRows.length===1?addedRows[0]:null;
+  try{if(typeof root.renderFilterControls==='function')root.renderFilterControls()}catch(e){}
+  try{if(typeof root.renderAll==='function')root.renderAll()}catch(e){}
+  for(const row of addedRows)try{root.document.dispatchEvent(new CustomEvent('store-runner:store-added',{detail:{storeId:row.id,batch:true}}))}catch(e){}
+  try{root.document.dispatchEvent(new CustomEvent('store-runner:stores-added',{detail:{storeIds:addedRows.map(s=>s.id)}}))}catch(e){}
+  if(ui.onAdded&&addedRows[0]){try{ui.onAdded(addedRows[0])}catch(e){}}
+  q('[data-sra-done-name]').textContent='Ajout terminé';q('[data-sra-done-single]').hidden=true;q('[data-sra-batch-summary]').hidden=false;
+  q('[data-sra-batch-added]').textContent=String(added);q('[data-sra-batch-duplicates]').textContent=String(duplicates.length);q('[data-sra-batch-ignored]').textContent=String(ignored.length);
+  q('[data-sra-added-label]').textContent=added===1?'magasin ajouté':'magasins ajoutés';q('[data-sra-duplicate-label]').textContent=duplicates.length===1?'déjà présent':'déjà présents';q('[data-sra-ignored-label]').textContent=ignored.length===1?'ignoré / incomplet':'ignorés / incomplets';
+  q('[data-sra-open-new]').hidden=addedRows.length!==1;q('[data-sra-finish]').textContent='Terminé';setStep('done');
 }
 function updateConnectivity(){
   if(!ui.dlg||!ui.dlg.open)return;
@@ -395,6 +520,7 @@ function open(options){
   ui.queue=Array.isArray(opts.drafts)?opts.drafts.filter(Boolean).map(d=>Object.assign({},d)):[];
   ui.index=0;ui.onAdded=typeof opts.onAdded==='function'?opts.onAdded:null;
   if(!ui.queue.length&&opts.query)ui.queue=[{query:text(opts.query)}];
+  q('.sraAssisted').hidden=!!ui.queue.length;q('.sraDivider').hidden=!!ui.queue.length;
   if(!ui.dlg.open)ui.dlg.showModal();
   root.addEventListener('online',updateConnectivity);root.addEventListener('offline',updateConnectivity);
   showDraft();
@@ -402,8 +528,10 @@ function open(options){
 }
 function showDraft(){
   const draft=ui.queue[ui.index]||null;
-  ui.results=[];ui.preview=null;ui.duplicate=null;ui.added=null;ui.located=null;ui.searchSeq++;
+  ui.results=[];ui.preview=null;ui.duplicate=null;ui.added=null;ui.located=null;ui.batch=false;ui.searchSeq++;
   if(controller)controller.abort();
+  q('[data-sra-done-single]').hidden=false;q('[data-sra-batch-summary]').hidden=true;q('[data-sra-open-new]').hidden=false;
+  const catalogBrand=q('#sraCatalogBrand'),catalogRegion=q('#sraCatalogRegion');if(catalogBrand&&!catalogBrand.disabled)catalogBrand.value='';if(catalogRegion){catalogRegion.value='';catalogRegion.disabled=true}resetCatalogResults();syncCatalogButton();
   setBusy(false);renderResults();setStep('search');progress();
   const input=q('#sraQuery');
   input.value=draft?(draft.query||draftQuery(draft)):'';
@@ -580,6 +708,6 @@ function install(){
   return true;
 }
 
-return{open,close,install,search,searchUrl,addressUrl,candidateFrom,candidatesFrom,findDuplicate,detectBrand,draftQuery,finalizeStore,distanceMeters,sectorCenter,friendlyError,
+return{open,close,install,search,searchUrl,addressUrl,candidateFrom,candidatesFrom,findDuplicate,detectBrand,draftQuery,finalizeStore,catalogRows,distanceMeters,sectorCenter,friendlyError,
   _reset(){lastRequestAt=0;memory.clear()}};
 });

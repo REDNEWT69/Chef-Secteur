@@ -3,6 +3,28 @@
 'use strict';
 const KEY='chef-secteur-official-catalog-local-v1';
 const BRANDS=['Boulanger','Darty','Fnac','Conforama','Cuisinella','Carrefour'];
+const REGIONS=[
+ {code:'84',name:'Auvergne-Rhône-Alpes'},{code:'27',name:'Bourgogne-Franche-Comté'},
+ {code:'53',name:'Bretagne'},{code:'24',name:'Centre-Val de Loire'},{code:'94',name:'Corse'},
+ {code:'44',name:'Grand Est'},{code:'32',name:'Hauts-de-France'},{code:'11',name:'Île-de-France'},
+ {code:'28',name:'Normandie'},{code:'75',name:'Nouvelle-Aquitaine'},{code:'76',name:'Occitanie'},
+ {code:'52',name:'Pays de la Loire'},{code:'93',name:"Provence-Alpes-Côte d'Azur"},
+ {code:'01',name:'Guadeloupe'},{code:'02',name:'Martinique'},{code:'03',name:'Guyane'},
+ {code:'04',name:'La Réunion'},{code:'06',name:'Mayotte'}
+];
+const REGION_NAMES=Object.fromEntries(REGIONS.map(r=>[r.code,r.name]));
+const DEPT_REGION={
+ '01':'84','03':'84','07':'84','15':'84','26':'84','38':'84','42':'84','43':'84','63':'84','69':'84','73':'84','74':'84',
+ '21':'27','25':'27','39':'27','58':'27','70':'27','71':'27','89':'27','90':'27','22':'53','29':'53','35':'53','56':'53',
+ '18':'24','28':'24','36':'24','37':'24','41':'24','45':'24','2A':'94','2B':'94','20':'94',
+ '08':'44','10':'44','51':'44','52':'44','54':'44','55':'44','57':'44','67':'44','68':'44','88':'44',
+ '02':'32','59':'32','60':'32','62':'32','80':'32','14':'28','27':'28','50':'28','61':'28','76':'28',
+ '16':'75','17':'75','19':'75','23':'75','24':'75','33':'75','40':'75','47':'75','64':'75','79':'75','86':'75','87':'75',
+ '09':'76','11':'76','12':'76','30':'76','31':'76','32':'76','34':'76','46':'76','48':'76','65':'76','66':'76','81':'76','82':'76',
+ '44':'52','49':'52','53':'52','72':'52','85':'52','04':'93','05':'93','06':'93','13':'93','83':'93','84':'93',
+ '75':'11','77':'11','78':'11','91':'11','92':'11','93':'11','94':'11','95':'11',
+ '971':'01','972':'02','973':'03','974':'04','976':'06'
+};
 const PAGE_SIZE=150;
 const norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 const esc=s=>String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -10,7 +32,30 @@ const readLocal=()=>{try{const v=JSON.parse((root.__chefStorage||root.localStora
 const writeLocal=v=>(root.__chefStorage||root.localStorage).setItem(KEY,JSON.stringify(v));
 const coords=s=>Number.isFinite(Number(s.lat))&&Number.isFinite(Number(s.lon));
 function duplicate(a,list){const R=root.RegionStores;if(R&&R.duplicate)return R.duplicate(a,list);return list.some(b=>norm(a.enseigne)===norm(b.enseigne)&&norm(a.adresse)===norm(b.adresse)&&norm(a.ville)===norm(b.ville))}
-async function officialData(){try{const r=await fetch('./data/official-stores.json?catalog='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error();const d=await r.json();return d&&Array.isArray(d.stores)?d:{generatedAt:null,stores:[]}}catch(e){return {generatedAt:null,stores:[]}}}
+let catalogSnapshot=null;
+function regionCodeFor(s){
+ const explicit=String(s&&s.regionCode||'');if(REGION_NAMES[explicit])return explicit;
+ const postal=String(s&&s.codePostal||'').toUpperCase().replace(/\s/g,'');
+ const postalDept=/^(97[1-6])/.test(postal)?postal.slice(0,3):'';
+ const dept=String(postalDept||s&&s.dept||postal.slice(0,2)).toUpperCase();
+ return DEPT_REGION[dept]||'';
+}
+function normalizeOfficialStore(s){const row=Object.assign({},s),code=regionCodeFor(row);if(code){row.regionCode=code;row.region=row.region||REGION_NAMES[code]}return row}
+function normalizeSnapshot(d){return d&&Array.isArray(d.stores)?Object.assign({},d,{sources:d.sources||{},stores:d.stores.map(normalizeOfficialStore)}):{generatedAt:null,sources:{},stores:[]}}
+async function loadCatalog(force){if(catalogSnapshot&&!force)return catalogSnapshot;const r=await fetch('./data/official-stores.json?catalog='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('Carnet officiel indisponible.');const d=normalizeSnapshot(await r.json());catalogSnapshot=d;return d}
+async function officialData(){try{return await loadCatalog()}catch(e){return {generatedAt:null,sources:{},stores:[]}}}
+function catalogBrands(snapshot){const d=normalizeSnapshot(snapshot);return BRANDS.filter(b=>d.sources[b]||d.stores.some(s=>s.enseigne===b))}
+function catalogRegions(){return REGIONS.map(r=>Object.assign({},r))}
+function filterStores(snapshot,brand,regionCode){const d=normalizeSnapshot(snapshot);return d.stores.filter(s=>s&&s.enseigne===brand&&String(s.regionCode||'')===String(regionCode||'')).sort((a,b)=>(a.ville+' '+a.sourceName).localeCompare(b.ville+' '+b.sourceName,'fr'))}
+function coverage(snapshot,brand,regionCode){
+ const d=normalizeSnapshot(snapshot),source=d.sources[brand],rows=filterStores(d,brand,regionCode),region=source&&source.regions&&source.regions[regionCode];
+ if(region){const raw=String(region.status||'').toLowerCase();if(raw==='collected')return{level:'complete',count:rows.length,message:'Liste officielle collectée pour cette région.'};if(raw.includes('partial'))return{level:'partial',count:rows.length,message:'Liste partielle : la source officielle n’a pas pu être collectée complètement.'};return{level:'unavailable',count:rows.length,message:'Liste indisponible pour cette région dans le carnet officiel.'}}
+ if(rows.length)return{level:'partial',count:rows.length,message:'Liste partielle : région déduite du code postal, sans garantie d’exhaustivité.'};
+ return{level:'unavailable',count:0,message:'Aucune liste exploitable pour cette enseigne dans cette région.'};
+}
+function audit(snapshot){
+ const d=normalizeSnapshot(snapshot);return BRANDS.map(brand=>{const rows=d.stores.filter(s=>s&&s.enseigne===brand),regions=new Set(rows.map(regionCodeFor).filter(Boolean)),source=d.sources[brand]||{},declared=Object.values(source.regions||{}),allCollected=declared.length===REGIONS.length&&declared.every(r=>r&&r.status==='collected');return{brand,count:rows.length,regions:regions.size,source:!rows.length?'unavailable':allCollected?'complete':'partial',rawStatus:source.status||'unavailable'} });
+}
 function manualRow(x){return {id:x.id||('manual-'+Date.now()+'-'+Math.random().toString(36).slice(2,7)),enseigne:x.enseigne,sourceName:x.sourceName||((x.enseigne||'Magasin')+' '+(x.ville||'')),adresse:x.adresse||'',codePostal:x.codePostal||'',ville:x.ville||'',regionCode:x.regionCode||'',region:x.region||'',lat:x.lat===''||x.lat==null?null:Number(x.lat),lon:x.lon===''||x.lon==null?null:Number(x.lon),source:'Carnet officiel local',sourceUrl:x.sourceUrl||'',sourceFetchedAt:x.sourceFetchedAt||new Date().toISOString(),verifiedAt:x.verifiedAt||new Date().toISOString().slice(0,10),status:x.status||'validated',freq:'Mensuel',intervalDays:30,priority:3,active:true,products:['À confirmer']}}
 async function geocode(s){const q=[s.adresse,s.codePostal,s.ville,s.enseigne].filter(Boolean).join(', ');if(!q)throw Error('Renseigne au moins une adresse ou une ville.');const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=fr&limit=1&q='+encodeURIComponent(q),{headers:{'Accept-Language':'fr'}});if(!r.ok)throw Error('Géocodage indisponible.');const d=await r.json();if(!Array.isArray(d)||!d[0])throw Error('Adresse introuvable.');s.lat=Number(d[0].lat);s.lon=Number(d[0].lon);const a=d[0].address||{};if(!s.ville)s.ville=a.city||a.town||a.village||a.municipality||'';if(!s.codePostal)s.codePostal=a.postcode||'';return s}
 function install(){
@@ -38,5 +83,9 @@ function install(){
  q('#cfGeo').onclick=async()=>{const st=q('#cfStatus');st.textContent='Recherche des coordonnées…';try{const x=manualRow({enseigne:q('#cfBrand').value,sourceName:q('#cfName').value,adresse:q('#cfAddress').value,codePostal:q('#cfZip').value,ville:q('#cfCity').value});await geocode(x);q('#cfLat').value=x.lat;q('#cfLon').value=x.lon;if(!q('#cfCity').value)q('#cfCity').value=x.ville;if(!q('#cfZip').value)q('#cfZip').value=x.codePostal;st.textContent='Coordonnées trouvées. Vérifie l’adresse avant enregistrement.'}catch(e){st.textContent=e.message}};
  form.onsubmit=e=>{e.preventDefault();const r=regions.find(x=>x.code===q('#cfRegion').value);const row=manualRow({enseigne:q('#cfBrand').value,sourceName:q('#cfName').value,adresse:q('#cfAddress').value,codePostal:q('#cfZip').value,ville:q('#cfCity').value,regionCode:q('#cfRegion').value,region:r?r.nom:'',sourceUrl:q('#cfUrl').value,lat:q('#cfLat').value,lon:q('#cfLon').value});const arr=readLocal();if(duplicate(row,official.concat(arr))){q('#cfStatus').textContent='Ce magasin semble déjà exister dans le carnet.';return}arr.push(row);writeLocal(arr);form.reset();form.classList.remove('open');q('#cfStatus').textContent='';resetAndRender();stats.textContent='Magasin ajouté au carnet local.'};
 }
+const api={load:loadCatalog,brands:catalogBrands,regions:catalogRegions,filter:filterStores,coverage,audit,regionCodeFor,normalizeSnapshot};
+if(typeof module!=='undefined'&&module.exports)module.exports=api;
+root.StoreRunnerOfficialCatalog=api;
+if(!root.document)return;
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
 })(typeof window!=='undefined'?window:globalThis);
