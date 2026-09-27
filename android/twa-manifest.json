@@ -41,8 +41,16 @@
   "retainedBundles": [],
   "fingerprints": [
     {
-      "name": "Play App Signing",
-      "value": "5F:01:E0:52:26:4F:64:32:0B:8C:88:17:0F:A1:3D:1B:D2:BE:85:9B:F5:A4:59:2A:1D:BC:C6:C2:3C:60:45:59"
+      "name": "Play App Signing — APK installé depuis Google Play (vérifié par ADB)",
+      "value": "5E:82:73:B8:BF:F4:89:0D:44:A2:B7:90:A7:5D:BC:DD:17:71:36:CA:12:AC:96:CA:B1:27:EC:BB:FD:37:20:29"
+    },
+    {
+      "name": "Play Console — signature d'application (2)",
+      "value": "DD:28:69:07:70:64:EC:DF:04:1B:FE:CE:F5:23:13:46:71:AA:D8:B7:05:D6:FF:EB:0F:4F:13:FC:4A:DE:AD:D4"
+    },
+    {
+      "name": "Play Console — signature d'application (3)",
+      "value": "B8:47:67:45:E7:D5:D2:68:6C:9C:82:AD:D6:D4:63:85:93:84:70:F2:73:3D:E1:04:FD:88:A9:17:4B:B7:44:9A"
     }
   ]
 }
