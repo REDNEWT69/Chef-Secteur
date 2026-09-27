@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'263',
+      title:'Un planning 3 semaines plus fiable',
+      items:[
+        'Après « Générer mes 3 semaines », Store Runner finalise maintenant correctement l’ordre des visites dans chaque journée.',
+        'L’optimisation ne change jamais les magasins prévus ni leur jour : elle cherche seulement un meilleur ordre de passage.',
+        'Les semaines modifiées à la main restent protégées et ne sont pas réorganisées en silence.',
+        'Les rendez-vous, horaires d’ouverture, capacité et heure de fin restent prioritaires sur le gain de trajet.'
+      ]
+    },
+    {
       version:'262',
       title:'Plus simple à une main sur le terrain',
       items:[
