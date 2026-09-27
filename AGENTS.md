@@ -64,11 +64,15 @@ Ne pas remplacer une fonction globale métier appartenant à un autre module. Pr
 ### Le bump de build voyage avec le code
 
 - Le bump `BUILD_REV` se fait dans **la même PR que le code**, partout où la
-  révision est écrite : `version.json` (`latestBuild` **et** `displayVersion`),
-  la constante d'`index.html`, tous les liens `?rev=` d'`index.html`, `sw.js`,
-  et les tests qui figent le littéral — aujourd'hui
-  `tests/terrain-planning-runtime.test.cjs` **et**
-  `tests/v182-field-fixes.test.cjs`, qui en fige cinq à lui seul.
+  révision est écrite : `version.json` (`latestBuild`), la constante
+  d'`index.html`, tous les liens `?rev=` d'`index.html`, `sw.js`, et les tests
+  qui figent le littéral — aujourd'hui `tests/terrain-planning-runtime.test.cjs`
+  **et** `tests/v182-field-fixes.test.cjs`, qui en fige cinq à lui seul.
+- `displayVersion` n'est pas un miroir de `BUILD_REV` : c'est la version produit
+  visible, actuellement un entier. Elle n'avance que lorsqu'une nouvelle version
+  produit visible est publiée (par exemple 263 → 264). Un hotfix, patch ou lot de
+  fiabilisation peut donc avancer `latestBuild`/`BUILD_REV` tout en conservant le
+  même `displayVersion`.
 - Le nombre d'emplacements n'est pas une constante : avant de pousser, vérifier
   qu'aucune occurrence de l'ancienne révision ne subsiste dans le dépôt plutôt
   que de se fier à un compte appris par cœur.
