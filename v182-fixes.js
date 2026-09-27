@@ -120,6 +120,13 @@ function rebalancePlanByGeography(plan,options){
   /* V263 : `frozenDays` (journées déjà passées d'une semaine entamée, posées par le cycle
      3 semaines) restent exactement telles quelles et ne reçoivent aucun magasin. */
   const frozen=new Set((Array.isArray(options.frozenDays)?options.frozenDays:[]).filter(d=>workDays.includes(d))),movableDays=workDays.filter(d=>!frozen.has(d));
+  /* V263.1 : même garde que le cycle 3 semaines. Une visite libre n'est déplacée que vers un
+     jour où son magasin n'est pas bloqué (visit-coverage.js). Imposés, verrous et
+     rendez-vous passent outre, comme partout. Un magasin bloqué sur tous les jours
+     déplaçables (posé avant V263 ou à la main) garde le comportement historique. */
+  const coverage=window.StoreRunnerVisitCoverage,needFn=coverage&&typeof coverage.needOf==='function'?(()=>{try{return coverage.needOf(state)}catch(e){return null}})():null,todayIso=iso(new Date());
+  const blockedOnDay=(store,day)=>{if(!needFn||!store||(state.included&&state.included[store.id]))return false;try{const date=iso(addDays(mon,DAYS.indexOf(day)));return !!needFn(resolveStore(store),date<todayIso?todayIso:date).blocked}catch(e){return false}};
+  const openDays=new Map(),mayGo=(store,day)=>{const id=String(store&&store.id||'');if(!openDays.has(id)){const open=movableDays.filter(d=>!blockedOnDay(store,d));openDays.set(id,open.length?new Set(open):null)}const open=openDays.get(id);return !open||open.has(day)};
   const out=Object.fromEntries(DAYS.map(d=>[d,movableDays.includes(d)?[]:clone((plan&&plan[d])||[])])),free=[],seen=new Set(),origin={},fixedIds=new Set();
   for(const day of workDays)if(frozen.has(day))for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(id){seen.add(id);fixedIds.add(id)}}
   for(const day of movableDays)for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(!id||seen.has(id))continue;seen.add(id);origin[id]=day;let fixed=lockDayV185(id,weekKey)||appointmentDayV185(id,mon)||(visitedOnV185(id,iso(addDays(mon,DAYS.indexOf(day))))?day:'');if(fixed&&frozen.has(fixed))fixed=day;if(fixed){if(!workDays.includes(fixed))return{ok:false,plan,changed:false,reason:'fixed-outside'};out[fixed].push(store);fixedIds.add(id)}else free.push(store)}
@@ -127,7 +134,7 @@ function rebalancePlanByGeography(plan,options){
   const sortDirection=options.preferNearFirst?1:-1;
   free.sort((a,b)=>sortDirection*(homeDistance(a)-homeDistance(b))||DAYS.indexOf(origin[String(a.id)])-DAYS.indexOf(origin[String(b.id)]));
   for(const store of free){
-    let best=null;for(const day of movableDays){const date=iso(addDays(mon,DAYS.indexOf(day)));if(dayBlockedV185(date))continue;const current=out[day]||[];if(routeCreditsV185(current)+planningCreditV185(store)>max)continue;const trial=optimizeRouteV185(current.concat([store]));if(!dayFitsV185(trial,day,mon))continue;const score=candidateScoreV185(out,day,store,trial,workDays);if(!best||score<best.score-0.001||(Math.abs(score-best.score)<0.001&&DAYS.indexOf(day)<DAYS.indexOf(best.day)))best={day,trial,score}}
+    let best=null;for(const day of movableDays){const date=iso(addDays(mon,DAYS.indexOf(day)));if(dayBlockedV185(date)||!mayGo(store,day))continue;const current=out[day]||[];if(routeCreditsV185(current)+planningCreditV185(store)>max)continue;const trial=optimizeRouteV185(current.concat([store]));if(!dayFitsV185(trial,day,mon))continue;const score=candidateScoreV185(out,day,store,trial,workDays);if(!best||score<best.score-0.001||(Math.abs(score-best.score)<0.001&&DAYS.indexOf(day)<DAYS.indexOf(best.day)))best={day,trial,score}}
     if(!best)return{ok:false,plan,changed:false,reason:'unplaced',store};out[best.day]=best.trial
   }
   /* V220 : V185 optimise les kilomètres après le moteur escargot. Il n'a plus le droit
@@ -142,7 +149,7 @@ function rebalancePlanByGeography(plan,options){
     for(const donor of movableDays){
       const donorRoute=out[donor]||[],minimum=coverageSet.has(donor)?1:0;if(donorRoute.length<=minimum)continue;
       for(let i=0;i<donorRoute.length;i++){
-        const store=donorRoute[i],id=String(store&&store.id||'');if(!id||fixedIds.has(id))continue;
+        const store=donorRoute[i],id=String(store&&store.id||'');if(!id||fixedIds.has(id)||!mayGo(store,target))continue;
         const donorTrial=optimizeRouteV185(donorRoute.filter((_,idx)=>idx!==i)),targetTrial=optimizeRouteV185((out[target]||[]).concat([store]));
         if(routeCreditsV185(targetTrial)>max||routeCreditsV185(donorTrial)>max)continue;
         if(!dayFitsV185(targetTrial,target,mon)||!dayFitsV185(donorTrial,donor,mon))continue;
