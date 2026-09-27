@@ -50,6 +50,7 @@ jobs:
       - run: node tests/default-stores-seed.test.cjs
       - run: node tests/calendar.test.cjs
       - run: node tests/google-oauth-production.test.cjs
+      - run: node tests/privacy-policy-public.test.cjs
       - run: node tests/planning.test.cjs
       - run: node tests/planning-route-quality-v210.test.cjs
       - run: node tests/planning-route-optimizer-v251.test.cjs
