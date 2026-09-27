@@ -14,6 +14,7 @@
   const ONBOARDING_ID='storeRunnerFirstRun';
   const ONBOARDING_STYLE_ID='storeRunnerFirstRunCss';
   const ONBOARDING_KEY='store-runner-onboarding-v1';
+  const APP_ICON='./app-icon.svg';
   const DEMO_SOURCE='Secteur de démonstration';
 
   function activatePlanning(){
@@ -217,7 +218,7 @@
       #${ONBOARDING_ID}{position:fixed;inset:0;z-index:245;display:grid;place-items:center;padding:16px;background:linear-gradient(165deg,rgba(247,249,255,.98),rgba(248,248,246,.98));font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:#17191d}
       #${ONBOARDING_ID}[hidden]{display:none!important}
       #${ONBOARDING_ID} .srfrCard{width:min(520px,100%);max-height:calc(100dvh - 32px);overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid rgba(20,40,100,.09);border-radius:30px;background:rgba(255,255,255,.96);box-shadow:0 28px 80px rgba(26,36,62,.16);padding:24px;box-sizing:border-box}
-      #${ONBOARDING_ID} .srfrLogo{width:62px;height:62px;border-radius:18px;display:grid;place-items:center;background:#1428a0;color:#fff;font-size:27px;font-weight:900;letter-spacing:-.06em;box-shadow:0 10px 26px rgba(20,40,160,.2)}
+      #${ONBOARDING_ID} .srfrLogo{display:block;width:62px;height:62px;object-fit:contain}
       #${ONBOARDING_ID} .srfrProgress{display:flex;gap:6px;margin:18px 0 20px}#${ONBOARDING_ID} .srfrProgress i{height:5px;flex:1;border-radius:99px;background:#e7e9ef}#${ONBOARDING_ID} .srfrProgress i.on{background:#1428a0}
       #${ONBOARDING_ID} h2{margin:0;font-size:28px;line-height:1.08;letter-spacing:-.035em}#${ONBOARDING_ID} p{margin:9px 0 0;color:#687080;font-size:14px;line-height:1.5}
       #${ONBOARDING_ID} .srfrGrid{display:grid;gap:12px;margin-top:20px}#${ONBOARDING_ID} .srfrFeature{padding:14px 15px;border:1px solid #e8eaf0;border-radius:18px;background:#fafbfc}#${ONBOARDING_ID} .srfrFeature b{display:block;font-size:14px}#${ONBOARDING_ID} .srfrFeature span{display:block;margin-top:3px;color:#747c8c;font-size:12px;line-height:1.4}
@@ -245,6 +246,13 @@
     return root;
   }
 
+  /* Même logo que l'en-tête et l'écran de chargement. L'URL versionnée est celle que
+     sw.js précache : le premier écran reste servi hors ligne, sans attendre le réseau. */
+  function appIconUrl(){
+    const rev=window.__STORE_RUNNER_BUILD_REV;
+    return APP_ICON+(rev?'?rev='+encodeURIComponent(rev):'');
+  }
+
   function progressHtml(step){
     let html='<div class="srfrProgress" aria-hidden="true">';
     for(let i=0;i<4;i++)html+='<i class="'+(i<=step?'on':'')+'"></i>';
@@ -259,7 +267,7 @@
   function onboardingMarkup(step){
     const p=window.state&&state.profile?state.profile:{};
     const settings=window.state&&state.settings?state.settings:{};
-    if(step===0)return '<div class="srfrCard"><div class="srfrLogo">SR</div>'+progressHtml(step)+'<h2>Bienvenue dans Store Runner</h2><p>Configure ton espace terrain en quelques minutes. Rien n’est prérempli avec de faux magasins : tu pars uniquement de tes vraies données.</p><div class="srfrGrid"><div class="srfrFeature"><b>▣ Prépare ta semaine</b><span>Organise tes magasins et garde la main sur l’ordre des visites.</span></div><div class="srfrFeature"><b>➤ Travaille en Mode Runner</b><span>Retrouve ta prochaine visite, tes actions et tes notes sur le terrain.</span></div><div class="srfrFeature"><b>✓ Garde ton historique</b><span>Visites, photos et comptes rendus restent liés à tes magasins.</span></div></div><div class="srfrActions"><button class="srfrPrimary" type="button" data-srfr-next>Configurer mon espace</button><button class="srfrSecondary" type="button" data-srfr-import>J’ai déjà une sauvegarde</button><button class="srfrLink" type="button" data-srfr-dismiss>Plus tard</button></div></div>';
+    if(step===0)return '<div class="srfrCard"><img class="srfrLogo" src="'+appIconUrl()+'" width="62" height="62" alt="" decoding="async">'+progressHtml(step)+'<h2>Bienvenue dans Store Runner</h2><p>Configure ton espace terrain en quelques minutes. Rien n’est prérempli avec de faux magasins : tu pars uniquement de tes vraies données.</p><div class="srfrGrid"><div class="srfrFeature"><b>▣ Prépare ta semaine</b><span>Organise tes magasins et garde la main sur l’ordre des visites.</span></div><div class="srfrFeature"><b>➤ Travaille en Mode Runner</b><span>Retrouve ta prochaine visite, tes actions et tes notes sur le terrain.</span></div><div class="srfrFeature"><b>✓ Garde ton historique</b><span>Visites, photos et comptes rendus restent liés à tes magasins.</span></div></div><div class="srfrActions"><button class="srfrPrimary" type="button" data-srfr-next>Configurer mon espace</button><button class="srfrSecondary" type="button" data-srfr-import>J’ai déjà une sauvegarde</button><button class="srfrLink" type="button" data-srfr-dismiss>Plus tard</button></div></div>';
     if(step===1)return '<div class="srfrCard">'+progressHtml(step)+'<h2>Ton secteur</h2><p>Juste l’essentiel pour démarrer. Le point de départ et les réglages avancés resteront modifiables ensuite.</p><label for="srfrSector">Nom du secteur</label><input id="srfrSector" type="text" autocomplete="organization" placeholder="Ex. Rhône-Alpes"><label for="srfrRep">Ton prénom <span style="font-weight:500;color:#8a909c">(facultatif)</span></label><input id="srfrRep" type="text" autocomplete="given-name" placeholder="Ex. Alex"><div class="srfrPair"><div><label for="srfrCapacity">Crédits max / jour</label><input id="srfrCapacity" type="number" inputmode="numeric" min="1" max="8" value="'+Math.max(1,Math.min(8,Number(settings.maxVisitsPerDay)||4))+'"></div><div><label for="srfrTarget">Objectif / semaine</label><input id="srfrTarget" type="number" inputmode="numeric" min="1" max="60" value="'+Math.max(1,Math.min(60,Number(settings.target)||20))+'"></div></div><div class="srfrError" data-srfr-error></div><div class="srfrActions"><button class="srfrSecondary srfrBack" type="button" data-srfr-back aria-label="Retour">‹</button><button class="srfrPrimary" type="button" data-srfr-save-setup>Continuer</button></div></div>';
     if(step===2){const n=currentStoreCount();return '<div class="srfrCard">'+progressHtml(step)+'<h2>Ajoute tes magasins</h2><p>Utilise la même recherche que dans l’application. Aucun catalogue fictif n’est ajouté automatiquement.</p><div class="srfrCount"><strong data-srfr-store-count>'+n+'</strong><span>'+((n===1)?'magasin ajouté':'magasins ajoutés')+'</span></div><div class="srfrGrid"><div class="srfrFeature"><b>Commence petit si tu veux</b><span>Tu peux ajouter un seul magasin maintenant et compléter ton secteur plus tard depuis Magasins.</span></div></div><div class="srfrActions"><button class="srfrSecondary srfrBack" type="button" data-srfr-back aria-label="Retour">‹</button><button class="srfrSecondary" type="button" data-srfr-add-store>+ Ajouter un magasin</button><button class="srfrPrimary" type="button" data-srfr-next>'+(n?'Continuer':'Continuer sans magasin')+'</button></div></div>'}
     const hasBase=!!(window.storeRunnerHasValidBase&&window.storeRunnerHasValidBase());
