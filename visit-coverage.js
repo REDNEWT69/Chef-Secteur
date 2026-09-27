@@ -178,8 +178,11 @@ function explain(row){
 function plannedDates(state,archive,today){
   const out=new Map(),t=today||iso(new Date());
   const add=(weekKey,plan)=>{const mon=parse(weekKey);if(!mon||!plan)return;for(let i=0;i<DAYS.length;i++){const date=iso(addDays(monday(mon),i));if(date<t)continue;for(const s of (plan[DAYS[i]]||[])){const id=String(s&&s.id);if(!id)continue;const prev=out.get(id);if(!prev||date<prev)out.set(id,date)}}};
-  for(const [key,snap] of Object.entries(archive||{}))if(snap&&snap.plan)add(snap.weekMonday||key,snap.plan);
-  const wk=parse(state&&state.settings&&state.settings.weekDate);if(wk)add(iso(monday(wk)),state.plan);
+  /* V263.1 : la semaine affichée vit dans `state.plan` ; son instantané archivé peut garder un
+     magasin déjà remplacé (regenerateDay, retrait manuel). Le plan live prime donc sur lui. */
+  const wk=parse(state&&state.settings&&state.settings.weekDate),shown=wk?iso(monday(wk)):'';
+  for(const [key,snap] of Object.entries(archive||{})){if(!snap||!snap.plan)continue;const mon=parse(snap.weekMonday||key);if(shown&&mon&&iso(monday(mon))===shown)continue;add(snap.weekMonday||key,snap.plan)}
+  if(wk)add(shown,state.plan);
   return out;
 }
 const CATCHUP_ORDER={never:1,late:0,soon:2};
