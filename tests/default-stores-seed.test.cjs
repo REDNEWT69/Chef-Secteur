@@ -107,6 +107,8 @@ assert.match(navSrc,/sanitizePristineDemoState\(state\)/,'la graine de démonstr
 assert.match(navSrc,/StoreRunnerStoreAdd/,'le premier magasin doit passer par StoreRunnerStoreAdd');
 assert.match(navSrc,/store-runner-onboarding-v1/,'un marqueur dédié doit mémoriser le parcours');
 assert.match(navSrc,/data-srfr-import/,'la restauration doit rester accessible depuis le premier écran');
+assert.match(navSrc,/APP_ICON='\.\/app-icon\.svg'/,'le premier écran doit afficher le logo Store Runner de l’application');
+assert.doesNotMatch(navSrc,/class="srfrLogo">SR</,'l’ancien carré « SR » ne doit pas revenir sur le premier écran');
 assert.match(navSrc,/marker&&marker\.status==='importing'[\s\S]*?hasRealUserData\(state\)[\s\S]*?reason:'restored-data'/,'une restauration réelle doit terminer l’onboarding au redémarrage');
 assert.match(navSrc,/if\(hasRealUserData\(state\)\)[\s\S]*?reason:'existing-user'/,'un utilisateur existant sans marqueur doit être reconnu silencieusement');
 assert.doesNotMatch(navSrc,/localStorage\.setItem\([^\n]*onboarding/i,'le marqueur onboarding ne doit pas contourner __chefStorage');

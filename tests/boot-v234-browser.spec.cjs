@@ -173,6 +173,20 @@ test('Premier lancement — secteur vide, restauration accessible, configuration
   expect(initial.marker).toMatchObject({ status: 'in-progress', step: 0 });
   expect(initial.overflow).toBeLessThanOrEqual(1);
 
+  // Le logo du premier écran est celui de l'application, servi sous la révision précachée.
+  const logo = onboarding.locator('img.srfrLogo');
+  await expect(logo).toBeVisible();
+  await expect.poll(() => logo.evaluate(img => img.complete && img.naturalWidth > 0)).toBe(true);
+  const logoInfo = await logo.evaluate(img => {
+    const r = img.getBoundingClientRect();
+    return { src: img.getAttribute('src'), first: img.closest('.srfrCard').firstElementChild === img, w: r.width, h: r.height, bg: getComputedStyle(img).backgroundColor, rev: window.__STORE_RUNNER_BUILD_REV };
+  });
+  expect(logoInfo.src).toBe('./app-icon.svg?rev=' + logoInfo.rev);
+  expect(logoInfo.first, 'le logo reste en tête de carte').toBe(true);
+  expect(logoInfo.w).toBe(logoInfo.h);
+  expect(logoInfo.bg, 'aucun fond ajouté autour du logo').toBe('rgba(0, 0, 0, 0)');
+  await expect(onboarding.getByText('SR', { exact: true })).toHaveCount(0);
+
   // Le chemin restauration doit être visible dès le premier écran. On le teste dans le
   // même contexte pour ne pas alourdir toute la suite navigateur d'un démarrage complet.
   await onboarding.getByRole('button', { name: 'J’ai déjà une sauvegarde' }).click();
