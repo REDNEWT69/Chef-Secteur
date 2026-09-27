@@ -25,6 +25,17 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'263',
+      title:'Un planning qui tient compte de tes vraies visites',
+      items:[
+        'Un magasin que tu viens de visiter n’est plus reproposé automatiquement avant que sa fréquence ne revienne.',
+        'Les magasins en retard ou jamais visités passent en premier, avant la simple proximité.',
+        'Nouveau bloc « Couverture » dans le planning : à rattraper, à jour, déjà bien couverts — et pourquoi, en une ligne.',
+        '« Recalculer le reste du planning » retire les magasins déjà faits, comble les trous avec ceux qui manquent et te montre le détail avant de valider.',
+        'Les journées déjà passées de la semaine ne bougent plus. Rendez-vous et magasins posés restent toujours en place.'
+      ]
+    },
+    {
       version:'262',
       title:'Plus simple à une main sur le terrain',
       items:[

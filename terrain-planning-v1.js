@@ -130,13 +130,15 @@ function orderedPlacementDays(activeDays,plan,quotas,credit){
   })
 }
 function weekDistributionDiagnostics(options){
-  const mon=options.mon,days=options.days||[],activeDays=options.activeDays||[],plan=options.plan||emptyPlan(),target=Math.max(1,Number(options.target)||1),max=Math.max(1,Number(options.max)||1),ranked=options.ranked||[],used=options.used||new Set(),weekPlaced=options.weekPlaced||new Set(),credit=options.credit||(()=>1),fits=options.fits||(()=>true),manual=!!options.manual,total=flattenPlan(plan,activeDays).length;
+  const mon=options.mon,days=options.days||[],activeDays=options.activeDays||[],plan=options.plan||emptyPlan(),target=Math.max(1,Number(options.target)||1),max=Math.max(1,Number(options.max)||1),ranked=options.ranked||[],used=options.used||new Set(),weekPlaced=options.weekPlaced||new Set(),credit=options.credit||(()=>1),fits=options.fits||(()=>true),manual=!!options.manual,frozen=new Set(options.frozenDays||[]),recentlyVisited=Math.max(0,Number(options.recentlyVisited)||0),total=flattenPlan(plan,activeDays).length+flattenPlan(plan,[...frozen]).length;
   return days.map(day=>{
     const date=iso(addDays(mon,DAYS.indexOf(day))),route=plan[day]||[];
+    /* V263 : une journée déjà passée est conservée telle quelle, jamais « vide à remplir ». */
+    if(frozen.has(day))return{day,date,status:'past',count:route.length,credits:routeCreditCost(route,credit),reason:'Journée passée conservée'};
     if(manual)return{day,date,status:route.length?'manual-planned':'manual-empty',count:route.length,credits:routeCreditCost(route,credit),reason:'Semaine protégée manuellement'};
     if(!activeDays.includes(day))return{day,date,status:'blocked',count:0,credits:0,reason:'Jour bloqué ou indisponible dans l’agenda'};
     if(route.length)return{day,date,status:'planned',count:route.length,credits:routeCreditCost(route,credit),reason:''};
-    let reason='Vivier éligible épuisé';
+    let reason=recentlyVisited?'Magasins restants déjà visités récemment : pas reproposés avant leur fréquence':'Vivier éligible épuisé';
     if(total>=target)reason=target<activeDays.length?'Objectif hebdomadaire inférieur au nombre de jours travaillés':'Objectif hebdomadaire atteint par les autres jours ou des contraintes fixes';
     else{
       const remaining=ranked.filter(s=>!used.has(storeKey(s))&&!weekPlaced.has(storeKey(s)));
@@ -219,16 +221,35 @@ function sortByLeastRecentlyUsed(list,memory){
    (bloqué ou non travaillé) n'est complété : le réétalement géographique d'une semaine
    protégée reste hors périmètre de ce correctif, exactement comme V185 l'ignore déjà
    volontairement (cf. persistSnailGeography, if(week.manual)continue). */
-function completeProtectedWeek(protectedPlan,activeDays,mon,weekKey,target,ranked,used,max,credit,fits,lockFor,apptFor){
+/* V263 : `extra` (facultatif, fourni par le runtime) apporte le besoin de visite réel.
+   Le complément d'une semaine protégée ne réinjecte alors plus un magasin trop récemment
+   visité : il sert d'abord les contraintes explicites (verrou, rendez-vous, magasin imposé),
+   puis les magasins les plus en retard. `countDays` compte aussi les journées passées
+   conservées, qui ne reçoivent jamais de complément. Sans `extra`, rien ne change. */
+function needOrdered(list,needAt){
+  return (list||[]).map((s,i)=>({s,i,n:needAt(s)||{}})).sort((a,b)=>{
+    const ta=Number.isFinite(a.n.tier)?a.n.tier:3,tb=Number.isFinite(b.n.tier)?b.n.tier:3;
+    if(tb!==ta)return tb-ta;
+    if(ta>=4){const ra=Number(a.n.ratio)||0,rb=Number(b.n.ratio)||0;if(rb!==ra)return rb-ra}
+    return a.i-b.i;
+  }).map(x=>x.s);
+}
+function completeProtectedWeek(protectedPlan,activeDays,mon,weekKey,target,ranked,used,max,credit,fits,lockFor,apptFor,extra){
   const plan=copy(protectedPlan);
   const presentKeys=new Set(flattenPlan(plan).map(storeKey));
-  let total=flattenPlan(plan,activeDays).length;
+  let total=flattenPlan(plan,(extra&&extra.countDays)||activeDays).length;
+  let pool=ranked;
+  if(extra&&typeof extra.needAt==='function'){
+    const imposed=extra.imposed||{},constrained=s=>!!(lockFor(s.id,weekKey)||apptFor(s.id,mon)||imposed[s.id]);
+    const fixed=ranked.filter(constrained),free=needOrdered(ranked.filter(s=>!constrained(s)&&!extra.needAt(s).blocked),extra.needAt);
+    pool=fixed.concat(free);
+  }
   for(const day of activeDays){
     if(total>=target)break;
     let route=Array.isArray(plan[day])?plan[day]:(plan[day]=[]);
     let cost=routeCreditCost(route,credit);
     if(cost>=max)continue;
-    for(const s of ranked){
+    for(const s of pool){
       if(cost>=max||total>=target)break;
       const k=storeKey(s);
       if(used.has(k)||presentKeys.has(k))continue;
@@ -275,26 +296,75 @@ function summarizeOpeningHours(weeks,state=root.state,hoursApi=root.StoreOpening
   }
   out.uniqueUnknown=unknown.size;return out;
 }
+/* V263 — le cycle 3 semaines part du besoin réel de visite (visit-coverage.js), fourni par
+   `options.needOf(store, dateIso)` → { tier, blocked, ratio, status }.
+   Ordre de décision : contraintes explicites (verrous, rendez-vous, imposés) → besoin réel
+   (très en retard, puis en retard / jamais visité, puis bientôt dû, puis à jour) → rotation
+   V243 (magasins frais puis les moins récemment planifiés) → distance (escargot). Un magasin
+   visité trop récemment pour sa fréquence (`blocked`) n'est jamais repris automatiquement.
+   `options.today` + `options.existingPlanFor(weekKey)` : les journées déjà passées d'une
+   semaine entamée sont conservées telles quelles, et une visite faite aujourd'hui reste
+   sur aujourd'hui. Sans ces options, le cycle est exactement celui d'avant V263. */
 function buildThreeWeekSnail(options){
   const state=options.state,first=monday(options.firstMonday),days=(options.days||[]).filter(d=>DAYS.includes(d)),target=Math.max(1,Number(options.target)||20),max=Math.max(1,Number(options.maxCreditsPerDay)||4),archive=options.archive||{},distance=options.distanceOf||(()=>Infinity),priority=options.priorityOf||(()=>0),credit=options.creditOf||(()=>1),lockFor=options.lockDayForWeek||(()=>''),apptFor=options.appointmentDay||(()=>''),fits=options.dayFits||(()=>true),blocked=options.dayBlocked||(()=>false),imposed=state&&state.included||{};
+  const needOf=typeof options.needOf==='function'?options.needOf:null,today=/^\d{4}-\d{2}-\d{2}$/.test(String(options.today||''))?String(options.today):'',existingPlanFor=typeof options.existingPlanFor==='function'?options.existingPlanFor:null,completedOn=typeof options.completedOn==='function'?options.completedOn:(()=>false);
   if(!days.length)throw new Error('Choisis au moins un jour travaillé.');
   const ranked=rankStoresForSnail((options.stores||[]).filter(Boolean),distance,priority),used=new Set(),weeks=[],unknownGps=new Set(ranked.filter(s=>!validStoreGps(s)).map(storeKey));
+  const byId=new Map(ranked.map(s=>[String(s.id),s]));
   /* V243 : calculée une seule fois pour tout le cycle, à partir de l'archive telle qu'elle
      est avant cette génération. Les 3 semaines du cycle se partagent ensuite cette même
      lecture du passé — used (déjà existant) suffit à empêcher les doublons entre elles. */
   const memory=rotationMemory(ranked,iso(first),target,archive);
+  const refOf=mon=>{const key=iso(mon);return today&&today>key?today:key};
+  const needMemo=new Map(),needAt=(s,ref)=>{
+    if(!needOf)return{tier:3,blocked:false,ratio:null,status:''};
+    const k=storeKey(s)+'|'+ref;if(!needMemo.has(k)){let n=null;try{n=needOf(s,ref)}catch(e){n=null}needMemo.set(k,n||{tier:3,blocked:false})}
+    return needMemo.get(k);
+  };
+  const recentlySkipped=new Set();
   for(let wi=0;wi<3;wi++){
-    const mon=addDays(first,wi*7),weekKey=iso(mon),protectedPlan=protectedPlanFor(weekKey,state,archive);
+    const mon=addDays(first,wi*7),weekKey=iso(mon),protectedPlan=protectedPlanFor(weekKey,state,archive),ref=refOf(mon);
+    const dateOf=day=>iso(addDays(mon,DAYS.indexOf(day)));
+    const frozenDays=today&&existingPlanFor?DAYS.filter(day=>dateOf(day)<today):[],frozenSet=new Set(frozenDays);
     if(protectedPlan){
-      const activeDaysProtected=days.filter(day=>!blocked(iso(addDays(mon,DAYS.indexOf(day)))));
-      const completedPlan=completeProtectedWeek(protectedPlan,activeDaysProtected,mon,weekKey,target,ranked,used,max,credit,fits,lockFor,apptFor);
+      const activeDaysProtected=days.filter(day=>!frozenSet.has(day)&&!blocked(dateOf(day)));
+      const extra=needOf?{needAt:s=>needAt(s,ref),imposed,countDays:activeDaysProtected.concat(frozenDays)}:undefined;
+      const completedPlan=completeProtectedWeek(protectedPlan,activeDaysProtected,mon,weekKey,target,ranked,used,max,credit,fits,lockFor,apptFor,extra);
       for(const s of flattenPlan(completedPlan))used.add(storeKey(s));
-      const diagnostics=weekDistributionDiagnostics({mon,days,activeDays:days,plan:completedPlan,target,max,ranked,used,weekPlaced:new Set(flattenPlan(completedPlan).map(storeKey)),credit,fits,manual:true});
-      weeks.push({weekKey,plan:completedPlan,manual:true,unplaced:[],diagnostics});
+      const diagnostics=weekDistributionDiagnostics({mon,days,activeDays:days,plan:completedPlan,target,max,ranked,used,weekPlaced:new Set(flattenPlan(completedPlan).map(storeKey)),credit,fits,manual:true,frozenDays});
+      weeks.push({weekKey,plan:completedPlan,manual:true,unplaced:[],diagnostics,frozenDays});
       continue
     }
-    const plan=emptyPlan(),activeDays=days.filter(day=>!blocked(iso(addDays(mon,DAYS.indexOf(day))))),weekPlaced=new Set(),unplaced=[],quotas=dayQuotas(activeDays,target);
-    if(!activeDays.length){const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked,used,weekPlaced,credit,fits});weeks.push({weekKey,plan,manual:false,unplaced,diagnostics});continue}
+    const plan=emptyPlan(),weekPlaced=new Set(),unplaced=[];
+    let frozenCount=0;
+    if(frozenDays.length){
+      const existing=existingPlanFor(weekKey)||{};
+      /* Une journée passée reste telle quelle. Seule une visite réellement faite retire le
+         magasin du reste du cycle : une visite ratée reste due les semaines suivantes. */
+      for(const day of frozenDays)for(const raw of (existing[day]||[])){
+        const s=byId.get(String(raw&&raw.id))||raw,k=storeKey(s);if(!k||weekPlaced.has(k))continue;
+        plan[day].push(s);weekPlaced.add(k);if(completedOn(s.id,dateOf(day)))used.add(k);frozenCount++;
+      }
+      /* Aujourd'hui n'est pas figé, mais une visite déjà faite aujourd'hui y reste. */
+      const todayName=DAYS.find(day=>dateOf(day)===today);
+      if(todayName)for(const raw of (existing[todayName]||[])){
+        const s=byId.get(String(raw&&raw.id))||raw,k=storeKey(s);if(!k||weekPlaced.has(k)||!completedOn(s.id,today))continue;
+        plan[todayName].push(s);weekPlaced.add(k);used.add(k);
+      }
+    }
+    const activeDays=days.filter(day=>!frozenSet.has(day)&&!blocked(dateOf(day))),weekTarget=Math.max(0,target-frozenCount),quotas=dayQuotas(activeDays,weekTarget);
+    const count=()=>flattenPlan(plan,activeDays).length+frozenCount;
+    const candidates=ranked.filter(s=>{if(!needAt(s,ref).blocked)return true;const k=storeKey(s);if(!used.has(k)&&!weekPlaced.has(k))recentlySkipped.add(k);return false});
+    const skippedThisWeek=ranked.length-candidates.length;
+    if(!activeDays.length){const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked:candidates,used,weekPlaced,credit,fits,frozenDays,recentlyVisited:skippedThisWeek});weeks.push({weekKey,plan,manual:false,unplaced,diagnostics,frozenDays});continue}
+    const place=s=>{
+      for(const day of orderedPlacementDays(activeDays,plan,quotas,credit)){
+        const trial=plan[day].concat([s]),cost=trial.reduce((n,x)=>n+Math.max(1,Number(credit(x))||1),0);
+        if(cost>max||!fits(trial,day,mon))continue;
+        plan[day]=trial;const k=storeKey(s);weekPlaced.add(k);used.add(k);return true;
+      }
+      return false;
+    };
     const forced=[];
     for(const s of ranked){
       const ld=lockFor(s.id,weekKey),ad=apptFor(s.id,mon),day=ad||ld;
@@ -312,51 +382,57 @@ function buildThreeWeekSnail(options){
       }
       if(!placed)throw new Error((s.enseigne||'Magasin')+' '+(s.ville||'')+' ne tient pas dans la semaine malgré sa contrainte. Le planning précédent est conservé.');
     }
-    /* V243 — palier 1 « frais » : magasins jamais vus dans la fenêtre de rotation
-       (memory.usedKeys), dans l'ordre existant (priorité puis distance). C'est le seul
-       changement par rapport à l'ancien remplissage : un magasin déjà utilisé récemment
-       n'est plus reproposé tant qu'il reste un magasin frais éligible. */
-    for(const s of ranked){
-      if(flattenPlan(plan,activeDays).length>=target)break;
-      const k=storeKey(s);if(used.has(k)||weekPlaced.has(k)||memory.usedKeys.has(k))continue;
-      let placed=false;
-      for(const day of orderedPlacementDays(activeDays,plan,quotas,credit)){
-        const trial=plan[day].concat([s]),cost=trial.reduce((n,x)=>n+Math.max(1,Number(credit(x))||1),0);
-        if(cost>max||!fits(trial,day,mon))continue;
-        plan[day]=trial;weekPlaced.add(k);used.add(k);placed=true;break;
+    /* V263 : un palier de besoin après l'autre. Sans besoin connu, un seul palier : on
+       retrouve exactement les deux passes V243 ci-dessous. */
+    const ordered=needOf?needOrdered(candidates,s=>needAt(s,ref)):candidates;
+    const tiers=needOf?[4,3,2,1]:[null];
+    for(const tier of tiers){
+      if(count()>=target)break;
+      const group=tier==null?ordered:ordered.filter(s=>needAt(s,ref).tier===tier);
+      /* V243 — palier 1 « frais » : magasins jamais vus dans la fenêtre de rotation
+         (memory.usedKeys), dans l'ordre existant (priorité puis distance). Un magasin
+         déjà utilisé récemment n'est plus reproposé tant qu'il reste un magasin frais. */
+      for(const s of group){
+        if(count()>=target)break;
+        const k=storeKey(s);if(used.has(k)||weekPlaced.has(k)||memory.usedKeys.has(k))continue;
+        if(!place(s))unplaced.push(s);
       }
-      if(!placed)unplaced.push(s);
-    }
-    /* V243 — palier 2 « rotation » : si la cible n'est pas atteinte avec des magasins
-       jamais vus (secteur plus petit que la fenêtre, ou tous déjà pris ailleurs dans le
-       cycle), on reprend ceux déjà utilisés, du moins récemment vu au plus récemment vu.
-       C'est ce qui garantit qu'aucun magasin ne reste durablement hors rotation quand le
-       secteur entier a déjà été couvert au moins une fois. */
-    if(flattenPlan(plan,activeDays).length<target){
-      const due=sortByLeastRecentlyUsed(ranked.filter(s=>{const k=storeKey(s);return !used.has(k)&&!weekPlaced.has(k)}),memory);
-      for(const s of due){
-        if(flattenPlan(plan,activeDays).length>=target)break;
-        const k=storeKey(s);
-        let placed=false;
-        for(const day of orderedPlacementDays(activeDays,plan,quotas,credit)){
-          const trial=plan[day].concat([s]),cost=trial.reduce((n,x)=>n+Math.max(1,Number(credit(x))||1),0);
-          if(cost>max||!fits(trial,day,mon))continue;
-          plan[day]=trial;weekPlaced.add(k);used.add(k);placed=true;break;
+      /* V243 — palier 2 « rotation » : on reprend ceux déjà utilisés, du moins récemment
+         vu au plus récemment vu, pour qu'aucun magasin ne reste durablement hors rotation. */
+      if(count()<target){
+        const due=sortByLeastRecentlyUsed(group.filter(s=>{const k=storeKey(s);return !used.has(k)&&!weekPlaced.has(k)}),memory);
+        for(const s of due){
+          if(count()>=target)break;
+          if(!place(s))unplaced.push(s);
         }
-        if(!placed)unplaced.push(s);
       }
     }
-    const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked,used,weekPlaced,credit,fits});weeks.push({weekKey,plan,manual:false,unplaced,diagnostics});
+    const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked:candidates,used,weekPlaced,credit,fits,frozenDays,recentlyVisited:skippedThisWeek});weeks.push({weekKey,plan,manual:false,unplaced,diagnostics,frozenDays});
   }
   const dayRows=weeks.flatMap(w=>(w.diagnostics||[]).filter(d=>d.status==='planned'||d.status==='empty')),emptyWorkDays=dayRows.filter(d=>d.status==='empty');
-  return{weeks,uniqueStores:new Set(weeks.flatMap(w=>flattenPlan(w.plan).map(storeKey))).size,totalVisits:weeks.reduce((n,w)=>n+flattenPlan(w.plan).length,0),unknownGps:unknownGps.size,dayCoverage:{planned:dayRows.filter(d=>d.status==='planned').length,active:dayRows.length,empty:emptyWorkDays.length},emptyWorkDays};
+  const out={weeks,uniqueStores:new Set(weeks.flatMap(w=>flattenPlan(w.plan).map(storeKey))).size,totalVisits:weeks.reduce((n,w)=>n+flattenPlan(w.plan).length,0),unknownGps:unknownGps.size,dayCoverage:{planned:dayRows.filter(d=>d.status==='planned').length,active:dayRows.length,empty:emptyWorkDays.length},emptyWorkDays};
+  /* V263 — ce que le cycle n'a pas pu couvrir, dit clairement : magasins en retard ou jamais
+     visités restés hors des 3 semaines faute de capacité, et magasins écartés parce qu'ils
+     viennent d'être visités. */
+  if(needOf){
+    const firstRef=refOf(first),name=s=>((s.enseigne||'Magasin')+' '+(s.ville||'')).trim(),coverage={needAware:true,uncoveredLate:[],uncoveredNever:[],recentlyVisited:[]};
+    for(const s of ranked){
+      const k=storeKey(s);if(used.has(k))continue;
+      const n=needAt(s,firstRef);
+      if(recentlySkipped.has(k)&&n.blocked)coverage.recentlyVisited.push(name(s));
+      else if(n.status==='late')coverage.uncoveredLate.push(name(s));
+      else if(n.status==='never')coverage.uncoveredNever.push(name(s));
+    }
+    out.coverage=coverage;
+  }
+  return out;
 }
 function refreshThreeWeekDiagnostics(weeks,state=root.state){
   const days=currentDays(state),target=Math.max(1,Number(state&&state.settings&&state.settings.target)||20),max=Math.max(1,Number(state&&state.settings&&state.settings.maxVisitsPerDay)||4),pool=((state&&state.stores)||[]).filter(s=>included(s,state)),ranked=rankStoresForSnail(pool,distanceOf,s=>performancePlanningBoost(s,state)),used=new Set(),planningDiagnostics=[];
   for(const week of (weeks||[])){
-    const mon=parseISO(week&&week.weekKey)||new Date(),plan=week&&week.plan||emptyPlan(),activeDays=days.filter(day=>!dateBlocked(iso(addDays(mon,DAYS.indexOf(day))),state)),placed=flattenPlan(plan),weekPlaced=new Set(placed.map(storeKey));
+    const mon=parseISO(week&&week.weekKey)||new Date(),plan=week&&week.plan||emptyPlan(),frozenDays=Array.isArray(week&&week.frozenDays)?week.frozenDays:[],activeDays=days.filter(day=>!frozenDays.includes(day)&&!dateBlocked(iso(addDays(mon,DAYS.indexOf(day))),state)),placed=flattenPlan(plan),weekPlaced=new Set(placed.map(storeKey));
     for(const s of placed)used.add(storeKey(s));
-    const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked,used,weekPlaced,credit:visitCredit,fits:(route,day,wm)=>dayFits(route,day,state,wm),manual:!!(week&&week.manual)});
+    const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked,used,weekPlaced,credit:visitCredit,fits:(route,day,wm)=>dayFits(route,day,state,wm),manual:!!(week&&week.manual),frozenDays});
     if(week)week.diagnostics=diagnostics;
     planningDiagnostics.push({weekKey:String(week&&week.weekKey||''),days:diagnostics});
   }
@@ -416,7 +492,8 @@ function ensureInsightsBox(){
 function renderTerrainInsights(range){
   const box=ensureInsightsBox();if(!box)return false;
   const rows=range&&Array.isArray(range.overnightReport)?range.overnightReport:[],hours=range&&range.hoursReport,distribution=range&&Array.isArray(range.planningDiagnostics)?range.planningDiagnostics:[];
-  if(!rows.length&&!hours&&!distribution.length){box.hidden=true;box.innerHTML='';return false}
+  const coverageText=coverageSummaryText(range&&range.coverage,'');
+  if(!rows.length&&!hours&&!distribution.length&&!coverageText){box.hidden=true;box.innerHTML='';return false}
   const mode=rows[0]&&rows[0].mode||'auto',threshold=rows[0]&&Number(rows[0].threshold)||80,modeLabel=mode==='never'?'Jamais':mode==='mandatory'?'Obligatoire':'Automatique';
   let html='<div style="font-weight:850;color:#1d2939;font-size:12.5px">🌙 Découchés sur 3 semaines</div><div style="margin-top:2px;color:#667085">Mode '+modeLabel+(mode==='auto'?' · seuil '+Math.round(threshold)+' km':'')+'</div>';
   for(const row of rows){
@@ -441,12 +518,31 @@ function renderTerrainInsights(range){
     for(const week of distribution){const active=(week.days||[]).filter(d=>d.status==='planned'||d.status==='empty'),covered=active.filter(d=>d.status==='planned').length,empty=active.filter(d=>d.status==='empty'),parts=String(week.weekKey||'').split('-'),label=parts.length===3?parts[2]+'/'+parts[1]:week.weekKey;html+='<div style="margin-top:6px"><b>Semaine du '+label+'</b> · '+covered+'/'+active.length+' jours travaillés couverts'+(empty.length?' · '+empty.map(d=>d.day+' vide : '+d.reason).join(' ; '):'')+'</div>'}
     html+='</div>';
   }
+  if(coverageText){const safe=coverageText.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));html+='<div style="margin-top:9px;padding-top:9px;border-top:1px solid #eef1f5"><b style="color:#344054">🎯 Couverture</b><div>'+safe+'</div></div>'}
   box.innerHTML=html;box.hidden=false;return true;
 }
 function renderStoredInsights(){try{const storage=db(),range=storage&&JSON.parse(storage.getItem(RANGE_KEY)||'null');return renderTerrainInsights(range)}catch(e){return false}}
+function visitedOnLegacy(state,id,date){
+  const legacy=state&&state.visits&&state.visits[String(id)];
+  if(legacy&&(String(legacy.lastVisit||'')===date||(Array.isArray(legacy.history)&&legacy.history.some(d=>String(d||'')===date))))return true;
+  const rows=state&&state.businessV2&&Array.isArray(state.businessV2.visits)?state.businessV2.visits:[];
+  return rows.some(v=>String(v&&v.storeId)===String(id)&&v.status==='completed'&&String(v.completedDate||'').slice(0,10)===date);
+}
+/* V263 : ce que le cycle a volontairement laissé de côté, en une phrase. */
+function coverageSummaryText(coverage,prefix){
+  if(!coverage||!coverage.needAware)return'';
+  const parts=[],n=(x,one,many)=>x+' '+(x>1?many:one);
+  if(coverage.recentlyVisited.length)parts.push(n(coverage.recentlyVisited.length,'magasin visité trop récemment écarté','magasins visités trop récemment écartés'));
+  if(coverage.uncoveredLate.length)parts.push(n(coverage.uncoveredLate.length,'magasin en retard reste','magasins en retard restent')+' hors de ces 3 semaines faute de capacité ('+coverage.uncoveredLate.slice(0,3).join(', ')+(coverage.uncoveredLate.length>3?'…':'')+')');
+  if(coverage.uncoveredNever.length)parts.push(n(coverage.uncoveredNever.length,'magasin jamais visité reste','magasins jamais visités restent')+' à placer');
+  return parts.length?(prefix||'')+parts.join(' · '):'';
+}
 async function generateThreeWeekSnail(options){
   const state=root.state,R=root.ChefReliability,storage=db();
   if(!state||!R||typeof R.capture!=='function'||typeof R.persist!=='function')throw new Error('Protection des données indisponible.');
+  /* V263 : la semaine affichée avant génération sert de référence pour les journées déjà
+     passées ; elle est lue avant que la date de départ du cycle ne soit réécrite. */
+  const shownWeekKey=iso(monday(parseISO(String((state.settings&&state.settings.weekDate)||'').slice(0,10))||new Date())),shownPlan=copy(state.plan||{});
   const first=syncPlanningControlsForSnail(state,options);
   if(!validBase(state))throw new Error('Définis d’abord le GPS de ton point de départ dans Mon secteur.');
   const days=currentDays(state),report=summarizeTerrainPool(state.stores||[],state),pool=(state.stores||[]).filter(s=>included(s,state));
@@ -456,22 +552,28 @@ async function generateThreeWeekSnail(options){
   const status=root.document&&root.document.getElementById('terrainSnailStatus');if(status)status.textContent='Vivier : '+report.planifiable+' planifiables · '+report.withoutGps+' GPS à vérifier · '+report.imposed+' imposés. Agenda puis génération…';
   const calendarSynced=await syncCalendar(first,state);
   const archive=JSON.parse(storage.getItem(ARCHIVE_KEY)||'{}')||{};
-  const built=buildThreeWeekSnail({state,firstMonday:first,days,target:Number(state.settings.target)||20,maxCreditsPerDay:Number(state.settings.maxVisitsPerDay)||4,stores:pool,archive,distanceOf,priorityOf:(store)=>performancePlanningBoost(store,state),creditOf:visitCredit,lockDayForWeek:lockDay,appointmentDay,dayBlocked:(date)=>dateBlocked(date,state),dayFits:(route,day,mon)=>dayFits(route,day,state,mon)});
-  if(!built.totalVisits)throw new Error('Aucune visite ne tient dans les 3 semaines avec les réglages actuels.');
+  const coverageApi=root.StoreRunnerVisitCoverage,needOf=coverageApi&&typeof coverageApi.needOf==='function'?coverageApi.needOf(state):null;
+  const visitDays=coverageApi&&typeof coverageApi.visitDays==='function'?coverageApi.visitDays(state):null;
+  const completedOn=(id,date)=>visitDays?(visitDays.get(String(id))||[]).includes(date):visitedOnLegacy(state,id,date);
+  const existingPlanFor=key=>key===shownWeekKey?shownPlan:((archive[key]&&archive[key].plan)||null);
+  const built=buildThreeWeekSnail({needOf,today:iso(new Date()),existingPlanFor,completedOn,state,firstMonday:first,days,target:Number(state.settings.target)||20,maxCreditsPerDay:Number(state.settings.maxVisitsPerDay)||4,stores:pool,archive,distanceOf,priorityOf:(store)=>performancePlanningBoost(store,state),creditOf:visitCredit,lockDayForWeek:lockDay,appointmentDay,dayBlocked:(date)=>dateBlocked(date,state),dayFits:(route,day,mon)=>dayFits(route,day,state,mon)});
+  if(!built.totalVisits)throw new Error(built.coverage&&built.coverage.recentlyVisited.length?'Aucune visite à proposer : les magasins éligibles viennent tous d’être visités ('+built.coverage.recentlyVisited.length+'). Le planning précédent est conservé.':'Aucune visite ne tient dans les 3 semaines avec les réglages actuels.');
   const overnightReport=analyzeOvernightWeeks(built.weeks,state),hoursReport=summarizeOpeningHours(built.weeks,state);
   R.checkpoint('Avant génération 3 semaines escargot',storage);
   const bundle=R.capture(state,storage);
   for(const week of built.weeks){
     if(week.manual)continue;
     bundle.archive[week.weekKey]={weekMonday:week.weekKey,plan:Object.fromEntries(DAYS.map(d=>[d,(week.plan[d]||[]).map(cloneStore)])),manualEdited:false,generatedMode:'snail-distance-v1',updatedAt:new Date().toISOString()};
+    /* V185 et V251 lisent ce repère pour ne jamais réorganiser une journée passée. */
+    if(week.frozenDays&&week.frozenDays.length)bundle.archive[week.weekKey].frozenDays=week.frozenDays.slice();
   }
   const firstWeek=built.weeks[0];bundle.state.settings.weekDate=firstWeek.weekKey;bundle.state.plan=Object.fromEntries(DAYS.map(d=>[d,(firstWeek.plan[d]||[]).map(s=>canonicalStore(s.id,bundle.state)||s)]));
-  bundle.range={start:firstWeek.weekKey,end:iso(addDays(first,20)),weeks:3,workDays:days,uniqueStores:built.uniqueStores,totalVisits:built.totalVisits,rotation:'snail-distance-v1',calendarSynced,poolReport:report,overnightReport,hoursReport,planningDiagnostics:built.weeks.map(w=>({weekKey:w.weekKey,days:w.diagnostics||[]})),dayCoverage:built.dayCoverage,updatedAt:new Date().toISOString()};
+  bundle.range={start:firstWeek.weekKey,end:iso(addDays(first,20)),weeks:3,workDays:days,uniqueStores:built.uniqueStores,totalVisits:built.totalVisits,rotation:'snail-distance-v1',calendarSynced,poolReport:report,overnightReport,hoursReport,planningDiagnostics:built.weeks.map(w=>({weekKey:w.weekKey,days:w.diagnostics||[]})),dayCoverage:built.dayCoverage,coverage:built.coverage||null,updatedAt:new Date().toISOString()};
   R.persist(bundle,storage);if(storage&&typeof storage.flush==='function')await storage.flush();root.state=bundle.state;
   try{if(typeof root.initControls==='function')root.initControls();if(typeof root.renderAll==='function')root.renderAll()}catch(e){}
   root.dispatchEvent(new CustomEvent('chef-range-generated',{detail:{start:firstWeek.weekKey,end:bundle.range.end,weeks:3,workDays:days,uniqueStores:built.uniqueStores,mode:'snail-distance-v1'}}));
   root.document&&root.document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{reason:'three-week-snail',weekDate:firstWeek.weekKey}}));
-  if(status)status.textContent='3 semaines escargot : '+built.totalVisits+' visites · '+built.uniqueStores+' magasins distincts · '+built.dayCoverage.planned+'/'+built.dayCoverage.active+' jours travaillés couverts'+(built.emptyWorkDays.length?' · '+built.emptyWorkDays.length+' jour'+(built.emptyWorkDays.length>1?'s':'')+' vide'+(built.emptyWorkDays.length>1?'s':'')+' expliqué'+(built.emptyWorkDays.length>1?'s':''):'')+' · vivier '+report.planifiable+' planifiables'+(report.imposed?' · '+report.imposed+' imposé'+(report.imposed>1?'s':''):'')+(report.withoutGps?' · '+report.withoutGps+' GPS à vérifier':'')+(hoursReport.unknown?' · '+hoursReport.unknown+' horaires à vérifier':'')+'.';
+  if(status)status.textContent='3 semaines escargot : '+built.totalVisits+' visites · '+built.uniqueStores+' magasins distincts · '+built.dayCoverage.planned+'/'+built.dayCoverage.active+' jours travaillés couverts'+(built.emptyWorkDays.length?' · '+built.emptyWorkDays.length+' jour'+(built.emptyWorkDays.length>1?'s':'')+' vide'+(built.emptyWorkDays.length>1?'s':'')+' expliqué'+(built.emptyWorkDays.length>1?'s':''):'')+' · vivier '+report.planifiable+' planifiables'+(report.imposed?' · '+report.imposed+' imposé'+(report.imposed>1?'s':''):'')+(report.withoutGps?' · '+report.withoutGps+' GPS à vérifier':'')+(hoursReport.unknown?' · '+hoursReport.unknown+' horaires à vérifier':'')+coverageSummaryText(built.coverage,' · ')+'.';
   renderTerrainInsights(bundle.range);built.poolReport=report;built.overnightReport=overnightReport;built.hoursReport=hoursReport;
   return built;
 }
@@ -523,6 +625,6 @@ function installStartButton(){
 }
 function install(){installThreeWeekReport();installStartButton()}
 function boot(){install();root.document&&root.document.addEventListener('store-runner:planning-updated',()=>{install();renderStoredInsights()});root.document&&root.document.addEventListener('store-runner:data-restored',()=>{install();renderStoredInsights()})}
-const api={rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,completeProtectedWeek,rotationWindowWeeks,rotationMemory,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits,overnightForPlan,analyzeOvernightWeeks,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={coverageSummaryText,needOrdered,rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,completeProtectedWeek,rotationWindowWeeks,rotationMemory,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits,overnightForPlan,analyzeOvernightWeeks,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()}
 })(typeof window!=='undefined'?window:globalThis);

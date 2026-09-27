@@ -67,7 +67,9 @@ const complete=(st,storeId,date)=>st.businessV2.visits.push({id:'v-'+storeId+'-'
 // ------------------------------------------ 20. settings.target : preuve dans le moteur
 {
   const engine=read('terrain-planning-v1.js');
-  assert.match(engine,/if\(flattenPlan\(plan,activeDays\)\.length>=target\)break;/,'le moteur ESCARGOT arrête la semaine au nombre de passages physiques, pas de crédits');
+  /* V263 : les journées passées conservées comptent aussi comme passages physiques. */
+  assert.match(engine,/const count=\(\)=>flattenPlan\(plan,activeDays\)\.length\+frozenCount;/,'le moteur ESCARGOT compte des passages physiques, pas des crédits');
+  assert.match(engine,/if\(count\(\)>=target\)break;/,'le moteur ESCARGOT arrête la semaine au nombre de passages physiques, pas de crédits');
   assert.match(read('src/chef-secteur.html'),/<label>Nombre de magasins<\/label>\s*<input id="target"/,'le champ de réglage de target est libellé en magasins');
   for(const f of ['home-refresh-v2.js','visit-counting.js','src/chef-secteur.html'])assert.doesNotMatch(read(f),/objectif '\+[^;]{0,80}\+' visites/,f+' ne libelle plus l’objectif en visites');
 }

@@ -42,10 +42,65 @@ function canStay(plan,store,day,date,max,days){
   if(DAYS.some(d=>(plan[d]||[]).some(s=>storeId(s)===id)))return false;
   return routeCapacity(trial)<=max&&routeFits(trial,day,date);
 }
+/* V263 — le recalcul lit le besoin réel de visite (visit-coverage.js). Une visite future
+   non contrainte d'un magasin visité trop récemment pour sa fréquence est retirée ; une
+   visite ratée d'un magasin déjà vu ailleurs n'est plus replacée. Les créneaux libérés
+   vont, dans la même semaine, aux magasins en retard, jamais visités ou bientôt dus,
+   puis au jour le plus cohérent géographiquement. Sans le module, rien ne change. */
+function canonical(store){const id=storeId(store);return (state.stores||[]).find(s=>String(s&&s.id)===id)||store}
+function coverageNeed(){try{const api=window.StoreRunnerVisitCoverage;if(api&&typeof api.needOf==='function')return api.needOf(state)}catch(e){}return null}
+function passesFilters(s){try{if(typeof window.includedByFilters==='function')return !!window.includedByFilters(s)}catch(e){}return true}
+function distanceBetween(a,b){try{if(typeof window.hav==='function'){const n=Number(window.hav(a,b));if(Number.isFinite(n))return n}}catch(e){}return Infinity}
+function baseDistance(s){try{if(typeof window.havBase==='function'){const n=Number(window.havBase(s));if(Number.isFinite(n))return n}}catch(e){}return Infinity}
+function cohesion(route,s){if(!route||!route.length)return baseDistance(s);let best=Infinity;for(const x of route)best=Math.min(best,distanceBetween(x,s));return best}
+function routeKm(route){try{if(typeof window.routeCost==='function')return Number(window.routeCost(route))||0}catch(e){}return 0}
+function planKm(plan){return DAYS.reduce((n,d)=>n+routeKm((plan&&plan[d])||[]),0)}
+function needOrder(a,b){if(b.n.tier!==a.n.tier)return b.n.tier-a.n.tier;if(a.n.tier>=4&&(b.n.ratio||0)!==(a.n.ratio||0))return (b.n.ratio||0)-(a.n.ratio||0);return (Number(b.n.overdueDays)||0)-(Number(a.n.overdueDays)||0)||storeName(a.s).localeCompare(storeName(b.s),'fr')}
+function catchUpPresent(weeks,needFn,today){let n=0;const seen=new Set();for(const plan of Object.values(weeks||{}))for(const d of DAYS)for(const s of ((plan&&plan[d])||[])){const id=storeId(s);if(seen.has(id))continue;seen.add(id);const x=needFn(canonical(s),today);if(!x.blocked&&x.tier>=2)n++}return n}
+function fillFreedSlots(weeks,removed,needFn,today,days,max){
+  const added=[],present=new Set();
+  for(const plan of Object.values(weeks))for(const d of DAYS)for(const s of (plan[d]||[]))present.add(storeId(s));
+  for(const r of removed)present.add(r.id);
+  const perWeek={};for(const r of removed)perWeek[r.key]=(perWeek[r.key]||0)+1;
+  for(const key of Object.keys(perWeek).sort()){
+    const wm=parse(key),plan=weeks[key];if(!wm||!plan)continue;
+    const ref=key<today?today:key;
+    const pool=(state.stores||[]).filter(s=>s&&s.active!==false&&!(state.excluded&&state.excluded[s.id])&&!present.has(storeId(s))&&passesFilters(s))
+      .map(s=>({s,n:needFn(s,ref)})).filter(x=>!x.n.blocked&&x.n.tier>=2).sort(needOrder);
+    let left=perWeek[key];
+    for(const {s,n} of pool){
+      if(left<=0)break;
+      const id=storeId(s),lock=lockDay(id,key),appt=appointmentDay(id,wm);
+      let best=null;
+      for(const day of DAYS){
+        const date=dayDate(wm,day);
+        if(date<today||!days.includes(day)||blocked(date)||(lock&&lock!==day)||(appt&&appt!==day))continue;
+        if(needFn(s,date).blocked)continue;
+        const trial=(plan[day]||[]).concat(s);if(routeCapacity(trial)>max||!routeFits(trial,day,date))continue;
+        const score=cohesion(plan[day],s),load=routeCapacity(plan[day]);
+        if(!best||score<best.score-0.001||(Math.abs(score-best.score)<0.001&&load<best.load))best={day,date,score,load};
+      }
+      if(!best)continue;
+      plan[best.day].push(s);present.add(id);left--;
+      added.push({id,name:storeName(s),key,day:best.day,date:best.date,status:n.status,label:n.label||''});
+    }
+  }
+  return added;
+}
+function previewLines(r){
+  const lines=[],names=list=>list.slice(0,4).map(x=>x.name).join(', ')+(list.length>4?'…':'');
+  lines.push('✓ '+r.kept+' visite'+(r.kept>1?'s':'')+' conservée'+(r.kept>1?'s':'')+(r.visitedKept?' (dont '+r.visitedKept+' déjà faite'+(r.visitedKept>1?'s':'')+')':''));
+  if(r.removed.length)lines.push('− '+r.removed.length+' retiré'+(r.removed.length>1?'s':'')+' car déjà visité'+(r.removed.length>1?'s':'')+' récemment : '+names(r.removed));
+  if(r.added.length)lines.push('+ '+r.added.length+' ajouté'+(r.added.length>1?'s':'')+' car en retard ou jamais visité'+(r.added.length>1?'s':'')+' : '+names(r.added));
+  if(r.moved)lines.push('↔ '+r.moved+' visite'+(r.moved>1?'s':'')+' à replacer');
+  if(r.kmBefore>0||r.kmAfter>0)lines.push('Kilométrage estimé semaine : ~'+Math.round(r.kmBefore)+' km → ~'+Math.round(r.kmAfter)+' km');
+  if(r.coverageBefore!=null)lines.push('Magasins à rattraper planifiés : '+r.coverageBefore+' → '+r.coverageAfter);
+  return lines;
+}
 function build(){
   if(!window.state||!state.plan)return{ok:false,error:'Aucun planning à recalculer.'};
   try{if(typeof window.readPlanningControls==='function')window.readPlanningControls();else if(typeof readPlanningControls==='function')readPlanningControls()}catch(e){return{ok:false,error:e&&e.message?e.message:String(e)}}
-  const mon=weekMonday(),weekKey=iso(mon),today=iso(new Date()),days=workDays(),max=Math.max(1,Math.min(8,Number(state.settings&&state.settings.maxVisitsPerDay)||4)),archive=load(ARCHIVE_KEY,{}),source={},weeks={},entries={},movable=[],overCapacityKept=[];
+  const mon=weekMonday(),weekKey=iso(mon),today=iso(new Date()),days=workDays(),max=Math.max(1,Math.min(8,Number(state.settings&&state.settings.maxVisitsPerDay)||4)),archive=load(ARCHIVE_KEY,{}),source={},weeks={},entries={},movable=[],overCapacityKept=[],removed=[],needFn=coverageNeed();
   let total=0,visited=0,appointments=0,locks=0,past=0,stableKept=0;
   source[weekKey]=clone(state.plan||empty());for(const [key,snap] of Object.entries(archive))if(key>weekKey&&snap&&snap.plan&&parse(key))source[key]=clone(snap.plan);
   const weekPlan=key=>weeks[key]||(weeks[key]=empty());
@@ -80,6 +135,7 @@ function build(){
     const plan=weekPlan(key),rows=entries[key].filter(item=>item.day===day).sort((a,b)=>a.index-b.index);
     for(const item of rows){
       if(item.fixed){if(item.fixed===day)plan[day].push(item.store);continue}
+      if(needFn){const at=item.date<today?today:item.date,n=needFn(canonical(item.store),at);if(n.blocked){removed.push({id:item.id,key:item.key,day:item.day,date:item.date,name:storeName(canonical(item.store)),status:n.status,reason:item.date<today?'visité un autre jour':'visité récemment'});continue}}
       if(item.date<today){movable.push(item);continue}
       if(canStay(plan,item.store,day,item.date,max,days)){plan[day].push(item.store);stableKept++}
       else movable.push(item);
@@ -112,19 +168,26 @@ function build(){
     if(!placed)return{ok:false,error:'Le décalage dépasse '+MAX_WEEKS+' semaines. '+storeName(item.store)+' n’a pas pu être replacé. Rien n’a été changé.'};
   }
 
-  const after=Object.values(weeks).reduce((n,p)=>n+count(p),0);if(after!==total)return{ok:false,error:'Contrôle de sécurité : le nombre de visites a changé pendant le recalcul. Rien n’a été changé.'};
+  const added=needFn&&removed.length?fillFreedSlots(weeks,removed,needFn,today,days,max):[];
+  const after=Object.values(weeks).reduce((n,p)=>n+count(p),0);if(after!==total-removed.length+added.length)return{ok:false,error:'Contrôle de sécurité : le nombre de visites a changé pendant le recalcul. Rien n’a été changé.'};
   const keys=Object.keys(weeks).sort(),last=keys[keys.length-1]||weekKey,changedWeekKeys=keys.filter(key=>!source[key]||!samePlan(source[key],weeks[key]));
   const nextArchive=clone(archive),editedAt=new Date().toISOString();
   for(const key of changedWeekKeys){const previous=nextArchive[key]||{};nextArchive[key]=Object.assign({},previous,{weekMonday:key,plan:clone(weeks[key]),manualEdited:true,manualEditedAt:editedAt})}
   const range=changedWeekKeys.length?cascadeRange(nextArchive,weekKey,last,days):(load(RANGE_KEY,null)||cascadeRange(nextArchive,weekKey,last,days));
-  return{ok:true,plan:weeks[weekKey]||empty(),weeks,archive:nextArchive,range,weekKey,lastWeekKey:last,latestPlaced:latest,weeksTouched:changedWeekKeys.length,changedWeekKeys,unchanged:changedWeekKeys.length===0,stableKept,visitedKept:visited,appointmentsKept:appointments,locksKept:locks,pastUnvisited:past,moved:movable.length,totalOccurrences:total,overCapacityKept};
+  const result={ok:true,plan:weeks[weekKey]||empty(),weeks,archive:nextArchive,range,weekKey,lastWeekKey:last,latestPlaced:latest,weeksTouched:changedWeekKeys.length,changedWeekKeys,unchanged:changedWeekKeys.length===0,stableKept,visitedKept:visited,appointmentsKept:appointments,locksKept:locks,pastUnvisited:past,moved:movable.length,totalOccurrences:total,overCapacityKept,removed,added,kept:total-removed.length,
+    kmBefore:planKm(source[weekKey]),kmAfter:planKm(weeks[weekKey]),coverageBefore:needFn?catchUpPresent(source,needFn,today):null,coverageAfter:needFn?catchUpPresent(weeks,needFn,today):null};
+  result.previewLines=previewLines(result);
+  return result;
 }
 function capacityWarning(result){const rows=result&&Array.isArray(result.overCapacityKept)?result.overCapacityKept:[];if(!rows.length)return'';const first=rows[0],more=rows.length>1?' · +'+(rows.length-1)+' autre'+(rows.length>2?'s':'')+' journée'+(rows.length>2?'s':'')+' chargée'+(rows.length>2?'s':''):'';return first.day+' conservé à '+first.actual+'/'+first.max+' crédits · aucun ajout sur cette journée'+more+'.'}
 function status(message,type){let box=document.getElementById('planningGenerateStatus');if(box){box.textContent=message||'';box.style.color=type==='bad'?'#b42318':type==='ok'?'#137333':'#667085';box.style.fontWeight=type==='bad'||type==='ok'?'700':'500'}if(type==='bad'&&typeof window.showError==='function')try{window.showError(message)}catch(e){}if(typeof window.storeRunnerToast==='function'&&(type==='bad'||type==='ok'))try{window.storeRunnerToast(message)}catch(e){}}
 function markManual(weeks,keys){try{state.manualWeekEdits=state.manualWeekEdits||{};const at=new Date().toISOString(),wanted=new Set(Array.isArray(keys)?keys:Object.keys(weeks||{}));for(const [key,plan] of Object.entries(weeks||{}))if(wanted.has(key))state.manualWeekEdits[key]={at,plan:clone(plan)};if(typeof window.save==='function')window.save();else if(typeof save==='function')save()}catch(e){console.warn('Marquage manuel non enregistré',e)}}
+function confirmText(result){
+  const lines=Array.isArray(result&&result.previewLines)?result.previewLines:[];
+  return 'Recalculer le reste du planning à partir d’aujourd’hui ?\n\n'+(lines.length?'Ce que le recalcul change :\n'+lines.join('\n')+'\n\n':'')+'Les visites déjà effectuées, les rendez-vous et les magasins posés ou verrouillés restent en place. Les journées futures encore valides ne bougent pas.';
+}
 async function recalc(){
   if(!window.state||!state.plan){status('Aucun planning à recalculer.','bad');return{ok:false}}
-  if(!confirm('Recalculer le reste du planning à partir d’aujourd’hui ?\n\nLes visites déjà effectuées, les rendez-vous et les magasins verrouillés resteront en place. Store Runner conservera aussi les journées futures qui sont encore valides et ne déplacera que ce qui doit réellement bouger.'))return{ok:false,cancelled:true};
   status('Recalcul stable du planning…','busy');
   try{
     if(window.ChefReliability&&typeof ChefReliability.checkpoint==='function')ChefReliability.checkpoint('Avant recalcul stable du planning');
@@ -132,13 +195,16 @@ async function recalc(){
     if(!result.ok){status(result.error||'Recalcul impossible.','bad');return result}
     const warning=capacityWarning(result);
     if(result.unchanged){status('Planning déjà stable ✓ Aucun déplacement nécessaire.'+(warning?' '+warning:''),'ok');return result}
-    const accepted=window.ChefReliability&&typeof ChefReliability.propose==='function'?await ChefReliability.propose({plan:result.plan,weekDate:result.weekKey,archive:result.archive,range:result.range,storeCount:result.range.totalStores,visitCredits:result.range.totalVisits}):false;
+    /* V263 : calculer d'abord, puis montrer ce qui change avant d'appliquer. La proposition
+       est ensuite appliquée par ChefReliability.propose (application automatique V189). */
+    if(!confirm(confirmText(result))){status('Planning précédent conservé.','busy');return{ok:false,cancelled:true}}
+    const accepted=window.ChefReliability&&typeof ChefReliability.propose==='function'?await ChefReliability.propose({plan:result.plan,weekDate:result.weekKey,archive:result.archive,range:result.range,storeCount:result.range.totalStores,visitCredits:result.range.totalVisits,previewTitle:'Ce que le recalcul change',previewLines:result.previewLines}):false;
     if(!accepted){status('Planning précédent conservé.','busy');return{ok:false,cancelled:true}}
     markManual(result.weeks,result.changedWeekKeys);
     try{if(typeof window.renderAll==='function')window.renderAll();else if(typeof renderAll==='function')renderAll()}catch(e){}
     try{document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{source:'recalculatePlanningCascade'}}))}catch(e){}
     const spill=result.lastWeekKey>result.weekKey?' · décalage jusqu’à la semaine du '+result.lastWeekKey:'';
-    status('Planning recalculé ✓ '+result.moved+' visite'+(result.moved>1?'s':'')+' déplacée'+(result.moved>1?'s':'')+' · '+result.stableKept+' visite'+(result.stableKept>1?'s':'')+' future'+(result.stableKept>1?'s':'')+' laissée'+(result.stableKept>1?'s':'')+' en place'+spill+'.'+(warning?' '+warning:''),'ok');
+    status('Planning recalculé ✓ '+result.moved+' visite'+(result.moved>1?'s':'')+' déplacée'+(result.moved>1?'s':'')+' · '+result.stableKept+' visite'+(result.stableKept>1?'s':'')+' future'+(result.stableKept>1?'s':'')+' laissée'+(result.stableKept>1?'s':'')+' en place'+(result.removed.length?' · '+result.removed.length+' retirée'+(result.removed.length>1?'s':'')+' (déjà visité'+(result.removed.length>1?'s':'')+')':'')+(result.added.length?' · '+result.added.length+' ajoutée'+(result.added.length>1?'s':'')+' (en retard)':'')+spill+'.'+(warning?' '+warning:''),'ok');
     return result;
   }catch(e){const message=e&&e.message?e.message:String(e);status('Recalcul impossible : '+message,'bad');return{ok:false,error:message}}
 }

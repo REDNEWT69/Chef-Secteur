@@ -124,7 +124,10 @@
     const generation=tools.querySelector('[data-planning-generate="three-weeks"]')||tools.querySelector('button[onclick*="generateWeek"]');
     if(generation){generation.className='primary';generation.type='button';generation.removeAttribute('onclick');generation.setAttribute('data-planning-generate','three-weeks');generation.textContent='✦ Générer mes 3 semaines'}
     ensureSettingsShortcut(tools);
-    moveAfter(notice||tabs,tools);moveAfter(tools,timeline);
+    /* V263 : le bloc Couverture (visit-coverage.js) se range juste sous les actions, replié
+       sur une ligne : on voit ce qui reste à rattraper avant de générer ou de recalculer. */
+    const coverage=document.getElementById('planningCoverageV263');
+    moveAfter(notice||tabs,tools);if(coverage){moveAfter(tools,coverage);moveAfter(coverage,timeline)}else moveAfter(tools,timeline);
     const monthly=document.querySelector('#planPanel #managerPlanningMonth, #planPanel .managerPlanningMonth, #planPanel .monthPlanning, #planPanel [data-planning-month]');let anchor=timeline;
     if(monthly){moveAfter(anchor,monthly);anchor=monthly}if(metrics){moveAfter(anchor,metrics);anchor=metrics}if(saturday){moveAfter(anchor,saturday);anchor=saturday}if(departure){moveAfter(anchor,departure);anchor=departure}
     if(settings&&!editing&&(settings.parentNode!==plan||settings.nextElementSibling))plan.appendChild(settings);
