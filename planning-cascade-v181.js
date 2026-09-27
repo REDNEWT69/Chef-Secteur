@@ -87,12 +87,50 @@ function fillFreedSlots(weeks,removed,needFn,today,days,max){
   }
   return added;
 }
+/* V263.2 — ordre de passage après recalcul. Une journée modifiée par le recalcul gardait
+   l'ordre de l'ancienne tournée et recevait ses ajouts en dernier (cas terrain
+   Saint-Étienne : Limonest › Écully › Saint-Étienne, retour 14:31 au lieu de 13:45 pour
+   les mêmes kilomètres). On lui applique l'ordre V251 — contraintes, puis conduite, puis
+   fin de journée, puis attente — et seulement à elle : journée future (jamais aujourd'hui
+   ni un jour passé), magasins modifiés par ce recalcul, semaine non retouchée à la main.
+   Un premier arrêt à arrivée imposée reste premier. V251 ne change jamais les magasins
+   d'une journée et refuse tout ordre infaisable. Sans V251, rien ne change. */
+function routeOptimizer(){const api=window.StoreRunnerRouteOptimizerV251;return api&&typeof api.explainOptimization==='function'?api:null}
+function sameIds(a,b){const x=(a||[]).map(storeId),y=(b||[]).map(storeId);return x.length===y.length&&x.every((id,i)=>id===y[i])}
+function sameMembers(a,b){const sig=r=>(r||[]).map(storeId).sort().join('|');return (a||[]).length===(b||[]).length&&sig(a)===sig(b)}
+/* Une semaine marquée « manuelle » par un recalcul précédent n'a pas été retouchée par
+   l'utilisateur tant que sa date de marque et son plan — celui de l'archive comme celui
+   qu'on recalcule — sont exactement ceux que ce recalcul a écrits. Toute retouche (ajout,
+   retrait, ordre, « Commencer par ici », remplacement) réécrit le plan et
+   `manualEditedAt` : la semaine redevient intouchable. */
+function recalcOnly(snap,plan){const r=snap&&snap.recalculated,sig=r&&r.signature;return !!(r&&r.at&&r.at===snap.manualEditedAt&&sig===planSignature(snap.plan)&&sig===planSignature(plan))}
+function userManualWeek(key,archive,plan){const snap=archive&&archive[key];return !!(((state.manualWeekEdits&&state.manualWeekEdits[key])||(snap&&snap.manualEdited))&&!recalcOnly(snap,plan))}
+function imposedFirstId(route,date){const id=storeId(route&&route[0]);return id&&(state.appointments||[]).some(a=>a&&a.manualHours===true&&String(a.storeId)===id&&String(a.date||'').slice(0,10)===date)?id:''}
+function orderChangedDays(source,weeks,userManual,today){
+  const api=routeOptimizer(),out=[];if(!api)return out;
+  for(const key of Object.keys(weeks).sort()){
+    if(userManual[key])continue;
+    const wm=parse(key),before=source[key]||empty(),plan=weeks[key];
+    for(const day of DAYS){
+      const date=dayDate(wm,day),route=plan[day]||[];
+      if(date<=today||route.length<2||sameIds(before[day],route))continue;
+      let x=null;try{x=api.explainOptimization(route,day,state,{weekMonday:key,fixedFirstId:imposedFirstId(route,date)})}catch(e){x=null}
+      if(!x||!x.changed||!Array.isArray(x.route)||!sameMembers(route,x.route))continue;
+      plan[day]=x.route.slice();
+      out.push({key,day,date,driveBefore:Number(x.before&&x.before.driveMinutes),driveAfter:Number(x.after&&x.after.driveMinutes),endBefore:Number(x.before&&x.before.estimatedEnd),endAfter:Number(x.after&&x.after.estimatedEnd)});
+    }
+  }
+  return out;
+}
+function hm(m){const v=Math.round(Number(m));if(!Number.isFinite(v))return'';const x=((v%1440)+1440)%1440;return String(Math.floor(x/60)).padStart(2,'0')+':'+String(x%60).padStart(2,'0')}
+function orderLabel(x){const d=parse(x.date),parts=[],drive=Math.round(x.driveBefore-x.driveAfter),end=Math.round(x.endBefore-x.endAfter);if(Number.isFinite(drive)&&drive>=1)parts.push('−'+drive+' min de route');if(Number.isFinite(end)&&end>=1)parts.push('retour ~'+hm(x.endAfter)+' au lieu de ~'+hm(x.endBefore));return x.day+(d?' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'):'')+(parts.length?' ('+parts.join(', ')+')':'')}
 function previewLines(r){
   const lines=[],names=list=>list.slice(0,4).map(x=>x.name).join(', ')+(list.length>4?'…':'');
   lines.push('✓ '+r.kept+' visite'+(r.kept>1?'s':'')+' conservée'+(r.kept>1?'s':'')+(r.visitedKept?' (dont '+r.visitedKept+' déjà faite'+(r.visitedKept>1?'s':'')+')':''));
   if(r.removed.length)lines.push('− '+r.removed.length+' retiré'+(r.removed.length>1?'s':'')+' car déjà visité'+(r.removed.length>1?'s':'')+' récemment : '+names(r.removed));
   if(r.added.length)lines.push('+ '+r.added.length+' ajouté'+(r.added.length>1?'s':'')+' car en retard ou jamais visité'+(r.added.length>1?'s':'')+' : '+names(r.added));
   if(r.moved)lines.push('↔ '+r.moved+' visite'+(r.moved>1?'s':'')+' à replacer');
+  if(r.reordered&&r.reordered.length)lines.push('↕ Ordre de passage optimisé : '+r.reordered.map(orderLabel).join(' · '));
   if(r.kmBefore>0||r.kmAfter>0)lines.push('Kilométrage estimé semaine : ~'+Math.round(r.kmBefore)+' km → ~'+Math.round(r.kmAfter)+' km');
   if(r.coverageBefore!=null)lines.push('Magasins à rattraper planifiés : '+r.coverageBefore+' → '+r.coverageAfter);
   return lines;
@@ -103,6 +141,7 @@ function build(){
   const mon=weekMonday(),weekKey=iso(mon),today=iso(new Date()),days=workDays(),max=Math.max(1,Math.min(8,Number(state.settings&&state.settings.maxVisitsPerDay)||4)),archive=load(ARCHIVE_KEY,{}),source={},weeks={},entries={},movable=[],overCapacityKept=[],removed=[],needFn=coverageNeed();
   let total=0,visited=0,appointments=0,locks=0,past=0,stableKept=0;
   source[weekKey]=clone(state.plan||empty());for(const [key,snap] of Object.entries(archive))if(key>weekKey&&snap&&snap.plan&&parse(key))source[key]=clone(snap.plan);
+  const userManual={};for(const key of Object.keys(source))userManual[key]=userManualWeek(key,archive,source[key]);
   const weekPlan=key=>weeks[key]||(weeks[key]=empty());
 
   /* V252 : on commence par décrire le planning actuel au lieu de le vider. Une visite
@@ -170,11 +209,14 @@ function build(){
 
   const added=needFn&&removed.length?fillFreedSlots(weeks,removed,needFn,today,days,max):[];
   const after=Object.values(weeks).reduce((n,p)=>n+count(p),0);if(after!==total-removed.length+added.length)return{ok:false,error:'Contrôle de sécurité : le nombre de visites a changé pendant le recalcul. Rien n’a été changé.'};
+  const reordered=orderChangedDays(source,weeks,userManual,today);
   const keys=Object.keys(weeks).sort(),last=keys[keys.length-1]||weekKey,changedWeekKeys=keys.filter(key=>!source[key]||!samePlan(source[key],weeks[key]));
   const nextArchive=clone(archive),editedAt=new Date().toISOString();
-  for(const key of changedWeekKeys){const previous=nextArchive[key]||{};nextArchive[key]=Object.assign({},previous,{weekMonday:key,plan:clone(weeks[key]),manualEdited:true,manualEditedAt:editedAt})}
+  /* La marque `recalculated` dit que la protection vient de ce recalcul : jamais posée sur
+     une semaine retouchée à la main, qui le reste. */
+  for(const key of changedWeekKeys){const previous=nextArchive[key]||{},entry=Object.assign({},previous,{weekMonday:key,plan:clone(weeks[key]),manualEdited:true,manualEditedAt:editedAt});if(userManual[key])delete entry.recalculated;else entry.recalculated={at:editedAt,signature:planSignature(weeks[key])};nextArchive[key]=entry}
   const range=changedWeekKeys.length?cascadeRange(nextArchive,weekKey,last,days):(load(RANGE_KEY,null)||cascadeRange(nextArchive,weekKey,last,days));
-  const result={ok:true,plan:weeks[weekKey]||empty(),weeks,archive:nextArchive,range,weekKey,lastWeekKey:last,latestPlaced:latest,weeksTouched:changedWeekKeys.length,changedWeekKeys,unchanged:changedWeekKeys.length===0,stableKept,visitedKept:visited,appointmentsKept:appointments,locksKept:locks,pastUnvisited:past,moved:movable.length,totalOccurrences:total,overCapacityKept,removed,added,kept:total-removed.length,
+  const result={ok:true,plan:weeks[weekKey]||empty(),weeks,archive:nextArchive,range,weekKey,lastWeekKey:last,latestPlaced:latest,weeksTouched:changedWeekKeys.length,changedWeekKeys,unchanged:changedWeekKeys.length===0,stableKept,visitedKept:visited,appointmentsKept:appointments,locksKept:locks,pastUnvisited:past,moved:movable.length,totalOccurrences:total,overCapacityKept,removed,added,reordered,kept:total-removed.length,
     kmBefore:planKm(source[weekKey]),kmAfter:planKm(weeks[weekKey]),coverageBefore:needFn?catchUpPresent(source,needFn,today):null,coverageAfter:needFn?catchUpPresent(weeks,needFn,today):null};
   result.previewLines=previewLines(result);
   return result;
