@@ -1,4 +1,4 @@
-const BUILD_REV = "20260927-r7-onboarding-logo-262";
+const BUILD_REV = "20260927-r8-visit-coverage-263";
 /* V261.2 hotfix : même révision applicative, nouveau namespace de cache afin que les
    PWA déjà installées récupèrent le correctif de capacité à la source (visit-counting.js)
    sans mélanger ancien et nouveau shell. Le BUILD_REV reste V261 : aucune migration. */
@@ -25,7 +25,7 @@ const CORE_SHELL = [
   "./calendar-enhancements.js", "./ui-polish.js", "./route-polish.js", "./planning-ui-fixes.js",
   "./ai-gateway-config.js", "./assistant-upgrade.js", "./assistant-visit-context.js",
   "./ai-context-limit.js", "./assistant-store-lookup.js", "./map-layer-fix.js",
-  "./timeline-end-times.js", "./visit-counting.js", "./range-planner-v2.js",
+  "./timeline-end-times.js", "./visit-counting.js", "./visit-coverage.js", "./range-planner-v2.js",
   "./planning-day-origin.js", "./boulanger-default-hours.js", "./store-photos.js",
   "./terrain-planning-v1.js", "./working-hours-end.js", "./daily-capacity.js",
   "./planning-pro-plus.js", "./planning-summary-v219.js", "./period-day-slider.js",

@@ -117,13 +117,17 @@ function rebalancePlanByGeography(plan,options){
   options=options||{};if(!window.state||!plan)return{ok:false,plan:plan||{},changed:false,reason:'no-state'};
   const workDays=(options.days||selectedWorkDays()).filter(d=>DAYS.includes(d)),weekKey=String(options.weekKey||currentWeekKey()),mon=parse(weekKey)||monday(parse((state.settings&&state.settings.weekDate)||'')||new Date()),max=Math.max(1,Math.min(8,Number(state.settings&&state.settings.maxVisitsPerDay)||4));
   if(!workDays.length||!homePoint())return{ok:false,plan,changed:false,reason:'no-days-or-base'};
-  const out=Object.fromEntries(DAYS.map(d=>[d,workDays.includes(d)?[]:clone((plan&&plan[d])||[])])),free=[],seen=new Set(),origin={},fixedIds=new Set();
-  for(const day of workDays)for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(!id||seen.has(id))continue;seen.add(id);origin[id]=day;const fixed=lockDayV185(id,weekKey)||appointmentDayV185(id,mon)||(visitedOnV185(id,iso(addDays(mon,DAYS.indexOf(day))))?day:'');if(fixed){if(!workDays.includes(fixed))return{ok:false,plan,changed:false,reason:'fixed-outside'};out[fixed].push(store);fixedIds.add(id)}else free.push(store)}
-  for(const day of workDays){out[day]=optimizeRouteV185(out[day]);if(routeCreditsV185(out[day])>max||!dayFitsV185(out[day],day,mon))return{ok:false,plan,changed:false,reason:'fixed-capacity'}}
+  /* V263 : `frozenDays` (journées déjà passées d'une semaine entamée, posées par le cycle
+     3 semaines) restent exactement telles quelles et ne reçoivent aucun magasin. */
+  const frozen=new Set((Array.isArray(options.frozenDays)?options.frozenDays:[]).filter(d=>workDays.includes(d))),movableDays=workDays.filter(d=>!frozen.has(d));
+  const out=Object.fromEntries(DAYS.map(d=>[d,movableDays.includes(d)?[]:clone((plan&&plan[d])||[])])),free=[],seen=new Set(),origin={},fixedIds=new Set();
+  for(const day of workDays)if(frozen.has(day))for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(id){seen.add(id);fixedIds.add(id)}}
+  for(const day of movableDays)for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(!id||seen.has(id))continue;seen.add(id);origin[id]=day;let fixed=lockDayV185(id,weekKey)||appointmentDayV185(id,mon)||(visitedOnV185(id,iso(addDays(mon,DAYS.indexOf(day))))?day:'');if(fixed&&frozen.has(fixed))fixed=day;if(fixed){if(!workDays.includes(fixed))return{ok:false,plan,changed:false,reason:'fixed-outside'};out[fixed].push(store);fixedIds.add(id)}else free.push(store)}
+  for(const day of movableDays){out[day]=optimizeRouteV185(out[day]);if(routeCreditsV185(out[day])>max||!dayFitsV185(out[day],day,mon))return{ok:false,plan,changed:false,reason:'fixed-capacity'}}
   const sortDirection=options.preferNearFirst?1:-1;
   free.sort((a,b)=>sortDirection*(homeDistance(a)-homeDistance(b))||DAYS.indexOf(origin[String(a.id)])-DAYS.indexOf(origin[String(b.id)]));
   for(const store of free){
-    let best=null;for(const day of workDays){const date=iso(addDays(mon,DAYS.indexOf(day)));if(dayBlockedV185(date))continue;const current=out[day]||[];if(routeCreditsV185(current)+planningCreditV185(store)>max)continue;const trial=optimizeRouteV185(current.concat([store]));if(!dayFitsV185(trial,day,mon))continue;const score=candidateScoreV185(out,day,store,trial,workDays);if(!best||score<best.score-0.001||(Math.abs(score-best.score)<0.001&&DAYS.indexOf(day)<DAYS.indexOf(best.day)))best={day,trial,score}}
+    let best=null;for(const day of movableDays){const date=iso(addDays(mon,DAYS.indexOf(day)));if(dayBlockedV185(date))continue;const current=out[day]||[];if(routeCreditsV185(current)+planningCreditV185(store)>max)continue;const trial=optimizeRouteV185(current.concat([store]));if(!dayFitsV185(trial,day,mon))continue;const score=candidateScoreV185(out,day,store,trial,workDays);if(!best||score<best.score-0.001||(Math.abs(score-best.score)<0.001&&DAYS.indexOf(day)<DAYS.indexOf(best.day)))best={day,trial,score}}
     if(!best)return{ok:false,plan,changed:false,reason:'unplaced',store};out[best.day]=best.trial
   }
   /* V220 : V185 optimise les kilomètres après le moteur escargot. Il n'a plus le droit
@@ -131,11 +135,11 @@ function rebalancePlanByGeography(plan,options){
      source couvrait déjà les cinq jours. On répare uniquement les jours que le moteur
      amont avait réellement couverts ; une journée volontairement vide (cible < nombre
      de jours) reste donc vide. Les visites fixes ne sont jamais déplacées. */
-  const coverageDays=workDays.filter(day=>((plan&&plan[day])||[]).length>0&&!dayBlockedV185(iso(addDays(mon,DAYS.indexOf(day))))),coverageSet=new Set(coverageDays);
+  const coverageDays=movableDays.filter(day=>((plan&&plan[day])||[]).length>0&&!dayBlockedV185(iso(addDays(mon,DAYS.indexOf(day))))),coverageSet=new Set(coverageDays);
   for(const target of coverageDays){
     if((out[target]||[]).length)continue;
     let bestMove=null;
-    for(const donor of workDays){
+    for(const donor of movableDays){
       const donorRoute=out[donor]||[],minimum=coverageSet.has(donor)?1:0;if(donorRoute.length<=minimum)continue;
       for(let i=0;i<donorRoute.length;i++){
         const store=donorRoute[i],id=String(store&&store.id||'');if(!id||fixedIds.has(id))continue;
@@ -150,7 +154,7 @@ function rebalancePlanByGeography(plan,options){
     if(!bestMove)return{ok:false,plan,changed:false,reason:'coverage-unplaced',day:target};
     out[bestMove.donor]=bestMove.donorTrial;out[target]=bestMove.targetTrial;
   }
-  for(const day of workDays){out[day]=optimizeRouteV185(out[day]);if(routeCreditsV185(out[day])>max)return{ok:false,plan,changed:false,reason:'capacity-after'}}
+  for(const day of movableDays){out[day]=optimizeRouteV185(out[day]);if(routeCreditsV185(out[day])>max)return{ok:false,plan,changed:false,reason:'capacity-after'}}
   if(!sameStoreIds(plan,out,workDays))return{ok:false,plan,changed:false,reason:'store-integrity'};
   return{ok:true,plan:out,changed:signatureFor(plan,DAYS)!==signatureFor(out,DAYS),reason:'ok'}
 }
@@ -178,7 +182,7 @@ function terrainOvernightRow(week){
 async function persistSnailGeography(result){
   if(!result||!Array.isArray(result.weeks)||!result.weeks.length)return false;
   const archive=loadArchive();let changed=false;
-  for(const week of result.weeks){if(!week||week.manual)continue;const geo=rebalancePlanByGeography(week.plan,{weekKey:week.weekKey,preferNearFirst:true});if(!geo.ok)continue;if(geo.changed){week.plan=geo.plan;changed=true;const prev=archive[week.weekKey]||{weekMonday:week.weekKey};archive[week.weekKey]=Object.assign({},prev,{weekMonday:week.weekKey,plan:clone(geo.plan),manualEdited:false,generatedMode:'snail-distance-geo-v185',geographyOptimized:'v185',updatedAt:new Date().toISOString()})}}
+  for(const week of result.weeks){if(!week||week.manual)continue;const geo=rebalancePlanByGeography(week.plan,{weekKey:week.weekKey,preferNearFirst:true,frozenDays:week.frozenDays});if(!geo.ok)continue;if(geo.changed){week.plan=geo.plan;changed=true;const prev=archive[week.weekKey]||{weekMonday:week.weekKey};archive[week.weekKey]=Object.assign({},prev,{weekMonday:week.weekKey,plan:clone(geo.plan),manualEdited:false,generatedMode:'snail-distance-geo-v185',geographyOptimized:'v185',updatedAt:new Date().toISOString()})}}
   if(changed){saveArchive(archive);const first=result.weeks[0];if(first&&String(state.settings&&state.settings.weekDate||'')===String(first.weekKey||''))state.plan=Object.fromEntries(DAYS.map(d=>[d,((first.plan&&first.plan[d])||[]).map(resolveStore)]));try{if(typeof window.save==='function')window.save();else if(typeof save==='function')save()}catch(e){}}
   let finalDiagnostics=null,finalHours=null;
   try{const terrain=window.StoreRunnerTerrainPlanningV1;if(terrain&&typeof terrain.refreshThreeWeekDiagnostics==='function'){finalDiagnostics=terrain.refreshThreeWeekDiagnostics(result.weeks,state);result.dayCoverage=finalDiagnostics.dayCoverage;result.emptyWorkDays=finalDiagnostics.emptyWorkDays}if(terrain&&typeof terrain.summarizeOpeningHours==='function'){finalHours=terrain.summarizeOpeningHours(result.weeks,state);result.hoursReport=finalHours}}catch(e){console.warn('Diagnostic final escargot non recalculé',e)}

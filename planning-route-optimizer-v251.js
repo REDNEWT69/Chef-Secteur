@@ -133,8 +133,12 @@ function benchmark(route,day,state,options){
 
 function optimizePlan(plan,weekKey,state,options){
   const source=plan&&typeof plan==='object'?plan:{},out={},benchmarks=[],opts=options||{};let changed=false;
+  /* V263 : une journée déjà passée d'une semaine entamée (`frozenDays`, posé par le cycle
+     3 semaines) garde son ordre réel ; elle n'est ni optimisée ni mesurée. */
+  const frozen=new Set(Array.isArray(opts.frozenDays)?opts.frozenDays:[]);
   for(const day of DAYS){
     const before=Array.isArray(source[day])?source[day].slice():[];
+    if(frozen.has(day)){out[day]=before;continue}
     const fixed=opts.fixedFirstByDay&&opts.fixedFirstByDay[day];
     const result=explainOptimization(before,day,state,{weekMonday:weekKey,fixedFirstId:fixed||''});
     const safe=sameMembers(before,result.route)?result.route:before;
@@ -201,7 +205,7 @@ async function finalizeRange(state){
     const snap=archive[key],manual=isManualWeek(key,appState,archive),original=snap&&snap.plan?snap.plan:null;
     if(!original){weekRows.push({weekKey:key,plan:{},manual});continue}
     if(manual){weekRows.push({weekKey:key,plan:original,manual:true});continue}
-    const result=optimizePlan(original,key,appState,{});updates.push({key,result,snap});changed=changed||result.changed;weekRows.push({weekKey:key,plan:result.plan,manual:false})
+    const result=optimizePlan(original,key,appState,{frozenDays:snap&&snap.frozenDays});updates.push({key,result,snap});changed=changed||result.changed;weekRows.push({weekKey:key,plan:result.plan,manual:false})
   }
   if(!changed)return{ok:true,changed:false};
   checkpoint('Avant optimisation routière V251 sur 3 semaines');

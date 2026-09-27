@@ -357,7 +357,10 @@
     try{
       const built=await api.generateThreeWeekSnail({start:start});
       const visits=Number(built&&built.totalVisits)||0,stores=Number(built&&built.uniqueStores)||0;
-      generationStatus('Planning généré sur 3 semaines. '+visits+' visite'+(visits>1?'s':'')+' · '+stores+' magasin'+(stores>1?'s':'')+'.','ok');
+      /* V263 : le bilan de couverture (magasins écartés car visités trop récemment, magasins
+         en retard restés hors du cycle) appartient au moteur 3 semaines ; on le relaie. */
+      let coverage='';try{if(typeof api.coverageSummaryText==='function')coverage=api.coverageSummaryText(built&&built.coverage,' · ')}catch(e){}
+      generationStatus('Planning généré sur 3 semaines. '+visits+' visite'+(visits>1?'s':'')+' · '+stores+' magasin'+(stores>1?'s':'')+coverage+'.','ok');
       ensureUnifiedGenerationUi();
       return{ok:true,start:start,weeks:3,result:built};
     }catch(e){

@@ -119,6 +119,19 @@ function compareNeedV211(a,b,weekKey){
   return storeKey(a).localeCompare(storeKey(b))
 }
 function scoreOf(s,weekKey){return planningNeedV211(s,weekKey).score}
+/* V263 : garde anti-sur-visite commune (visit-coverage.js). Un magasin visité trop
+   récemment pour sa fréquence n'est plus choisi automatiquement — ni par la semaine, ni par
+   la période, ni pour compléter une journée recentrée. Les contraintes explicites (posé,
+   verrouillé, imposé, rendez-vous) et le magasin choisi à la main passent toujours. Sans le
+   module, la garde est neutre et le comportement V211 est inchangé. */
+function coverageNeedFn(){
+  try{const api=window.StoreRunnerVisitCoverage;if(api&&typeof api.needOf==='function')return api.needOf(state)}catch(e){}
+  return null;
+}
+function coverageBlocked(needFn,s,date){
+  if(!needFn||!s)return false;
+  try{const today=iso(new Date()),ref=String(date||'')<today?today:String(date||'');return !!needFn(s,ref).blocked}catch(e){return false}
+}
 /* Les crédits de visite appartiennent à visit-counting.js : on consomme son API
    publique plutôt que de redéfinir les règles ou la normalisation de casse ici.
    Une enseigne à 2 crédits occupe deux unités du plafond journalier, parce qu'une
@@ -218,6 +231,8 @@ function repeatReadinessV211(s,lastUsedWeek,weekIndex){
 }
 function chooseStores(pool,usedKeys,useCount,lastUsedWeek,targetCount,creditBudget,weekKey,weekIndex=0){
   const chosen=[],keys=new Set();let credits=0;
+  const needFn=coverageNeedFn();
+  if(needFn)pool=pool.filter(s=>forcedRank(s,weekKey)>0||!coverageBlocked(needFn,s,weekKey));
   const add=(s,isForced=false)=>{
     const k=storeKey(s),cost=visitCredit(s);
     if(!k||keys.has(k)||chosen.length>=targetCount)return false;
@@ -487,7 +502,8 @@ function protectedDayIds(day,oldId){
   return out;
 }
 function manualCandidatePool(anchor,day,oldId,blocked){
-  const allowed=s=>s&&s.active!==false&&!(state.excluded&&state.excluded[s.id])&&String(s.id)!==String(oldId)&&!blocked.has(storeKey(s))&&!(pinnedDay(s.id)&&!isPinnedOn(s.id,day))&&!usedElsewhere(s.id,day);
+  const needFn=coverageNeedFn(),date=dayDate(day);
+  const allowed=s=>s&&s.active!==false&&!(state.excluded&&state.excluded[s.id])&&String(s.id)!==String(oldId)&&!blocked.has(storeKey(s))&&!(pinnedDay(s.id)&&!isPinnedOn(s.id,day))&&!usedElsewhere(s.id,day)&&(isPinnedOn(s.id,day)||!coverageBlocked(needFn,s,date));
   const primary=eligible().filter(allowed),fallback=(state.stores||[]).filter(allowed),seen=new Set(),out=[];
   for(const s of primary.concat(fallback)){const k=storeKey(s);if(!k||seen.has(k))continue;seen.add(k);out.push(s)}
   out.sort((a,b)=>distanceBetween(anchor,a)-distanceBetween(anchor,b)||scoreOf(b)-scoreOf(a)||String(a.ville||'').localeCompare(String(b.ville||'')));
@@ -508,12 +524,14 @@ function buildSourceAdjustment(sourceDay,anchor,targetDay,oldId,targetRoute){
     for(const s of rows){const k=storeKey(s);if(k)occupied.add(k)}
   }
   const oldStore=(state.stores||[]).find(s=>String(s.id)===String(oldId));
+  const needFn=coverageNeedFn(),sourceDate=dayDate(sourceDay);
   const allowed=s=>{
     if(!s||s.active===false||(state.excluded&&state.excluded[s.id])||String(s.id)===String(anchor.id))return false;
     const k=storeKey(s);if(!k||occupied.has(k))return false;
     const lock=pinnedDay(s.id);
     if(lock&&!(String(s.id)===String(oldId)&&lock===targetDay)&&lock!==sourceDay)return false;
     const appt=appointmentDayForStore(s.id);if(appt&&appt!==sourceDay)return false;
+    if(lock!==sourceDay&&appt!==sourceDay&&coverageBlocked(needFn,s,sourceDate))return false;
     return true;
   };
   const candidates=[],seen=new Set(),push=s=>{if(!allowed(s))return;const k=storeKey(s);if(seen.has(k))return;seen.add(k);candidates.push(s)};
