@@ -212,13 +212,23 @@ async function finalizeRange(state){
   emit('route-opt-v251',{weekDate:current||keys[0],weeks:keys.length});
   return{ok:true,changed:true,weeks:keys.length}
 }
+/* V263 — le moteur 3 semaines historique publie encore `reason:'three-week-snail'`
+   tandis que V251 attend depuis V185 une `source`. On normalise ce seul alias ici :
+   aucune édition manuelle, aucun événement inconnu et aucun événement déjà sourcé
+   n'est requalifié. Cela réactive la finalisation routière prévue après le bouton
+   principal sans changer le contrat des autres consommateurs de l'événement. */
+function planningEventSource(event){
+  const detail=event&&event.detail||{},source=String(detail.source||'');
+  if(source)return source;
+  return String(detail.reason||'')==='three-week-snail'?'snail-geo-v185':''
+}
 async function onPlanningUpdated(event){
-  if(applying)return;const source=String(event&&event.detail&&event.detail.source||'');
+  if(applying)return;const source=planningEventSource(event);
   if(source!=='snail-geo-v185'&&source!=='generateWeek')return;
   applying=true;try{if(source==='snail-geo-v185')await finalizeRange(root.state);else await finalizeSingleWeek(root.state)}catch(e){console.warn('[V251] optimisation routière ignorée',e)}finally{applying=false}
 }
 
-const api={version:251,fallbackTravelMinutes,evaluate,nearestSeed,optimizeRoute,explainOptimization,benchmark,sameOrder,sameMembers,optimizePlan,finalizeSingleWeek,finalizeRange};
+const api={version:251,fallbackTravelMinutes,evaluate,nearestSeed,optimizeRoute,explainOptimization,benchmark,sameOrder,sameMembers,optimizePlan,finalizeSingleWeek,finalizeRange,planningEventSource};
 root.StoreRunnerRouteOptimizerV251=api;
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document&&typeof root.document.addEventListener==='function')root.document.addEventListener('store-runner:planning-updated',onPlanningUpdated);
