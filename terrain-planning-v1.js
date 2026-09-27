@@ -337,7 +337,9 @@ function buildThreeWeekSnail(options){
     }
     const plan=emptyPlan(),weekPlaced=new Set(),unplaced=[];
     let frozenCount=0;
-    if(frozenDays.length){
+    /* V263.1 : la visite faite aujourd'hui est conservée même quand aucune journée n'est
+       encore passée (régénération un lundi) ; seul le figeage dépend de frozenDays. */
+    if(today&&existingPlanFor){
       const existing=existingPlanFor(weekKey)||{};
       /* Une journée passée reste telle quelle. Seule une visite réellement faite retire le
          magasin du reste du cycle : une visite ratée reste due les semaines suivantes. */
@@ -349,16 +351,29 @@ function buildThreeWeekSnail(options){
       const todayName=DAYS.find(day=>dateOf(day)===today);
       if(todayName)for(const raw of (existing[todayName]||[])){
         const s=byId.get(String(raw&&raw.id))||raw,k=storeKey(s);if(!k||weekPlaced.has(k)||!completedOn(s.id,today))continue;
-        plan[todayName].push(s);weekPlaced.add(k);used.add(k);
+        /* Un jour inactif (non travaillé, bloqué par l'agenda) n'est pas compté par count() :
+           la visite gardée compte alors dans l'objectif comme une journée figée. */
+        plan[todayName].push(s);weekPlaced.add(k);used.add(k);if(!days.includes(todayName)||blocked(today))frozenCount++;
       }
     }
     const activeDays=days.filter(day=>!frozenSet.has(day)&&!blocked(dateOf(day))),weekTarget=Math.max(0,target-frozenCount),quotas=dayQuotas(activeDays,weekTarget);
     const count=()=>flattenPlan(plan,activeDays).length+frozenCount;
-    const candidates=ranked.filter(s=>{if(!needAt(s,ref).blocked)return true;const k=storeKey(s);if(!used.has(k)&&!weekPlaced.has(k))recentlySkipped.add(k);return false});
+    /* V263.1 : un magasin est candidat s'il n'est plus bloqué au dernier jour actif de la
+       semaine (un hebdo visité vendredi est trop tôt lundi mais dû le vendredi suivant). Il
+       n'est ensuite posé que sur un jour où il n'est pas bloqué. `blocked` ne repasse
+       jamais de faux à vrai sans nouvelle visite : un magasin libre dès `ref` l'est toute la
+       semaine, et son classement reste celui de `ref`. Les autres sont classés au premier
+       jour où ils redeviennent proposables. */
+    const lastRef=activeDays.length?dateOf(activeDays[activeDays.length-1]):ref,refAt=day=>{const d=dateOf(day);return today&&today>d?today:d};
+    const freeOn=s=>activeDays.filter(day=>!needAt(s,refAt(day)).blocked);
+    const rankNeed=s=>{const n=needAt(s,ref);if(!n.blocked)return n;const day=freeOn(s)[0];return day?needAt(s,refAt(day)):n};
+    const candidates=ranked.filter(s=>{if(!needAt(s,lastRef).blocked)return true;const k=storeKey(s);if(!used.has(k)&&!weekPlaced.has(k))recentlySkipped.add(k);return false});
     const skippedThisWeek=ranked.length-candidates.length;
     if(!activeDays.length){const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked:candidates,used,weekPlaced,credit,fits,frozenDays,recentlyVisited:skippedThisWeek});weeks.push({weekKey,plan,manual:false,unplaced,diagnostics,frozenDays});continue}
     const place=s=>{
+      const open=new Set(freeOn(s));
       for(const day of orderedPlacementDays(activeDays,plan,quotas,credit)){
+        if(!open.has(day))continue;
         const trial=plan[day].concat([s]),cost=trial.reduce((n,x)=>n+Math.max(1,Number(credit(x))||1),0);
         if(cost>max||!fits(trial,day,mon))continue;
         plan[day]=trial;const k=storeKey(s);weekPlaced.add(k);used.add(k);return true;
@@ -384,11 +399,11 @@ function buildThreeWeekSnail(options){
     }
     /* V263 : un palier de besoin après l'autre. Sans besoin connu, un seul palier : on
        retrouve exactement les deux passes V243 ci-dessous. */
-    const ordered=needOf?needOrdered(candidates,s=>needAt(s,ref)):candidates;
+    const ordered=needOf?needOrdered(candidates,rankNeed):candidates;
     const tiers=needOf?[4,3,2,1]:[null];
     for(const tier of tiers){
       if(count()>=target)break;
-      const group=tier==null?ordered:ordered.filter(s=>needAt(s,ref).tier===tier);
+      const group=tier==null?ordered:ordered.filter(s=>rankNeed(s).tier===tier);
       /* V243 — palier 1 « frais » : magasins jamais vus dans la fenêtre de rotation
          (memory.usedKeys), dans l'ordre existant (priorité puis distance). Un magasin
          déjà utilisé récemment n'est plus reproposé tant qu'il reste un magasin frais. */

@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Store Runner">
   <meta name="application-name" content="Store Runner">
-  <link rel="manifest" href="./manifest.webmanifest?rev=20260927-r8-visit-coverage-263">
-  <link rel="icon" href="./app-icon.svg?rev=20260927-r8-visit-coverage-263" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="./app-icon.svg?rev=20260927-r8-visit-coverage-263">
+  <link rel="manifest" href="./manifest.webmanifest?rev=20260927-r9-coverage-reliability-263">
+  <link rel="icon" href="./app-icon.svg?rev=20260927-r9-coverage-reliability-263" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./app-icon.svg?rev=20260927-r9-coverage-reliability-263">
   <style>
     html,body{margin:0;min-height:100%;background:#fbfaf8;color:#111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
   </style>
@@ -29,10 +29,10 @@
   </style>
 </head>
 <body>
-  <div id="storeRunnerBoot" data-store-runner-boot role="status" aria-live="polite"><div class="srBootInner"><img src="./app-icon.svg?rev=20260927-r8-visit-coverage-263" alt="S-RUNNER"><strong>Store Runner</strong><span class="srBootSig">S-RUNNER By Red①</span><span id="bootText" class="srBootText" data-boot-text>Chargement de ton espace terrain…</span></div></div>
+  <div id="storeRunnerBoot" data-store-runner-boot role="status" aria-live="polite"><div class="srBootInner"><img src="./app-icon.svg?rev=20260927-r9-coverage-reliability-263" alt="S-RUNNER"><strong>Store Runner</strong><span class="srBootSig">S-RUNNER By Red①</span><span id="bootText" class="srBootText" data-boot-text>Chargement de ton espace terrain…</span></div></div>
   <script>
   (async function(){
-    const BUILD_REV='20260927-r8-visit-coverage-263';
+    const BUILD_REV='20260927-r9-coverage-reliability-263';
     const withRev=(path)=>path+'?rev='+BUILD_REV;
 
     /* V234 — un seul écran de chargement, du tout premier octet jusqu'à l'accueil final.
@@ -381,7 +381,7 @@
 \'use strict\';\
 function clonePlan(v){try{return JSON.parse(JSON.stringify(v||{}))}catch(e){return{}}}\
 function hideGpsFields(){var lat=document.getElementById(\'pBaseLat\'),lon=document.getElementById(\'pBaseLon\'),grid=null;try{if(lat&&lat.closest)grid=lat.closest(\'.formgrid\');if(!grid&&lon&&lon.closest)grid=lon.closest(\'.formgrid\')}catch(e){}if(!grid){var lp=lat&&lat.parentNode,op=lon&&lon.parentNode;if(lp&&op&&lp.parentNode&&lp.parentNode===op.parentNode)grid=lp.parentNode}if(!grid)return false;grid.hidden=true;if(grid.style)grid.style.display=\'none\';try{grid.setAttribute(\'aria-hidden\',\'true\')}catch(e){}return true}\
-function patchThreeWeeks(){var api=window.StoreRunnerTerrainPlanningV1;if(!api||typeof api.generateThreeWeekSnail!==\'function\')return false;if(!api.generateThreeWeekSnail.__v184PlanningCapacity){var original=api.generateThreeWeekSnail;var wrapped=async function(){var previous=window.__storeRunnerPlanningGenerationActive;window.__storeRunnerPlanningGenerationActive=true;try{return await original.apply(this,arguments)}finally{window.__storeRunnerPlanningGenerationActive=previous}};wrapped.__v184PlanningCapacity=true;wrapped.__v184Original=original;api.generateThreeWeekSnail=wrapped}var btn=document.getElementById(\'terrainSnailBtn\');if(btn&&!btn.__v184PlanningCapacity){btn.__v184PlanningCapacity=true;btn.onclick=async function(){try{return await api.generateThreeWeekSnail()}catch(e){if(typeof window.showError===\'function\')window.showError(e&&e.message?e.message:String(e));return null}}}return true}\
+function v184Wrapped(fn){var cur=fn,n=0;while(typeof cur===\'function\'&&n++<32){if(cur.__v184PlanningCapacity)return true;cur=cur.__v184Original||cur.__v185Original||cur.__v248Original||cur.__original||null}return false}function patchThreeWeeks(){var api=window.StoreRunnerTerrainPlanningV1;if(!api||typeof api.generateThreeWeekSnail!==\'function\')return false;if(!v184Wrapped(api.generateThreeWeekSnail)){var original=api.generateThreeWeekSnail;var wrapped=async function(){var previous=window.__storeRunnerPlanningGenerationActive;window.__storeRunnerPlanningGenerationActive=true;try{return await original.apply(this,arguments)}finally{window.__storeRunnerPlanningGenerationActive=previous}};wrapped.__v184PlanningCapacity=true;wrapped.__v184Original=original;api.generateThreeWeekSnail=wrapped}var btn=document.getElementById(\'terrainSnailBtn\');if(btn&&!btn.__v184PlanningCapacity){btn.__v184PlanningCapacity=true;btn.onclick=async function(){try{return await api.generateThreeWeekSnail()}catch(e){if(typeof window.showError===\'function\')window.showError(e&&e.message?e.message:String(e));return null}}}return true}\
 function patchProfileSave(){var original=window.saveProfile;if(typeof original!==\'function\'||original.__v184PlanNeutral)return false;var wrapped=async function(){var before=clonePlan(window.state&&state.plan),signature=JSON.stringify(before),result,error;try{result=await original.apply(this,arguments)}catch(e){error=e}finally{try{if(window.state&&JSON.stringify(state.plan||{})!==signature){state.plan=before;if(typeof window.save===\'function\')window.save();else if(typeof save===\'function\')save();if(typeof window.renderWeek===\'function\')window.renderWeek();else if(typeof renderWeek===\'function\')renderWeek()}}catch(e){console.warn(\'Planning restauré après réglage Secteur\',e)}}if(error)throw error;return result};wrapped.__v184PlanNeutral=true;wrapped.__v184Original=original;window.saveProfile=wrapped;return true}\
 function repair(){hideGpsFields();patchThreeWeeks();patchProfileSave()}\
 function schedule(){setTimeout(repair,0)}\

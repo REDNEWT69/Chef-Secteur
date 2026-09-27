@@ -184,7 +184,8 @@ function clear(){cache=null;index=null;try{const storage=db();if(storage)storage
 
 function carriesPrime(fn){
   let current=fn,guard=0;
-  while(typeof current==='function'&&guard++<8){if(current.__v248RoadPrime)return true;current=current.__v248Original||current.__v184Original||current.__original||null}
+  /* V263.1 : suivre aussi le lien V185, sinon la couche V248 se réempile sous chaque V185. */
+  while(typeof current==='function'&&guard++<32){if(current.__v248RoadPrime)return true;current=current.__v248Original||current.__v184Original||current.__v185Original||current.__original||null}
   return false
 }
 async function primeBeforePlanning(reason){try{return await prime({reason})}catch(e){return{ok:false,error:e&&e.message?e.message:String(e)}}}

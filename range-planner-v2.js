@@ -193,6 +193,15 @@ function unpinStore(id){
 }
 /* Le rang forcé dépend de la semaine construite : une pose datée sur une autre semaine ne
    doit ni réserver un créneau, ni consommer de crédits, ni passer devant le vivier frais. */
+/* V263.1 : un rendez-vous enregistré dans la semaine est une contrainte explicite, comme un
+   magasin posé ou imposé. Il passe outre la garde anti-sur-visite et fixe le jour de visite.
+   `forcedRank` n'est pas modifié : ses messages d'erreur ne parlent que des magasins posés,
+   imposés ou verrouillés, et un rendez-vous hors des jours disponibles ne bloque rien. */
+function appointmentDayForWeek(id,weekKey){
+  const mon=parse(weekKey);if(!mon)return'';const start=iso(mon),end=iso(addDays(mon,7));
+  const a=(state.appointments||[]).find(x=>x&&String(x.storeId)===String(id)&&String(x.date||'')>=start&&String(x.date||'')<end);
+  const d=a&&parse(String(a.date).slice(0,10));return d?DAYS[(d.getDay()||7)-1]||'':'';
+}
 function forcedRank(s,weekKey){const id=s&&s.id;return (lockDayForWeek(id,weekKey)?2:0)+(state.included&&state.included[id]?1:0)}
 function forcedCount(pool,weekKey){return (pool||[]).reduce((n,s)=>n+(forcedRank(s,weekKey)>0?1:0),0)}
 function forcedCredits(pool,weekKey){return (pool||[]).reduce((n,s)=>n+(forcedRank(s,weekKey)>0?visitCredit(s):0),0)}
@@ -200,8 +209,9 @@ function selectionNeed(pool,usable,target,max,weekKey){
   /* Deux unités différentes coexistent volontairement : target reste un objectif de
      magasins, tandis que maxVisitsPerDay est un budget de crédits. On ne convertit
      donc plus la capacité en crédits en faux « nombre de magasins ». */
-  const capacityCredits=max*usable.length,forced=forcedCount(pool,weekKey),forcedCost=forcedCredits(pool,weekKey);
-  if(forcedCost>capacityCredits)throw new Error('Les magasins posés, imposés ou verrouillés demandent '+forcedCost+' crédit'+(forcedCost>1?'s':'')+' de visite pour seulement '+capacityCredits+' disponible'+(capacityCredits>1?'s':'')+'. Le planning précédent est conservé.');
+  const appointments=(pool||[]).filter(s=>forcedRank(s,weekKey)===0&&usable.includes(appointmentDayForWeek(s&&s.id,weekKey)));
+  const capacityCredits=max*usable.length,forced=forcedCount(pool,weekKey)+appointments.length,forcedCost=forcedCredits(pool,weekKey)+appointments.reduce((n,s)=>n+visitCredit(s),0);
+  if(forcedCost>capacityCredits)throw new Error('Les magasins posés, imposés ou verrouillés (rendez-vous compris) demandent '+forcedCost+' crédit'+(forcedCost>1?'s':'')+' de visite pour seulement '+capacityCredits+' disponible'+(capacityCredits>1?'s':'')+'. Le planning précédent est conservé.');
   return{targetCount:Math.min(Math.max(Math.max(1,target),forced),pool.length),capacityCredits};
 }
 function rotationWindowWeeksV211(pool,targetCount){
@@ -229,10 +239,13 @@ function repeatReadinessV211(s,lastUsedWeek,weekIndex){
   const dueAfter=Math.max(7,Math.round(storeIntervalDaysV211(s)*factor));
   return elapsed/dueAfter
 }
-function chooseStores(pool,usedKeys,useCount,lastUsedWeek,targetCount,creditBudget,weekKey,weekIndex=0){
+function chooseStores(pool,usedKeys,useCount,lastUsedWeek,targetCount,creditBudget,weekKey,weekIndex=0,usableDays){
   const chosen=[],keys=new Set();let credits=0;
   const needFn=coverageNeedFn();
-  if(needFn)pool=pool.filter(s=>forcedRank(s,weekKey)>0||!coverageBlocked(needFn,s,weekKey));
+  /* Un rendez-vous ne force le magasin que si son jour est disponible : sinon il serait posé
+     un autre jour, en contournant la garde. Il redevient alors un magasin comme un autre. */
+  const hasAppointment=s=>{const d=appointmentDayForWeek(s&&s.id,weekKey);return !!d&&(!Array.isArray(usableDays)||usableDays.includes(d))};
+  if(needFn)pool=pool.filter(s=>forcedRank(s,weekKey)>0||hasAppointment(s)||!coverageBlocked(needFn,s,weekKey));
   const add=(s,isForced=false)=>{
     const k=storeKey(s),cost=visitCredit(s);
     if(!k||keys.has(k)||chosen.length>=targetCount)return false;
@@ -241,6 +254,7 @@ function chooseStores(pool,usedKeys,useCount,lastUsedWeek,targetCount,creditBudg
   };
   const forced=pool.filter(s=>forcedRank(s,weekKey)>0).sort((a,b)=>forcedRank(b,weekKey)-forcedRank(a,weekKey)||compareNeedV211(a,b,weekKey));
   for(const s of forced)add(s,true);
+  for(const s of pool.filter(s=>forcedRank(s,weekKey)===0&&hasAppointment(s)).sort((a,b)=>compareNeedV211(a,b,weekKey)))add(s,true);
 
   /* Une cadence réellement arrivée à échéance peut reprendre une petite part de la
      semaine, mais jamais avaler toute la rotation. 30 % maximum laisse au moins 70 %
@@ -323,10 +337,11 @@ function buildWeekUnique(chosen,days,weekKey){
   const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
   const free=[];
   for(const store of unique){
-    const locked=lockDayForWeek(store.id,weekKey);
-    if(!locked){free.push(store);continue}
-    if(!days.includes(locked))throw new Error((store.enseigne||'Magasin')+' '+(store.ville||'')+' est verrouillé sur '+locked+', mais ce jour n’est pas disponible. Le planning précédent est conservé.');
-    plan[locked].push(store);
+    /* Le rendez-vous fixe le jour, avant un verrou : même ordre que le cycle 3 semaines. */
+    const locked=lockDayForWeek(store.id,weekKey),appointment=appointmentDayForWeek(store.id,weekKey),fixed=(days.includes(appointment)?appointment:'')||locked;
+    if(!fixed){free.push(store);continue}
+    if(!days.includes(fixed))throw new Error((store.enseigne||'Magasin')+' '+(store.ville||'')+' est verrouillé sur '+fixed+', mais ce jour n’est pas disponible. Le planning précédent est conservé.');
+    plan[fixed].push(store);
   }
   for(const day of days){
     const lockedCost=routeCredits(plan[day]);
@@ -417,7 +432,7 @@ async function strictSingleWeek(){
     const pool=eligible();if(!pool.length)throw new Error('Aucun magasin actif ne correspond aux filtres. Ouvre « Enseignes » et vérifie la sélection.');
     const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
     const limits=selectionNeed(pool,usable,Number(state.settings.target)||20,max,weekKey);
-    const memory=rotationMemoryV211(pool,weekKey,limits.targetCount),chosen=chooseStores(pool,memory.usedKeys,memory.useCount,memory.lastUsedWeek,limits.targetCount,limits.capacityCredits,weekKey,0),built=buildWeekUnique(chosen,usable,weekKey);ensureForcedPlaced(built,weekKey);const visits=countPlan(built.plan,usable);
+    const memory=rotationMemoryV211(pool,weekKey,limits.targetCount),chosen=chooseStores(pool,memory.usedKeys,memory.useCount,memory.lastUsedWeek,limits.targetCount,limits.capacityCredits,weekKey,0,usable),built=buildWeekUnique(chosen,usable,weekKey);ensureForcedPlaced(built,weekKey);const visits=countPlan(built.plan,usable);
     const credits=usable.reduce((n,d)=>n+routeCredits(built.plan[d]),0);
     if(!visits)throw new Error('0 visite possible avec les réglages actuels. Vérifie l’heure de fin, la durée par magasin et ton point de départ. Le planning précédent est conservé.');
     const nextArchive=loadArchive();nextArchive[weekKey]=snapshot(mon,mon,addDays(mon,6),built.plan,days);
@@ -458,7 +473,7 @@ async function generateRange(){
       const usable=activeDays(mon,days,start,end);
       if(!usable.length){archive[iso(mon)]=snapshot(mon,start,end,Object.fromEntries(DAYS.map(d=>[d,[]])),days);mon=addDays(mon,7);weekIndex++;weeks++;continue}
       const limits=selectionNeed(pool,usable,target,max,weekKey);
-      const chosen=chooseStores(pool,usedKeys,useCount,lastUsedWeek,limits.targetCount,limits.capacityCredits,weekKey,weekIndex),built=buildWeekUnique(chosen,usable,weekKey);ensureForcedPlaced(built,weekKey);const plan=built.plan,weekSeen=new Set();
+      const chosen=chooseStores(pool,usedKeys,useCount,lastUsedWeek,limits.targetCount,limits.capacityCredits,weekKey,weekIndex,usable),built=buildWeekUnique(chosen,usable,weekKey);ensureForcedPlaced(built,weekKey);const plan=built.plan,weekSeen=new Set();
       totalUnplaced+=built.unplaced.length;
       for(const d of usable)for(const s of (plan[d]||[])){const k=storeKey(s);if(!k||weekSeen.has(k))continue;weekSeen.add(k);unique.add(k);usedKeys.add(k);useCount.set(k,(useCount.get(k)||0)+1);lastUsedWeek.set(k,weekIndex);totalVisits++;totalCredits+=visitCredit(s)}
       archive[iso(mon)]=snapshot(mon,start,end,plan,days);mon=addDays(mon,7);weekIndex++;weeks++;await new Promise(r=>setTimeout(r,10));
