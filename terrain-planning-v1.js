@@ -337,7 +337,9 @@ function buildThreeWeekSnail(options){
     }
     const plan=emptyPlan(),weekPlaced=new Set(),unplaced=[];
     let frozenCount=0;
-    if(frozenDays.length){
+    /* V263.1 : la visite faite aujourd'hui est conservée même quand aucune journée n'est
+       encore passée (régénération un lundi) ; seul le figeage dépend de frozenDays. */
+    if(today&&existingPlanFor){
       const existing=existingPlanFor(weekKey)||{};
       /* Une journée passée reste telle quelle. Seule une visite réellement faite retire le
          magasin du reste du cycle : une visite ratée reste due les semaines suivantes. */
