@@ -169,7 +169,11 @@ async function persistGeoWeek(result,weekKey,source){
   try{document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{source:source||'geo-v185',weekDate:weekKey}}))}catch(e){}
   return true
 }
-function chainHas(fn,marker){let cur=fn,n=0;while(typeof cur==='function'&&n++<8){if(cur[marker])return true;cur=cur.__v185Original||cur.__v184Original||cur.__v182Original}return false}
+/* V263.1 : V184 (capacité), V185 (géographie) et V248 (matrice routière) enveloppent les
+   mêmes générateurs. Chacun suit les liens de tous les autres : sans cela, une couche
+   étrangère au-dessus rendait la sienne invisible et elle se réempilait à chaque
+   événement planning, soit une passe géographique de plus par couche à chaque clic. */
+function chainHas(fn,marker){let cur=fn,n=0;while(typeof cur==='function'&&n++<32){if(cur[marker])return true;cur=cur.__v185Original||cur.__v184Original||cur.__v182Original||cur.__v248Original||cur.__original||null}return false}
 function patchSingleWeekGeography(){
   const original=window.storeRunnerGenerateSingleWeek;if(typeof original!=='function'||chainHas(original,'__v185Geo'))return false;
   const wrapped=async function(){const previous=window.__storeRunnerPlanningGenerationActive;window.__storeRunnerPlanningGenerationActive=true;try{const out=await original.apply(this,arguments);if(out&&out.ok===true&&state&&state.plan){const geo=rebalancePlanByGeography(state.plan,{weekKey:currentWeekKey()});if(geo.ok&&geo.changed)await persistGeoWeek(geo,currentWeekKey(),'single-week-geo-v185');out.geographyOptimized=!!(geo&&geo.ok&&geo.changed)}return out}finally{window.__storeRunnerPlanningGenerationActive=previous}};
