@@ -246,3 +246,47 @@ test('hors ligne : pas de recherche dans le vide, saisie manuelle avec la positi
   await expect(page.locator('#sraStatus')).toHaveText('');
  }finally{await context.close()}
 });
+
+test('carnet officiel : enseigne + région, multi-sélection, tout sélectionner, lot mixte et limites visibles à 390 px',async({page})=>{
+ await boot(page,[]);
+ await page.locator('#addStoreBtn').click();
+ const brand=page.locator('#sraCatalogBrand'),region=page.locator('#sraCatalogRegion');
+ await expect(brand).toBeEnabled();
+
+ await brand.selectOption('Cuisinella');await region.selectOption('84');
+ await dlg(page).getByRole('button',{name:'Afficher les magasins'}).click();
+ await expect(page.locator('[data-sra-catalog-list] .sraCatalogItem')).toHaveCount(31);
+ await expect(page.locator('[data-sra-coverage]')).toContainText('Liste partielle');
+ await expect(page.locator('[data-sra-coverage]')).toContainText('sans garantie d’exhaustivité');
+ await noOverflow(page);
+
+ await brand.selectOption('Darty');await region.selectOption('84');
+ await dlg(page).getByRole('button',{name:'Afficher les magasins'}).click();
+ await expect(page.locator('[data-sra-catalog-list] .sraCatalogItem')).toHaveCount(63);
+ await expect(page.locator('[data-sra-coverage]')).toContainText('Liste officielle collectée pour cette région');
+ const selectAll=page.locator('[data-sra-select-all]');await selectAll.check();
+ await expect(page.locator('[data-sra-add-batch]')).toHaveText('Ajouter 63 magasins');
+ await selectAll.uncheck();await expect(page.locator('[data-sra-add-batch]')).toHaveText('Ajouter 0 magasin');
+
+ const checks=page.locator('.sraCatalogCheck:not(:disabled)');await checks.nth(0).check();await checks.nth(1).check();
+ await expect(page.locator('[data-sra-add-batch]')).toHaveText('Ajouter 2 magasins');
+ // Un autre onglet/processus ajoute le premier choix entre l’affichage et le clic :
+ // le lot conserve le nouveau et compte clairement le doublon sans seconde écriture.
+ await page.evaluate(async()=>{const data=await StoreRunnerOfficialCatalog.load();const first=StoreRunnerOfficialCatalog.filter(data,'Darty','84')[0];state.stores.push(JSON.parse(JSON.stringify(first)))});
+ await page.locator('[data-sra-add-batch]').click();
+ await expect(page.locator('[data-sra-batch-summary]')).toBeVisible();
+ await expect(page.locator('[data-sra-batch-added]')).toHaveText('1');
+ await expect(page.locator('[data-sra-batch-duplicates]')).toHaveText('1');
+ await expect(page.locator('[data-sra-batch-ignored]')).toHaveText('0');
+ expect(await page.evaluate(()=>state.stores.length)).toBe(2);
+ await noOverflow(page);
+ await page.screenshot({path:'test-results/store-add-assisted-v263-summary-390.png'});
+
+ await dlg(page).getByRole('button',{name:'Terminé'}).click();await page.locator('#addStoreBtn').click();
+ await brand.selectOption('Fnac');await region.selectOption('84');
+ await dlg(page).getByRole('button',{name:'Afficher les magasins'}).click();
+ await expect(page.locator('[data-sra-coverage]')).toContainText('Aucune liste exploitable');
+ await expect(dlg(page).getByRole('button',{name:'Utiliser la recherche libre'})).toBeVisible();
+ await expect(dlg(page).getByRole('button',{name:'Saisir manuellement'})).toBeVisible();
+ await noOverflow(page);
+});

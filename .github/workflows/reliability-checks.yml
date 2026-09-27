@@ -111,6 +111,7 @@ jobs:
       - run: node tests/region-stores.test.cjs
       - run: node tests/stores-simple.test.cjs
       - run: node tests/store-add-v261.test.cjs
+      - run: node tests/store-add-assisted-v263.test.cjs
       - run: node tests/sector-admin-import.test.cjs
       - run: node tests/sector-pilotage.test.cjs
       - run: node tests/planning-summary-v219.test.cjs
