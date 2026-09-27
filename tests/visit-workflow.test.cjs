@@ -18,11 +18,13 @@ const removed=M.clone(s);removed.stores=removed.stores.filter(x=>x.id!=='x');rem
 const root=path.join(__dirname,'..'),ui=fs.readFileSync(path.join(root,'store-runner-visits.js'),'utf8'),sw=fs.readFileSync(path.join(root,'sw.js'),'utf8');
 // Un simple `===` ne doit pas être confondu avec une réappropriation de fonction globale.
 assert(!/window\.(renderAll|renderWeek|save|openStore|saveStore|saveAppointment|goTab|switchTab)\s*=(?!=)/.test(ui));assert(!/setInterval\s*\(/.test(ui));for(const asset of ['store-runner-visit-model.js','store-runner-visit-store.js','store-runner-visits.js','store-runner-visits.css'])assert(sw.split('const OPTIONAL_SHELL')[0].includes(asset));
-assert(ui.includes('window.StoreRunnerVisits={start,openVisit,openHub,memoryFor,renderQuickMemory,deleteVisit,deleteHistoryEntry,activeVisitId:()=>activeId}'),'le module Visit doit publier un accès borné aux visites archivées, la suppression V231 et activeVisitId compris, et rien de plus');
+assert(ui.includes('window.StoreRunnerVisits={start,openVisit,openHub,memoryFor,renderQuickMemory,refreshStartCtas,deleteVisit,deleteHistoryEntry,activeVisitId:()=>activeId}'),'le module Visit doit publier un accès borné aux visites archivées, au libellé du CTA, à la suppression V231 et à activeVisitId, et rien de plus');
 assert(ui.includes("data.visits.slice(0,3)"),'la fiche magasin doit commencer par les trois dernières visites');
 assert(ui.includes("Voir tout l’historique"),'la fiche magasin doit permettre d’ouvrir tout l’historique');
 assert(ui.includes("!['done','cancelled'].includes(a.status)"),'la mémoire terrain doit garder uniquement les actions encore ouvertes');
 assert(ui.includes("quickMemoryObserver.observe(sheet,{attributes:true,attributeFilter:['class','aria-hidden']})"),'l’observation doit rester bornée à la feuille magasin');
+assert(ui.includes("v.status==='draft')?'Reprendre la visite':'Démarrer la visite'"),'le CTA doit distinguer le brouillon existant sans changer la logique de visite');
+assert(!fs.readFileSync(path.join(root,'src/chef-secteur.html'),'utf8').includes('Démarrer / reprendre la visite 6P'),'l’ancien libellé 6P ne doit plus apparaître dans la fiche magasin');
 assert(ui.includes("row.dataset.srHistoryVisit=v.id"),'chaque visite historique doit rester ouvrable dans son détail');
 // V214 : une clôture terrain ne peut plus être le résultat d'un tap fantôme autour d'un refresh.
 assert(ui.includes("window.confirm('Terminer cette visite maintenant ?"),'Terminer doit demander une confirmation explicite');

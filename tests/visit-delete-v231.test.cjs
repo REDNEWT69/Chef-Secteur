@@ -182,7 +182,7 @@ function withAction(s,visitId,text){
  assert(!historique.includes('businessV2'),'l’écran Historique ne doit pas manipuler businessV2 en direct');
  assert(!/window\.(renderAll|renderWeek|save|renderHistory)\s*=(?!=)/.test(historique),'aucun propriétaire runtime contourné');
 
- assert(ui.includes('window.StoreRunnerVisits={start,openVisit,openHub,memoryFor,renderQuickMemory,deleteVisit,deleteHistoryEntry,activeVisitId:()=>activeId}'),
+ assert(ui.includes('window.StoreRunnerVisits={start,openVisit,openHub,memoryFor,renderQuickMemory,refreshStartCtas,deleteVisit,deleteHistoryEntry,activeVisitId:()=>activeId}'),
   'le module Visit doit publier la suppression et rien de plus');
  assert(ui.includes('M.removeVisit(s,key)'),'la suppression doit passer par le modèle métier, jamais par une écriture locale');
  assert(!/businessV2\.visits\.splice|visits\.filter\([^)]*id!==/.test(ui),'l’interface ne doit pas retirer une visite elle-même');
