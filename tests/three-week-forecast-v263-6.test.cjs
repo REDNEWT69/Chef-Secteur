@@ -23,8 +23,9 @@ function range(extra={}){
 }
 function emptyPlan(){return{Lundi:[],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}}
 function archivePlan(weekKey,day,store){const p=emptyPlan();p[day]=[store];return{[weekKey]:{weekMonday:weekKey,plan:p,manualEdited:false}}}
-function forecast(state,opts={}){return Coverage.forecastThreeWeeks(state,{today:TODAY,range:opts.range||range(),archive:opts.archive||{},priorities:opts.priorities,dayBlocked:opts.dayBlocked,lockDayForWeek:opts.lockDayForWeek})}
+function forecast(state,opts={}){return Coverage.forecastThreeWeeks(state,{today:opts.today||TODAY,firstMonday:opts.firstMonday,range:opts.range||range(),archive:opts.archive||{},priorities:opts.priorities,visitDays:opts.visitDays,dayBlocked:opts.dayBlocked,lockDayForWeek:opts.lockDayForWeek})}
 function row(out,id){const r=out.rows.find(x=>x.id===String(id));assert(r,'forecast row '+id+' absent');return r}
+function weekPlan(stores,offset=0){const plan=emptyPlan();DAYS.forEach((day,di)=>{plan[day]=stores.slice(offset+di*4,offset+di*4+4)});return plan}
 
 // 1. Hiérarchie métier exacte : très en retard > jamais > retard (P1 seulement en tie-break) > bientôt > à jour.
 {
@@ -57,6 +58,20 @@ function row(out,id){const r=out.rows.find(x=>x.id===String(id));assert(r,'forec
   const out=forecast(state);
   assert.strictEqual(row(out,'w2').firstAcceptableDate,'2026-10-05');
   assert.strictEqual(row(out,'w2').firstAcceptableWeek,'2026-10-05');
+}
+
+// 2b. Les placements réels de S2 (plan live) et S3 (archive) deviennent les recommandations du forecast.
+{
+  const liveS2={id:'live-s2',enseigne:'Darty',ville:'Plan S2',intervalDays:15};
+  const archivedS3={id:'archive-s3',enseigne:'Fnac',ville:'Archive S3',intervalDays:30};
+  const state=baseState([liveS2,archivedS3]);
+  state.settings.weekDate='2026-10-05';state.plan.Mardi=[liveS2];
+  const archive=archivePlan('2026-10-12','Vendredi',archivedS3);
+  const out=forecast(state,{archive});
+  assert.deepStrictEqual(row(out,'live-s2').plannedDates,['2026-10-06']);
+  assert.strictEqual(row(out,'live-s2').recommendedWeek,'2026-10-05');
+  assert.deepStrictEqual(row(out,'archive-s3').plannedDates,['2026-10-16']);
+  assert.strictEqual(row(out,'archive-s3').recommendedWeek,'2026-10-12');
 }
 
 // 3. Un rendez-vous explicite passe outre la garde anti-sur-visite et fait évoluer le forecast immédiatement.
@@ -131,15 +146,14 @@ function row(out,id){const r=out.rows.find(x=>x.id===String(id));assert(r,'forec
   assert(out.counts.becomesLate>=1);
 }
 
-// 9. Même entrée = même sortie, et aucun effet de bord sur state/archive/range.
+// 9. Vingt exécutions donnent exactement la même sortie, sans effet de bord sur state/archive/range.
 {
   const store={id:'stable',enseigne:'Conforama',ville:'Stable',intervalDays:30};
   const state=baseState([store]);setVisit(state,'stable','2026-09-01');
   const arch=archivePlan('2026-10-05','Mardi',store),rge=range();
   const beforeState=JSON.stringify(state),beforeArchive=JSON.stringify(arch),beforeRange=JSON.stringify(rge);
   const a=Coverage.forecastThreeWeeks(state,{today:TODAY,range:rge,archive:arch});
-  const b=Coverage.forecastThreeWeeks(state,{today:TODAY,range:rge,archive:arch});
-  assert.deepStrictEqual(a,b);
+  for(let i=1;i<20;i++)assert.deepStrictEqual(Coverage.forecastThreeWeeks(state,{today:TODAY,range:rge,archive:arch}),a,'divergence à l’exécution '+(i+1));
   assert.strictEqual(JSON.stringify(state),beforeState);
   assert.strictEqual(JSON.stringify(arch),beforeArchive);
   assert.strictEqual(JSON.stringify(rge),beforeRange);
@@ -155,5 +169,119 @@ function row(out,id){const r=out.rows.find(x=>x.id===String(id));assert(r,'forec
   assert.strictEqual(r.recommendedDate,'');
   assert.strictEqual(r.uncoveredCode,'constraint-unavailable');
 }
+
+// 11. dayBlocked rend incompatibles les RDV et verrous explicites, même si le jour est travaillé.
+{
+  const appointment={id:'blocked-appt',enseigne:'Darty',ville:'RDV bloqué',intervalDays:30};
+  const locked={id:'blocked-lock',enseigne:'Fnac',ville:'Verrou bloqué',intervalDays:30};
+  const state=baseState([appointment,locked]);
+  state.appointments=[{id:'rdv-bloque',storeId:'blocked-appt',date:'2026-10-07',time:'10:00'}];
+  const blockedDates=new Set(['2026-10-06','2026-10-07']);
+  const out=forecast(state,{dayBlocked:date=>blockedDates.has(date),lockDayForWeek:(id,week)=>id==='blocked-lock'&&week==='2026-10-05'?'Mardi':''});
+  const appt=row(out,'blocked-appt'),lock=row(out,'blocked-lock');
+  assert.deepStrictEqual(appt.incompatibleConstraintDates,['2026-10-07']);
+  assert.strictEqual(appt.recommendedDate,'');
+  assert.strictEqual(appt.uncoveredCode,'constraint-unavailable');
+  assert.deepStrictEqual(lock.incompatibleConstraintDates,['2026-10-06']);
+  assert.strictEqual(lock.recommendedDate,'');
+  assert.strictEqual(lock.uncoveredCode,'constraint-unavailable');
+  assert(!out.availableWorkDates.includes('2026-10-06'));
+  assert(!out.availableWorkDates.includes('2026-10-07'));
+}
+
+// 12. Plusieurs RDV restent tous visibles : le premier incompatible ne masque pas les suivants valides.
+{
+  const store={id:'multi-rdv',enseigne:'Boulanger',ville:'Multi RDV',intervalDays:7};
+  const state=baseState([store]);setVisit(state,'multi-rdv','2026-09-28');
+  state.appointments=[
+    {id:'c',storeId:'multi-rdv',date:'2026-10-14',time:'15:00'},
+    {id:'a',storeId:'multi-rdv',date:'2026-09-30',time:'09:00'},
+    {id:'b',storeId:'multi-rdv',date:'2026-10-07',time:'11:00'}
+  ];
+  const out=forecast(state,{dayBlocked:date=>date==='2026-09-30'}),r=row(out,'multi-rdv');
+  assert.deepStrictEqual(r.appointmentDates,['2026-09-30','2026-10-07','2026-10-14']);
+  assert.deepStrictEqual(r.incompatibleConstraintDates,['2026-09-30']);
+  assert.deepStrictEqual(r.compatibleConstraintDates,['2026-10-07','2026-10-14']);
+  assert.deepStrictEqual(r.recommendedDates,['2026-10-07','2026-10-14']);
+  assert.strictEqual(r.recommendedDate,'2026-10-07');
+  assert.strictEqual(r.constraintDate,'2026-10-07');
+  assert.strictEqual(r.projectedLastVisit,'2026-10-14');
+}
+
+// 13. Toutes les visites du plan sur S1/S2/S3 sont projetées ; un doublon le même jour ne compte qu'une fois.
+{
+  const store={id:'weekly',enseigne:'Carrefour',ville:'Hebdo',intervalDays:7};
+  const state=baseState([store]);setVisit(state,'weekly','2026-09-22');
+  state.plan.Mardi=[store,store];
+  state.appointments=[{id:'same-date',storeId:'weekly',date:'2026-09-29',time:'10:00'}];
+  const archive={
+    ...archivePlan('2026-10-05','Mardi',store),
+    ...archivePlan('2026-10-12','Mardi',store)
+  };
+  const out=forecast(state,{archive}),r=row(out,'weekly');
+  assert.deepStrictEqual(r.plannedDates,['2026-09-29','2026-10-06','2026-10-13']);
+  assert.deepStrictEqual(r.projectedDates,['2026-09-29','2026-10-06','2026-10-13']);
+  assert.deepStrictEqual(r.recommendedDates,['2026-09-29','2026-10-06','2026-10-13']);
+  assert.strictEqual(r.projectedLastVisit,'2026-10-13');
+  assert.strictEqual(out.counts.projectedVisits,3);
+}
+
+// 14. Les magasins inactifs et exclus restent hors forecast.
+{
+  const active={id:'active',enseigne:'Actif',ville:'A',intervalDays:30};
+  const inactive={id:'inactive',enseigne:'Inactif',ville:'B',intervalDays:30,active:false};
+  const excluded={id:'excluded',enseigne:'Exclu',ville:'C',intervalDays:30};
+  const state=baseState([active,inactive,excluded]);state.excluded.excluded=true;
+  const out=forecast(state);
+  assert.deepStrictEqual(out.rows.map(r=>r.id),['active']);
+  assert.strictEqual(out.counts.total,1);
+}
+
+// 15. En semaine entamée, les jours passés du plan ne sont pas transformés en visites ; une visite réelle passée reste la source de vérité.
+{
+  const past={id:'past',enseigne:'Darty',ville:'Passé',intervalDays:30};
+  const todayStore={id:'today',enseigne:'Fnac',ville:'Aujourd’hui',intervalDays:30};
+  const state=baseState([past,todayStore]);state.plan.Lundi=[past];state.plan.Jeudi=[todayStore];setVisit(state,'past','2026-09-28');
+  const out=forecast(state,{today:'2026-10-01'});
+  assert.deepStrictEqual(row(out,'past').plannedDates,[]);
+  assert.strictEqual(row(out,'past').lastVisit,'2026-09-28');
+  assert.deepStrictEqual(row(out,'today').plannedDates,['2026-10-01']);
+  assert.strictEqual(out.availableWorkDates[0],'2026-10-01');
+}
+
+// 16. Sérialisation/restauration de state + archive + range et de la sortie sans divergence.
+{
+  const store={id:'roundtrip',enseigne:'Conforama',ville:'Persisté',intervalDays:15};
+  const state=baseState([store]);setVisit(state,'roundtrip','2026-09-10');state.plan.Vendredi=[store];
+  const archive=archivePlan('2026-10-12','Lundi',store),rge=range({planningDiagnostics:[{weekKey:'2026-10-05',days:[{day:'Jeudi',date:'2026-10-08',status:'blocked'}]}]});
+  const before=Coverage.forecastThreeWeeks(state,{today:TODAY,range:rge,archive});
+  const restoredState=JSON.parse(JSON.stringify(state)),restoredArchive=JSON.parse(JSON.stringify(archive)),restoredRange=JSON.parse(JSON.stringify(rge));
+  const after=Coverage.forecastThreeWeeks(restoredState,{today:TODAY,range:restoredRange,archive:restoredArchive});
+  assert.deepStrictEqual(after,before);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(before)),before);
+}
+
+// 17. Charge réaliste : ~80 puis ~150 magasins, sans évaluation dayBlocked par magasin.
+function realisticScenario(count){
+  const intervals=[7,15,30,90],stores=Array.from({length:count},(_,i)=>({id:'perf-'+i,enseigne:['Darty','Fnac','Boulanger','Carrefour'][i%4],ville:'Ville '+i,intervalDays:intervals[i%4],lat:45+(i%20)/100,lon:4+(i%25)/100,active:i%41!==0}));
+  const state=baseState(stores);for(let i=0;i<count;i++){if(i%9===0)continue;setVisit(state,'perf-'+i,['2026-09-21','2026-09-13','2026-08-28','2026-07-01'][i%4])}state.excluded['perf-37']=true;
+  state.plan=weekPlan(stores,0);const archive={
+    '2026-10-05':{weekMonday:'2026-10-05',plan:weekPlan(stores,20),manualEdited:false},
+    '2026-10-12':{weekMonday:'2026-10-12',plan:weekPlan(stores,40),manualEdited:false}
+  };
+  for(let i=11;i<count;i+=29){state.appointments.push({id:'perf-rdv-'+i+'-a',storeId:'perf-'+i,date:'2026-10-07',time:'09:00'},{id:'perf-rdv-'+i+'-b',storeId:'perf-'+i,date:'2026-10-14',time:'14:00'})}
+  return{state,archive,rge:range()}
+}
+function measureForecast(count){
+  const sample=realisticScenario(count);for(let i=0;i<3;i++)Coverage.forecastThreeWeeks(sample.state,{today:TODAY,range:sample.rge,archive:sample.archive,dayBlocked:()=>false});
+  const loops=10,start=process.hrtime.bigint();let out;
+  for(let i=0;i<loops;i++){let blockedCalls=0;out=Coverage.forecastThreeWeeks(sample.state,{today:TODAY,range:sample.rge,archive:sample.archive,dayBlocked:()=>{blockedCalls++;return false}});assert.strictEqual(blockedCalls,21,'dayBlocked doit être évalué une fois par date, pas par magasin')}
+  const averageMs=Number(process.hrtime.bigint()-start)/1e6/loops;
+  assert.strictEqual(out.counts.total,sample.state.stores.filter(s=>s.active!==false&&!sample.state.excluded[s.id]).length);
+  assert(averageMs<750,'forecast '+count+' magasins trop lent : '+averageMs.toFixed(2)+' ms');
+  return averageMs
+}
+const perf80=measureForecast(80),perf150=measureForecast(150);
+console.log('three-week forecast perf 80='+perf80.toFixed(2)+'ms 150='+perf150.toFixed(2)+'ms');
 
 console.log('three-week forecast v263.6 ok');
