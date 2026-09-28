@@ -54,14 +54,14 @@ test('V263.4 : Obligatoire propose la nuit utile sous 55 km, Automatique et Jama
   await seed(page,'mandatory',NEAR);
   expect(await page.evaluate(()=>window.overnightCandidate()&&window.overnightCandidate().night)).toBe('Nuit Lundi → Mardi');
   expect(await badges(page)).toEqual(['2026-09-14 → 🌙 découché']);
-  /* Le bandeau est réécrit tour à tour par la décision V189 et par la copie V185
-     (statut de génération, rapport 3 semaines) : les deux annoncent la même nuit. */
+  /* V263.5 : le bandeau n'a qu'un seul rendu (V189), même quand le statut de génération
+     le rafraîchit : il annonce la nuit sur place, jamais un refus contradictoire. */
   const box=page.locator('#overnightBox');
-  await expect(box).toContainText(/Nuit (sur place|Lundi → Mardi)/);
+  await expect(box).toContainText('Nuit sur place');
   await expect(box).not.toContainText('Mode obligatoire actif, mais');
   const refreshed=await page.evaluate(()=>{const a=window.storeRunnerRefreshOvernightDecision(window.state.plan);return{night:a&&a.candidate&&a.candidate.night,box:document.getElementById('overnightBox').textContent}});
   expect(refreshed.night).toBe('Nuit Lundi → Mardi');
-  expect(refreshed.box).toContain('Nuit Lundi → Mardi');
+  expect(refreshed.box).toContain('Nuit sur place');
   expect(refreshed.box).not.toContain('Mode obligatoire actif, mais');
 
   /* Hôtel conseillé → réservation sans adresse : aucune position inventée, le lendemain

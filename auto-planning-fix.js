@@ -206,7 +206,7 @@ function renderOvernightV189(){
   box.innerHTML='<div class="overnight"><b>★ Nuit sur place · '+esc(dateLabel(o.fromDate))+' → '+esc(dateLabel(o.toDate))+'</b><div class="meta">Fin près de '+esc((o.last.enseigne||'Magasin')+' '+zone)+' · reprise vers '+esc(next)+' · économie estimée ~'+Math.max(0,Math.round(o.saving))+' km.</div><div class="srHotelZoneV189">🏨 <b>Zone hôtel conseillée : '+esc(zone)+'</b>, idéalement sur l’axe vers '+esc(next)+'.</div><a target="_blank" rel="noopener" href="'+hotelUrl(o.last)+'">Voir les hôtels à proximité ↗</a>'+hotelReservationEditorHtml(o)+'</div>';return true
 }
 function patchOvernight(){
-  ensureOvernightStyle();const candidate=function(){return futureOvernightAnalysis().candidate};candidate.__v182Wrapped=true;candidate.__v189FutureOnly=true;window.overnightCandidate=candidate;const render=function(){return renderOvernightV189()};render.__v182Wrapped=true;render.__v189FutureOnly=true;window.renderOvernight=render;if(window.StoreRunnerOvernightV182)window.StoreRunnerOvernightV182.analyze=futureOvernightAnalysis;renderOvernightV189();return true
+  ensureOvernightStyle();const candidate=function(){return futureOvernightAnalysis().candidate};candidate.__v182Wrapped=true;candidate.__v189FutureOnly=true;window.overnightCandidate=candidate;const render=function(){return renderOvernightV189()};render.__v182Wrapped=true;render.__v189FutureOnly=true;window.renderOvernight=render;if(window.StoreRunnerOvernightV182){window.StoreRunnerOvernightV182.analyze=futureOvernightAnalysis;window.StoreRunnerOvernightV182.render=render}renderOvernightV189();return true
 }
 
 function installAutoApply(){

@@ -254,6 +254,11 @@ function renderOvernightV182(){
   const o=a.candidate;if(!o)return false;
   box.innerHTML='<div class="overnight"><b>🌙 '+esc(o.night)+'</b><div class="meta">Fin près de '+esc((o.last.enseigne||'Magasin')+' '+(o.last.ville||''))+' · reprise vers '+esc(o.first.ville||'')+' · économie estimée ~'+Math.max(0,Math.round(o.saving))+' km · zone à ~'+Math.round(o.remoteKm)+' km du domicile.'+(a.mode==='mandatory'?' · Découché obligatoire activé.':'')+'</div><a target="_blank" rel="noopener" href="'+mapsHotelUrl(o.last)+'">Chercher les hôtels près de la fin de tournée ↗</a></div>';return true
 }
+/* V263.5 : #overnightBox n'a qu'un rendu, celui du propriétaire courant. auto-planning-fix.js
+   (V189) redirige StoreRunnerOvernightV182.render vers le sien ; sans lui, c'est celui-ci. Les
+   passes de réparation différées ne réécrivent donc plus le bandeau avec l'ancienne vue, qui
+   effaçait la réservation d'hôtel et ignorait le filtre des nuits futures. */
+function renderOvernightOwner(){const api=window.StoreRunnerOvernightV182,fn=api&&typeof api.render==='function'?api.render:renderOvernightV182;return fn()}
 function wrapOnce(name,wrapper){
   const original=window[name];if(typeof original!=='function'||original.__v182Wrapped)return false;
   const wrapped=wrapper(original);wrapped.__v182Wrapped=true;wrapped.__v182Original=original;window[name]=wrapped;return true
@@ -261,14 +266,14 @@ function wrapOnce(name,wrapper){
 function patchOvernight(){
   if(!window.state)return false;
   wrapOnce('overnightCandidate',()=>function(){return overnightAnalysis().candidate});
-  wrapOnce('renderOvernight',original=>function(){let out;try{out=original.apply(this,arguments)}finally{renderOvernightV182()}return out});
+  wrapOnce('renderOvernight',original=>function(){let out;try{out=original.apply(this,arguments)}finally{renderOvernightOwner()}return out});
   wrapOnce('fillProfileForm',original=>function(){const out=original.apply(this,arguments);try{const input=document.getElementById('pSaving'),raw=state.profile&&state.profile.overnightMinSaving,n=Number(raw);if(input&&Number.isFinite(n)&&n>=0)input.value=String(n)}catch(e){}return out});
   wrapOnce('saveProfile',original=>function(){
     const input=document.getElementById('pSaving'),raw=input?String(input.value||'').trim():'',n=raw===''?NaN:Number(raw);const out=original.apply(this,arguments);
     if(Number.isFinite(n)&&n>=0&&state.profile&&Number(state.profile.overnightMinSaving)!==n){state.profile.overnightMinSaving=n;try{if(typeof window.save==='function')window.save();else if(typeof save==='function')save()}catch(e){}if(input)input.value=String(n)}
-    renderOvernightV182();return out
+    renderOvernightOwner();return out
   });
-  renderOvernightV182();return true
+  renderOvernightOwner();return true
 }
 
 /* Génération 3 jours : range-planner protège à juste titre les semaines manuelles, mais
