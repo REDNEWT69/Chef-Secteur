@@ -34,12 +34,17 @@ def darty_site(plan_extra=(),missing_page=True):
 CUIS_STORE='''<html><script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"FurnitureStore","@id":"https://www.ma.cuisinella/fr-fr/magasins/ain/amberieu-en-bugey","name":"Cuisinella Ambérieu-en-Bugey","url":"https://www.ma.cuisinella/fr-fr/magasins/ain/amberieu-en-bugey","address":{"@type":"PostalAddress","streetAddress":"370 Avenue Léon Blum","addressLocality":"Ambérieu-en-Bugey","postalCode":"01500","addressCountry":"FR"},"geo":{"@type":"GeoCoordinates","latitude":45.9578,"longitude":5.35883}},{"@type":"BreadcrumbList","itemListElement":[]}]}</script></html>'''
 def cuis_store(url,name,street,city,postal,lat,lon):
  return '<html><script type="application/ld+json">'+json.dumps({'@context':'https://schema.org','@graph':[{'@type':'FurnitureStore','@id':url,'name':name,'url':url,'address':{'@type':'PostalAddress','streetAddress':street,'addressLocality':city,'postalCode':postal,'addressCountry':'FR'},'geo':{'@type':'GeoCoordinates','latitude':lat,'longitude':lon}}]},ensure_ascii=False)+'</script></html>'
-def cuisinella_site():
+def cuis_map_entry(url_path,store_name,street,city,postal,lat,lon,brand='Cuisinella',store_id='0003000001'):
+ return {'Brand':brand,'StoreName':store_name,'StreetLine1':street,'StreetLine2':None,'StreetLine3':None,'City':city,'PostalCode':postal,'Latitude':lat,'Longitude':lon,'StoreId':store_id,'Url':url_path}
+def cuisinella_site(map_missing=('paris/paris-11-nation',)):
  base='https://www.ma.cuisinella/fr-fr/magasins/'
+ entries=[cuis_map_entry('/fr-fr/magasins/ain/amberieu-en-bugey','Ambérieu-en-Bugey','370 Avenue Léon Blum','Ambérieu-en-Bugey','01500',45.9578,5.35883),
+          cuis_map_entry('/fr-fr/magasins/paris/paris-11-nation','Paris 11 Nation','12 Boulevard Voltaire','Paris','75011',48.86,2.37),
+          cuis_map_entry('/fr-fr/magasins/corse-du-sud/ajaccio','Ajaccio','Route','Ajaccio','20090',41.9,8.7)]
+ entries=[e for e in entries if not any(e['Url'].endswith(m) for m in map_missing)]
  return {
   'https://www.ma.cuisinella/sitemap.xml':'<urlset>'+''.join('<url><loc>'+u+'</loc></url>' for u in ['https://www.ma.cuisinella/fr-fr','https://www.ma.cuisinella/fr-fr/magasins',base+'ain/amberieu-en-bugey',base+'paris/paris-11-nation',base+'corse-du-sud/ajaccio','https://www.ma.cuisinella/fr-be/magasins/liege/liege'])+'</urlset>',
-  'https://www.ma.cuisinella/fr-fr/liste-magasins':'<html><a href="/fr-fr/liste-magasins/magasins-paris">Paris</a><a href="/fr-fr/magasins/paris/paris-11-nation">Nation</a></html>',
-  'https://www.ma.cuisinella/fr-fr/magasins':'<html><a href="/fr-fr/magasins/ain/amberieu-en-bugey">Ambérieu</a></html>',
+  'https://www.ma.cuisinella/fr-fr/magasins':'<html><script type="application/javascript">\r\n    var STORES_MAP = '+json.dumps({'Stores':entries})+';\r\n</script></html>',
   base+'ain/amberieu-en-bugey':CUIS_STORE,
   base+'paris/paris-11-nation':cuis_store(base+'paris/paris-11-nation','Cuisinella Paris 11 Nation','12 Boulevard Voltaire','Paris','75011',48.86,2.37),
   base+'corse-du-sud/ajaccio':cuis_store(base+'corse-du-sud/ajaccio','Cuisinella Ajaccio','Route','Ajaccio','20090',41.9,8.7),
@@ -154,8 +159,15 @@ class CatalogTests(unittest.TestCase):
   self.assertEqual(c.cuisinella_store_url('https://www.ma.cuisinella/fr-be/magasins/liege/liege'),'')
   rep,rows=c.collect_cuisinella(get=FakeWeb(cuisinella_site()))
   self.assertTrue(rep['complete'],rep)
-  self.assertEqual((rep['sitemap'],rep['listePages'],rep['outOfScope']),(3,2,1))
+  self.assertEqual((rep['sitemap'],rep['locator'],rep['fetchedIndividually'],rep['outOfScope']),(3,2,1,1))
   self.assertEqual(sorted(r['ville'] for r in rows),['Ambérieu-en-Bugey','Paris'])
+  # Même identifiant historique, que la fiche vienne du localisateur ou de sa page.
+  self.assertEqual({r['id'] for r in rows},{'official-cuisinella-01500-cuisinella-amberieu-en-bugey','official-cuisinella-75011-cuisinella-paris-11-nation'})
+  # Une fiche du sitemap introuvable : jamais « complet ».
+  pages=cuisinella_site(map_missing=('paris/paris-11-nation',));del pages['https://www.ma.cuisinella/fr-fr/magasins/paris/paris-11-nation']
+  rep,rows=c.collect_cuisinella(get=FakeWeb(pages))
+  self.assertFalse(rep['complete']);self.assertIn('page inaccessible (404)',rep['rejected'])
+  self.assertEqual(c.parse_cuisinella_map('<html>rien</html>'),[])
  def test_sirene_filters_brand_format_and_status(self):
   rep,rows=c.collect_sirene('Carrefour',get=FakeWeb({}),departments=['77'])
   self.assertEqual(sorted(r['id'] for r in rows),['sirene-carrefour-45132133500924','sirene-carrefour-80509260800011'],'hypermarché actif, franchisé inclus ; station, fermé, autre département et Market exclus')

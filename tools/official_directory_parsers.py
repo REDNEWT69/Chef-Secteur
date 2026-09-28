@@ -372,30 +372,61 @@ def parse_cuisinella_store(text,url,fetched_at=None):
    return make_store('Cuisinella',f['name'],f['address'],f['city'],f['postal'],f['lat'],f['lon'],url,store_id=cuisinella_legacy_id(f['postal'],f['name']),fetched_at=fetched_at),''
  return None,'fiche magasin sans données structurées'
 
-def collect_cuisinella(get=None,fetched_at=None,workers=2):
+def parse_cuisinella_map(text):
+ """Données du localisateur officiel : `var STORES_MAP = {"Stores":[…]}` de la page carte."""
+ i=(text or '').find('STORES_MAP')
+ j=text.find('{',i) if i>=0 else -1
+ if j<0:return []
+ try:obj,_=json.JSONDecoder(strict=False).raw_decode(text,j)
+ except ValueError:return []
+ stores=obj.get('Stores') if isinstance(obj,dict) else None
+ return stores if isinstance(stores,list) else []
+
+def cuisinella_from_map(store,fetched_at=None):
+ """(fiche|None, motif, url) pour une entrée STORES_MAP."""
+ url=cuisinella_store_url(store.get('Url'))
+ if norm(store.get('Brand'))!='cuisinella':return None,'autre enseigne',url
+ label=clean(store.get('StoreName'))
+ name=label if norm(label).startswith('cuisinella') else 'Cuisinella '+label
+ address=', '.join(clean(store.get(k)) for k in ('StreetLine1','StreetLine2','StreetLine3') if clean(store.get(k)))
+ f=dict(name=name,address=address,city=clean(store.get('City')),postal=re.sub(r'\s','',str(store.get('PostalCode') or '')),country='',lat=to_float(store.get('Latitude')),lon=to_float(store.get('Longitude')),url=url)
+ if not url:return None,'fiche sans URL magasin',''
+ reason=check_fields(f,'Cuisinella')
+ if reason:return None,reason,url
+ return make_store('Cuisinella',f['name'],f['address'],f['city'],f['postal'],f['lat'],f['lon'],url,store_id=cuisinella_legacy_id(f['postal'],f['name']),fetched_at=fetched_at),'',url
+
+def collect_cuisinella(get=None,fetched_at=None,workers=1):
  get=get or http_get;fetched_at=fetched_at or now_iso()
- report=_report('Sitemap officiel ma.cuisinella (fiches /fr-fr/magasins/…), contrôlé par la liste des magasins',sourceUrl=CUISINELLA_ROOT+'/fr-fr/liste-magasins')
- sitemap=set();listed=set()
+ report=_report('Localisateur officiel ma.cuisinella (données STORES_MAP de /fr-fr/magasins), contrôlé par le sitemap officiel',sourceUrl=CUISINELLA_ROOT+'/fr-fr/magasins')
+ sitemap=set();found={}
  try:sitemap={u for u in (cuisinella_store_url(l) for l in sitemap_locs(get(CUISINELLA_ROOT+'/sitemap.xml',accept='application/xml,text/xml;q=0.9,*/*;q=0.5')[0])) if u}
  except HttpError as e:report['errors'].append(str(e))
- for page in ('/fr-fr/liste-magasins','/fr-fr/magasins'):
-  try:listed|={u for u in (cuisinella_store_url(h) for h in page_hrefs(get(CUISINELLA_ROOT+page)[0])) if u}
-  except HttpError as e:report['errors'].append(str(e))
- report['sitemap']=len(sitemap);report['listePages']=len(listed)
- targets=sorted(sitemap|listed)
+ try:
+  stores=parse_cuisinella_map(get(CUISINELLA_ROOT+'/fr-fr/magasins')[0])
+  for store in stores:
+   row,reason,url=cuisinella_from_map(store,fetched_at)
+   if url and (url not in found or row):found[url]=(row,reason)
+   elif not url:_reject(report,reason,str(store.get('StoreId')))
+  report['locator']=len(stores)
+  if not stores:report['errors'].append('Données STORES_MAP absentes de la page carte')
+ except HttpError as e:report['errors'].append(str(e))
+ report['sitemap']=len(sitemap)
+ # Fiche du sitemap absente du localisateur : lue une à une (JSON-LD de la fiche).
+ missing=sorted(sitemap-set(found));report['fetchedIndividually']=len(missing)
  def one(url):
-  try:text,_=get(url);return url,parse_cuisinella_store(text,url,fetched_at)
+  try:text,_=get(url,delay=0.8);return url,parse_cuisinella_store(text,url,fetched_at)
   except HttpError as e:return url,(None,'page inaccessible ('+str(e.status)+')')
- rows=[]
  with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-  for url,(row,reason) in pool.map(one,targets):
-   if row:rows.append(row)
-   elif reason=='hors périmètre':report['outOfScope']+=1
-   else:_reject(report,reason,url)
- report['parsed']=len(rows);report['notInSitemap']=sorted(listed-sitemap)[:20]
+  for url,res in pool.map(one,missing):found[url]=res
+ rows=[]
+ for url,(row,reason) in sorted(found.items()):
+  if row:rows.append(row)
+  elif reason=='hors périmètre':report['outOfScope']+=1
+  else:_reject(report,reason,url)
+ report['parsed']=len(rows);report['notInSitemap']=sorted(set(found)-sitemap)[:20]
  unresolved=sum(len(v) for v in report['rejected'].values())
- report['complete']=bool(sitemap) and not report['errors'] and unresolved==0 and listed<=sitemap
- report['proof']=('Sitemap officiel ('+str(len(sitemap))+' fiches) ; liste des magasins ('+str(len(listed))+' liens directs) ; '+str(len(rows))+' fiches continentales, '+str(report['outOfScope'])+' hors périmètre, '+str(unresolved)+' non exploitables')
+ report['complete']=bool(sitemap) and not report['errors'] and unresolved==0 and set(found)>=sitemap and not report['notInSitemap']
+ report['proof']=('Localisateur officiel ('+str(report.get('locator',0))+' magasins) ; sitemap officiel ('+str(len(sitemap))+' fiches) ; '+str(len(rows))+' fiches continentales, '+str(report['outOfScope'])+' hors périmètre, '+str(unresolved)+' non exploitables'+(' ; '+str(len(missing))+' fiche(s) lue(s) une à une' if missing else ''))
  return report,rows
 
 # ---------------------------------------------------------------- Sirene (INSEE)
