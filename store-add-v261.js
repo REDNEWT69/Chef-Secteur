@@ -467,7 +467,7 @@ function renderCatalogRows(){
     const check=root.document.createElement('input');check.type='checkbox';check.className='sraCatalogCheck';check.dataset.sraCatalogIndex=String(i);check.disabled=!item.selectable;check.addEventListener('change',updateCatalogCount);
     const copy=root.document.createElement('span'),name=root.document.createElement('b'),address=root.document.createElement('span'),note=root.document.createElement('small');
     name.textContent=item.store.sourceName||item.store.enseigne;address.textContent=[item.store.adresse,[item.store.codePostal,item.store.ville].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
-    if(item.exists)note.textContent='Déjà dans ton secteur';else if(!item.complete)note.textContent='Fiche incomplète · utilise la recherche ou la saisie manuelle';else note.textContent='Prêt à ajouter';
+    if(item.exists)note.textContent='Déjà dans ton secteur';else if(!item.complete)note.textContent='Fiche incomplète · utilise la recherche ou la saisie manuelle';else note.textContent='Prêt à ajouter'+(/Sirene/.test(String(item.store.source||''))?' · répertoire Sirene (INSEE), adresse à vérifier':'');
     copy.append(name,address,note);label.append(check,copy);list.append(label);
   });
   if(!ui.catalogRows.length){const empty=root.document.createElement('p');empty.className='sraStatus sraWarn';empty.textContent='Aucun magasin connu dans le carnet pour ce choix.';list.append(empty)}

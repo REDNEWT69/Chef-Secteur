@@ -198,6 +198,8 @@ def place_fields(place):
 def check_fields(f,brand):
  """Motif de rejet d'une fiche, ou '' si elle est exploitable."""
  if not norm(f['name']).startswith(norm(brand)):return 'nom hors enseigne'
+ if f['country'] and f['country'] not in ('FR','FRA','FRANCE'):return 'hors périmètre'
+ if re.fullmatch(r'\d{4}',f['postal']):return 'hors périmètre'
  if not re.fullmatch(r'\d{5}',f['postal']):return 'code postal invalide'
  if not is_continental_postal(f['postal']):return 'hors périmètre'
  if not f['address'] or not f['city']:return 'adresse incomplète'
@@ -399,9 +401,10 @@ def collect_cuisinella(get=None,fetched_at=None,workers=2):
 SIRENE_RULES={
  'Fnac':dict(q='fnac',params={'section_activite_principale':'G'},brand=r'\bFNAC\b',naf=r'^47\.',exclude=r'\bFNAC\s*(LOGISTIQUE|ACCES|DIRECT|TOURISME|JEUNES)\b|ANCIENS COMBATTANTS'),
  'Carrefour':dict(q='carrefour',params={'activite_principale':'47.11F'},brand=r'\bCARREFOUR\b',naf=r'^47\.11F$',exclude=r'\bCARREFOUR\s+(MARKET|CITY|EXPRESS|CONTACT|PROXI|MONTAGNE|BIO|DRIVE|BON\s*APP)\b'),
- 'Boulanger':dict(q='boulanger',params={'section_activite_principale':'G'},brand=r'^BOULANGER$|\(BOULANGER\)|^BOULANGER\s+(SA|S\.A\.)$',naf=r'^47\.(54Z|43Z|42Z|41Z)$',exclude=r'LOCATION|B LOC'),
+ 'Boulanger':dict(q='boulanger',params={'activite_principale':'47.54Z'},brand=r'^BOULANGER$|\(BOULANGER\)|^BOULANGER\s+(SA|S\.A\.)$',naf=r'^47\.(54Z|43Z|42Z|41Z)$',exclude=r'LOCATION|B LOC'),
  'Conforama':dict(q='conforama',params={'section_activite_principale':'G'},brand=r'\bCONFORAMA\b',naf=r'^47\.',exclude=r''),
 }
+SIRENE_MAX_PAGES=6
 SMALL=('de','des','du','la','le','les','l','d','et','sur','sous','en','aux','au','lès','les')
 
 def french_title(s):
@@ -455,6 +458,8 @@ def sirene_candidates(brand,get=None,departments=None):
      if not naf_rx.search(str(etab.get('activite_principale') or '')):reject('activité hors commerce de détail visé ('+str(etab.get('activite_principale'))+')',etab,evidence);continue
      seen[etab['siret']]=dict(company=company,etab=etab,evidence=evidence)
    if page>=int(data.get('total_pages') or 1):break
+   if page>=SIRENE_MAX_PAGES:
+    errors.append('Requête Sirene trop large pour le département '+dept+' : '+str(data.get('total_pages'))+' pages, lecture arrêtée à '+str(page));break
    page+=1
  return list(seen.values()),{k:sorted(v.values()) for k,v in rejected.items()},errors,queries
 

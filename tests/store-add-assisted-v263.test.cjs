@@ -5,20 +5,34 @@ const data = require('../data/official-stores.json');
 const storeAdd = require('../store-add-v261.js');
 const regions = require('../region-stores.js');
 
+// #467 — l'audit suit le snapshot livré : plus de comptes figés, mais des invariants.
 const audit = Object.fromEntries(catalog.audit(data).map(row => [row.brand, row]));
-assert.deepEqual(audit.Boulanger, {brand:'Boulanger', count:98, regions:12, source:'partial', rawStatus:'partial'});
-assert.deepEqual(audit.Darty, {brand:'Darty', count:398, regions:12, source:'partial', rawStatus:'partial'});
-assert.deepEqual(audit.Fnac, {brand:'Fnac', count:0, regions:0, source:'unavailable', rawStatus:'no high-confidence store parsed'});
-assert.deepEqual(audit.Conforama, {brand:'Conforama', count:133, regions:12, source:'partial', rawStatus:'partial'});
-assert.deepEqual(audit.Cuisinella, {brand:'Cuisinella', count:250, regions:12, source:'partial', rawStatus:'ok'});
-assert.deepEqual(audit.Carrefour, {brand:'Carrefour', count:0, regions:0, source:'unavailable', rawStatus:'no high-confidence store parsed'});
+for (const brand of ['Boulanger', 'Darty', 'Fnac', 'Conforama', 'Cuisinella', 'Carrefour']) {
+  const rows = data.stores.filter(s => s.enseigne === brand), source = data.sources[brand] || {};
+  assert.equal(audit[brand].count, rows.length, brand + ' : compte de l’audit = fiches du carnet');
+  assert.equal(audit[brand].regions, new Set(rows.map(s => s.regionCode)).size, brand + ' : régions couvertes');
+  assert.equal(audit[brand].rawStatus, source.status || 'unavailable');
+  const proven = source.status === 'complete' && Object.values(source.regions || {}).length === 12 && Object.values(source.regions).every(r => r.status === 'collected');
+  assert.equal(audit[brand].source, !rows.length ? 'unavailable' : proven ? 'complete' : 'partial', brand + ' : « complet » seulement avec preuve');
+}
 
-assert.equal(catalog.filter(data, 'Darty', '84').length, 63, 'enseigne + région filtre le carnet officiel');
-assert.equal(catalog.coverage(data, 'Darty', '84').level, 'complete', 'région collectée signalée complète');
+const darty84 = data.stores.filter(s => s.enseigne === 'Darty' && s.regionCode === '84');
+assert.equal(catalog.filter(data, 'Darty', '84').length, darty84.length, 'enseigne + région filtre le carnet officiel');
+assert.ok(darty84.length > 2);
+assert.equal(catalog.coverage(data, 'Darty', '84').level, data.sources.Darty.status === 'complete' ? 'complete' : 'partial', 'couverture Darty alignée sur la preuve');
 assert.equal(catalog.coverage(data, 'Darty', '94').level, 'unavailable', 'Corse Darty explicitement indisponible');
-assert.equal(catalog.filter(data, 'Cuisinella', '84').length, 31, 'région Cuisinella déduite du code postal');
-assert.equal(catalog.coverage(data, 'Cuisinella', '84').level, 'partial', 'déduction régionale jamais présentée comme exhaustive');
-assert.equal(catalog.coverage(data, 'Fnac', '84').level, 'unavailable');
+const cuis84 = data.stores.filter(s => s.enseigne === 'Cuisinella' && s.regionCode === '84');
+assert.equal(catalog.filter(data, 'Cuisinella', '84').length, cuis84.length, 'région Cuisinella déduite du code postal');
+for (const brand of ['Fnac', 'Carrefour']) {
+  const cov = catalog.coverage(data, brand, '84'), n = data.stores.filter(s => s.enseigne === brand && s.regionCode === '84').length;
+  assert.equal(cov.level, n ? 'partial' : 'unavailable', brand + ' : jamais « complet » sans annuaire de l’enseigne');
+  if (n) assert.match(cov.message, /Sirene/, brand + ' : la source Sirene est annoncée');
+}
+// Une région « collected » dans une enseigne sans preuve n'est jamais présentée comme complète.
+const forged = JSON.parse(JSON.stringify(data));
+forged.sources.Darty.status = 'partial';
+forged.sources.Darty.regions['84'] = { status: 'collected', count: darty84.length };
+assert.equal(catalog.coverage(forged, 'Darty', '84').level, 'partial');
 
 const darty = catalog.filter(data, 'Darty', '84').slice(0, 2);
 const classified = storeAdd.catalogRows(darty, [darty[0]], regions.duplicate);

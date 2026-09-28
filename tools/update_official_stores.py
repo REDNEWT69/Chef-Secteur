@@ -125,7 +125,8 @@ def main(argv=None):
  prev_rows = previous.get('stores', [])
  fetched_at = P.now_iso()
  sources, stores = {}, []
- for brand in BRANDS:
+ # Sources prouvables d'abord ; l'ordre du JSON reste celui de BRANDS.
+ for brand in ['Darty', 'Cuisinella', 'Boulanger', 'Conforama', 'Fnac', 'Carrefour']:
   if brand not in wanted:
    keep = [r for r in prev_rows if r.get('enseigne') == brand]
    stores.extend(keep)
@@ -151,6 +152,7 @@ def main(argv=None):
   if os.environ.get('CATALOG_VERBOSE') == '1':
    print(json.dumps({'brand': brand, 'errors': report.get('errors'), 'rejected': report.get('rejected'), 'sireneRejectedSample': report.get('sireneRejectedSample'), 'access': access}, ensure_ascii=False), flush=True)
  stores = sorted(stores, key=lambda r: (r['enseigne'], r['regionCode'], r['dept'], P.norm(r['ville']), P.norm(r['sourceName']), r['id']))
+ sources = {b: sources[b] for b in BRANDS if b in sources}
  out = {'generatedAt': fetched_at[:19] + 'Z', 'scope': 'France métropolitaine continentale (12 régions)', 'sources': sources, 'stores': stores}
  Path(args.out).write_text(json.dumps(out, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
  markdown = R.build_report(out)
