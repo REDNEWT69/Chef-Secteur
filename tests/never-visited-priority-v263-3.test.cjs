@@ -206,6 +206,38 @@ async function scenario(name,fn){
     assert.deepEqual(t.choose(t.state.stores,5),['VL','NP1','N','LP1','L']);
   });
 
+  await scenario('G/D — V211 : P1 ne départage qu’à statut identique (late › P1 soon, soon › P1 ok, P1 › non-P1)',async()=>{
+    const V={VL:VISITS.VL,L:VISITS.L,LP1:VISITS.L,S:VISITS.S,SP1:VISITS.S,O:VISITS.O,OP1:VISITS.O};
+    // Distances inversées : le P1 et le moins urgent sont toujours les plus proches.
+    const stores=[store('OP1',1),store('O',2),store('SP1',3),store('S',4),store('LP1',5),store('L',6),store('NP1',7),store('N',8),store('VL',9)];
+    const perf={OP1:'P1',SP1:'P1',LP1:'P1',NP1:'P1'};
+    const t=rangeEnv({today:FRIDAY,stores,visits:history(V),perf}),by=id=>t.state.stores.filter(s=>s.id===id).concat();
+    const pick=list=>t.choose(list.flatMap(by),list.length);
+    assert.deepEqual(pick(['SP1','L']),['L','SP1'],'1. retard normal › P1 bientôt dû');
+    assert.deepEqual(pick(['OP1','S']),['S','OP1'],'2. bientôt dû › P1 à jour');
+    for(const [p1,plain] of [['NP1','N'],['LP1','L'],['SP1','S'],['OP1','O']])
+      assert.deepEqual(pick([plain,p1]),[p1,plain],'3. à statut identique, P1 › non-P1 ('+p1+')');
+    const n=t.ctx.testV2633.planningNeedV211(t.state.stores.find(s=>s.id==='SP1'),'2026-09-28');
+    assert.ok(n.reasons.includes('P1')&&n.performancePriority==='P1','la raison « P1 » est conservée');
+    assert.ok(n.score>t.ctx.testV2633.planningNeedV211(t.state.stores.find(s=>s.id==='S'),'2026-09-28').score,'le bonus de score P1 est conservé');
+    assert.deepEqual(t.choose(t.state.stores,9),['VL','NP1','N','LP1','L','SP1','S','OP1','O'],'4. chaîne complète V211');
+  });
+
+  await scenario('D — chaîne complète identique dans la couverture et le recalcul',async()=>{
+    const V={VL:VISITS.VL,L:VISITS.L,LP1:VISITS.L,S:VISITS.S,SP1:VISITS.S,O:VISITS.O,OP1:VISITS.O};
+    const chain=['VL','NP1','N','LP1','L','SP1','S','OP1','O'];
+    const stores=chain.map((id,i)=>store(id,9-i)),perf={OP1:'P1',SP1:'P1',LP1:'P1',NP1:'P1'};
+    const state=makeState({stores,visits:history(V)}),ctx=baseContext(FRIDAY,state,storage({}),perf);
+    const need=ctx.StoreRunnerVisitCoverage.needOf(state),t=id=>need(state.stores.find(s=>s.id===id),MONDAY).tier;
+    for(let i=1;i<chain.length;i++)assert.ok(t(chain[i-1])>t(chain[i]),'couverture : '+chain[i-1]+' ('+t(chain[i-1])+') › '+chain[i]+' ('+t(chain[i])+')');
+    const s=Object.fromEntries(stores.concat([store('R1',20),store('R2',21),store('R3',22)]).map(x=>[x.id,x]));
+    const plan=emptyPlan();plan.Mercredi=[s.R1,s.R2];plan.Jeudi=[s.R3];
+    const c=cascadeEnv({today:MONDAY,weekDate:'2026-09-28',stores:Object.values(s),visits:history(Object.assign({},V,{R1:['2026-09-26'],R2:['2026-09-26'],R3:['2026-09-27']})),plan,archive:{'2026-09-28':{weekMonday:'2026-09-28',plan:copy(plan)}},perf});
+    const r=c.build();
+    assert.equal(r.ok,true,r.error);
+    assert.deepEqual(Array.from(r.added||[],x=>x.id),['VL','NP1','N'],'recalcul, 3 créneaux : dans l’ordre de la chaîne');
+  });
+
   await scenario('G/E — V211 tous jamais visités : ordre historique inchangé (score seul)',async()=>{
     const stores=Array.from({length:8},(_,i)=>store('s'+(i+1),i+1,{priority:1+(i*3)%5}));
     const t=rangeEnv({today:FRIDAY,stores,perf:{s6:'P1',s2:'P2'}});

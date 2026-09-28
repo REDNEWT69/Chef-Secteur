@@ -104,7 +104,9 @@ function planningNeedV211(s,weekKey){
   else if(ratio>=1.5){tier=5;reasons.push('très en retard')}
   else if(ratio>=1){tier=Math.max(tier,4);reasons.push('en retard')}
   else if(ratio>=.8){tier=Math.max(tier,3);reasons.push('bientôt dû')}
-  if(perf==='P1'){tier=Math.max(tier,4);value+=90;reasons.unshift('P1')}
+  /* V263.3 (revue Leia) : P1 ne change plus de palier ; il ne départage qu'à statut de
+     besoin identique, par son bonus de score. */
+  if(perf==='P1'){value+=90;reasons.unshift('P1')}
   else if(perf==='P2'){tier=Math.max(tier,3);value+=40;reasons.unshift('P2')}
   if(p>=5){tier=Math.max(tier,3);reasons.push('priorité forte')}
   else if(p>=4)tier=Math.max(tier,2);
