@@ -237,6 +237,26 @@ class CatalogTests(unittest.TestCase):
   self.assertEqual(sorted(r['id'] for r in rows),['sirene-conforama-41481940902797','sirene-conforama-82327243000013'],'reprise fusionnée (exploitant le plus étoffé gardé), magasin voisin d’une autre commune conservé')
   self.assertEqual(rep['mergedSample'],['sirene-conforama-41481940902714 → sirene-conforama-82327243000013'])
   self.assertEqual(c.french_title("SAINT-JEAN-DE-LA-RUELLE"),'Saint-Jean-de-la-Ruelle')
+ def test_sirene_pagination_read_to_the_end_and_truncation_reported(self):
+  def company(i):
+   return {'siren':'5%08d'%i,'nom_complet':'SAS HYPER '+str(i),'nom_raison_sociale':'SAS HYPER '+str(i),'matching_etablissements':[
+    etab('5%08d%05d'%(i,11),'47.11F','69%03d'%(100+i),'VILLE '+str(i),str(i)+' RUE DU COMMERCE 69%03d VILLE '%(100+i)+str(i),45.0+i*0.05,4.8,['CARREFOUR'])]}
+  class PagedWeb(FakeWeb):
+   def __init__(self,total):super().__init__({});self.total=total
+   def __call__(self,url,**kw):
+    self.calls.append(url)
+    if 'departement=69' not in url:return sirene_response([]),url
+    page=int(re.search(r'[?&]page=(\d+)',url).group(1))
+    return sirene_response([company(page*2),company(page*2+1)],total_pages=self.total),url
+  web=PagedWeb(3)
+  rep,rows=c.collect_sirene('Carrefour',get=web,departments=['69'])
+  self.assertEqual(len(web.calls),3,'les 3 pages du département sont lues')
+  self.assertEqual(len(rows),6);self.assertEqual(rep['errors'],[])
+  web=PagedWeb(c.SIRENE_MAX_PAGES+4)
+  rep,rows=c.collect_sirene('Carrefour',get=web,departments=['69'])
+  self.assertEqual(len(web.calls),c.SIRENE_MAX_PAGES,'lecture bornée')
+  self.assertTrue(any('trop large' in e for e in rep['errors']),'troncature signalée, jamais silencieuse')
+  self.assertFalse(rep['complete'])
  def test_true_duplicates_merged_distinct_stores_kept(self):
   base=dict(enseigne='Boulanger',source='Annuaire officiel Boulanger',codePostal='69500',ville='BRON',adresse='x')
   prev=[dict(base,id='official-boulanger-1a63',sourceName='Boulanger Lyon - Saint Priest',lat=45.7216246,lon=4.9215729,sourceFetchedAt='2026-09-08'),
