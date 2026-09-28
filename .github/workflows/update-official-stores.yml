@@ -64,7 +64,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: TEMP transport du candidat (dev #467)
-        if: always()
+        if: success() || failure()
         run: |
           git show HEAD:data/official-stores.json > "$RUNNER_TEMP/base.json"
           python tools/_dev_catalog_transport.py encode data/official-stores.json "$RUNNER_TEMP/base.json"

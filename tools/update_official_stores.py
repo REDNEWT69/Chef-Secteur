@@ -5,7 +5,7 @@ Pour chaque enseigne : meilleure source officielle accessible, preuve d'exhausti
 quand elle existe, sinon statut « partial » explicite avec la preuve du blocage.
 Usage : python tools/update_official_stores.py [--brands Darty,Cuisinella] [--out data/official-stores.json]
 """
-import argparse, json, os, sys
+import argparse, json, os, sys, time
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import official_directory_parsers as P
@@ -133,6 +133,8 @@ def main(argv=None):
    if brand in previous.get('sources', {}):
     sources[brand] = previous['sources'][brand]
    continue
+  t0 = time.time()
+  print('→', brand, 'collecte…', flush=True)
   if brand == 'Darty':
    rows, report, meta, access = collect_with_proof(brand, P.collect_darty, prev_rows, fetched_at, 'le plan du site et le sitemap')
   elif brand == 'Cuisinella':
@@ -148,7 +150,7 @@ def main(argv=None):
   rows = [r for r in rows if not (r['id'] in ids or ids.add(r['id']))]
   sources[brand] = summarize(brand, rows, report, meta, access)
   stores.extend(rows)
-  print(brand, sources[brand]['status'], len(rows), '|', sources[brand]['proof'], flush=True)
+  print(brand, sources[brand]['status'], len(rows), '(%ds)' % (time.time() - t0), '|', sources[brand]['proof'], flush=True)
   if os.environ.get('CATALOG_VERBOSE') == '1':
    print(json.dumps({'brand': brand, 'errors': report.get('errors'), 'rejected': report.get('rejected'), 'sireneRejectedSample': report.get('sireneRejectedSample'), 'access': access}, ensure_ascii=False), flush=True)
  stores = sorted(stores, key=lambda r: (r['enseigne'], r['regionCode'], r['dept'], P.norm(r['ville']), P.norm(r['sourceName']), r['id']))

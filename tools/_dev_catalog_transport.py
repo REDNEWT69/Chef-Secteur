@@ -10,7 +10,7 @@ vérifie le SHA-256 annoncé par la CI.
   python tools/_dev_catalog_transport.py encode NEW.json BASE.json > transport.txt
   python tools/_dev_catalog_transport.py decode transport.txt BASE.json OUT.json
 """
-import hashlib, json, sys, zlib
+import hashlib, json, re, sys, zlib
 from collections import Counter
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -119,7 +119,13 @@ def encode(new, base):
  return out
 
 
+STAMP = re.compile(r'^\d{4}-\d\d-\d\dT[\d:.]+Z ')
+
+
 def decode(lines, base):
+ # Journal Actions collé tel quel : horodatages retirés, tout ce qui précède l'en-tête ignoré.
+ lines = [STAMP.sub('', l.rstrip('\r')) for l in lines]
+ lines = lines[next(i for i, l in enumerate(lines) if l.startswith('#T1 ')):]
  base_by_id = {s['id']: s for s in base.get('stores', [])}
  header = lines[0].split()
  assert header[0] == '#T1', 'en-tête inconnu'
