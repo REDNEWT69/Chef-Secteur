@@ -480,12 +480,21 @@ def collect_cuisinella(get=None,fetched_at=None,workers=1):
 # l'exploitant (reprise, location-gérance) ; faux pour Fnac (boutiques de gare,
 # d'aéroport ou de centre commercial voisines d'un magasin).
 SIRENE_RULES={
- 'Fnac':dict(q='fnac',params={'section_activite_principale':'G'},brand=r'\bFNAC\b',naf=r'^47\.',exclude=r'\bFNAC\s*(LOGISTIQUE|ACCES|DIRECT|TOURISME|JEUNES)\b|ANCIENS COMBATTANTS',anyOperator=False),
+ 'Fnac':dict(q='fnac',params={'section_activite_principale':'G'},brand=r'\bFNAC\b',naf=r'^47\.[1-7]',exclude=r'\bFNAC\s*(LOGISTIQUE|ACCES|DIRECT|TOURISME|JEUNES)\b|ANCIENS COMBATTANTS',anyOperator=False),
  'Carrefour':dict(q='carrefour',params={'activite_principale':'47.11F'},brand=r'\bCARREFOUR\b',naf=r'^47\.11F$',exclude=r'\bCARREFOUR\s+(MARKET|CITY|EXPRESS|CONTACT|PROXI|MONTAGNE|BIO|DRIVE|BON\s*APP)\b',anyOperator=True),
  'Boulanger':dict(q='boulanger',params={'activite_principale':'47.54Z'},brand=r'^BOULANGER(\s+[A-Z0-9\'\- ]+)?$|\(BOULANGER\)$',naf=r'^47\.(54Z|43Z|42Z|41Z)$',exclude=r'LOCATION|B LOC',anyOperator=True),
- 'Conforama':dict(q='conforama',params={'section_activite_principale':'G'},brand=r'\bCONFORAMA\b',naf=r'^47\.',exclude=r'',anyOperator=True),
+ 'Conforama':dict(q='conforama',params={'section_activite_principale':'G'},brand=r'\bCONFORAMA\b',naf=r'^47\.[1-7]',exclude=r'',anyOperator=True),
 }
 SIRENE_MAX_PAGES=6
+# Sièges et bureaux des groupes (code postal, rue) : des établissements y sont déclarés en
+# commerce de détail sans être des magasins. Fnac Darty : 9 rue des Bateaux-Lavoirs, Ivry ;
+# Conforama France : 80 boulevard du Mandinet, Lognes ; Boulanger : avenue de la Motte,
+# Lesquin ; Carrefour : 93 avenue de Paris, Massy.
+HEAD_OFFICES=[('94200',r'BATEAUX[\s-]*LAVOIRS'),('77185',r'MANDINET'),('59810',r'AVENUE DE LA MOTTE'),('91300',r'\b93\s+AVENUE DE PARIS')]
+
+def is_head_office(etab):
+ postal=str(etab.get('code_postal') or '');address=norm(etab.get('adresse')).upper()
+ return any(postal==cp and re.search(rx,address) for cp,rx in HEAD_OFFICES)
 SMALL=('de','des','du','la','le','les','l','d','et','sur','sous','en','aux','au','lès','les')
 
 def french_title(s):
@@ -547,6 +556,7 @@ def sirene_candidates(brand,get=None,departments=None):
    if not any(brand_rx.search(f) for f in fields):reject('enseigne non reconnue',etab,evidence);continue
    if exclude_rx and exclude_rx.search(evidence):reject('autre format ou activité de l’enseigne',etab,evidence);continue
    if not naf_rx.search(str(etab.get('activite_principale') or '')):reject('activité hors commerce de détail visé ('+str(etab.get('activite_principale'))+')',etab,evidence);continue
+   if is_head_office(etab):reject('siège ou bureaux du groupe, pas un magasin',etab,evidence);continue
    seen[etab['siret']]=dict(company=company,etab=etab,evidence=evidence)
  return list(seen.values()),{k:sorted(v.values()) for k,v in rejected.items()},errors,queries
 

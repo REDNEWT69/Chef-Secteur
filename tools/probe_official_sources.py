@@ -49,7 +49,10 @@ def probe_sitemaps(brand, url):
  """Un sitemap accessible donne la liste officielle des fiches magasins même quand les
  pages HTML sont protégées : statut, nombre d'URL et échantillon des URL « magasin »."""
  out = []
- queue = [(s, 0) for s in declared_sitemaps(url)[:8]]
+ base = '{0.scheme}://{0.netloc}'.format(urlparse(url))
+ declared = declared_sitemaps(url)
+ # Aucun sitemap déclaré (ou robots.txt inaccessible) : emplacements conventionnels.
+ queue = [(s, 0) for s in (declared or [base + '/sitemap.xml', base + '/sitemap_index.xml'])[:8]]
  while queue and len(out) < 14:
   sm, depth = queue.pop(0)
   try:

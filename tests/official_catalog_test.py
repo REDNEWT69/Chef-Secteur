@@ -222,6 +222,20 @@ class CatalogTests(unittest.TestCase):
   rep,rows=c.collect_sirene('Fnac',get=FnacWeb({}),departments=['69'])
   self.assertEqual(sorted(r['id'] for r in rows),['sirene-fnac-33447335200011','sirene-fnac-54209533600017'],'magasin gardé, annexe fusionnée, entrepôt écarté, boutique Relay distincte conservée')
   self.assertEqual(rep['merged'],1)
+  # Siège du groupe et vente à distance : déclarés en commerce de détail, mais pas des magasins.
+  hq=sirene_response([
+   {'siren':'350127460','nom_complet':'FNAC PARIS','nom_raison_sociale':'FNAC PARIS','matching_etablissements':[
+    etab('35012746000284','47.63Z','94200','IVRY-SUR-SEINE','ZAC PORT D IVRY 9 RUE DES BATEAUX LAVOIRS 94200 IVRY-SUR-SEINE',48.82,2.40,['FNAC']),
+    etab('35012746000300','47.91A','94200','IVRY-SUR-SEINE','2 QUAI MARCEL BOYER 94200 IVRY-SUR-SEINE',48.815,2.39,['FNAC']),
+    etab('35012746000318','47.63Z','94400','VITRY-SUR-SEINE','CENTRE COMMERCIAL 94400 VITRY-SUR-SEINE',48.79,2.39,['FNAC'])]}])
+  class HqWeb(FakeWeb):
+   def __call__(self,url,**kw):
+    if url.startswith(c.SIRENE_API) and 'departement=94' in url and 'q=fnac' in url:return hq,url
+    return super().__call__(url,**kw)
+  rep,rows=c.collect_sirene('Fnac',get=HqWeb({}),departments=['94'])
+  self.assertEqual([r['id'] for r in rows],['sirene-fnac-35012746000318'],'siège et vente à distance écartés')
+  self.assertEqual(rep['sireneRejected'].get('siège ou bureaux du groupe, pas un magasin'),1)
+  self.assertEqual(rep['sireneRejected'].get('activité hors commerce de détail visé (47.91A)'),1)
   # Grande surface reprise par un franchisé : deux exploitants déclarés au même endroit = un magasin.
   conf=sirene_response([
    {'siren':'414819409','nom_complet':'CONFORAMA FRANCE','nom_raison_sociale':'CONFORAMA FRANCE','matching_etablissements':[
