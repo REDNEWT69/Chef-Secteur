@@ -3,7 +3,7 @@ import concurrent.futures, datetime, hashlib, html, json, math, re, subprocess, 
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
-REGIONS={'84':('Auvergne-Rhône-Alpes','auvergne-rhone-alpes'),'27':('Bourgogne-Franche-Comté','bourgogne-franche-comte'),'53':('Bretagne','bretagne'),'24':('Centre-Val de Loire','centre-val-de-loire'),'94':('Corse','corse'),'44':('Grand Est','grand-est'),'32':('Hauts-de-France','hauts-de-france'),'28':('Normandie','normandie'),'75':('Nouvelle-Aquitaine','nouvelle-aquitaine'),'76':('Occitanie','occitanie'),'52':('Pays de la Loire','pays-de-la-loire'),'93':("Provence-Alpes-Côte d'Azur",'provence-alpes-cote-d-azur'),'11':('Île-de-France','ile-de-france')}
+REGIONS={'84':('Auvergne-Rhône-Alpes','auvergne-rhone-alpes'),'27':('Bourgogne-Franche-Comté','bourgogne-franche-comte'),'53':('Bretagne','bretagne'),'24':('Centre-Val de Loire','centre-val-de-loire'),'44':('Grand Est','grand-est'),'32':('Hauts-de-France','hauts-de-france'),'28':('Normandie','normandie'),'75':('Nouvelle-Aquitaine','nouvelle-aquitaine'),'76':('Occitanie','occitanie'),'52':('Pays de la Loire','pays-de-la-loire'),'93':("Provence-Alpes-Côte d'Azur",'provence-alpes-cote-d-azur'),'11':('Île-de-France','ile-de-france')}
 ROOTS={'Boulanger':'https://www.boulanger.com/magasins/','Darty':'https://magasin.darty.com/fr/'}
 DEPT_REGION={
  '01':'84','03':'84','07':'84','15':'84','26':'84','38':'84','42':'84','43':'84','63':'84','69':'84','73':'84','74':'84',
@@ -14,20 +14,20 @@ DEPT_REGION={
  '16':'75','17':'75','19':'75','23':'75','24':'75','33':'75','40':'75','47':'75','64':'75','79':'75','86':'75','87':'75',
  '09':'76','11':'76','12':'76','30':'76','31':'76','32':'76','34':'76','46':'76','48':'76','65':'76','66':'76','81':'76','82':'76',
  '22':'53','29':'53','35':'53','56':'53','44':'52','49':'52','53':'52','72':'52','85':'52',
- '04':'93','05':'93','06':'93','13':'93','83':'93','84':'93','2A':'94','2B':'94'
+ '04':'93','05':'93','06':'93','13':'93','83':'93','84':'93'
 }
 UA='Chef-Secteur-SAMSUNG/1.0 (+https://github.com/REDNEWT69/Chef-Secteur)'
 BOULANGER_SOURCE='https://www.boulanger.com/info/magasins/searchmag'
 
 def dept_from_postal(postal):
  postal=str(postal or '').strip()
- if postal.startswith('97'):return postal[:3]
- if postal.startswith(('200','201')):return '2A'
- if postal.startswith('20'):return '2B'
  return postal[:2]
 
 def region_code_from_postal(postal):
  return DEPT_REGION.get(dept_from_postal(postal),'')
+
+def is_continental_postal(postal):
+ return bool(region_code_from_postal(postal))
 
 def now_iso():
  return datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -84,6 +84,7 @@ def parse(text,url,brand,code):
    except (KeyError,ValueError,TypeError):continue
    address=html.unescape(str(a.get('streetAddress',''))).strip();city=html.unescape(str(a.get('addressLocality',''))).strip();postal=str(a.get('postalCode',''))
    source=urljoin(url,x.get('url') or url)
+   if not is_continental_postal(postal):continue
    if urlparse(source).hostname!=urlparse(url).hostname or not address or not city or not math.isfinite(lat) or not math.isfinite(lon) or abs(lat)>90 or abs(lon)>180:continue
    rows.append(make_store(brand,name,address,city,postal,lat,lon,source,code))
  return rows,([] if brand=='Boulanger' and rows else [urljoin(url,h) for h in page.links])
@@ -144,6 +145,7 @@ def collect_boulanger():
   try:lat=float(loc.get('lat'));lon=float(loc.get('lon'))
   except (TypeError,ValueError):errors.append('Coordonnées invalides : '+str(item.get('siteId') or item.get('label')));continue
   postal=str(a.get('postalCode') or '').strip();address=html.unescape(str(a.get('streetAddress') or '')).strip();city=html.unescape(str(a.get('addressLocality') or '')).strip()
+  if not is_continental_postal(postal):continue
   if not postal or not address or not city or not math.isfinite(lat) or not math.isfinite(lon) or abs(lat)>90 or abs(lon)>180:
    errors.append('Fiche incomplète : '+str(item.get('siteId') or item.get('label')));continue
   rows.append(make_store('Boulanger',html.unescape(str(item.get('label') or 'Boulanger')).strip(),address,city,postal,lat,lon,BOULANGER_SOURCE,site_id=item.get('siteId')))
@@ -158,10 +160,11 @@ def collect_conforama():
  with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
   for url,result in zip(links,pool.map(fetch_result,links)):
    code=region_from_conforama_url(url)
+   if not code:continue
    regional.setdefault(code,{'status':'partial','count':0,'sourceUrl':root,'checkedAt':now_iso(),'errors':[]})
    if isinstance(result,Exception):
     msg=str(result);errors.append(msg);regional[code]['errors'].append(msg);continue
-   found,_=parse(result,url,'Conforama',code or '84')
+   found,_=parse(result,url,'Conforama',code)
    if not found:
     msg='Aucune fiche exploitable : '+url;errors.append(msg);regional[code]['errors'].append(msg);continue
    rows.extend(found);regional[code]['count']+=len(found)

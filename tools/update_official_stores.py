@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import json,re,time,unicodedata
 from urllib.parse import urljoin,urlparse
-from official_directory_parsers import collect, collect_brand, dept_from_postal, region_code_from_postal, REGIONS
+from official_directory_parsers import collect, collect_brand, dept_from_postal, is_continental_postal, region_code_from_postal, REGIONS
 import requests
 from bs4 import BeautifulSoup
 
@@ -22,7 +22,7 @@ REGION={
  '16':'75','17':'75','19':'75','23':'75','24':'75','33':'75','40':'75','47':'75','64':'75','79':'75','86':'75','87':'75',
  '09':'76','11':'76','12':'76','30':'76','31':'76','32':'76','34':'76','46':'76','48':'76','65':'76','66':'76','81':'76','82':'76',
  '22':'53','29':'53','35':'53','56':'53','44':'52','49':'52','53':'52','72':'52','85':'52',
- '04':'93','05':'93','06':'93','13':'93','83':'93','84':'93','2A':'94','2B':'94'
+ '04':'93','05':'93','06':'93','13':'93','83':'93','84':'93'
 }
 UA={'User-Agent':'Chef-Secteur-SAMSUNG/1.0 (+https://github.com/REDNEWT69/Chef-Secteur)'}
 
@@ -52,6 +52,7 @@ def store_from_obj(brand,o,url):
  if brand.lower() not in norm(name) and brand not in ('Carrefour','Fnac'): return None
  street,city,pc,_=address_obj(o.get('address'))
  if len(pc)<5 or not city or not street:return None
+ if not is_continental_postal(pc):return None
  dept=dept_from_postal(pc); geo=o.get('geo') if isinstance(o.get('geo'),dict) else {}
  try: lat=float(geo.get('latitude')) if geo.get('latitude') is not None else None
  except: lat=None
@@ -100,6 +101,7 @@ def normalize_existing(rows):
  for row in rows:
   s=dict(row)
   pc=str(s.get('codePostal') or '')
+  if pc and not is_continental_postal(pc):continue
   if pc:
    s['dept']=dept_from_postal(pc)
    s['regionCode']=region_code_from_postal(pc)

@@ -27,6 +27,11 @@ class CatalogTests(unittest.TestCase):
   self.assertEqual(len(rows),1)
   self.assertEqual(rows[0]['codePostal'],'69800')
   self.assertEqual(rows[0]['regionCode'],'84')
+ def test_conforama_corse_is_not_fallback_to_auvergne_rhone_alpes(self):
+  self.assertEqual(c.region_from_conforama_url('https://www.conforama.fr/magasins-conforama/corse/bastia-754'),'')
+  html='''<script id="structured-data-organization">{"@context":"https://schema.org","@type":["FurnitureStore","HomeGoodsStore"],"@id":"https://www.conforama.fr/magasins-conforama/corse/bastia-754","url":"https://www.conforama.fr/magasins-conforama/corse/bastia-754","name":"Conforama Bastia","address":{"@type":"PostalAddress","postalCode":"20600","streetAddress":"Route de la Marana","addressLocality":"Bastia","addressCountry":"FR"},"geo":{"@type":"GeoCoordinates","latitude":42.666,"longitude":9.45}}</script>'''
+  rows,_=c.parse(html,'https://www.conforama.fr/magasins-conforama/corse/bastia-754','Conforama','')
+  self.assertEqual(rows,[])
  def test_catalog_quality_contract(self):
   data=json.loads((ROOT/'data'/'official-stores.json').read_text(encoding='utf-8'))
   stores=data['stores']
@@ -39,14 +44,17 @@ class CatalogTests(unittest.TestCase):
    seen.add(key)
    self.assertTrue(store.get('sourceUrl'),store)
    self.assertRegex(str(store.get('codePostal','')),r'^\d{5}$')
+   self.assertFalse(str(store.get('codePostal','')).startswith(('20','97','98')),store)
    self.assertEqual(store.get('dept'),c.dept_from_postal(store.get('codePostal')))
    self.assertEqual(store.get('regionCode'),c.region_code_from_postal(store.get('codePostal')))
+   self.assertNotEqual(store.get('regionCode'),'94',store)
    self.assertTrue(isinstance(store.get('lat'),(int,float)) and math.isfinite(store['lat']) and -90<=store['lat']<=90,store)
    self.assertTrue(isinstance(store.get('lon'),(int,float)) and math.isfinite(store['lon']) and -180<=store['lon']<=180,store)
   self.assertGreater(by_brand.get('Boulanger',0),0)
   self.assertGreater(by_brand.get('Conforama',0),0)
-  self.assertGreaterEqual(by_brand.get('Darty',0),398)
-  self.assertGreaterEqual(by_brand.get('Cuisinella',0),257)
+  self.assertGreaterEqual(by_brand.get('Darty',0),394)
+  self.assertGreaterEqual(by_brand.get('Cuisinella',0),250)
+  self.assertNotIn('"94"',json.dumps(data.get('sources',{})))
   self.assertIn(data['sources']['Boulanger']['status'],('partial','partial (previous records retained)'))
   self.assertIn(data['sources']['Conforama']['status'],('partial','partial (previous records retained)'))
   self.assertNotIn('complete',json.dumps(data.get('sources',{})).lower())
