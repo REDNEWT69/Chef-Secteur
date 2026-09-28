@@ -148,7 +148,7 @@ def http_get(url,accept='text/html,application/xhtml+xml,application/xml;q=0.9,*
     # Limitation de débit : on respecte Retry-After (plafonné) avant de réessayer.
     try:wait=float(e.headers.get('Retry-After') or 0)
     except ValueError:wait=0
-    time.sleep(min(60,max(wait,5*(attempt+1))));continue
+    time.sleep(min(30,max(wait,2*(attempt+1))));continue
    if e.code in (500,502,503,504) and attempt<retries:time.sleep(2+3*attempt);continue
    raise HttpError(url,e.code,antibot_vendor(e.headers,body))
   except (urllib.error.URLError,socket.timeout,TimeoutError,ConnectionError) as e:
@@ -532,8 +532,7 @@ def sirene_candidates(brand,get=None,departments=None):
     errs.append('Requête Sirene trop large pour le département '+dept+' : '+str(data.get('total_pages'))+' pages, lecture arrêtée à '+str(page));break
    page+=1
   return dept,found,errs,count
- with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-  results=list(pool.map(one_dept,departments or sorted(DEPT_REGION)))
+ results=[one_dept(d) for d in (departments or sorted(DEPT_REGION))]
  for dept,found,errs,count in results:
   errors.extend(errs);queries+=count
   for company,etab in found:
