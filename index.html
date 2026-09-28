@@ -358,7 +358,7 @@
 
       const beforePatch=html;
       html=html.replace(
-        /function usableStorage\(\)\{[\s\S]*?\}\r?\nfunction save\(\)/,
+        /function usableStorage\(\)\{[\s\S]*?\}\nfunction save\(\)/,
         "function usableStorage(){var s=window.__chefStorage||null;if(!s)return null;try{var k='__t';s.setItem(k,'1');s.removeItem(k);return s}catch(e){return null}}\nfunction save()"
       );
       if(html===beforePatch) throw new Error('Correctif de stockage non appliqué au fichier principal.');

@@ -64,7 +64,8 @@ function dateBlocked(date,state=root.state){
   return rows.some(e=>{
     if(e&&e.inferredAway)return true;
     const t=norm((e&&e.title||'')+' '+(e&&e.location||'')+' '+(e&&e.calendar||''));
-    return ['formation','deplacement','seminaire','conge','vacances','salon professionnel','indisponible','indisponibilite','absence','absent','journee bloquee','jour bloque','jour ferie','ferie','public holiday','repos','hors secteur'].some(x=>t.includes(x))||/\bparis\b/.test(t)||!!(e&&e.planningBlock&&!e.allDay);
+    const holiday=/\bferies?\b/.test(t)||/\bpublic holidays?\b/.test(t);
+    return ['formation','deplacement','seminaire','conge','vacances','salon professionnel','indisponible','indisponibilite','absence','absent','journee bloquee','jour bloque','repos','hors secteur'].some(x=>t.includes(x))||holiday||/\bparis\b/.test(t)||!!(e&&e.planningBlock&&!e.allDay);
   });
 }
 function appointmentDay(storeId,weekMonday,state=root.state){
@@ -283,11 +284,11 @@ function safeDistance(a,b,distanceFn){
    2. mouvements locaux dans une semaine ;
    3. échanges entre deux journées, y compris entre semaines ;
    4. substitutions de magasins strictement équivalents côté métier/rotation ;
-   5. quatre passes maximum, avec départage stable par date puis identifiant.
+   5. six passes maximum, avec départage stable par date puis identifiant.
 
    Une amélioration locale n'est acceptée que si minutes ET kilomètres n'augmentent pas.
    À égalité géographique, la charge en crédits départage. */
-const CROSS_DAY_MAX_PASSES=4;
+const CROSS_DAY_MAX_PASSES=6;
 const CROSS_DAY_CANDIDATE_LIMIT=160;
 const CROSS_DAY_EPSILON=.05;
 
@@ -330,10 +331,17 @@ function totalMetricsV264(slots,state,options){
   return{driveMinutes,kilometers}
 }
 function needRankV264(row){
-  const tier=Number(row&&row.tier),base=Number.isFinite(tier)?Math.max(0,tier):0;
-  /* V263.3 plafonne le tier très-en-retard à 4 : le petit bit P1 restaure uniquement le
-     départage demandé à l'intérieur de ce même statut, sans franchir le demi-palier voisin. */
-  return Math.round(base*100)+(String(row&&row.priority||'')==='P1'?1:0)
+  const tier=Number(row&&row.tier),status=String(row&&row.status||''),blocked=!!(row&&row.blocked);
+  let business=0;
+  if(!blocked&&tier>=4)business=5;
+  else if(!blocked&&status==='never')business=4;
+  else if(!blocked&&status==='late')business=3;
+  else if(!blocked&&status==='soon')business=2;
+  else if(!blocked&&status==='ok')business=1;
+  else if(!blocked&&Number.isFinite(tier)){if(tier>=3.5)business=4;else if(tier>=3)business=3;else if(tier>=2)business=2;else if(tier>0)business=1}
+  /* P1 ne vaut qu'un bit de départage dans le statut exact. Il ne peut donc jamais
+     franchir très-en-retard > jamais-visité > retard > bientôt dû > à jour. */
+  return business*100+(String(row&&row.priority||'')==='P1'?1:0)
 }
 function compareTupleV264(a,b){
   for(let i=0;i<Math.max(a.length,b.length);i++){const x=Number(a[i])||0,y=Number(b[i])||0;if(x!==y)return x>y?1:-1}
@@ -389,12 +397,51 @@ function optimizeThreeWeekCrossDay(weeks,options){
   /* V251 (ou l'évaluateur injecté par les tests) possède toujours l'ordre intra-journée. */
   for(const slot of slots){if(!slot.mutable||slot.route.length<2)continue;const row=metric(slot.route,slot);if(row.feasible)slot.route=row.route}
   const beforeSignature=slots.map(slot=>slot.weekKey+'|'+slot.day+':'+slot.route.map(storeKey).join(',')).join(';'),beforeMetrics=totals();
-  const classCache=new Map(),businessClass=store=>{const key=storeKey(store);if(!classCache.has(key))classCache.set(key,needRankV264(needAt(store,horizonEnd)));return classCache.get(key)};
-  const dateIndex=date=>Math.max(0,Math.round((parseISO(date)-first)/86400000));
-  const businessSafe=changes=>{
-    const deltas=new Map();for(const change of changes){const rank=businessClass(change.store);deltas.set(rank,(deltas.get(rank)||0)+(change.to-change.from))}
-    for(const rank of Array.from(deltas.keys()).sort((a,b)=>b-a)){const delta=deltas.get(rank);if(delta)return delta<0}
-    return true
+  let needEvaluations=0;
+  const needCache=new Map(),needOn=(store,date)=>{const key=storeKey(store)+'|'+date;if(!needCache.has(key)){needCache.set(key,needAt(store,date));needEvaluations++}return needCache.get(key)},businessAt=(store,date)=>needRankV264(needOn(store,date));
+  const projection=typeof options.projectedNeedAt==='function'?options.projectedNeedAt:null,projectionCache=new Map(),projectedBusiness=(store,visitDate)=>{
+    if(!projection)return null;const key=storeKey(store)+'|'+visitDate+'|'+horizonEnd;
+    if(!projectionCache.has(key)){projectionCache.set(key,needRankV264(projection(store,visitDate,horizonEnd)));needEvaluations++}
+    return projectionCache.get(key)
+  };
+  const planningToday=String(options.today||needAt.today||iso(first)),baselineDates=new Map(),baselineStores=new Map();
+  for(const week of (options.businessBaselineWeeks||[]))for(const day of DAYS){const date=iso(addDays(parseISO(week.weekKey),DAYS.indexOf(day)));if(date<planningToday)continue;for(const store of ((week.plan&&week.plan[day])||[])){const id=storeKey(store),rows=baselineDates.get(id)||[];rows.push(date);rows.sort();baselineDates.set(id,rows);baselineStores.set(id,store)}}
+  const baselineProjected=new Map();if(projection)for(const [id,dates] of baselineDates)baselineProjected.set(id,projectedBusiness(baselineStores.get(id),dates[dates.length-1]));
+  const projectionSafe=(store,fromDate,toDate)=>{
+    if(!projection)return true;const before=projectedBusiness(store,fromDate),after=projectedBusiness(store,toDate),target=baselineProjected.get(storeKey(store));
+    return target==null?after<=before:after<=target
+  };
+  const delayRowCache=new Map(),serviceDelay=(store,date)=>{
+    const id=storeKey(store);if(!delayRowCache.has(id))delayRowCache.set(id,needOn(store,planningToday));const row=delayRowCache.get(id),origin=parseISO(row&&row.status==='never'?(row.today||planningToday):(row&&row.nextDue||'')),visit=parseISO(date);return origin&&visit?Math.max(0,Math.round((visit-origin)/86400000)):0
+  };
+  const planningStores=new Map(ranked.map(store=>[storeKey(store),store])),hasBusinessBaseline=Array.isArray(options.businessBaselineWeeks)&&options.businessBaselineWeeks.length>0;
+  const baselineDelayLimit=hasBusinessBaseline?Array.from(planningStores.entries()).reduce((sum,[id,store])=>sum+serviceDelay(store,baselineDates.has(id)?baselineDates.get(id)[0]:horizonEnd),0):Infinity;
+  const currentScheduleDelay=()=>{const dates=new Map();for(const slot of slots){if(slot.date<planningToday)continue;for(const store of slot.route){const id=storeKey(store),previous=dates.get(id);if(!previous||slot.date<previous)dates.set(id,slot.date)}}return Array.from(planningStores.entries()).reduce((sum,[id,store])=>sum+serviceDelay(store,dates.get(id)||horizonEnd),0)};
+  const delaySafeMove=(store,fromDate,toDate)=>currentScheduleDelay()+serviceDelay(store,toDate)-serviceDelay(store,fromDate)<=baselineDelayLimit;
+  const delaySafeSwap=(one,fromOne,toOne,two,fromTwo,toTwo)=>currentScheduleDelay()+serviceDelay(one,toOne)-serviceDelay(one,fromOne)+serviceDelay(two,toTwo)-serviceDelay(two,fromTwo)<=baselineDelayLimit;
+  const moveBusinessSafe=(store,source,destination)=>{
+    const from=businessAt(store,source.date),to=businessAt(store,destination.date);
+    if(destination.date<=source.date)return projectionSafe(store,source.date,destination.date);
+    return !!projection&&from===to&&projectedBusiness(store,destination.date)<projectedBusiness(store,source.date)&&projectionSafe(store,source.date,destination.date)
+  };
+  const swapBusinessSafe=(one,a,two,b)=>{
+    let early=a,late=b,earlyStore=one,lateStore=two;
+    if(b.date<a.date){early=b;late=a;earlyStore=two;lateStore=one}
+    const atEarly=businessAt(earlyStore,early.date)-businessAt(lateStore,early.date);
+    if(!projectionSafe(earlyStore,early.date,late.date)||!projectionSafe(lateStore,late.date,early.date))return false;
+    if(atEarly>0)return false;if(atEarly<0)return true;
+    /* À égalité au premier créneau, on protège ensuite le besoin au second : la
+       géographie n'arrive qu'après égalité métier aux deux dates concernées. */
+    return businessAt(earlyStore,late.date)>=businessAt(lateStore,late.date)
+  };
+  const replacementBusinessSafe=(current,replacement,slot)=>{
+    const slotCurrent=businessAt(current,slot.date),slotReplacement=businessAt(replacement,slot.date),endCurrent=businessAt(current,horizonEnd),endReplacement=businessAt(replacement,horizonEnd);
+    /* Un remplacement n'est admissible que si le magasin retiré reste dans la classe
+       métier non due (à jour/couverte) sans cette visite, et si le candidat est strictement
+       équivalent au créneau comme à J+20. Un très-en-retard qui resterait très-en-retard
+       n'est jamais sacrifié sous prétexte que son libellé ne change pas. */
+    const removalSafe=endCurrent<=101&&(!projection||projectedBusiness(current,slot.date)<=101);
+    return slotCurrent===slotReplacement&&endCurrent===endReplacement&&removalSafe
   };
   const countPlanned=()=>{const counts=new Map();for(const slot of slots)for(const store of slot.route)counts.set(storeKey(store),(counts.get(storeKey(store))||0)+1);return counts};
   const canUse=(store,slot)=>{
@@ -402,7 +449,7 @@ function optimizeThreeWeekCrossDay(weeks,options){
     if((ld&&ld!==slot.day)||(ad&&ad!==slot.day))return false;if(imposed[id])return false;
     /* Un magasin déjà présent dans la journée (occurrence figée RDV/verrou) n'y est jamais posé une seconde fois. */
     if(slot.route.some(row=>storeKey(row)===id))return false;
-    try{return !needAt(store,slot.date).blocked}catch(e){return false}
+    try{return !needOn(store,slot.date).blocked}catch(e){return false}
   };
   const loadPenalty=rows=>rows.reduce((n,row)=>n+Math.pow(routeCreditCost(row.route,credit),2),0);
   let insertions=0,moves=0,swaps=0,replacements=0;
@@ -414,7 +461,7 @@ function optimizeThreeWeekCrossDay(weeks,options){
     for(const week of weeks){if(week.manual)continue;const count=(weekSlots.get(week.weekKey)||[]).reduce((n,slot)=>n+slot.route.length,0);if(count<target)openWeeks.add(week.weekKey)}
     if(!openWeeks.size)break;
     const candidates=ranked.filter(store=>!planned.has(storeKey(store))).map(store=>{
-      let bestRank=0;for(const slot of slots)if(openWeeks.has(slot.weekKey)&&canUse(store,slot))bestRank=Math.max(bestRank,needRankV264(needAt(store,slot.date)));
+      let bestRank=0;for(const slot of slots)if(openWeeks.has(slot.weekKey)&&canUse(store,slot))bestRank=Math.max(bestRank,businessAt(store,slot.date));
       return{store,bestRank,fresh:memory.usedKeys&&memory.usedKeys.has(storeKey(store))?0:1,useCount:memory.useCount&&memory.useCount.get(storeKey(store))||0}
     }).filter(row=>row.bestRank>0).sort((a,b)=>b.bestRank-a.bestRank||b.fresh-a.fresh||a.useCount-b.useCount||String(storeKey(a.store)).localeCompare(String(storeKey(b.store)))).slice(0,CROSS_DAY_CANDIDATE_LIMIT);
     let best=null,bestTuple=null;
@@ -437,11 +484,58 @@ function optimizeThreeWeekCrossDay(weeks,options){
       for(let index=0;index<source.route.length;index++){
         const store=source.route[index];if(fixedReason(source,store))continue;
         for(const destination of slots){if(destination===source||destination.weekKey!==source.weekKey||!canUse(store,destination))continue;
-          const fromIndex=dateIndex(source.date),toIndex=dateIndex(destination.date);if(!businessSafe([{store,from:fromIndex,to:toIndex}]))continue;
+          if(!moveBusinessSafe(store,source,destination)||!delaySafeMove(store,source.date,destination.date))continue;
           const sourceRoute=source.route.filter((_,i)=>i!==index),destinationRoute=destination.route.concat([store]);if(routeCreditCost(destinationRoute,credit)>max)continue;
           const before=[metric(source.route,source),metric(destination.route,destination)],after=[metric(sourceRoute,source),metric(destinationRoute,destination)];
           const gain=localImprovementV264(before,after,loadPenalty([source,destination]),Math.pow(after[0].credits,2)+Math.pow(after[1].credits,2));if(!gain)continue;
           const row={source,destination,sourceRoute:after[0].route,destinationRoute:after[1].route,...gain,signature:'move|'+source.date+'|'+destination.date+'|'+storeKey(store)};if(betterLocalV264(row,best))best=row
+        }
+      }
+    }
+    return best
+  }
+  function findBestDelayMove(){
+    const currentDelay=currentScheduleDelay();if(!Number.isFinite(baselineDelayLimit)||currentDelay<=baselineDelayLimit)return null;let best=null;
+    for(const source of slots){if(!source.mutable||source.route.length<=(source.initialNonEmpty?1:0))continue;
+      for(let index=0;index<source.route.length;index++){const store=source.route[index];if(fixedReason(source,store))continue;
+        for(const destination of slots){if(destination===source||destination.weekKey!==source.weekKey||destination.date>=source.date||!canUse(store,destination)||!moveBusinessSafe(store,source,destination))continue;
+          const delayDelta=serviceDelay(store,destination.date)-serviceDelay(store,source.date);if(delayDelta>=0)continue;
+          const sourceRoute=source.route.filter((_,i)=>i!==index),destinationRoute=destination.route.concat([store]);if(routeCreditCost(destinationRoute,credit)>max)continue;
+          const before=[metric(source.route,source),metric(destination.route,destination)],after=[metric(sourceRoute,source),metric(destinationRoute,destination)];if(!after.every(row=>row.feasible))continue;
+          const driveDelta=after.reduce((n,row)=>n+row.driveMinutes,0)-before.reduce((n,row)=>n+row.driveMinutes,0),kmDelta=after.reduce((n,row)=>n+row.kilometers,0)-before.reduce((n,row)=>n+row.kilometers,0),signature='delay|'+source.date+'|'+destination.date+'|'+storeKey(store),row={source,destination,sourceRoute:after[0].route,destinationRoute:after[1].route,delayDelta,driveDelta,kmDelta,signature};
+          if(!best||row.delayDelta<best.delayDelta||row.delayDelta===best.delayDelta&&(row.driveDelta<best.driveDelta-CROSS_DAY_EPSILON||Math.abs(row.driveDelta-best.driveDelta)<=CROSS_DAY_EPSILON&&(row.kmDelta<best.kmDelta-CROSS_DAY_EPSILON||Math.abs(row.kmDelta-best.kmDelta)<=CROSS_DAY_EPSILON&&row.signature<best.signature)))best=row
+        }
+      }
+    }
+    return best
+  }
+  function findBestProjectionMove(){
+    if(!projection)return null;let best=null;
+    for(const source of slots){if(!source.mutable||source.route.length<=(source.initialNonEmpty?1:0))continue;
+      for(let index=0;index<source.route.length;index++){const store=source.route[index];if(fixedReason(source,store))continue;
+        for(const destination of slots){if(destination===source||destination.weekKey!==source.weekKey||destination.date<=source.date||!canUse(store,destination)||!moveBusinessSafe(store,source,destination)||!delaySafeMove(store,source.date,destination.date))continue;
+          const beforeProjection=projectedBusiness(store,source.date),afterProjection=projectedBusiness(store,destination.date);if(afterProjection>=beforeProjection)continue;
+          const sourceRoute=source.route.filter((_,i)=>i!==index),destinationRoute=destination.route.concat([store]);if(routeCreditCost(destinationRoute,credit)>max)continue;
+          const before=[metric(source.route,source),metric(destination.route,destination)],after=[metric(sourceRoute,source),metric(destinationRoute,destination)];if(!after.every(row=>row.feasible))continue;
+          const delay=Math.round((parseISO(destination.date)-parseISO(source.date))/86400000),driveDelta=after.reduce((n,row)=>n+row.driveMinutes,0)-before.reduce((n,row)=>n+row.driveMinutes,0),kmDelta=after.reduce((n,row)=>n+row.kilometers,0)-before.reduce((n,row)=>n+row.kilometers,0),signature='project|'+source.date+'|'+destination.date+'|'+storeKey(store),row={source,destination,sourceRoute:after[0].route,destinationRoute:after[1].route,delay,afterProjection,driveDelta,kmDelta,signature};
+          if(!best||row.delay<best.delay||row.delay===best.delay&&(row.afterProjection<best.afterProjection||row.afterProjection===best.afterProjection&&(row.driveDelta<best.driveDelta-CROSS_DAY_EPSILON||Math.abs(row.driveDelta-best.driveDelta)<=CROSS_DAY_EPSILON&&(row.kmDelta<best.kmDelta-CROSS_DAY_EPSILON||Math.abs(row.kmDelta-best.kmDelta)<=CROSS_DAY_EPSILON&&row.signature<best.signature))))best=row
+        }
+      }
+    }
+    return best
+  }
+  function findBestProjectionSwap(){
+    if(!projection)return null;let best=null;
+    for(let ai=0;ai<slots.length;ai++){const a=slots[ai];if(!a.mutable)continue;
+      for(let bi=ai+1;bi<slots.length;bi++){const b=slots[bi];if(!b.mutable||a.date===b.date)continue;
+        for(let i=0;i<a.route.length;i++){const one=a.route[i];if(fixedReason(a,one)||!canUse(one,b))continue;
+          for(let j=0;j<b.route.length;j++){const two=b.route[j];if(fixedReason(b,two)||!canUse(two,a)||storeKey(one)===storeKey(two)||!swapBusinessSafe(one,a,two,b)||!delaySafeSwap(one,a.date,b.date,two,b.date,a.date))continue;
+            const beforeProjection=projectedBusiness(one,a.date)+projectedBusiness(two,b.date),afterProjection=projectedBusiness(one,b.date)+projectedBusiness(two,a.date);if(afterProjection>=beforeProjection)continue;
+            const ar=a.route.slice(),br=b.route.slice();ar[i]=two;br[j]=one;if(routeCreditCost(ar,credit)>max||routeCreditCost(br,credit)>max)continue;
+            const before=[metric(a.route,a),metric(b.route,b)],after=[metric(ar,a),metric(br,b)];if(!after.every(row=>row.feasible))continue;
+            const gap=Math.round(Math.abs(parseISO(b.date)-parseISO(a.date))/86400000),driveDelta=after.reduce((n,row)=>n+row.driveMinutes,0)-before.reduce((n,row)=>n+row.driveMinutes,0),kmDelta=after.reduce((n,row)=>n+row.kilometers,0)-before.reduce((n,row)=>n+row.kilometers,0),signature='project-swap|'+a.date+'|'+b.date+'|'+storeKey(one)+'|'+storeKey(two),row={a,b,ar:after[0].route,br:after[1].route,gap,afterProjection,driveDelta,kmDelta,signature};
+            if(!best||row.gap<best.gap||row.gap===best.gap&&(row.afterProjection<best.afterProjection||row.afterProjection===best.afterProjection&&(row.driveDelta<best.driveDelta-CROSS_DAY_EPSILON||Math.abs(row.driveDelta-best.driveDelta)<=CROSS_DAY_EPSILON&&(row.kmDelta<best.kmDelta-CROSS_DAY_EPSILON||Math.abs(row.kmDelta-best.kmDelta)<=CROSS_DAY_EPSILON&&row.signature<best.signature))))best=row
+          }
         }
       }
     }
@@ -453,7 +547,7 @@ function optimizeThreeWeekCrossDay(weeks,options){
       for(let bi=ai+1;bi<slots.length;bi++){const b=slots[bi];if(!b.mutable)continue;
         for(let i=0;i<a.route.length;i++){const one=a.route[i];if(fixedReason(a,one)||!canUse(one,b))continue;
           for(let j=0;j<b.route.length;j++){const two=b.route[j];if(fixedReason(b,two)||!canUse(two,a)||storeKey(one)===storeKey(two))continue;
-            if(!businessSafe([{store:one,from:dateIndex(a.date),to:dateIndex(b.date)},{store:two,from:dateIndex(b.date),to:dateIndex(a.date)}]))continue;
+            if(!swapBusinessSafe(one,a,two,b)||!delaySafeSwap(one,a.date,b.date,two,b.date,a.date))continue;
             const ar=a.route.slice(),br=b.route.slice();ar[i]=two;br[j]=one;if(routeCreditCost(ar,credit)>max||routeCreditCost(br,credit)>max)continue;
             const before=[metric(a.route,a),metric(b.route,b)],after=[metric(ar,a),metric(br,b)];
             const gain=localImprovementV264(before,after,loadPenalty([a,b]),Math.pow(after[0].credits,2)+Math.pow(after[1].credits,2));if(!gain)continue;
@@ -468,8 +562,8 @@ function optimizeThreeWeekCrossDay(weeks,options){
     const planned=countPlanned(),available=ranked.filter(store=>!planned.has(storeKey(store))),fresh=store=>memory.usedKeys&&memory.usedKeys.has(storeKey(store))?0:1;let best=null;
     for(const slot of slots){if(!slot.mutable)continue;
       for(let index=0;index<slot.route.length;index++){
-        const current=slot.route[index],rank=businessClass(current);if(fixedReason(slot,current)||rank>=350)continue;
-        const pool=available.filter(store=>businessClass(store)===rank&&fresh(store)===fresh(current)&&canUse(store,slot)).slice(0,CROSS_DAY_CANDIDATE_LIMIT);
+        const current=slot.route[index];if(fixedReason(slot,current))continue;
+        const pool=available.filter(store=>fresh(store)===fresh(current)&&canUse(store,slot)&&replacementBusinessSafe(current,store,slot)).slice(0,CROSS_DAY_CANDIDATE_LIMIT);
         for(const replacement of pool){const trial=slot.route.slice();trial[index]=replacement;if(routeCreditCost(trial,credit)>max)continue;
           const before=[metric(slot.route,slot)],after=[metric(trial,slot)];
           const gain=localImprovementV264(before,after,Math.pow(before[0].credits,2),Math.pow(after[0].credits,2));if(!gain)continue;
@@ -481,14 +575,27 @@ function optimizeThreeWeekCrossDay(weeks,options){
   }
   let iterations=0;
   for(;iterations<CROSS_DAY_MAX_PASSES;iterations++){
-    let changed=false,move=findBestMove();if(move){move.source.route=move.sourceRoute;move.destination.route=move.destinationRoute;moves++;changed=true}
+    let changed=false,delayMove=findBestDelayMove();if(delayMove){delayMove.source.route=delayMove.sourceRoute;delayMove.destination.route=delayMove.destinationRoute;moves++;changed=true}
+    const projectionMove=findBestProjectionMove();if(projectionMove){projectionMove.source.route=projectionMove.sourceRoute;projectionMove.destination.route=projectionMove.destinationRoute;moves++;changed=true}
+    const projectionSwap=findBestProjectionSwap();if(projectionSwap){projectionSwap.a.route=projectionSwap.ar;projectionSwap.b.route=projectionSwap.br;swaps++;changed=true}
+    const move=findBestMove();if(move){move.source.route=move.sourceRoute;move.destination.route=move.destinationRoute;moves++;changed=true}
     const swap=findBestSwap();if(swap){swap.a.route=swap.ar;swap.b.route=swap.br;swaps++;changed=true}
     const replacement=findBestReplacement();if(replacement){replacement.slot.route=replacement.route;replacements++;changed=true}
     if(!changed){iterations++;break}
   }
   for(const slot of slots)slot.week.plan[slot.day]=slot.route.slice();
   const afterMetrics=totals(),afterSignature=slots.map(slot=>slot.weekKey+'|'+slot.day+':'+slot.route.map(storeKey).join(',')).join(';');
-  return{applied:true,owner:'terrain-planning-v1.js',algorithm:'bounded-greedy-local-search',changed:beforeSignature!==afterSignature,insertions,moves,swaps,replacements,iterations,evaluations,fixedDays:slots.filter(slot=>!!slot.hardReason).length,fixedVisits:slots.reduce((n,slot)=>n+slot.route.filter(store=>!!fixedReason(slot,store)).length,0),refused:refusal,bounds:{maxPasses:CROSS_DAY_MAX_PASSES,candidateLimit:CROSS_DAY_CANDIDATE_LIMIT},before:{driveMinutes:beforeMetrics.driveMinutes,kilometers:beforeMetrics.kilometers},after:{driveMinutes:afterMetrics.driveMinutes,kilometers:afterMetrics.kilometers}}
+  return{applied:true,owner:'terrain-planning-v1.js',algorithm:'bounded-greedy-local-search',changed:beforeSignature!==afterSignature,insertions,moves,swaps,replacements,iterations,evaluations,needEvaluations,businessBaselineDelay:Number.isFinite(baselineDelayLimit)?baselineDelayLimit:null,businessFinalDelay:currentScheduleDelay(),fixedDays:slots.filter(slot=>!!slot.hardReason).length,fixedVisits:slots.reduce((n,slot)=>n+slot.route.filter(store=>!!fixedReason(slot,store)).length,0),refused:refusal,bounds:{maxPasses:CROSS_DAY_MAX_PASSES,candidateLimit:CROSS_DAY_CANDIDATE_LIMIT},before:{driveMinutes:beforeMetrics.driveMinutes,kilometers:beforeMetrics.kilometers},after:{driveMinutes:afterMetrics.driveMinutes,kilometers:afterMetrics.kilometers}}
+}
+function prepareCrossDayAllocationV264(weeks,state,days,reservations){
+  const geography=root.StoreRunnerGeographyV185;if(!geography||typeof geography.rebalance!=='function')return false;
+  const overnight=new Set();for(const row of Object.values(reservations||{})){if(row&&row.fromDate)overnight.add(String(row.fromDate));if(row&&row.toDate)overnight.add(String(row.toDate))}
+  const reference=(weeks||[]).map(week=>Object.assign({},week,{plan:copy(week.plan),frozenDays:(week.frozenDays||[]).slice()}));let prepared=false;
+  for(let index=0;index<(weeks||[]).length;index++){const week=weeks[index],baseline=reference[index];if(!week||week.manual)continue;const mon=parseISO(week.weekKey),frozen=new Set(week.frozenDays||[]);
+    for(const day of DAYS)if(overnight.has(iso(addDays(mon,DAYS.indexOf(day)))))frozen.add(day);
+    try{const historical=geography.rebalance(baseline.plan,{weekKey:week.weekKey,days,preferNearFirst:true,frozenDays:Array.from(frozen),preserveImposed:false});if(historical&&historical.ok){baseline.plan=historical.plan;week.plan=copy(historical.plan);prepared=true}}catch(e){}
+  }
+  return{prepared,businessBaselineWeeks:reference}
 }
 function overnightForPlan(plan,state=root.state,distanceFn){
   const profile=state&&state.profile||{},mode=profile.overnightMode||'auto',threshold=Math.max(0,Number(profile.overnightMinSaving)||80),days=((state&&state.settings&&state.settings.days)||DAYS.slice(0,5)).filter(d=>DAYS.includes(d));
@@ -651,7 +758,10 @@ function buildThreeWeekSnail(options){
     }
     const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked:candidates,used,weekPlaced,credit,fits,frozenDays,recentlyVisited:skippedThisWeek});weeks.push({weekKey,plan,manual:false,unplaced,diagnostics,frozenDays});
   }
-  const crossDay=optimizeThreeWeekCrossDay(weeks,Object.assign({},options,{state,days,target,maxCreditsPerDay:max,ranked,memory,needAt,completedOn,creditOf:credit,lockDayForWeek:lockFor,appointmentDay:apptFor,dayFits:fits,dayBlocked:blocked,overnightReservations:options.overnightReservations||state&&state.hotelReservations||{}}));
+  const projectedNeedAt=needOf&&typeof needOf.projectedAfterVisit==='function'?(store,visitDate,ref)=>needOf.projectedAfterVisit(store,visitDate,ref):null;
+  const reservations=options.overnightReservations||state&&state.hotelReservations||{};
+  let preparation=null;if(options.crossDayEnabled!==false){const prepare=typeof options.prepareCrossDayWeeks==='function'?options.prepareCrossDayWeeks:(rows=>prepareCrossDayAllocationV264(rows,state,days,reservations));try{preparation=prepare(weeks)||null}catch(e){preparation=null}}
+  const crossDay=optimizeThreeWeekCrossDay(weeks,Object.assign({},options,{state,days,target,maxCreditsPerDay:max,ranked,memory,needAt,projectedNeedAt,businessBaselineWeeks:preparation&&preparation.businessBaselineWeeks||null,completedOn,creditOf:credit,lockDayForWeek:lockFor,appointmentDay:apptFor,dayFits:fits,dayBlocked:blocked,overnightReservations:reservations}));
   const finalUsed=new Set(weeks.flatMap(w=>flattenPlan(w.plan).map(storeKey)));
   for(const week of weeks){
     const mon=parseISO(week.weekKey),frozenDays=week.frozenDays||[],frozenSet=new Set(frozenDays),activeDays=days.filter(day=>!frozenSet.has(day)&&!blocked(iso(addDays(mon,DAYS.indexOf(day))))),weekPlaced=new Set(flattenPlan(week.plan).map(storeKey));
@@ -889,6 +999,6 @@ function installStartButton(){
 }
 function install(){installThreeWeekReport();installStartButton()}
 function boot(){install();root.document&&root.document.addEventListener('store-runner:planning-updated',()=>{install();renderStoredInsights()});root.document&&root.document.addEventListener('store-runner:data-restored',()=>{install();renderStoredInsights()})}
-const api={coverageSummaryText,needOrdered,rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,optimizeThreeWeekCrossDay,evaluateDayRouteV264,completeProtectedWeek,rotationWindowWeeks,rotationMemory,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits,overnightForPlan,analyzeOvernightWeeks,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={coverageSummaryText,needOrdered,rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,optimizeThreeWeekCrossDay,evaluateDayRouteV264,completeProtectedWeek,rotationWindowWeeks,rotationMemory,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits,dateBlocked,overnightForPlan,analyzeOvernightWeeks,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()}
 })(typeof window!=='undefined'?window:globalThis);

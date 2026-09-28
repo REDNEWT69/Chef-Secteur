@@ -7,7 +7,8 @@ const { performance } = require('perf_hooks');
 const ROOT = path.join(__dirname, '..');
 const FIXTURE_PATH = path.join(__dirname, 'fixtures', 'cross-day-planning-v264.json');
 const FIXTURE = JSON.parse(fs.readFileSync(FIXTURE_PATH, 'utf8'));
-const terrain = require('../terrain-planning-v1.js');
+const TERRAIN_PATH = process.env.CROSS_DAY_ENGINE_PATH ? path.resolve(process.env.CROSS_DAY_ENGINE_PATH) : path.join(ROOT, 'terrain-planning-v1.js');
+const terrain = require(TERRAIN_PATH);
 const coverage = require('../visit-coverage.js');
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
@@ -15,6 +16,7 @@ const DAY_MS = 86400000;
 const STATUS_SEQUENCE = ['never', 'late', 'soon', 'ok', 'blocked', 'veryLate'];
 const INTERVALS = [7, 15, 30, 90];
 const BRANDS = ['Fnac', 'Carrefour', 'Darty', 'Boulanger', 'Auchan', 'But'];
+const PRIORITY_CASE = ((process.argv.find(value => value.startsWith('--priority-case=')) || '').split('=')[1] || '');
 
 function pad(value) { return String(value).padStart(2, '0'); }
 function parseIso(value) {
@@ -287,7 +289,8 @@ function nearestRoute(route) {
   return out;
 }
 
-function applyLegacyGeography(fixture, built, evaluateDay) {
+function applyLegacyGeography(fixture, built, evaluateDay, options) {
+  options = options || {};
   const source = fs.readFileSync(path.join(ROOT, 'v182-fixes.js'), 'utf8');
   const document = {
     readyState: 'loading', hidden: false,
@@ -323,9 +326,14 @@ function applyLegacyGeography(fixture, built, evaluateDay) {
   assert.ok(api && typeof api.rebalance === 'function', 'la baseline doit charger la géographie V185 réelle');
   for (const week of built.weeks) {
     if (week.manual) continue;
-    const result = api.rebalance(week.plan, { weekKey: week.weekKey, preferNearFirst: true, frozenDays: week.frozenDays });
+    const frozenDays = (week.frozenDays || []).slice();
+    if (options.freezeOvernight) for (const reservation of fixture.config.hotelReservations) for (const date of [reservation.fromDate, reservation.toDate]) {
+      if (weekKeyOf(date) === week.weekKey) frozenDays.push(DAYS[(parseIso(date).getDay() || 7) - 1]);
+    }
+    const result = api.rebalance(week.plan, { weekKey: week.weekKey, preferNearFirst: true, frozenDays: Array.from(new Set(frozenDays)), preserveImposed: options.preserveImposed !== false });
     if (result.ok) week.plan = result.plan;
   }
+  return api;
 }
 
 function canonicalizeRoutes(built, evaluateDay) {
@@ -456,6 +464,9 @@ function measure(fixture, built, evaluateDay, cpuMs) {
       replacements: built.crossDay.replacements || 0,
       iterations: built.crossDay.iterations || 0,
       evaluations: built.crossDay.evaluations || 0,
+      needEvaluations: built.crossDay.needEvaluations || 0,
+      businessBaselineDelay: built.crossDay.businessBaselineDelay,
+      businessFinalDelay: built.crossDay.businessFinalDelay,
       fixedDays: built.crossDay.fixedDays || 0,
       fixedVisits: built.crossDay.fixedVisits || 0,
       refused: built.crossDay.refused || {}
@@ -464,7 +475,8 @@ function measure(fixture, built, evaluateDay, cpuMs) {
   };
 }
 
-function runScenario(config) {
+function runScenario(config, runOptions) {
+  runOptions = runOptions || {};
   const fixture = buildScenario(config);
   const evaluateDay = createDayEvaluator(fixture);
   const options = {
@@ -488,17 +500,159 @@ function runScenario(config) {
     dayFits: (route, day, monday) => evaluateDay(route, day, iso(monday)).feasible,
     evaluateDayRoute: (route, day, weekKey) => evaluateDay(route, day, weekKey),
     needOf: fixture.needOf,
-    overnightReservations: fixture.state.hotelReservations
+    overnightReservations: fixture.state.hotelReservations,
+    crossDayEnabled: runOptions.crossDayEnabled,
+    prepareCrossDayWeeks: weeks => {
+      const reference = weeks.map(week => ({ ...week, plan: clone(week.plan), frozenDays: (week.frozenDays || []).slice() }));
+      applyLegacyGeography(fixture, { weeks: reference }, evaluateDay, { freezeOvernight: true, preserveImposed: false });
+      for (let index = 0; index < weeks.length; index++) weeks[index].plan = clone(reference[index].plan);
+      return { businessBaselineWeeks: reference };
+    }
   };
   const start = performance.now();
   const built = terrain.buildThreeWeekSnail(options);
-  if (!(built.crossDay && built.crossDay.applied)) applyLegacyGeography(fixture, built, evaluateDay);
-  canonicalizeRoutes(built, evaluateDay);
+  if (!(built.crossDay && built.crossDay.applied) && runOptions.applyLegacy !== false) applyLegacyGeography(fixture, built, evaluateDay);
+  if (runOptions.canonicalize !== false) canonicalizeRoutes(built, evaluateDay);
   const cpuMs = performance.now() - start;
   return { fixture, built, metrics: measure(fixture, built, evaluateDay, cpuMs) };
 }
 
-const results = FIXTURE.scenarios.map(runScenario);
+function inflatePlan(fixture, plan) {
+  const byId = new Map(fixture.stores.map(store => [String(store.id), store]));
+  return Object.fromEntries(DAYS.map(day => [day, ((plan && plan[day]) || []).map(raw => byId.get(String(raw && raw.id || raw))).filter(Boolean)]));
+}
+
+function forecastPlan(fixture, planByWeek) {
+  const state = clone(fixture.state);
+  state.settings.weekDate = FIXTURE.firstMonday;
+  state.plan = inflatePlan(fixture, planByWeek[FIXTURE.firstMonday]);
+  const archive = {};
+  for (const [weekKey, plan] of Object.entries(planByWeek)) archive[weekKey] = { weekMonday: weekKey, plan: inflatePlan(fixture, plan) };
+  const planningDiagnostics = Object.keys(planByWeek).sort().map(weekKey => ({
+    weekKey,
+    days: DAYS.map(day => {
+      const date = dateFor(weekKey, day);
+      return { date, day, status: isBlockedDate(fixture, date) ? 'blocked' : (((planByWeek[weekKey] && planByWeek[weekKey][day]) || []).length ? 'planned' : 'empty') };
+    })
+  }));
+  return coverage.forecastThreeWeeks(state, {
+    today: FIXTURE.today,
+    firstMonday: FIXTURE.firstMonday,
+    archive,
+    range: { start: FIXTURE.firstMonday, workDays: fixture.config.days, planningDiagnostics, coverage: { needAware: true, uncoveredLate: [], uncoveredNever: [], recentlyVisited: [] } },
+    workDays: fixture.config.days,
+    visitDays: fixture.visitDays,
+    priorities: fixture.priorities,
+    dayBlocked: date => isBlockedDate(fixture, date),
+    lockDayForWeek: (id, weekKey) => lockDay(fixture, id, weekKey)
+  });
+}
+
+function oracleNeedRank(row) {
+  const tier = Number(row && row.tier), status = String(row && row.status || ''), blocked = !!(row && row.blocked);
+  let rank = 0;
+  if (!blocked && tier >= 4) rank = 5;
+  else if (!blocked && status === 'never') rank = 4;
+  else if (!blocked && status === 'late') rank = 3;
+  else if (!blocked && status === 'soon') rank = 2;
+  else if (!blocked && status === 'ok') rank = 1;
+  return rank * 100 + (String(row && row.priority || '') === 'P1' ? 1 : 0);
+}
+
+function projectedRank(row) {
+  return oracleNeedRank({ status: row.projectedStatus, tier: row.projectedTier, priority: row.priority, blocked: row.projectedTier === 0 });
+}
+
+function cumulativeOverdueDays(forecast) {
+  return forecast.rows.reduce((total, row) => {
+    if (row.status === 'never') return total + (row.plannedDate ? Math.max(0, dateDiff(forecast.today, row.plannedDate)) : dateDiff(forecast.today, forecast.end) + 1);
+    if (!row.dueDate) return total;
+    return total + Math.max(0, dateDiff(row.dueDate, row.plannedDate || forecast.end));
+  }, 0);
+}
+
+function planOccurrences(planByWeek, id) {
+  const rows = [];
+  for (const weekKey of Object.keys(planByWeek).sort()) for (const day of DAYS) {
+    const date = dateFor(weekKey, day);
+    ((planByWeek[weekKey] && planByWeek[weekKey][day]) || []).forEach(storeId => {
+      if (String(storeId) === String(id)) rows.push({ weekKey, day, date });
+    });
+  }
+  return rows;
+}
+
+function routeIdsOn(planByWeek, date) {
+  const weekKey = weekKeyOf(date), day = DAYS[(parseIso(date).getDay() || 7) - 1];
+  return ((planByWeek[weekKey] && planByWeek[weekKey][day]) || []).slice();
+}
+
+function assertHardConstraintIdentity(result) {
+  const config = result.fixture.config;
+  const before = runScenario(config, { crossDayEnabled: false, applyLegacy: false, canonicalize: false }).metrics.plan;
+  const after = result.metrics.plan;
+  const samePlacement = (id, label) => assert.deepEqual(planOccurrences(after, id), planOccurrences(before, id), config.id + ' : identité avant/après altérée pour ' + label + ' ' + id);
+
+  if (config.manualWeek) assert.deepEqual(after[config.manualWeek.week], before[config.manualWeek.week], config.id + ' : identité complète de la semaine manuelle altérée');
+  for (const day of DAYS) {
+    const date = dateFor(FIXTURE.firstMonday, day);
+    if (date < FIXTURE.today) assert.deepEqual(routeIdsOn(after, date), routeIdsOn(before, date), config.id + ' : identité complète du jour passé ' + date + ' altérée');
+  }
+  for (const row of config.appointments) samePlacement(row.storeId, 'rendez-vous');
+  for (const row of config.locks) samePlacement(row.storeId, 'verrou');
+  for (const id of config.included) assert.deepEqual(planOccurrences(after, id), planOccurrences(config.baseline.plan, id), config.id + ' : identité complète du magasin imposé ' + id + ' altérée après la construction initiale');
+  for (const row of config.pastVisits) samePlacement(row.storeId, 'visite réalisée');
+  for (const reservation of config.hotelReservations) for (const date of [reservation.fromDate, reservation.toDate]) {
+    if (date >= FIXTURE.firstMonday && date <= iso(addDays(parseIso(FIXTURE.firstMonday), 20))) assert.deepEqual(routeIdsOn(after, date).sort(), routeIdsOn(before, date).sort(), config.id + ' : affectation complète du découché ' + date + ' altérée');
+  }
+  for (const blocked of config.blockedDates) {
+    assert.ok(blocked.date >= FIXTURE.firstMonday && blocked.date <= iso(addDays(parseIso(FIXTURE.firstMonday), 20)), config.id + ' : le jour bloqué de fixture doit être dans l’horizon : ' + blocked.date);
+    assert.deepEqual(routeIdsOn(after, blocked.date), routeIdsOn(before, blocked.date), config.id + ' : identité complète du jour indisponible/férié ' + blocked.date + ' altérée');
+  }
+}
+
+function assertForecastOracle(result) {
+  const fixture = result.fixture, baseline = forecastPlan(fixture, fixture.config.baseline.plan), current = forecastPlan(fixture, result.metrics.plan);
+  assert.ok(current.counts.projected.late <= baseline.counts.projected.late, fixture.config.id + ' : forecast avec un magasin late supplémentaire (' + baseline.counts.projected.late + ' → ' + current.counts.projected.late + ')');
+  assert.ok(current.counts.projected.never <= baseline.counts.projected.never, fixture.config.id + ' : forecast avec un magasin never supplémentaire');
+  const baselineRows = new Map(baseline.rows.map(row => [row.id, row]));
+  for (const row of current.rows) {
+    const previous = baselineRows.get(row.id);
+    assert.ok(previous && projectedRank(row) <= projectedRank(previous), fixture.config.id + ' : statut forecast individuel dégradé pour ' + row.id + ' (' + previous.projectedStatus + ' → ' + row.projectedStatus + ')');
+  }
+  const baselineDelay = cumulativeOverdueDays(baseline), currentDelay = cumulativeOverdueDays(current);
+  assert.ok(currentDelay <= baselineDelay, fixture.config.id + ' : retard cumulé forecast aggravé (' + baselineDelay + ' → ' + currentDelay + ')');
+
+  /* À chaque coupure de date, la liste triée des besoins déjà servis par V264 doit être
+     lexicographiquement au moins aussi prioritaire que celle de la baseline. */
+  const dates = Array.from(new Set(baseline.availableWorkDates.concat(current.availableWorkDates))).sort();
+  const stores = new Map(fixture.stores.map(store => [String(store.id), store]));
+  const servedRanks = (plan, cutoff) => {
+    const ids = [];
+    for (const [weekKey, weekPlan] of Object.entries(plan)) for (const day of DAYS) {
+      const date = dateFor(weekKey, day);
+      if (date > cutoff || date < FIXTURE.today) continue;
+      for (const id of (weekPlan[day] || [])) if (stores.has(String(id))) ids.push(String(id));
+    }
+    return ids.map(id => oracleNeedRank(fixture.needOf(stores.get(id), cutoff))).sort((a, b) => b - a);
+  };
+  for (const date of dates) {
+    const beforeRanks = servedRanks(fixture.config.baseline.plan, date), afterRanks = servedRanks(result.metrics.plan, date);
+    const count = Math.max(beforeRanks.length, afterRanks.length);
+    for (let index = 0; index < count; index++) {
+      const beforeRank = beforeRanks[index] || 0, afterRank = afterRanks[index] || 0;
+      if (afterRank === beforeRank) continue;
+      assert.ok(afterRank > beforeRank, fixture.config.id + ' : un besoin plus urgent est repoussé avant le ' + date);
+      break;
+    }
+  }
+  result.forecast = {
+    baseline: { late: baseline.counts.projected.late, never: baseline.counts.projected.never, overdueDays: baselineDelay },
+    current: { late: current.counts.projected.late, never: current.counts.projected.never, overdueDays: currentDelay }
+  };
+}
+
+const results = PRIORITY_CASE ? [] : FIXTURE.scenarios.map(runScenario);
 
 if (process.argv.includes('--capture')) {
   console.log(JSON.stringify(Object.fromEntries(results.map(row => [row.fixture.config.id, row.metrics])), null, 2));
@@ -509,6 +663,8 @@ for (const result of results) {
   const { config } = result.fixture;
   const baseline = config.baseline;
   assert.ok(baseline && baseline.signature, config.id + ' : baseline manquante');
+  assertHardConstraintIdentity(result);
+  assertForecastOracle(result);
   assert.equal(result.metrics.violations, 0, config.id + ' : aucune contrainte dure ne peut être violée\n' + result.metrics.violationDetails.join('\n'));
   assert.ok(result.metrics.coveredStores >= baseline.coveredStores, config.id + ' : couverture totale en régression');
   assert.ok(result.metrics.dueCovered >= baseline.dueCovered, config.id + ' : couverture des magasins dus en régression');
@@ -601,7 +757,7 @@ function runSelectionCase(candidates, needs) {
 /* Un magasin posé librement en semaine 1 et contraint (verrou ou rendez-vous) le lundi de
    la semaine 2 : un échange inter-semaines ne doit jamais l'ajouter une seconde fois dans
    la journée contrainte. */
-(function constrainedStoreNeverDuplicatedInItsDay() {
+if (!PRIORITY_CASE) (function constrainedStoreNeverDuplicatedInItsDay() {
   for (const kind of ['lock', 'appointment']) {
     const A = { id: 'A', x: 100 }, X = { id: 'X', x: 101 }, L = { id: 'L', x: -100 }, B = { id: 'B', x: -101 };
     const weeks = [
@@ -633,6 +789,108 @@ function runSelectionCase(candidates, needs) {
   }
 })();
 
+function rangeEvaluator(route) {
+  const ordered = route.slice().sort((a, b) => Number(a.x) - Number(b.x) || String(a.id).localeCompare(String(b.id)));
+  const distance = ordered.length < 2 ? 0 : Number(ordered[ordered.length - 1].x) - Number(ordered[0].x);
+  return { route: ordered, feasible: true, kilometers: distance, driveMinutes: distance, credits: route.length };
+}
+
+function runPriorityGuardCase(options) {
+  const report = terrain.optimizeThreeWeekCrossDay(options.weeks, {
+    state: { included: options.included || {}, hotelReservations: {} },
+    days: ['Lundi'], target: 2, maxCreditsPerDay: 4,
+    ranked: options.ranked, memory: { usedKeys: new Set(), useCount: new Map() },
+    needAt: options.needAt, creditOf: () => 1,
+    lockDayForWeek: () => '', appointmentDay: () => '', completedOn: () => false,
+    dayBlocked: () => false, dayFits: () => true, evaluateDayRoute: rangeEvaluator,
+    distanceBetween: (a, b) => Math.abs(Number(a.x) - Number(b.x)), overnightReservations: {}
+  });
+  return report;
+}
+
+/* Régression Claude : à J+20 les deux magasins deviennent très en retard, mais le
+   magasin déjà très en retard aujourd'hui ne peut pas être repoussé de deux semaines
+   au profit d'un magasin seulement en retard à la date du premier créneau. */
+if (PRIORITY_CASE !== 'replacement') (function interWeekSwapUsesActualDates() {
+  const west = { id: 'west-anchor', x: -100 }, urgent = { id: 'urgent-now', x: 100 };
+  const east = { id: 'east-anchor', x: 100 }, later = { id: 'less-urgent-now', x: -100 };
+  const weeks = [
+    { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [west, urgent] }), manual: false, frozenDays: [] },
+    { weekKey: '2026-10-05', plan: emptyPlan(), manual: true, frozenDays: [] },
+    { weekKey: '2026-10-12', plan: Object.assign(emptyPlan(), { Lundi: [east, later] }), manual: false, frozenDays: [] }
+  ];
+  const report = runPriorityGuardCase({
+    weeks, ranked: [west, urgent, east, later], included: { 'west-anchor': true, 'east-anchor': true },
+    needAt(store, date) {
+      if (store.id === 'urgent-now') return { status: 'late', tier: 4, priority: '', blocked: false };
+      if (store.id === 'less-urgent-now') return date >= '2026-10-12'
+        ? { status: 'late', tier: 4, priority: '', blocked: false }
+        : { status: 'late', tier: 3, priority: '', blocked: false };
+      return { status: 'ok', tier: 1, priority: '', blocked: false };
+    }
+  });
+  assert.ok(weeks[0].plan.Lundi.some(store => store.id === 'urgent-now'), 'swap inter-semaines : le très-en-retard doit rester au premier créneau');
+  assert.ok(weeks[2].plan.Lundi.some(store => store.id === 'less-urgent-now'), 'swap inter-semaines : le moins urgent ne doit pas prendre le premier créneau');
+  assert.equal(report.swaps, 0, 'swap inter-semaines : la géographie ne peut pas écraser la priorité à la date réelle');
+})();
+
+/* Régression Claude : deux magasins égaux en fin d'horizon ne sont pas des
+   remplacements équivalents si l'un est en retard et l'autre seulement bientôt dû
+   à la date du créneau. */
+if (PRIORITY_CASE !== 'swap') (function replacementUsesSlotAndHorizonNeed() {
+  const anchor = { id: 'replacement-anchor', x: 100 };
+  const current = { id: 'late-current', x: -100 };
+  const candidate = { id: 'soon-candidate', x: 100 };
+  const weeks = [
+    { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [anchor, current] }), manual: false, frozenDays: [] },
+    { weekKey: '2026-10-05', plan: emptyPlan(), manual: true, frozenDays: [] },
+    { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+  ];
+  const report = runPriorityGuardCase({
+    weeks, ranked: [anchor, current, candidate], included: { 'replacement-anchor': true },
+    needAt(store, date) {
+      if (store.id === 'late-current') return { status: 'late', tier: 3, priority: '', blocked: false };
+      if (store.id === 'soon-candidate') return date >= '2026-10-12'
+        ? { status: 'late', tier: 3, priority: '', blocked: false }
+        : { status: 'soon', tier: 2, priority: '', blocked: false };
+      return { status: 'ok', tier: 1, priority: '', blocked: false };
+    }
+  });
+  assert.ok(weeks[0].plan.Lundi.some(store => store.id === 'late-current'), 'replacement : le magasin en retard ne peut pas être retiré pour un bientôt dû');
+  assert.ok(!weeks[0].plan.Lundi.some(store => store.id === 'soon-candidate'), 'replacement : le candidat non équivalent ne doit pas gagner sur les kilomètres');
+  assert.equal(report.replacements, 0, "replacement : l'équivalence en fin d'horizon seule est insuffisante");
+})();
+
+/* Le voisinage replacement reste réellement exercé quand les besoins sont égaux
+   à la date du créneau et à la fin de l'horizon. */
+if (!PRIORITY_CASE) (function equivalentReplacementIsExercised() {
+  const anchor = { id: 'safe-anchor', x: 100 };
+  const current = { id: 'safe-current', x: -100 };
+  const candidate = { id: 'safe-candidate', x: 100 };
+  const weeks = [
+    { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [anchor, current] }), manual: false, frozenDays: [] },
+    { weekKey: '2026-10-05', plan: emptyPlan(), manual: true, frozenDays: [] },
+    { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+  ];
+  const report = runPriorityGuardCase({
+    weeks, ranked: [anchor, current, candidate], included: { 'safe-anchor': true },
+    needAt: () => ({ status: 'ok', tier: 1, priority: '', blocked: false })
+  });
+  assert.ok(!weeks[0].plan.Lundi.some(store => store.id === 'safe-current'), 'replacement équivalent : le magasin géographiquement incohérent doit pouvoir sortir');
+  assert.ok(weeks[0].plan.Lundi.some(store => store.id === 'safe-candidate'), 'replacement équivalent : le candidat cohérent doit pouvoir entrer');
+  assert.equal(report.replacements, 1, 'replacement équivalent : le voisinage replacement doit être effectivement exercé');
+})();
+
+if (!PRIORITY_CASE) (function holidayWordMustBeExact() {
+  const eventState = title => ({ calendarEvents: [{ date: '2026-10-01', title, allDay: true }] });
+  assert.equal(terrain.dateBlocked('2026-10-01', eventState('Jour férié')), true, 'le mot férié doit bloquer la journée');
+  assert.equal(terrain.dateBlocked('2026-10-01', eventState('Jours fériés régionaux')), true, 'le pluriel fériés doit bloquer la journée');
+  assert.equal(terrain.dateBlocked('2026-10-01', eventState('Rendez-vous avec Fériel')), false, 'un nom contenant la sous-chaîne ferie ne doit pas bloquer la journée');
+  const fixture = buildScenario(FIXTURE.scenarios[0]), legacy = applyLegacyGeography(fixture, { weeks: [] }, createDayEvaluator(fixture));
+  assert.equal(legacy.eventBlocksPlanning({ title: 'Jour férié', allDay: true }), true, 'V185 doit reconnaître le mot férié');
+  assert.equal(legacy.eventBlocksPlanning({ title: 'Rendez-vous avec Fériel', allDay: true }), false, 'V185 ne doit pas bloquer le faux positif Fériel');
+})();
+
 console.log('=== V264 benchmark allocation cross-day ===');
 console.table(results.map(result => {
   const baseline = result.fixture.config.baseline;
@@ -648,7 +906,9 @@ console.table(results.map(result => {
     load: current.minDayCredits + '-' + current.maxDayCredits,
     violations: current.violations,
     cpuMs: current.cpuMs,
+    evaluations: current.crossDay ? current.crossDay.evaluations + '+' + current.crossDay.needEvaluations : 'legacy',
     search: current.crossDay ? [current.crossDay.insertions, current.crossDay.moves, current.crossDay.swaps, current.crossDay.replacements].join('/') : 'legacy',
+    forecast: result.forecast ? [result.forecast.current.late, result.forecast.current.never, result.forecast.current.overdueDays].join('/') + ' ≤ ' + [result.forecast.baseline.late, result.forecast.baseline.never, result.forecast.baseline.overdueDays].join('/') : '',
     signature: current.signature
   };
 }));

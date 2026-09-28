@@ -81,8 +81,9 @@ function dayFitsV185(route,day,mon){
 function eventBlocksPlanningV185(e){
   if(!e)return false;if(e.inferredAway)return true;
   let text='';try{text=String((e.title||'')+' '+(e.location||'')+' '+(e.calendar||'')).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}catch(x){}
-  const hard=['formation','deplacement','seminaire','conge','vacances','salon professionnel','indisponible','indisponibilite','absence','absent','journee bloquee','jour bloque','jour ferie','ferie','public holiday','repos','hors secteur'];
-  return hard.some(x=>text.includes(x))||/\bparis\b/.test(text)||!!(e.planningBlock&&!e.allDay)
+  const hard=['formation','deplacement','seminaire','conge','vacances','salon professionnel','indisponible','indisponibilite','absence','absent','journee bloquee','jour bloque','repos','hors secteur'];
+  const holiday=/\bferies?\b/.test(text)||/\bpublic holidays?\b/.test(text);
+  return hard.some(x=>text.includes(x))||holiday||/\bparis\b/.test(text)||!!(e.planningBlock&&!e.allDay)
 }
 function dayBlockedV185(date){
   try{if(typeof window.calendarEventsForDate==='function')return (window.calendarEventsForDate(date)||[]).some(eventBlocksPlanningV185)}catch(e){}
@@ -115,6 +116,7 @@ function candidateScoreV185(plan,day,store,trial,workDays){
 }
 function rebalancePlanByGeography(plan,options){
   options=options||{};if(!window.state||!plan)return{ok:false,plan:plan||{},changed:false,reason:'no-state'};
+  const preserveImposed=options.preserveImposed!==false;
   const workDays=(options.days||selectedWorkDays()).filter(d=>DAYS.includes(d)),weekKey=String(options.weekKey||currentWeekKey()),mon=parse(weekKey)||monday(parse((state.settings&&state.settings.weekDate)||'')||new Date()),max=Math.max(1,Math.min(8,Number(state.settings&&state.settings.maxVisitsPerDay)||4));
   if(!workDays.length||!homePoint())return{ok:false,plan,changed:false,reason:'no-days-or-base'};
   /* V263 : `frozenDays` (journées déjà passées d'une semaine entamée, posées par le cycle
@@ -129,7 +131,7 @@ function rebalancePlanByGeography(plan,options){
   const openDays=new Map(),mayGo=(store,day)=>{const id=String(store&&store.id||'');if(!openDays.has(id)){const open=movableDays.filter(d=>!blockedOnDay(store,d));openDays.set(id,open.length?new Set(open):null)}const open=openDays.get(id);return !open||open.has(day)};
   const out=Object.fromEntries(DAYS.map(d=>[d,movableDays.includes(d)?[]:clone((plan&&plan[d])||[])])),free=[],seen=new Set(),origin={},fixedIds=new Set();
   for(const day of workDays)if(frozen.has(day))for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(id){seen.add(id);fixedIds.add(id)}}
-  for(const day of movableDays)for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(!id||seen.has(id))continue;seen.add(id);origin[id]=day;let fixed=lockDayV185(id,weekKey)||appointmentDayV185(id,mon)||(visitedOnV185(id,iso(addDays(mon,DAYS.indexOf(day))))?day:'');if(fixed&&frozen.has(fixed))fixed=day;if(fixed){if(!workDays.includes(fixed))return{ok:false,plan,changed:false,reason:'fixed-outside'};out[fixed].push(store);fixedIds.add(id)}else free.push(store)}
+  for(const day of movableDays)for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(!id||seen.has(id))continue;seen.add(id);origin[id]=day;let fixed=lockDayV185(id,weekKey)||appointmentDayV185(id,mon)||((preserveImposed&&state.included&&state.included[id])?day:'')||(visitedOnV185(id,iso(addDays(mon,DAYS.indexOf(day))))?day:'');if(fixed&&frozen.has(fixed))fixed=day;if(fixed){if(!workDays.includes(fixed))return{ok:false,plan,changed:false,reason:'fixed-outside'};out[fixed].push(store);fixedIds.add(id)}else free.push(store)}
   for(const day of movableDays){out[day]=optimizeRouteV185(out[day]);if(routeCreditsV185(out[day])>max||!dayFitsV185(out[day],day,mon))return{ok:false,plan,changed:false,reason:'fixed-capacity'}}
   const sortDirection=options.preferNearFirst?1:-1;
   free.sort((a,b)=>sortDirection*(homeDistance(a)-homeDistance(b))||DAYS.indexOf(origin[String(a.id)])-DAYS.indexOf(origin[String(b.id)]));
@@ -341,6 +343,6 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduledR
 [120,500,1200].forEach(ms=>window.setTimeout(repairAll,ms));
 window.StoreRunnerOvernightV182={threshold:overnightThreshold,analyze:overnightAnalysis,render:renderOvernightV182};
 window.StoreRunnerPartialRangeV182={mergeWeekPlan,run:runPartialRange,bind:bindPartialRange};
-window.StoreRunnerGeographyV185={rebalance:rebalancePlanByGeography,routeKm:routeKmV185,homeDistance,patchSingle:patchSingleWeekGeography,patchThreeWeeks:patchThreeWeekGeography,remoteMinKm:V185_REMOTE_MIN_KM,mandatoryMinSavingKm:V185_MANDATORY_MIN_SAVING_KM};
+window.StoreRunnerGeographyV185={rebalance:rebalancePlanByGeography,eventBlocksPlanning:eventBlocksPlanningV185,routeKm:routeKmV185,homeDistance,patchSingle:patchSingleWeekGeography,patchThreeWeeks:patchThreeWeekGeography,remoteMinKm:V185_REMOTE_MIN_KM,mandatoryMinSavingKm:V185_MANDATORY_MIN_SAVING_KM};
 window.storeRunnerRepairMobileRuntime=repairMobileRuntime;
 })();

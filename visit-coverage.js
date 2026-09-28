@@ -151,11 +151,22 @@ function decorate(row){
 function need(state,store,options){const o=options||{};return evaluate(store,o.ref,context(state,o))}
 /* Fabrique pour les moteurs : une seule lecture des visites et des priorités par génération. */
 function needOf(state,options){
-  const ctx=context(state,options),cache=new Map();
+  const ctx=context(state,options),cache=new Map(),projectionCache=new Map();
   const fn=function(store,ref){
     const key=String(store&&store.id)+'|'+(isoOf(ref)||ctx.today);
     if(!cache.has(key))cache.set(key,evaluate(store,ref,ctx));
     return cache.get(key);
+  };
+  /* Projection unitaire destinée aux gardes bornées des moteurs : même évaluateur,
+     mêmes seuils et mêmes visites réelles, avec une seule visite hypothétique ajoutée.
+     Ce n'est pas un second forecast et rien n'est écrit dans state. */
+  fn.projectedAfterVisit=function(store,visitDate,ref){
+    const id=String(store&&store.id),day=isoOf(visitDate),at=isoOf(ref)||ctx.today,key=id+'|'+day+'|'+at;
+    if(!projectionCache.has(key)){
+      const days=new Map(ctx.days),own=(days.get(id)||[]).slice();if(day&&!own.includes(day)){own.push(day);own.sort()}days.set(id,own);
+      projectionCache.set(key,evaluate(store,at,Object.assign({},ctx,{days})))
+    }
+    return projectionCache.get(key)
   };
   fn.today=ctx.today;return fn;
 }
