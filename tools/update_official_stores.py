@@ -81,6 +81,7 @@ def summarize(brand, rows, report, meta, access):
   'retired': (report.get('retired') or [])[:40],
   'outOfScope': report.get('outOfScope', 0),
   'sireneRejected': report.get('sireneRejected', {}),
+  'sireneMerged': report.get('merged', 0),
   'composition': dict(sorted(composition.items())),
   'regions': regions, 'departments': dict(sorted(departments.items())),
  }

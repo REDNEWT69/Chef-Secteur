@@ -555,21 +555,35 @@ def sirene_store(brand,cand,fetched_at):
  row=make_store(brand,sirene_store_name(brand,etab),street,city,postal,lat,lon,SIRENE_PAGE+etab['siret'],store_id='sirene-'+brand.lower()+'-'+etab['siret'],fetched_at=fetched_at,source='Répertoire Sirene (INSEE)')
  return row,''
 
+EFFECTIF_ORDER={'NN':-1,'00':0,'01':1,'02':2,'03':3,'11':4,'12':5,'21':6,'22':7,'31':8,'32':9,'41':10,'42':11,'51':12,'52':13,'53':14}
+
 def collect_sirene(brand,get=None,fetched_at=None,departments=None):
  fetched_at=fetched_at or now_iso()
  report=_report('Répertoire Sirene (INSEE) via l’API Recherche d’entreprises : établissements actifs déclarés sous l’enseigne',sourceUrl=SIRENE_API)
  cands,rejected,errors,queries=sirene_candidates(brand,get,departments)
  report['errors']=errors[:6];report['queries']=queries;report['candidates']=len(cands)
  report['sireneRejected']={k:len(v) for k,v in rejected.items()};report['sireneRejectedSample']={k:v[:40] for k,v in rejected.items()}
- rows=[]
- for cand in sorted(cands,key=lambda c:c['etab']['siret']):
+ # Établissement le plus étoffé d'abord (le magasin plutôt qu'une annexe), puis le plus récent
+ # (nouvel exploitant d'un hypermarché passé en location-gérance) ; tris stables successifs.
+ ordered=sorted(cands,key=lambda c:c['etab']['siret'])
+ ordered.sort(key=lambda c:str(c['etab'].get('date_creation') or ''),reverse=True)
+ ordered.sort(key=lambda c:EFFECTIF_ORDER.get(str(c['etab'].get('tranche_effectif_salarie') or 'NN'),-1),reverse=True)
+ rows=[];kept=[];merged=[]
+ for cand in ordered:
   row,reason=sirene_store(brand,cand,fetched_at)
-  if row:rows.append(row)
-  elif reason=='hors périmètre':report['outOfScope']+=1
-  else:_reject(report,reason,cand['etab']['siret'])
- rows=merge_close(rows,60)
+  if not row:
+   if reason=='hors périmètre':report['outOfScope']+=1
+   else:_reject(report,reason,cand['etab']['siret'])
+   continue
+  # Un même point de vente déclaré deux fois : même code postal, moins d'un kilomètre, et même
+  # entreprise (annexe, ancien local) — ou tout exploitant pour un hypermarché Carrefour.
+  twin=next((k for k,c in kept if k['codePostal']==row['codePostal'] and haversine((k['lat'],k['lon']),(row['lat'],row['lon']))<1000 and (brand=='Carrefour' or c['company'].get('siren')==cand['company'].get('siren'))),None)
+  if twin:merged.append(row['id']+' → '+twin['id']);continue
+  kept.append((row,cand));rows.append(row)
+ rows.sort(key=lambda r:r['id'])
+ report['merged']=len(merged);report['mergedSample']=merged[:20]
  report['parsed']=len(rows);report['complete']=False
- report['proof']='Aucune preuve d’exhaustivité : le répertoire Sirene ne recense que les établissements déclarés sous l’enseigne ('+str(len(rows))+' retenus sur '+str(len(cands))+' candidats).'
+ report['proof']='Aucune preuve d’exhaustivité : le répertoire Sirene ne recense que les établissements déclarés sous l’enseigne ('+str(len(rows))+' retenus sur '+str(len(cands))+' candidats, '+str(len(merged))+' doublon(s) de déclaration fusionné(s)).'
  return report,rows
 
 def merge_close(rows,meters):

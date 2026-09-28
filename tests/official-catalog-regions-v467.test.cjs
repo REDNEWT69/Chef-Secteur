@@ -110,7 +110,7 @@ for (const file of ['official-catalog.js', 'region-stores.js', 'store-add-v261.j
 }
 const officialSrc = fs.readFileSync(path.join(ROOT, 'official-catalog.js'), 'utf8');
 assert.doesNotMatch(officialSrc, /'2A'|'2B'|'20':|'97[1-6]'/, 'DEPT_REGION sans Corse ni DROM');
-assert.match(fs.readFileSync(path.join(ROOT, 'region-stores.js'), 'utf8'), /StoreRunnerOfficialCatalog[^;]*regions\(\)/, 'ancien dialogue région : même source que le carnet');
+assert.match(fs.readFileSync(path.join(ROOT, 'region-stores.js'), 'utf8'), /const C=root\.StoreRunnerOfficialCatalog;regions=\([^;]*C\.regions\(\)/, 'ancien dialogue région : même source que le carnet');
 
 // 7. Magasins connus : un point de vente phare par région doit être retrouvé par
 //    la recherche enseigne + région (fiches officielles relevées le 28/09/2026).
@@ -118,12 +118,17 @@ const KNOWN = [
   ['Darty', '84', '/84-darty-la-part-dieu'], ['Darty', '27', '/145-darty-quetigny'], ['Darty', '53', '/156-darty-saint-malo'],
   ['Darty', '24', '/133-darty-olivet'], ['Darty', '44', '/169-darty-strasbourg-les-halles'], ['Darty', '32', '/6-darty-amiens'],
   ['Darty', '11', '/149-darty-republique'], ['Darty', '28', '/103-darty-lisieux'], ['Darty', '75', '/39-darty-brive'],
-  ['Darty', '76', '/140-darty-perpignan'], ['Darty', '52', '/8-darty-angers-atoll'], ['Darty', '93', '/41-darty-plan-de-campagne']
+  ['Darty', '76', '/140-darty-perpignan'], ['Darty', '52', '/8-darty-angers-atoll'], ['Darty', '93', '/41-darty-plan-de-campagne'],
+  ['Cuisinella', '11', '/paris/paris-11-nation'], ['Cuisinella', '24', '/cher/saint-amand-montrond'], ['Cuisinella', '27', '/cote-d-or/beaune'],
+  ['Cuisinella', '28', '/calvados/caen-mondeville'], ['Cuisinella', '32', '/aisne/laon'], ['Cuisinella', '44', '/ardennes/charleville-mezieres'],
+  ['Cuisinella', '52', '/loire-atlantique/nantes-basse-goulaine'], ['Cuisinella', '53', '/cotes-d-armor/lannion'], ['Cuisinella', '75', '/charente-maritime/la-rochelle-puilboreau'],
+  ['Cuisinella', '76', '/aude/carcassonne'], ['Cuisinella', '84', '/ain/amberieu-en-bugey'], ['Cuisinella', '93', '/hautes-alpes/gap']
 ];
 for (const [brand, code, path] of KNOWN) {
   const hit = catalog.filter(data, brand, code).find(s => String(s.sourceUrl || '').endsWith(path));
   assert.ok(hit, brand + ' ' + path + ' retrouvé en ' + code);
 }
-assert.deepEqual([...new Set(KNOWN.map(k => k[1]))].sort(), [...codes].sort(), 'un magasin connu dans chacune des 12 régions');
+for (const brand of ['Darty', 'Cuisinella'])
+  assert.deepEqual([...new Set(KNOWN.filter(k => k[0] === brand).map(k => k[1]))].sort(), [...codes].sort(), brand + ' : un magasin connu dans chacune des 12 régions');
 
 console.log('Official catalog regions V467 tests: OK');

@@ -49,8 +49,8 @@ def cuisinella_site(map_missing=('paris/paris-11-nation',)):
   base+'paris/paris-11-nation':cuis_store(base+'paris/paris-11-nation','Cuisinella Paris 11 Nation','12 Boulevard Voltaire','Paris','75011',48.86,2.37),
   base+'corse-du-sud/ajaccio':cuis_store(base+'corse-du-sud/ajaccio','Cuisinella Ajaccio','Route','Ajaccio','20090',41.9,8.7),
  }
-def etab(siret,naf,postal,commune,adresse,lat,lon,enseignes=None,etat='A',nom=None):
- return {'siret':siret,'activite_principale':naf,'code_postal':postal,'libelle_commune':commune,'adresse':adresse,'latitude':str(lat),'longitude':str(lon),'liste_enseignes':enseignes,'nom_commercial':nom,'etat_administratif':etat}
+def etab(siret,naf,postal,commune,adresse,lat,lon,enseignes=None,etat='A',nom=None,effectif='12',created='2008-01-01'):
+ return {'siret':siret,'activite_principale':naf,'code_postal':postal,'libelle_commune':commune,'adresse':adresse,'latitude':str(lat),'longitude':str(lon),'liste_enseignes':enseignes,'nom_commercial':nom,'etat_administratif':etat,'tranche_effectif_salarie':effectif,'date_creation':created}
 def sirene_response(results,total_pages=1):
  return json.dumps({'results':results,'total_results':len(results),'total_pages':total_pages})
 CARREFOUR_77=sirene_response([
@@ -63,6 +63,9 @@ CARREFOUR_77=sirene_response([
   etab('80509260800011','47.11F','77130','MONTEREAU-FAULT-YONNE','RUE DE LA GRANDE HAIE 77130 MONTEREAU-FAULT-YONNE',48.39,2.95,['CARREFOUR'])]},
  {'siren':'999999999','nom_complet':'SUPER DISTRIB','nom_raison_sociale':'SUPER DISTRIB','matching_etablissements':[
   etab('99999999900011','47.11F','77100','MEAUX','RUE DU MARCHE 77100 MEAUX',48.96,2.88,['CARREFOUR MARKET'])]},
+ # Même hypermarché repris en location-gérance : nouvel exploitant, plus étoffé, à 300 m de l'ancien.
+ {'siren':'987654321','nom_complet':'PYRAMIDES DISTRIBUTION','nom_raison_sociale':'PYRAMIDES DISTRIBUTION','matching_etablissements':[
+  etab('98765432100017','47.11F','77420','CHAMPS-SUR-MARNE','2 AVENUE DES PYRAMIDES 77420 CHAMPS-SUR-MARNE',48.8565,2.5845,['CARREFOUR'],effectif='22',created='2025-03-01')]},
 ])
 class FakeWeb:
  def __init__(self,pages,blocked=()):self.pages=pages;self.blocked=set(blocked);self.calls=[]
@@ -197,13 +200,28 @@ class CatalogTests(unittest.TestCase):
   self.assertEqual(c.parse_cuisinella_map('<html>rien</html>'),[])
  def test_sirene_filters_brand_format_and_status(self):
   rep,rows=c.collect_sirene('Carrefour',get=FakeWeb({}),departments=['77'])
-  self.assertEqual(sorted(r['id'] for r in rows),['sirene-carrefour-45132133500924','sirene-carrefour-80509260800011'],'hypermarché actif, franchisé inclus ; station, fermé, autre département et Market exclus')
-  row=[r for r in rows if r['id'].endswith('500924')][0]
-  self.assertEqual((row['sourceName'],row['adresse'],row['ville'],row['regionCode']),('Carrefour Champs-sur-Marne','Avenue des Pyramides','Champs-sur-Marne','11'))
+  self.assertEqual(sorted(r['id'] for r in rows),['sirene-carrefour-80509260800011','sirene-carrefour-98765432100017'],'hypermarché actif, franchisé inclus ; station, fermé, autre département et Market exclus ; double déclaration fusionnée')
+  self.assertEqual((rep['merged'],rep['mergedSample']),(1,['sirene-carrefour-45132133500924 → sirene-carrefour-98765432100017']))
+  row=[r for r in rows if r['id'].endswith('100017')][0]
+  self.assertEqual((row['sourceName'],row['adresse'],row['ville'],row['regionCode']),('Carrefour Champs-sur-Marne','2 Avenue des Pyramides','Champs-sur-Marne','11'))
   self.assertEqual(row['source'],'Répertoire Sirene (INSEE)')
-  self.assertEqual(row['sourceUrl'],'https://annuaire-entreprises.data.gouv.fr/etablissement/45132133500924')
+  self.assertEqual(row['sourceUrl'],'https://annuaire-entreprises.data.gouv.fr/etablissement/98765432100017')
   self.assertFalse(rep['complete'])
   self.assertEqual(c.sirene_store_name('Fnac',{'libelle_commune':'PARIS 8','code_postal':'75008'}),'Fnac Paris 8e')
+  fnac=sirene_response([
+   {'siren':'334473352','nom_complet':'RELAIS FNAC','nom_raison_sociale':'RELAIS FNAC','matching_etablissements':[
+    etab('33447335200011','47.41Z','69003','LYON 3','CTRE COMMERCIAL PART DIEU 69003 LYON 3',45.7612,4.8567,['FNAC'],effectif='21'),
+    etab('33447335200029','47.41Z','69003','LYON 3','19 BOULEVARD EUGENE DERUELLE 69003 LYON 3',45.7624,4.8589,None,effectif='03'),
+    etab('33447335200037','52.10B','69003','LYON 3','ENTREPOT 69003 LYON 3',45.76,4.85,None)]},
+   {'siren':'542095336','nom_complet':'LAGARDERE TRAVEL RETAIL FRANCE','nom_raison_sociale':'LAGARDERE TRAVEL RETAIL FRANCE','matching_etablissements':[
+    etab('54209533600017','47.61Z','69003','LYON 3','GARE PART DIEU 69003 LYON 3',45.7606,4.8597,['RELAY FNAC'])]}])
+  class FnacWeb(FakeWeb):
+   def __call__(self,url,**kw):
+    if url.startswith(c.SIRENE_API) and 'departement=69' in url and 'q=fnac' in url:return fnac,url
+    return super().__call__(url,**kw)
+  rep,rows=c.collect_sirene('Fnac',get=FnacWeb({}),departments=['69'])
+  self.assertEqual(sorted(r['id'] for r in rows),['sirene-fnac-33447335200011','sirene-fnac-54209533600017'],'magasin gardé, annexe fusionnée, entrepôt écarté, boutique Relay distincte conservée')
+  self.assertEqual(rep['merged'],1)
   self.assertEqual(c.french_title("SAINT-JEAN-DE-LA-RUELLE"),'Saint-Jean-de-la-Ruelle')
  def test_true_duplicates_merged_distinct_stores_kept(self):
   base=dict(enseigne='Boulanger',source='Annuaire officiel Boulanger',codePostal='69500',ville='BRON',adresse='x')
