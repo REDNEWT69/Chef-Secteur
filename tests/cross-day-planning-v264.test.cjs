@@ -598,6 +598,41 @@ function runSelectionCase(candidates, needs) {
   assert.equal(result.report.insertions, 1, 'la construction cross-day doit sélectionner et affecter le magasin en une seule étape');
 })();
 
+/* Un magasin posé librement en semaine 1 et contraint (verrou ou rendez-vous) le lundi de
+   la semaine 2 : un échange inter-semaines ne doit jamais l'ajouter une seconde fois dans
+   la journée contrainte. */
+(function constrainedStoreNeverDuplicatedInItsDay() {
+  for (const kind of ['lock', 'appointment']) {
+    const A = { id: 'A', x: 100 }, X = { id: 'X', x: 101 }, L = { id: 'L', x: -100 }, B = { id: 'B', x: -101 };
+    const weeks = [
+      { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [A, L] }), manual: false, frozenDays: [] },
+      { weekKey: '2026-10-05', plan: Object.assign(emptyPlan(), { Lundi: [L, B, X] }), manual: false, frozenDays: [] },
+      { weekKey: '2026-10-12', plan: emptyPlan(), manual: false, frozenDays: [] }
+    ];
+    const score = order => { let distance = 0, previous = 0; for (const store of order) { distance += Math.abs(store.x - previous); previous = store.x; } return distance + Math.abs(previous); };
+    const evaluate = route => {
+      const ordered = permutations(route).sort((a, b) => score(a) - score(b) || a.map(row => row.id).join(',').localeCompare(b.map(row => row.id).join(',')))[0] || [];
+      return { route: ordered, feasible: true, kilometers: score(ordered), driveMinutes: score(ordered) };
+    };
+    const constrained = (id, weekKey) => id === 'L' && weekKey === '2026-10-05' ? 'Lundi' : '';
+    terrain.optimizeThreeWeekCrossDay(weeks, {
+      state: { included: {}, hotelReservations: {} }, days: DAYS.slice(0, 5), target: 3, maxCreditsPerDay: 4,
+      ranked: [A, X, L, B], memory: { usedKeys: new Set(), useCount: new Map() },
+      needAt: () => ({ status: 'late', tier: 3, priority: '', blocked: false }), creditOf: () => 1,
+      lockDayForWeek: kind === 'lock' ? constrained : () => '',
+      appointmentDay: kind === 'appointment' ? (id, monday) => constrained(id, iso(monday)) : () => '',
+      completedOn: () => false, dayBlocked: () => false, dayFits: () => true, evaluateDayRoute: evaluate,
+      distanceBetween: (a, b) => Math.abs(a.x - b.x), overnightReservations: {}
+    });
+    const constrainedDay = weeks[1].plan.Lundi.map(store => store.id);
+    assert.equal(constrainedDay.filter(id => id === 'L').length, 1, kind + ' : le magasin contraint ne doit apparaître qu’une fois dans sa journée (' + constrainedDay.join(',') + ')');
+    for (const week of weeks) for (const day of DAYS) {
+      const ids = week.plan[day].map(store => store.id);
+      assert.equal(new Set(ids).size, ids.length, kind + ' : doublon dans ' + week.weekKey + ' ' + day);
+    }
+  }
+})();
+
 console.log('=== V264 benchmark allocation cross-day ===');
 console.table(results.map(result => {
   const baseline = result.fixture.config.baseline;

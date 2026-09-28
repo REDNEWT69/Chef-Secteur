@@ -400,6 +400,8 @@ function optimizeThreeWeekCrossDay(weeks,options){
   const canUse=(store,slot)=>{
     if(!slot.mutable)return false;const id=storeKey(store),ld=lockFor(store.id,slot.weekKey),ad=apptFor(store.id,parseISO(slot.weekKey));
     if((ld&&ld!==slot.day)||(ad&&ad!==slot.day))return false;if(imposed[id])return false;
+    /* Un magasin déjà présent dans la journée (occurrence figée RDV/verrou) n'y est jamais posé une seconde fois. */
+    if(slot.route.some(row=>storeKey(row)===id))return false;
     try{return !needAt(store,slot.date).blocked}catch(e){return false}
   };
   const loadPenalty=rows=>rows.reduce((n,row)=>n+Math.pow(routeCreditCost(row.route,credit),2),0);
