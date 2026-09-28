@@ -210,8 +210,10 @@ function patchThreeWeekGeography(){
 }
 
 /* Découché : le moteur historique faisait `seuil || 80`, donc un seuil explicite à 0 km
-   redevenait 80 km. V185 ajoute un garde-fou terrain : même en mode obligatoire, une nuit
-   n'est proposée que si les deux journées s'enchaînent réellement loin du domicile. */
+   redevenait 80 km. En automatique, une nuit n'est proposée que si les deux journées
+   s'enchaînent réellement loin du domicile. En obligatoire, la demande explicite passe outre
+   cette distance, mais la nuit doit relier deux journées consécutives et économiser au moins
+   V185_MANDATORY_MIN_SAVING_KM : même règle que futureOvernightAnalysis (auto-planning-fix.js). */
 function overnightThreshold(){
   try{const raw=state.profile&&state.profile.overnightMinSaving,n=Number(raw);return Number.isFinite(n)&&n>=0?n:80}catch(e){return 80}
 }
@@ -226,7 +228,7 @@ function overnightAnalysis(plan){
     const row={night:'Nuit '+days[i]+' → '+days[i+1],fromDay:days[i],toDay:days[i+1],last,first,saving,fromHome:home1,toHome:home2,remoteKm:Math.min(home1,home2)};
     if(!best||row.saving>best.saving)best=row;
     if(row.remoteKm>=V185_REMOTE_MIN_KM&&(!bestRemote||row.saving>bestRemote.saving))bestRemote=row;
-    if(row.remoteKm>=V185_REMOTE_MIN_KM&&row.saving>=V185_MANDATORY_MIN_SAVING_KM&&(!bestUseful||row.saving>bestUseful.saving))bestUseful=row
+    if(DAYS.indexOf(days[i+1])-DAYS.indexOf(days[i])===1&&row.saving>=V185_MANDATORY_MIN_SAVING_KM&&(!bestUseful||row.saving>bestUseful.saving))bestUseful=row
   }
   if(!best)return{mode,threshold,candidate:null,reason:'no-pair',best:null,bestRemote:null};
   if(mode==='mandatory')return bestUseful?{mode,threshold,candidate:bestUseful,reason:'candidate',best,bestRemote}:{mode,threshold,candidate:null,reason:'mandatory-no-useful',best,bestRemote};
@@ -245,7 +247,7 @@ function renderOvernightV182(){
   if(a.reason==='disabled'){box.innerHTML='<div class="notice">🌙 Découché désactivé dans <b>Secteur → Découché</b>. Choisis « Automatique si utile » ou « Obligatoire 1 fois/semaine » pour recevoir une proposition.</div>';return true}
   if(a.reason==='no-pair'){box.innerHTML='<div class="notice">🌙 Aucun découché possible sur cette semaine : il faut au moins deux jours de tournée à la suite avec des visites planifiées.</div>';return true}
   if(a.reason==='too-close'){box.innerHTML='<div class="notice">🌙 Aucun découché utile : les enchaînements actuels restent trop proches du domicile. Store Runner ne propose pas d’hôtel à moins de '+V185_REMOTE_MIN_KM+' km juste pour cocher une case.</div>';return true}
-  if(a.reason==='mandatory-no-useful'){box.innerHTML='<div class="notice">🌙 Mode obligatoire actif, mais aucun enchaînement éloigné n’économise au moins '+V185_MANDATORY_MIN_SAVING_KM+' km. Aucun hôtel local n’est forcé : le planning doit d’abord créer un vrai bloc géographique éloigné.</div>';return true}
+  if(a.reason==='mandatory-no-useful'){box.innerHTML='<div class="notice">🌙 Mode obligatoire actif, mais aucune paire de journées consécutives n’économise au moins '+V185_MANDATORY_MIN_SAVING_KM+' km. Aucun hôtel n’est forcé sans gain réel.</div>';return true}
   if(a.reason==='threshold'){
     box.innerHTML='<div class="notice">🌙 Aucun découché retenu : meilleur enchaînement éloigné ~<b>'+Math.max(0,Math.round(a.bestRemote.saving))+' km</b> économisés, seuil automatique réglé à <b>'+Math.round(a.threshold)+' km</b>. Le seuil se règle dans Secteur.</div>';return true
   }
