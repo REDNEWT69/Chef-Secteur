@@ -441,26 +441,33 @@ def sirene_candidates(brand,get=None,departments=None):
  def reject(reason,etab,evidence):
   bucket=rejected.setdefault(reason,{})
   bucket.setdefault(etab.get('siret'),'|'.join([str(etab.get('siret')),str(etab.get('activite_principale')),evidence[:80],str(etab.get('code_postal')),str(etab.get('libelle_commune'))]))
- for dept in (departments or sorted(DEPT_REGION)):
-  page=1
+ def one_dept(dept):
+  found=[];errs=[];count=0;page=1
   while True:
    params=dict(q=rule['q'],departement=dept,per_page=25,page=page,limite_matching_etablissements=100,**rule['params'])
    url=SIRENE_API+'?'+urllib.parse.urlencode(params)
-   try:data=json.loads(get(url,accept='application/json',delay=0.2)[0]);queries+=1
-   except (HttpError,ValueError) as e:errors.append(str(e)[:200]);break
+   try:data=json.loads(get(url,accept='application/json',delay=0.2)[0]);count+=1
+   except (HttpError,ValueError) as e:errs.append(str(e)[:200]);break
    for company in data.get('results') or []:
     for etab in company.get('matching_etablissements') or []:
-     fields=sirene_fields(company,etab);evidence=' | '.join(fields)
-     if str(etab.get('code_postal') or '')[:2]!=dept:continue
-     if etab.get('etat_administratif')!='A':continue
-     if not any(brand_rx.search(f) for f in fields):reject('enseigne non reconnue',etab,evidence);continue
-     if exclude_rx and exclude_rx.search(evidence):reject('autre format ou activité de l’enseigne',etab,evidence);continue
-     if not naf_rx.search(str(etab.get('activite_principale') or '')):reject('activité hors commerce de détail visé ('+str(etab.get('activite_principale'))+')',etab,evidence);continue
-     seen[etab['siret']]=dict(company=company,etab=etab,evidence=evidence)
+     found.append((company,etab))
    if page>=int(data.get('total_pages') or 1):break
    if page>=SIRENE_MAX_PAGES:
-    errors.append('Requête Sirene trop large pour le département '+dept+' : '+str(data.get('total_pages'))+' pages, lecture arrêtée à '+str(page));break
+    errs.append('Requête Sirene trop large pour le département '+dept+' : '+str(data.get('total_pages'))+' pages, lecture arrêtée à '+str(page));break
    page+=1
+  return dept,found,errs,count
+ with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+  results=list(pool.map(one_dept,departments or sorted(DEPT_REGION)))
+ for dept,found,errs,count in results:
+  errors.extend(errs);queries+=count
+  for company,etab in found:
+   fields=sirene_fields(company,etab);evidence=' | '.join(fields)
+   if str(etab.get('code_postal') or '')[:2]!=dept:continue
+   if etab.get('etat_administratif')!='A':continue
+   if not any(brand_rx.search(f) for f in fields):reject('enseigne non reconnue',etab,evidence);continue
+   if exclude_rx and exclude_rx.search(evidence):reject('autre format ou activité de l’enseigne',etab,evidence);continue
+   if not naf_rx.search(str(etab.get('activite_principale') or '')):reject('activité hors commerce de détail visé ('+str(etab.get('activite_principale'))+')',etab,evidence);continue
+   seen[etab['siret']]=dict(company=company,etab=etab,evidence=evidence)
  return list(seen.values()),{k:sorted(v.values()) for k,v in rejected.items()},errors,queries
 
 def sirene_store(brand,cand,fetched_at):

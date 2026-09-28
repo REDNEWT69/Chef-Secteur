@@ -2,6 +2,11 @@ name: Mise à jour annuaires officiels
 
 on:
   workflow_dispatch:
+    inputs:
+      brands:
+        description: 'Enseignes à collecter (vide = toutes), ex. Darty,Cuisinella'
+        required: false
+        default: ''
   schedule:
     - cron: '20 4 * * 1'
   push:
@@ -37,7 +42,8 @@ jobs:
       - name: Collecter les annuaires officiels
         env:
           CATALOG_VERBOSE: '1'
-        run: python tools/update_official_stores.py
+          BRANDS: ${{ inputs.brands }}
+        run: python tools/update_official_stores.py --brands "${BRANDS:-Boulanger,Darty,Fnac,Conforama,Cuisinella,Carrefour}"
       - name: Contrôler le candidat (qualité, 12 régions, rapport synchronisé)
         run: python tests/official_catalog_test.py
       - name: Détecter un nouveau snapshot
