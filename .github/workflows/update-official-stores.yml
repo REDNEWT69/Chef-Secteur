@@ -30,6 +30,9 @@ jobs:
         run: pip install requests beautifulsoup4
       - name: Vérifier les parseurs officiels
         run: python tests/official_catalog_test.py
+      - name: Diagnostiquer l'accès aux sources officielles
+        continue-on-error: true
+        run: python tools/probe_official_sources.py
       - name: Collecter les annuaires officiels
         run: python tools/update_official_stores.py
       - name: Détecter un nouveau snapshot
