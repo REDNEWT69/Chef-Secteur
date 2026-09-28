@@ -97,8 +97,11 @@ function planningNeedV211(s,weekKey){
   if(st==='near'){try{value=value-(Number(havBase(s))||0)*.7}catch(e){}}
   const perf=performancePriorityV211(s),boost=performanceBoost(s);value+=boost;
   let tier=1;const reasons=[];
-  if(!last){tier=3;reasons.push('jamais visité')}
-  if(ratio>=1.5){tier=5;reasons.push('très en retard')}
+  /* V263.3 — même hiérarchie que visit-coverage.js : très en retard (5) › jamais visité
+     (4,5) › en retard (4). Le ratio fictif 5 d'un magasin jamais visité ne sert plus qu'au
+     score ; il ne le classe plus « très en retard ». */
+  if(!last){tier=4.5;reasons.push('jamais visité')}
+  else if(ratio>=1.5){tier=5;reasons.push('très en retard')}
   else if(ratio>=1){tier=Math.max(tier,4);reasons.push('en retard')}
   else if(ratio>=.8){tier=Math.max(tier,3);reasons.push('bientôt dû')}
   if(perf==='P1'){tier=Math.max(tier,4);value+=90;reasons.unshift('P1')}

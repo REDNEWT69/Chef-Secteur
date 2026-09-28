@@ -299,7 +299,7 @@ function summarizeOpeningHours(weeks,state=root.state,hoursApi=root.StoreOpening
 /* V263 — le cycle 3 semaines part du besoin réel de visite (visit-coverage.js), fourni par
    `options.needOf(store, dateIso)` → { tier, blocked, ratio, status }.
    Ordre de décision : contraintes explicites (verrous, rendez-vous, imposés) → besoin réel
-   (très en retard, puis en retard / jamais visité, puis bientôt dû, puis à jour) → rotation
+   (très en retard, puis jamais visité, puis en retard, puis bientôt dû, puis à jour) → rotation
    V243 (magasins frais puis les moins récemment planifiés) → distance (escargot). Un magasin
    visité trop récemment pour sa fréquence (`blocked`) n'est jamais repris automatiquement.
    `options.today` + `options.existingPlanFor(weekKey)` : les journées déjà passées d'une
@@ -398,9 +398,12 @@ function buildThreeWeekSnail(options){
       if(!placed)throw new Error((s.enseigne||'Magasin')+' '+(s.ville||'')+' ne tient pas dans la semaine malgré sa contrainte. Le planning précédent est conservé.');
     }
     /* V263 : un palier de besoin après l'autre. Sans besoin connu, un seul palier : on
-       retrouve exactement les deux passes V243 ci-dessous. */
+       retrouve exactement les deux passes V243 ci-dessous. V263.3 : les paliers sont ceux
+       que la couverture donne (jamais visité 3,5 entre retard 3 et très en retard 4, P1 en
+       quart de palier), dans l'ordre décroissant où `needOrdered` les a rangés ; la garde
+       (palier 0) n'est jamais parcourue. */
     const ordered=needOf?needOrdered(candidates,rankNeed):candidates;
-    const tiers=needOf?[4,3,2,1]:[null];
+    const tiers=needOf?Array.from(new Set(ordered.map(s=>rankNeed(s).tier))).filter(t=>Number.isFinite(t)&&t>0):[null];
     for(const tier of tiers){
       if(count()>=target)break;
       const group=tier==null?ordered:ordered.filter(s=>rankNeed(s).tier===tier);

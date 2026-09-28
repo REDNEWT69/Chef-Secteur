@@ -32,8 +32,14 @@ const QUICK_ID='sqCoverageV263';
    - trop tôt : moins de la moitié du cycle écoulée → pas reproposé automatiquement ;
    - deux passages dans un même cycle et moins de 75 % écoulés → pas reproposé non plus ;
    - à partir de 75 % : « à visiter bientôt » ; à 100 % : « en retard » ; à 150 % : urgent.
-   - P1 (fichier performance) monte d'un palier sans jamais lever la garde. */
-const RULES=Object.freeze({recentRatio:.5,soonRatio:.75,veryLateRatio:1.5,enoughVisits:2,overVisits:4,priorityTierBonus:Object.freeze({P1:1})});
+   V263.3 — paliers (`tier`), du plus au moins prioritaire : très en retard (4) › jamais
+   visité (3,5) › en retard (3) › bientôt dû (2) › à jour (1) ; garde (0). Un magasin jamais
+   visité passe donc devant un retard normal, jamais devant un magasin très en retard.
+   - P1 (fichier performance) départage à l'intérieur de son palier (+0,25, moins de la
+     moitié de l'écart entre deux paliers) : il ne change jamais de palier et ne lève
+     jamais la garde. */
+const RULES=Object.freeze({recentRatio:.5,soonRatio:.75,veryLateRatio:1.5,enoughVisits:2,overVisits:4,
+  tiers:Object.freeze({veryLate:4,never:3.5,late:3,soon:2,ok:1,blocked:0}),priorityTierBonus:Object.freeze({P1:.25})});
 const STATUS=Object.freeze({
   never:{label:'Jamais visité',group:'catchup'},
   late:{label:'En retard',group:'catchup'},
@@ -121,7 +127,7 @@ function evaluate(store,ref,ctx){
     visits30:countBetween(known,iso(addDays(todayD,-29)),today),
     visitsMonth:known.filter(d=>d.slice(0,7)===today.slice(0,7)).length,
     visitsInCycle:countBetween(known,iso(addDays(refD,-(interval-1))),upTo),
-    ratio:null,nextDue:'',dueInDays:null,overdueDays:null,status:'never',tier:3,blocked:false
+    ratio:null,nextDue:'',dueInDays:null,overdueDays:null,status:'never',tier:RULES.tiers.never,blocked:false
   };
   if(!last)return decorate(row);
   row.ageDays=Math.max(0,diffDays(last,refIso));
@@ -130,14 +136,14 @@ function evaluate(store,ref,ctx){
   row.dueInDays=diffDays(refIso,row.nextDue);
   row.overdueDays=Math.max(0,row.ageDays-interval);
   row.blocked=row.ratio<RULES.recentRatio||(row.visitsInCycle>=RULES.enoughVisits&&row.ratio<RULES.soonRatio);
-  if(row.blocked){row.status=row.visitsInCycle>=RULES.overVisits?'over':'enough';row.tier=0}
-  else if(row.ratio>=1){row.status='late';row.tier=row.ratio>=RULES.veryLateRatio?4:3}
-  else if(row.ratio>=RULES.soonRatio){row.status='soon';row.tier=2}
-  else{row.status='ok';row.tier=1}
+  if(row.blocked){row.status=row.visitsInCycle>=RULES.overVisits?'over':'enough';row.tier=RULES.tiers.blocked}
+  else if(row.ratio>=1){row.status='late';row.tier=row.ratio>=RULES.veryLateRatio?RULES.tiers.veryLate:RULES.tiers.late}
+  else if(row.ratio>=RULES.soonRatio){row.status='soon';row.tier=RULES.tiers.soon}
+  else{row.status='ok';row.tier=RULES.tiers.ok}
   return decorate(row);
 }
 function decorate(row){
-  if(!row.blocked)row.tier=Math.min(4,row.tier+(RULES.priorityTierBonus[row.priority]||0));
+  if(!row.blocked)row.tier=Math.min(RULES.tiers.veryLate,row.tier+(RULES.priorityTierBonus[row.priority]||0));
   row.label=STATUS[row.status].label;row.group=STATUS[row.status].group;
   return row;
 }
