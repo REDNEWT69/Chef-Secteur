@@ -341,6 +341,12 @@ class CatalogTests(unittest.TestCase):
   for brand in ('Boulanger','Darty','Fnac','Conforama','Cuisinella','Carrefour'):
    self.assertGreater(by_brand.get(brand,0),0,brand+' : au moins une fiche')
  @unittest.skipIf(SKIP_DATA,'contrôle du snapshot fait après la collecte')
+ def test_report_flags_official_url_in_another_department(self):
+  base='https://www.ma.cuisinella/fr-fr/magasins/'
+  ok=dict(enseigne='Cuisinella',sourceUrl=base+'hautes-pyrenees/tarbes-ibos',dept='65',adresse='Rue du Herran',codePostal='65420',ville='Ibos')
+  bad=dict(ok,sourceUrl=base+'correze/brive-la-gaillarde',adresse='Route de Pau')
+  darty=dict(ok,enseigne='Darty',sourceUrl='https://magasin.darty.com/fr/occitanie/hautes-pyrenees/1-darty-tarbes')
+  self.assertEqual([(s['sourceUrl'].rsplit('/',1)[-1],d) for s,d in report.url_department_mismatch([ok,bad,darty])],[('brive-la-gaillarde','19')])
  def test_coverage_report_in_sync(self):
   data=json.loads((ROOT/'data'/'official-stores.json').read_text(encoding='utf-8'))
   self.assertEqual((ROOT/'CATALOGUE_COUVERTURE.md').read_text(encoding='utf-8'),report.build_report(data),'régénérer : python tools/catalog_coverage_report.py > CATALOGUE_COUVERTURE.md')

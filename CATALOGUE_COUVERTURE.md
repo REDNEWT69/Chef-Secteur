@@ -164,4 +164,5 @@ Fiches distinctes d’une même enseigne à moins de 150 m (ex. Darty et Darty C
 
 ## Contrôle de cohérence adresse / coordonnées
 
+- Cuisinella : la fiche officielle `correze/brive-la-gaillarde` (Corrèze) est publiée par l’enseigne avec l’adresse Route de Pau, 65420 Ibos : à vérifier avant ajout (la région suit le code postal).
 - aucune fiche à plus de 150 km du centre des magasins de son département

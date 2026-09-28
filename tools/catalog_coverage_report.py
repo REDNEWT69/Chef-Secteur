@@ -80,6 +80,25 @@ def sirene_near_directory(stores, meters=3000):
  return out
 
 
+def slug(text):
+ import unicodedata
+ t = unicodedata.normalize('NFD', str(text or '')).encode('ascii', 'ignore').decode().lower()
+ return '-'.join(''.join(c if c.isalnum() else ' ' for c in t).split())
+
+
+def url_department_mismatch(stores):
+ """Fiche officielle dont l'URL range le magasin dans un autre département que son code
+ postal (ex. /magasins/correze/… publiée avec une adresse des Hautes-Pyrénées)."""
+ slugs = {slug(name): dept for dept, name in DEPARTMENTS.items()}
+ out = []
+ for s in stores:
+  parts = [x for x in str(s.get('sourceUrl', '')).split('/') if x]
+  for i, part in enumerate(parts[:-1]):
+   if part == 'magasins' and parts[i + 1] in slugs and slugs[parts[i + 1]] != s['dept']:
+    out.append((s, slugs[parts[i + 1]]))
+ return out
+
+
 def outliers(stores):
  """Fiches à plus de 150 km du centre des magasins de leur département (CP ou coordonnées suspects)."""
  centers = {}
@@ -169,6 +188,8 @@ def build_report(snapshot):
   L.append('- aucune')
  odd = outliers(stores)
  L += ['', '## Contrôle de cohérence adresse / coordonnées', '']
+ for s, dept in url_department_mismatch(stores):
+  L.append('- ' + s['enseigne'] + ' : la fiche officielle `' + '/'.join(str(s['sourceUrl']).split('/')[-2:]) + '` (' + DEPARTMENTS[dept] + ') est publiée par l’enseigne avec l’adresse ' + s['adresse'] + ', ' + s['codePostal'] + ' ' + s['ville'] + ' : à vérifier avant ajout (la région suit le code postal).')
  L.append('- ' + (str(len(odd)) + ' fiche(s) à plus de 150 km du centre des magasins de leur département : ' + ', '.join(s['enseigne'] + ' ' + s['sourceName'] + ' (' + s['codePostal'] + ')' for s in odd) if odd else 'aucune fiche à plus de 150 km du centre des magasins de son département'))
  return '\n'.join(L) + '\n'
 
