@@ -2,6 +2,11 @@ name: Mise à jour annuaires officiels
 
 on:
   workflow_dispatch:
+    inputs:
+      brands:
+        description: 'Enseignes à collecter (vide = toutes), ex. Darty,Cuisinella'
+        required: false
+        default: ''
   schedule:
     - cron: '20 4 * * 1'
   push:
@@ -9,6 +14,7 @@ on:
     paths:
       - tools/update_official_stores.py
       - tools/official_directory_parsers.py
+      - tools/catalog_coverage_report.py
       - .github/workflows/update-official-stores.yml
 
 permissions:
@@ -26,12 +32,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Installer les dépendances
-        run: pip install requests beautifulsoup4
       - name: Vérifier les parseurs officiels
+        env:
+          OFFICIAL_CATALOG_SKIP_DATA: '1'
         run: python tests/official_catalog_test.py
+      - name: Diagnostiquer l'accès aux sources officielles
+        continue-on-error: true
+        run: python tools/probe_official_sources.py
       - name: Collecter les annuaires officiels
-        run: python tools/update_official_stores.py
+        env:
+          CATALOG_VERBOSE: '1'
+          BRANDS: ${{ inputs.brands }}
+        run: python tools/update_official_stores.py --brands "${BRANDS:-Boulanger,Darty,Fnac,Conforama,Cuisinella,Carrefour}"
+      - name: Contrôler le candidat (qualité, 12 régions, rapport synchronisé)
+        run: python tests/official_catalog_test.py
       - name: Détecter un nouveau snapshot
         id: snapshot
         shell: bash
@@ -50,6 +64,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: official-stores-candidate-${{ github.run_id }}
-          path: data/official-stores.json
+          path: |
+            data/official-stores.json
+            CATALOGUE_COUVERTURE.md
           if-no-files-found: error
           retention-days: 14

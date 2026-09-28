@@ -13,25 +13,25 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "./app-icon-192.png?rev=20260928-r17-three-week-forecast-263",
+      "src": "./app-icon-192.png?rev=20260928-r18-catalogue-audit-263",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "./app-icon-512.png?rev=20260928-r17-three-week-forecast-263",
+      "src": "./app-icon-512.png?rev=20260928-r18-catalogue-audit-263",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "./app-icon-maskable-512.png?rev=20260928-r17-three-week-forecast-263",
+      "src": "./app-icon-maskable-512.png?rev=20260928-r18-catalogue-audit-263",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "./app-icon.svg?rev=20260928-r17-three-week-forecast-263",
+      "src": "./app-icon.svg?rev=20260928-r18-catalogue-audit-263",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"

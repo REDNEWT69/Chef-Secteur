@@ -1,6 +1,8 @@
 // V261 — une seule porte pour ajouter un magasin : chercher → choisir → ajouter.
 // Le service de recherche (Nominatim) est simulé : aucun appel réseau réel.
 const {test,expect}=require('@playwright/test');
+const REGIONS_467=['Auvergne-Rhône-Alpes','Bourgogne-Franche-Comté','Bretagne','Centre-Val de Loire','Grand Est','Hauts-de-France','Île-de-France','Normandie','Nouvelle-Aquitaine','Occitanie','Pays de la Loire',"Provence-Alpes-Côte d'Azur"];
+const REGION_CODES_467=['84','27','53','24','44','32','11','28','75','76','52','93'];
 const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
 const NOMINATIM='https://nominatim.openstreetmap.org/**';
 test.use({viewport:{width:390,height:844},isMobile:true,hasTouch:true,serviceWorkers:'block'});
@@ -252,20 +254,26 @@ test('carnet officiel : enseigne + région, multi-sélection, tout sélectionner
  await page.locator('#addStoreBtn').click();
  const brand=page.locator('#sraCatalogBrand'),region=page.locator('#sraCatalogRegion');
  await expect(brand).toBeEnabled();
+ // #467 — la liste déroulante ne propose que les 12 régions continentales, dans l'ordre.
+ expect(await region.locator('option').allTextContents()).toEqual(['Choisir une région',...REGIONS_467]);
+ expect(await region.locator('option').evaluateAll(o=>o.map(x=>x.value).filter(Boolean))).toEqual(REGION_CODES_467);
+ // Attentes lues dans le carnet livré : les comptes suivent le snapshot, pas un littéral figé.
+ const expected=await page.evaluate(async()=>{const C=StoreRunnerOfficialCatalog,d=await C.load();const pick=(b,r)=>({count:C.filter(d,b,r).length,coverage:C.coverage(d,b,r)});return {cuis:pick('Cuisinella','84'),darty:pick('Darty','84'),fnac:pick('Fnac','84')}});
+ expect(expected.darty.count).toBeGreaterThan(2);
 
  await brand.selectOption('Cuisinella');await region.selectOption('84');
  await dlg(page).getByRole('button',{name:'Afficher les magasins'}).click();
- await expect(page.locator('[data-sra-catalog-list] .sraCatalogItem')).toHaveCount(31);
- await expect(page.locator('[data-sra-coverage]')).toContainText('Liste partielle');
- await expect(page.locator('[data-sra-coverage]')).toContainText('sans garantie d’exhaustivité');
+ await expect(page.locator('[data-sra-catalog-list] .sraCatalogItem')).toHaveCount(expected.cuis.count);
+ await expect(page.locator('[data-sra-coverage]')).toContainText(expected.cuis.coverage.message);
+ await expect(page.locator('[data-sra-coverage]')).toHaveAttribute('data-level',expected.cuis.coverage.level);
  await noOverflow(page);
 
  await brand.selectOption('Darty');await region.selectOption('84');
  await dlg(page).getByRole('button',{name:'Afficher les magasins'}).click();
- await expect(page.locator('[data-sra-catalog-list] .sraCatalogItem')).toHaveCount(63);
- await expect(page.locator('[data-sra-coverage]')).toContainText('Liste officielle collectée pour cette région');
+ await expect(page.locator('[data-sra-catalog-list] .sraCatalogItem')).toHaveCount(expected.darty.count);
+ await expect(page.locator('[data-sra-coverage]')).toContainText(expected.darty.coverage.message);
  const selectAll=page.locator('[data-sra-select-all]');await selectAll.check();
- await expect(page.locator('[data-sra-add-batch]')).toHaveText('Ajouter 63 magasins');
+ await expect(page.locator('[data-sra-add-batch]')).toHaveText('Ajouter '+expected.darty.count+' magasins');
  await selectAll.uncheck();await expect(page.locator('[data-sra-add-batch]')).toHaveText('Ajouter 0 magasin');
 
  const checks=page.locator('.sraCatalogCheck:not(:disabled)');await checks.nth(0).check();await checks.nth(1).check();
@@ -285,8 +293,32 @@ test('carnet officiel : enseigne + région, multi-sélection, tout sélectionner
  await dlg(page).getByRole('button',{name:'Terminé'}).click();await page.locator('#addStoreBtn').click();
  await brand.selectOption('Fnac');await region.selectOption('84');
  await dlg(page).getByRole('button',{name:'Afficher les magasins'}).click();
- await expect(page.locator('[data-sra-coverage]')).toContainText('Aucune liste exploitable');
+ await expect(page.locator('[data-sra-coverage]')).toContainText(expected.fnac.coverage.message);
+ await expect(page.locator('[data-sra-catalog-list] .sraCatalogItem')).toHaveCount(expected.fnac.count);
  await expect(dlg(page).getByRole('button',{name:'Utiliser la recherche libre'})).toBeVisible();
  await expect(dlg(page).getByRole('button',{name:'Saisir manuellement'})).toBeVisible();
+ await noOverflow(page);
+});
+
+test('#467 carnet officiel (Données › Outils avancés) : 12 régions, sans appel à geo.api.gouv.fr',async({page})=>{
+ const geo=[];page.on('request',r=>{if(/geo\.api\.gouv\.fr/.test(r.url()))geo.push(r.url())});
+ await boot(page,[]);
+ await page.evaluate(()=>{document.getElementById('officialCatalogBtn').click()});
+ await expect(page.locator('dialog.catalogDialog:has(#catalogSearch)')).toBeVisible();
+ await expect(page.locator('#catalogStats')).not.toHaveText('Chargement du carnet…');
+ expect(await page.locator('#catalogRegion option').allTextContents()).toEqual(['Toutes les régions',...REGIONS_467]);
+ expect(await page.locator('#cfRegion option').allTextContents()).toEqual(['Région',...REGIONS_467]);
+ await page.locator('#catalogBrand').selectOption('Darty');await page.locator('#catalogRegion').selectOption('44');
+ const expectedCards=await page.evaluate(async()=>{const d=await StoreRunnerOfficialCatalog.load();return Math.min(150,StoreRunnerOfficialCatalog.filter(d,'Darty','44').length)});
+ await expect(page.locator('#catalogList .catalogCard')).toHaveCount(expectedCards);
+ // Un magasin corse ou ultramarin ne peut pas être ajouté au carnet local.
+ await page.locator('#catalogAddToggle').click();
+ await page.locator('#cfName').fill('Darty Ajaccio');await page.locator('#cfAddress').fill('Route de Mezzavia');await page.locator('#cfZip').fill('20090');await page.locator('#cfCity').fill('Ajaccio');
+ // Choisir une région continentale ne contourne pas la règle : le code postal fait foi.
+ await page.locator('#cfRegion').selectOption('93');
+ await page.locator('#catalogForm button[type=submit]').click();
+ await expect(page.locator('#cfStatus')).toContainText('France métropolitaine continentale');
+ expect(await page.evaluate(()=>JSON.parse((window.__chefStorage||localStorage).getItem('chef-secteur-official-catalog-local-v1')||'[]').length)).toBe(0);
+ expect(geo).toEqual([]);
  await noOverflow(page);
 });
