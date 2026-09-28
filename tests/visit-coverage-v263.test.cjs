@@ -275,7 +275,7 @@ function mainSector(){
     const summary=C.compute(state,{today:FRIDAY,priorities:new Map([['darty','P1']])});
     const row=id=>summary.rows.find(r=>r.id===id);
     assert.equal(row('darty').status,'late');assert.equal(row('darty').overdueDays,6);assert.equal(row('darty').ageDays,36);assert.equal(row('darty').visitsMonth,0);assert.equal(row('darty').priority,'P1');
-    assert.equal(row('darty').tier,4,'P1 en retard passe au palier le plus urgent');
+    assert.equal(row('darty').tier,3.25,'V263.3 : P1 en retard passe devant les retards sans changer de palier (jamais visité 3,5 reste devant)');
     assert.match(C.explain(row('darty')),/il y a 36 j.*fréquence 30 j.*retard 6 j.*0 visite ce mois.*P1/);
     assert.equal(C.statusLabel(row('darty').status),'En retard');
     assert.equal(row('boul').status,'enough');assert.equal(row('boul').blocked,true);assert.equal(row('boul').visitsMonth,3);
@@ -289,7 +289,7 @@ function mainSector(){
     assert.equal(row('over').status,'over');assert.equal(C.statusLabel('over'),'Sur-visité');
     assert.deepEqual(Object.assign({},summary.counts),{never:1,late:1,soon:1,ok:1,enough:2,over:1,total:7});
     assert.equal(summary.monthVisits,11);assert.equal(summary.monthStores,4);
-    assert.deepEqual(summary.catchUp.map(r=>r.id),['darty','never','soon'],'à rattraper : le plus urgent d’abord');
+    assert.deepEqual(summary.catchUp.map(r=>r.id),['never','darty','soon'],'à rattraper : le plus urgent d’abord (V263.3 : jamais visité avant un retard normal, même P1)');
     assert.deepEqual(summary.covered.map(r=>r.id),['over','boul','ok'],'déjà bien couverts : les plus visités d’abord');
     // Un brouillon n'est pas une visite faite.
     const draft=makeState({stores:[store('x',1)],businessVisits:[{id:'d',storeId:'x',status:'draft',completedDate:null}]});

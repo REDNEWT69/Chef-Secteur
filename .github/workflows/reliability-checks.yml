@@ -85,6 +85,7 @@ jobs:
       - run: node tests/recalc-route-order-v263-2.test.cjs
       - run: node tests/visit-coverage-v263.test.cjs
       - run: node tests/visit-coverage-v263-1.test.cjs
+      - run: node tests/never-visited-priority-v263-3.test.cjs
       - run: node tests/period-day-slider.test.cjs
       - run: node tests/period-day-tabs-contract.test.cjs
       - run: node tests/planning-auto-today-v205.test.cjs
