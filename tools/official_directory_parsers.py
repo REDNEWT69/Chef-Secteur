@@ -133,7 +133,7 @@ def _throttle(host,delay):
 def http_get(url,accept='text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.5',timeout=30,retries=2,delay=0.35,same_host=True):
  """GET poli et honnête. Renvoie (texte, url finale). Lève HttpError avec la preuve du blocage."""
  host=urlparse(url).hostname
- for attempt in range(retries+1):
+ for attempt in range(max(retries,4)+1):
   _throttle(host,delay)
   req=urllib.request.Request(url,headers={'User-Agent':UA,'Accept':accept,'Accept-Language':'fr-FR,fr;q=0.9'})
   try:
@@ -144,7 +144,12 @@ def http_get(url,accept='text/html,application/xhtml+xml,application/xml;q=0.9,*
   except urllib.error.HTTPError as e:
    try:body=e.read(8000).decode('utf-8','replace')
    except Exception:body=''
-   if e.code in (429,500,502,503,504) and attempt<retries:time.sleep(2+3*attempt);continue
+   if e.code==429 and attempt<max(retries,4):
+    # Limitation de débit : on respecte Retry-After (plafonné) avant de réessayer.
+    try:wait=float(e.headers.get('Retry-After') or 0)
+    except ValueError:wait=0
+    time.sleep(min(60,max(wait,5*(attempt+1))));continue
+   if e.code in (500,502,503,504) and attempt<retries:time.sleep(2+3*attempt);continue
    raise HttpError(url,e.code,antibot_vendor(e.headers,body))
   except (urllib.error.URLError,socket.timeout,TimeoutError,ConnectionError) as e:
    if attempt<retries:time.sleep(2+3*attempt);continue
