@@ -183,6 +183,13 @@ class CatalogTests(unittest.TestCase):
    def __call__(self,url,**kw):
     if url.startswith(c.BAN_API):return json.dumps({'features':[{'geometry':{'coordinates':[5.35891,45.95779]},'properties':{'postcode':'01500','score':0.93}}]}),url
     return super().__call__(url,**kw)
+  # 1) la fiche magasin (JSON-LD) fournit les coordonnées officielles ;
+  rep,rows=c.collect_cuisinella(get=Ban(pages))
+  amb=[r for r in rows if r['codePostal']=='01500'][0]
+  self.assertEqual((amb['lat'],amb['lon'],amb.get('coordsSource')),(45.9578,5.35883,None))
+  self.assertTrue(rep['complete'],rep)
+  # 2) sans coordonnées sur la fiche non plus : Base Adresse Nationale, source signalée.
+  pages['https://www.ma.cuisinella/fr-fr/magasins/ain/amberieu-en-bugey']=CUIS_STORE.replace(',"geo":{"@type":"GeoCoordinates","latitude":45.9578,"longitude":5.35883}','')
   rep,rows=c.collect_cuisinella(get=Ban(pages))
   amb=[r for r in rows if r['codePostal']=='01500'][0]
   self.assertEqual((amb['lat'],amb['lon'],amb['coordsSource']),(45.95779,5.35891,'Base Adresse Nationale'))

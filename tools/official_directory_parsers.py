@@ -380,14 +380,19 @@ def cuisinella_legacy_id(postal,name):
  # Identifiant historique du carnet (conservé pour les magasins déjà enregistrés).
  return 'official-'+re.sub(r'[^a-z0-9]+','-',norm('Cuisinella-'+postal+'-'+name)).strip('-')
 
-def parse_cuisinella_store(text,url,fetched_at=None):
+def parse_cuisinella_store(text,url,fetched_at=None,geocode=None):
  for block in jsonld_blocks(text):
   for place in iter_places(block):
    f=place_fields(place)
    if not f['name']:continue
-   reason=check_fields(f,'Cuisinella')
+   reason=check_fields(f,'Cuisinella');located=False
+   if reason=='coordonnées absentes ou hors France' and geocode:
+    point=geocode(f['address'],f['postal'],f['city'])
+    if point:f['lat'],f['lon']=point;reason=check_fields(f,'Cuisinella');located=True
    if reason:return None,reason
-   return make_store('Cuisinella',f['name'],f['address'],f['city'],f['postal'],f['lat'],f['lon'],url,store_id=cuisinella_legacy_id(f['postal'],f['name']),fetched_at=fetched_at),''
+   row=make_store('Cuisinella',f['name'],f['address'],f['city'],f['postal'],f['lat'],f['lon'],url,store_id=cuisinella_legacy_id(f['postal'],f['name']),fetched_at=fetched_at)
+   if located:row['coordsSource']='Base Adresse Nationale'
+   return row,''
  return None,'fiche magasin sans données structurées'
 
 def parse_cuisinella_map(text):
@@ -422,13 +427,15 @@ def cuisinella_from_map(store,fetched_at=None,geocode=None):
 def collect_cuisinella(get=None,fetched_at=None,workers=1):
  get=get or http_get;fetched_at=fetched_at or now_iso()
  report=_report('Localisateur officiel ma.cuisinella (données STORES_MAP de /fr-fr/magasins), contrôlé par le sitemap officiel',sourceUrl=CUISINELLA_ROOT+'/fr-fr/magasins')
- sitemap=set();found={}
+ sitemap=set();found={};refetch=set()
  try:sitemap={u for u in (cuisinella_store_url(l) for l in sitemap_locs(get(CUISINELLA_ROOT+'/sitemap.xml',accept='application/xml,text/xml;q=0.9,*/*;q=0.5')[0])) if u}
  except HttpError as e:report['errors'].append(str(e))
  try:
   stores=parse_cuisinella_map(get(CUISINELLA_ROOT+'/fr-fr/magasins')[0])
   for store in stores:
-   row,reason,url=cuisinella_from_map(store,fetched_at,geocode=lambda a,p,c:ban_geocode(a,p,c,get))
+   row,reason,url=cuisinella_from_map(store,fetched_at)
+   # Magasin actif sans coordonnées dans la carte : sa fiche (JSON-LD) est lue ensuite.
+   if reason=='coordonnées absentes ou hors France' and url:refetch.add(url);continue
    if url and (url not in found or row):found[url]=(row,reason)
    elif not url:_reject(report,reason,str(store.get('StoreId')))
   report['locator']=len(stores)
@@ -436,14 +443,15 @@ def collect_cuisinella(get=None,fetched_at=None,workers=1):
  except HttpError as e:report['errors'].append(str(e))
  report['sitemap']=len(sitemap)
  # Fiche du sitemap absente du localisateur : lue une à une (JSON-LD de la fiche).
- missing=sorted(sitemap-set(found));report['fetchedIndividually']=len(missing)
+ missing=sorted((sitemap|refetch)-set(found));report['fetchedIndividually']=len(missing)
  def one(url):
   # Page du sitemap absente du localisateur : 404 ou redirection = fiche retirée (magasin fermé).
+  # Magasin du localisateur sans coordonnées : JSON-LD de sa fiche, puis Base Adresse Nationale.
   try:
    text,final=get(url,delay=0.8)
    if urlparse(final).path.rstrip('/')!=urlparse(url).path.rstrip('/'):return url,(None,'retirée')
-   return url,parse_cuisinella_store(text,url,fetched_at)
-  except HttpError as e:return url,(None,'retirée' if e.status in (404,410) else 'page inaccessible ('+str(e.status)+')')
+   return url,parse_cuisinella_store(text,url,fetched_at,geocode=lambda a,p,c:ban_geocode(a,p,c,get))
+  except HttpError as e:return url,(None,'retirée' if e.status in (404,410) and url not in refetch else 'page inaccessible ('+str(e.status)+')')
  with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
   for url,res in pool.map(one,missing):found[url]=res
  rows=[];retired=[]
