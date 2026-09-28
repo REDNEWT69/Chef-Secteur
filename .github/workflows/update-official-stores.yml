@@ -33,6 +33,9 @@ jobs:
       - name: Diagnostiquer l'accès aux sources officielles
         continue-on-error: true
         run: python tools/probe_official_sources.py
+      - name: TEMP structure (dev #467)
+        continue-on-error: true
+        run: python tools/_dev_probe_structure.py
       - name: Collecter les annuaires officiels
         run: python tools/update_official_stores.py
       - name: Détecter un nouveau snapshot
