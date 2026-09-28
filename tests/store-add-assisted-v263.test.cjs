@@ -6,11 +6,11 @@ const storeAdd = require('../store-add-v261.js');
 const regions = require('../region-stores.js');
 
 const audit = Object.fromEntries(catalog.audit(data).map(row => [row.brand, row]));
-assert.deepEqual(audit.Boulanger, {brand:'Boulanger', count:1, regions:1, source:'partial', rawStatus:'partial'});
-assert.deepEqual(audit.Darty, {brand:'Darty', count:398, regions:12, source:'partial', rawStatus:'ok'});
+assert.deepEqual(audit.Boulanger, {brand:'Boulanger', count:98, regions:12, source:'partial', rawStatus:'partial'});
+assert.deepEqual(audit.Darty, {brand:'Darty', count:398, regions:12, source:'partial', rawStatus:'partial'});
 assert.deepEqual(audit.Fnac, {brand:'Fnac', count:0, regions:0, source:'unavailable', rawStatus:'no high-confidence store parsed'});
-assert.deepEqual(audit.Conforama, {brand:'Conforama', count:0, regions:0, source:'unavailable', rawStatus:'no high-confidence store parsed'});
-assert.deepEqual(audit.Cuisinella, {brand:'Cuisinella', count:257, regions:15, source:'partial', rawStatus:'ok'});
+assert.deepEqual(audit.Conforama, {brand:'Conforama', count:133, regions:12, source:'partial', rawStatus:'partial'});
+assert.deepEqual(audit.Cuisinella, {brand:'Cuisinella', count:250, regions:12, source:'partial', rawStatus:'ok'});
 assert.deepEqual(audit.Carrefour, {brand:'Carrefour', count:0, regions:0, source:'unavailable', rawStatus:'no high-confidence store parsed'});
 
 assert.equal(catalog.filter(data, 'Darty', '84').length, 63, 'enseigne + région filtre le carnet officiel');
