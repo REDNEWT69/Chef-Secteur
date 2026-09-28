@@ -63,6 +63,23 @@ def shared_addresses(stores):
  return out
 
 
+def sirene_near_directory(stores, meters=3000):
+ """Fiches Sirene à moins de 3 km d'une fiche d'annuaire de la même enseigne : gardées
+ (adresse ou code postal différents), mais signalées pour vérification."""
+ out = []
+ for brand in BRANDS:
+  directory = [s for s in stores if s['enseigne'] == brand and str(s.get('source', '')).startswith('Annuaire officiel')]
+  for s in stores:
+   if s['enseigne'] != brand or not str(s.get('source', '')).startswith('Répertoire Sirene'):
+    continue
+   near = [(haversine((s['lat'], s['lon']), (d['lat'], d['lon'])), d) for d in directory if abs(d['lat'] - s['lat']) < 0.03 and abs(d['lon'] - s['lon']) < 0.045]
+   near = [x for x in near if x[0] < meters]
+   if near:
+    dist, d = min(near, key=lambda x: x[0])
+    out.append((brand, s, d, dist))
+ return out
+
+
 def outliers(stores):
  """Fiches à plus de 150 km du centre des magasins de leur département (CP ou coordonnées suspects)."""
  centers = {}
@@ -124,6 +141,10 @@ def build_report(snapshot):
    notes.append('fiches rejetées (' + reason + ') : ' + str(len(refs)) + (' dont ' + ', '.join('`' + str(r) + '`' for r in refs[:3]) if refs else ''))
   if src.get('outOfScope'):
    notes.append(str(src['outOfScope']) + ' fiche(s) hors périmètre écartée(s) (Corse, outre-mer)')
+  if src.get('retired'):
+   notes.append(str(len(src['retired'])) + ' page(s) retirée(s) par l’enseigne (magasin fermé), ex. ' + ', '.join('`' + str(u).split('/fr-fr/')[-1] + '`' for u in src['retired'][:3]))
+  if src.get('sireneMerged'):
+   notes.append(str(src['sireneMerged']) + ' double(s) déclaration(s) Sirene d’un même point de vente fusionnée(s)')
   for err in (src.get('errors') or [])[:3]:
    notes.append('erreur de collecte : ' + str(err))
   comp = src.get('composition') or {}
@@ -136,6 +157,14 @@ def build_report(snapshot):
  if pairs:
   for brand, a, b in pairs:
    L.append('- ' + brand + ' : ' + a['sourceName'] + ' / ' + b['sourceName'] + ' (' + a['codePostal'] + ', ' + str(round(haversine((a['lat'], a['lon']), (b['lat'], b['lon'])))) + ' m)')
+ else:
+  L.append('- aucune')
+ near = sirene_near_directory(stores)
+ L += ['', '## Fiches Sirene proches d’une fiche d’annuaire (à vérifier)', '',
+       'Établissement Sirene à moins de 3 km d’un magasin de l’annuaire de la même enseigne, avec une adresse ou un code postal différents : il est conservé (magasin distinct possible), à vérifier sur le terrain avant ajout.', '']
+ if near:
+  for brand, s, d, dist in near:
+   L.append('- ' + brand + ' : ' + s['sourceName'] + ' (' + s['codePostal'] + ', Sirene `' + str(s['sourceUrl']).rsplit('/', 1)[-1] + '`) ↔ ' + d['sourceName'] + ' (' + d['codePostal'] + ', annuaire) — ' + str(round(dist)) + ' m')
  else:
   L.append('- aucune')
  odd = outliers(stores)

@@ -18,7 +18,7 @@ Principes :
 
 Bibliothèque standard uniquement : les tests Reliability l'importent sans dépendance.
 """
-import concurrent.futures, datetime, hashlib, html, json, math, re, socket, threading, time, unicodedata, urllib.error, urllib.parse, urllib.request
+import concurrent.futures, datetime, gzip, hashlib, html, json, math, re, socket, threading, time, unicodedata, urllib.error, urllib.parse, urllib.request
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 
@@ -139,6 +139,7 @@ def http_get(url,accept='text/html,application/xhtml+xml,application/xml;q=0.9,*
   try:
    with urllib.request.urlopen(req,timeout=timeout) as r:
     body=r.read();final=r.geturl();charset=r.headers.get_content_charset() or 'utf-8'
+   if body[:2]==b'\x1f\x8b':body=gzip.decompress(body)  # sitemap .xml.gz
    if same_host and urlparse(final).hostname!=host:raise HttpError(url,0,'','redirection hors annuaire vers '+final)
    return body.decode(charset,'replace'),final
   except urllib.error.HTTPError as e:
@@ -473,12 +474,16 @@ def collect_cuisinella(get=None,fetched_at=None,workers=1):
 
 # Règles de reconnaissance de l'enseigne dans le répertoire Sirene. Les codes NAF
 # visés sont ceux du commerce de détail ; l'enseigne doit apparaître dans la raison
-# sociale, l'enseigne ou le nom commercial de l'établissement.
+# sociale, l'enseigne ou le nom commercial de l'établissement. anyOperator : deux
+# grandes surfaces de l'enseigne ne coexistent pas à moins d'un kilomètre dans une même
+# commune postale, donc deux déclarations y sont un même magasin quel que soit
+# l'exploitant (reprise, location-gérance) ; faux pour Fnac (boutiques de gare,
+# d'aéroport ou de centre commercial voisines d'un magasin).
 SIRENE_RULES={
- 'Fnac':dict(q='fnac',params={'section_activite_principale':'G'},brand=r'\bFNAC\b',naf=r'^47\.',exclude=r'\bFNAC\s*(LOGISTIQUE|ACCES|DIRECT|TOURISME|JEUNES)\b|ANCIENS COMBATTANTS'),
- 'Carrefour':dict(q='carrefour',params={'activite_principale':'47.11F'},brand=r'\bCARREFOUR\b',naf=r'^47\.11F$',exclude=r'\bCARREFOUR\s+(MARKET|CITY|EXPRESS|CONTACT|PROXI|MONTAGNE|BIO|DRIVE|BON\s*APP)\b'),
- 'Boulanger':dict(q='boulanger',params={'activite_principale':'47.54Z'},brand=r'^BOULANGER(\s+[A-Z0-9\'\- ]+)?$|\(BOULANGER\)$',naf=r'^47\.(54Z|43Z|42Z|41Z)$',exclude=r'LOCATION|B LOC'),
- 'Conforama':dict(q='conforama',params={'section_activite_principale':'G'},brand=r'\bCONFORAMA\b',naf=r'^47\.',exclude=r''),
+ 'Fnac':dict(q='fnac',params={'section_activite_principale':'G'},brand=r'\bFNAC\b',naf=r'^47\.',exclude=r'\bFNAC\s*(LOGISTIQUE|ACCES|DIRECT|TOURISME|JEUNES)\b|ANCIENS COMBATTANTS',anyOperator=False),
+ 'Carrefour':dict(q='carrefour',params={'activite_principale':'47.11F'},brand=r'\bCARREFOUR\b',naf=r'^47\.11F$',exclude=r'\bCARREFOUR\s+(MARKET|CITY|EXPRESS|CONTACT|PROXI|MONTAGNE|BIO|DRIVE|BON\s*APP)\b',anyOperator=True),
+ 'Boulanger':dict(q='boulanger',params={'activite_principale':'47.54Z'},brand=r'^BOULANGER(\s+[A-Z0-9\'\- ]+)?$|\(BOULANGER\)$',naf=r'^47\.(54Z|43Z|42Z|41Z)$',exclude=r'LOCATION|B LOC',anyOperator=True),
+ 'Conforama':dict(q='conforama',params={'section_activite_principale':'G'},brand=r'\bCONFORAMA\b',naf=r'^47\.',exclude=r'',anyOperator=True),
 }
 SIRENE_MAX_PAGES=6
 SMALL=('de','des','du','la','le','les','l','d','et','sur','sous','en','aux','au','lès','les')
@@ -576,8 +581,8 @@ def collect_sirene(brand,get=None,fetched_at=None,departments=None):
    else:_reject(report,reason,cand['etab']['siret'])
    continue
   # Un même point de vente déclaré deux fois : même code postal, moins d'un kilomètre, et même
-  # entreprise (annexe, ancien local) — ou tout exploitant pour un hypermarché Carrefour.
-  twin=next((k for k,c in kept if k['codePostal']==row['codePostal'] and haversine((k['lat'],k['lon']),(row['lat'],row['lon']))<1000 and (brand=='Carrefour' or c['company'].get('siren')==cand['company'].get('siren'))),None)
+  # entreprise (annexe, ancien local) — ou tout exploitant pour une grande surface (anyOperator).
+  twin=next((k for k,c in kept if k['codePostal']==row['codePostal'] and haversine((k['lat'],k['lon']),(row['lat'],row['lon']))<1000 and (SIRENE_RULES[brand].get('anyOperator') or c['company'].get('siren')==cand['company'].get('siren'))),None)
   if twin:merged.append(row['id']+' → '+twin['id']);continue
   kept.append((row,cand));rows.append(row)
  rows.sort(key=lambda r:r['id'])

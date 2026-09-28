@@ -35,8 +35,40 @@ def robots(url, cache={}):
  return ('robots.txt HTTP ' + str(rp.status)) if isinstance(rp, P.HttpError) else ('autorisé' if rp.can_fetch(P.UA, url) else 'interdit')
 
 
+def declared_sitemaps(url):
+ """Sitemaps déclarés par le robots.txt de l'hôte (liste vide si robots.txt est inaccessible)."""
+ base = '{0.scheme}://{0.netloc}'.format(urlparse(url))
+ try:
+  text, _ = P.http_get(base + '/robots.txt', accept='text/plain,*/*;q=0.5', retries=0)
+ except P.HttpError:
+  return []
+ return [line.split(':', 1)[1].strip() for line in text.splitlines() if line.lower().startswith('sitemap:')]
+
+
+def probe_sitemaps(brand, url):
+ """Un sitemap accessible donne la liste officielle des fiches magasins même quand les
+ pages HTML sont protégées : statut, nombre d'URL et échantillon des URL « magasin »."""
+ out = []
+ queue = [(s, 0) for s in declared_sitemaps(url)[:8]]
+ while queue and len(out) < 14:
+  sm, depth = queue.pop(0)
+  try:
+   text, _ = P.http_get(sm, accept='application/xml,text/xml,*/*;q=0.5', retries=0, same_host=False)
+  except P.HttpError as e:
+   out.append({'brand': brand, 'sitemap': sm, 'status': e.status or 'réseau', 'protection': e.vendor or '-'}); continue
+  locs = P.re.findall(r'<loc>\s*([^<\s]+)\s*</loc>', text)
+  stores = [l for l in locs if P.re.search(r'magasin|store|boutique|hypermarche', l, P.re.I)]
+  out.append({'brand': brand, 'sitemap': sm, 'status': 200, 'urls': len(locs), 'storeUrls': len(stores), 'sample': stores[:6] or locs[:6]})
+  if '<sitemapindex' in text and depth == 0:
+   queue += [(l, 1) for l in locs if P.re.search(r'magasin|store|shop|boutique|local|hyper', l, P.re.I)][:4]
+ return out
+
+
 def main():
  rows = []
+ for brand in ['Boulanger', 'Fnac', 'Conforama', 'Carrefour']:
+  for row in probe_sitemaps(brand, TARGETS[brand][0]):
+   print(json.dumps(row, ensure_ascii=False), flush=True)
  for brand, urls in TARGETS.items():
   for url in urls:
    t0 = time.time()

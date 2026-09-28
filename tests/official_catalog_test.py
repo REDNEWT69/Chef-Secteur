@@ -222,6 +222,20 @@ class CatalogTests(unittest.TestCase):
   rep,rows=c.collect_sirene('Fnac',get=FnacWeb({}),departments=['69'])
   self.assertEqual(sorted(r['id'] for r in rows),['sirene-fnac-33447335200011','sirene-fnac-54209533600017'],'magasin gardé, annexe fusionnée, entrepôt écarté, boutique Relay distincte conservée')
   self.assertEqual(rep['merged'],1)
+  # Grande surface reprise par un franchisé : deux exploitants déclarés au même endroit = un magasin.
+  conf=sirene_response([
+   {'siren':'414819409','nom_complet':'CONFORAMA FRANCE','nom_raison_sociale':'CONFORAMA FRANCE','matching_etablissements':[
+    etab('41481940902714','47.59A','77185','LOGNES','BOULEVARD DE BEAUBOURG 77185 LOGNES',48.8391,2.6311,['CONFORAMA'],effectif='21',created='1999-01-01'),
+    etab('41481940902797','47.59A','77183','CROISSY-BEAUBOURG','RUE DE PARIS 77183 CROISSY-BEAUBOURG',48.8300,2.6600,['CONFORAMA'],effectif='21')]},
+   {'siren':'823272430','nom_complet':'CFL LOGNES','nom_raison_sociale':'CFL LOGNES','matching_etablissements':[
+    etab('82327243000013','47.59A','77185','LOGNES','1 BOULEVARD DE BEAUBOURG 77185 LOGNES',48.8405,2.6340,['CONFORAMA'],effectif='22',created='2023-06-01')]}])
+  class ConfWeb(FakeWeb):
+   def __call__(self,url,**kw):
+    if url.startswith(c.SIRENE_API) and 'departement=77' in url and 'q=conforama' in url:return conf,url
+    return super().__call__(url,**kw)
+  rep,rows=c.collect_sirene('Conforama',get=ConfWeb({}),departments=['77'])
+  self.assertEqual(sorted(r['id'] for r in rows),['sirene-conforama-41481940902797','sirene-conforama-82327243000013'],'reprise fusionnée (exploitant le plus étoffé gardé), magasin voisin d’une autre commune conservé')
+  self.assertEqual(rep['mergedSample'],['sirene-conforama-41481940902714 → sirene-conforama-82327243000013'])
   self.assertEqual(c.french_title("SAINT-JEAN-DE-LA-RUELLE"),'Saint-Jean-de-la-Ruelle')
  def test_true_duplicates_merged_distinct_stores_kept(self):
   base=dict(enseigne='Boulanger',source='Annuaire officiel Boulanger',codePostal='69500',ville='BRON',adresse='x')

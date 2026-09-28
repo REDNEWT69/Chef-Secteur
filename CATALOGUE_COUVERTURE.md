@@ -140,7 +140,7 @@ Fichier généré par `tools/update_official_stores.py` depuis `data/official-st
 - **Darty** : 4 fiche(s) hors périmètre écartée(s) (Corse, outre-mer).
 - **Fnac** : annuaire officiel bloqué pour la collecte automatique (https://www.fnac.com/localiser-magasin-fnac/w-4 → HTTP 403); aucune preuve d’exhaustivité : statut partiel; fiches rejetées (coordonnées absentes ou hors France) : 2 dont `88091319900019`, `95078334000025`.
 - **Conforama** : annuaire officiel bloqué pour la collecte automatique (https://www.conforama.fr/liste-des-magasins → HTTP 403, protection cloudflare); aucune preuve d’exhaustivité : statut partiel; composition : Annuaire officiel Conforama (2026-09-28) = 133, Répertoire Sirene (INSEE) = 41.
-- **Cuisinella** : 7 fiche(s) hors périmètre écartée(s) (Corse, outre-mer).
+- **Cuisinella** : 7 fiche(s) hors périmètre écartée(s) (Corse, outre-mer); 24 page(s) retirée(s) par l’enseigne (magasin fermé), ex. `magasins/aisne/soissons`, `magasins/bouches-du-rhone/marseille-aubagne`, `magasins/charente-maritime/angoulins`.
 - **Carrefour** : annuaire officiel bloqué pour la collecte automatique (https://www.carrefour.fr/magasin/liste → HTTP 403, protection cloudflare); aucune preuve d’exhaustivité : statut partiel.
 
 ## Adresses partagées (signalées, non supprimées)
@@ -156,6 +156,16 @@ Fiches distinctes d’une même enseigne à moins de 150 m (ex. Darty et Darty C
 - Fnac : Fnac Le Mesnil-Amelot / Fnac Le Mesnil-Amelot (77990, 100 m)
 - Fnac : Fnac Toulouse / Fnac Toulouse (31000, 63 m)
 - Cuisinella : Cuisinella Châlons-en-Champagne Fagnières / Cuisinella Fagnières (51510, 41 m)
+
+## Fiches Sirene proches d’une fiche d’annuaire (à vérifier)
+
+Établissement Sirene à moins de 3 km d’un magasin de l’annuaire de la même enseigne, avec une adresse ou un code postal différents : il est conservé (magasin distinct possible), à vérifier sur le terrain avant ajout.
+
+- Boulanger : Boulanger Lesquin (59810, Sirene `49363603900023`) ↔ Boulanger Faches-Thumesnil (59155, annuaire) — 843 m
+- Conforama : Conforama Croissy-Beaubourg (77183, Sirene `41481940902797`) ↔ Conforama Torcy (77200, annuaire) — 2211 m
+- Conforama : Conforama Lognes (77185, Sirene `41481940902714`) ↔ Conforama Torcy (77200, annuaire) — 1965 m
+- Conforama : Conforama Lognes (77185, Sirene `82327243000013`) ↔ Conforama Torcy (77200, annuaire) — 2226 m
+- Conforama : Conforama La Garde (83130, Sirene `41481940903092`) ↔ Conforama Toulon (83160, annuaire) — 1773 m
 
 ## Contrôle de cohérence adresse / coordonnées
 
