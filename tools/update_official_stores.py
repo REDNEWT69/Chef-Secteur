@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import json,re,time,unicodedata
 from urllib.parse import urljoin,urlparse
-from official_directory_parsers import collect, REGIONS
+from official_directory_parsers import collect, collect_brand, dept_from_postal, region_code_from_postal, REGIONS
 import requests
 from bs4 import BeautifulSoup
 
@@ -52,12 +52,12 @@ def store_from_obj(brand,o,url):
  if brand.lower() not in norm(name) and brand not in ('Carrefour','Fnac'): return None
  street,city,pc,_=address_obj(o.get('address'))
  if len(pc)<5 or not city or not street:return None
- dept=pc[:2]; geo=o.get('geo') if isinstance(o.get('geo'),dict) else {}
+ dept=dept_from_postal(pc); geo=o.get('geo') if isinstance(o.get('geo'),dict) else {}
  try: lat=float(geo.get('latitude')) if geo.get('latitude') is not None else None
  except: lat=None
  try: lon=float(geo.get('longitude')) if geo.get('longitude') is not None else None
  except: lon=None
- return {'id':'official-'+re.sub(r'[^a-z0-9]+','-',norm(brand+'-'+pc+'-'+name)).strip('-'),'enseigne':brand,'sourceName':name or brand,'ville':city,'adresse':street,'codePostal':pc,'dept':dept,'regionCode':REGION.get(dept,''),'lat':lat,'lon':lon,'source':'Annuaire officiel '+brand,'sourceUrl':url,'sourceFetchedAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'freq':'Mensuel','intervalDays':30,'priority':3,'active':True,'products':['À confirmer']}
+ return {'id':'official-'+re.sub(r'[^a-z0-9]+','-',norm(brand+'-'+pc+'-'+name)).strip('-'),'enseigne':brand,'sourceName':name or brand,'ville':city,'adresse':street,'codePostal':pc,'dept':dept,'regionCode':region_code_from_postal(pc),'lat':lat,'lon':lon,'source':'Annuaire officiel '+brand,'sourceUrl':url,'sourceFetchedAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'freq':'Mensuel','intervalDays':30,'priority':3,'active':True,'products':['À confirmer']}
 
 def parse_page(brand,url,html):
  soup=BeautifulSoup(html,'html.parser'); rows=[]
@@ -95,6 +95,17 @@ def dedupe(rows):
   seen.add(k);out.append(s)
  return sorted(out,key=lambda x:(x['enseigne'],x.get('regionCode',''),x.get('dept',''),x.get('ville','')))
 
+def normalize_existing(rows):
+ out=[]
+ for row in rows:
+  s=dict(row)
+  pc=str(s.get('codePostal') or '')
+  if pc:
+   s['dept']=dept_from_postal(pc)
+   s['regionCode']=region_code_from_postal(pc)
+  out.append(s)
+ return out
+
 def main():
  previous={}
  try:
@@ -103,27 +114,46 @@ def main():
  all_rows=[]; stats={}
  for brand,(seed,pat) in SOURCES.items():
   regional={}
-  if brand in ('Boulanger','Darty'):
+  if brand in ('Boulanger','Conforama'):
+   coverage,rows=collect_brand(brand)
+   old=normalize_existing([x for x in previous.get('stores',[]) if x.get('enseigne')==brand])
+   if coverage['status'] in ('unavailable','partial') and old:
+    rows=dedupe(rows+old)
+    coverage['status']='partial (previous records retained)' if rows else coverage['status']
+   regional=coverage.get('regions',{})
+   if not regional:
+    by_region={}
+    for row in rows:by_region[row.get('regionCode','')]=by_region.get(row.get('regionCode',''),0)+1
+    regional={code:{'status':'partial','count':count,'sourceUrl':coverage.get('sourceUrl',seed),'checkedAt':coverage.get('checkedAt'),'errors':coverage.get('errors',[])} for code,count in sorted(by_region.items())}
+   print(brand,coverage['status'],len(rows),flush=True)
+  elif brand=='Darty':
    rows=[]
    for code in REGIONS:
     try:coverage,found=collect(brand,code)
     except Exception as e:coverage,found={'status':'unavailable','count':0,'errors':[str(e)]},[]
-    old=[x for x in previous.get('stores',[]) if x.get('enseigne')==brand and str(x.get('regionCode'))==code]
+    old=normalize_existing([x for x in previous.get('stores',[]) if x.get('enseigne')==brand and str(x.get('regionCode'))==code])
     if coverage['status'] in ('unavailable','partial'):
      found=dedupe(found+old)
      if old:coverage['status']='partial (previous records retained)'
+    elif len(found)<len(old):
+     found=dedupe(found+old)
+     coverage['status']='partial (previous records retained)'
     regional[code]={**coverage,'count':len(found)};rows.extend(found)
     print(brand,code,coverage['status'],len(found),flush=True)
    rows=dedupe(rows)
+  elif brand=='Cuisinella':
+   rows=normalize_existing([x for x in previous.get('stores',[]) if x.get('enseigne')==brand])
+  elif brand in ('Fnac','Carrefour'):
+   rows=[]
+   regional={'blocked':{'status':'unavailable','count':0,'sourceUrl':seed,'checkedAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'errors':['Accès direct bloqué en 403 ou timeout ; aucune source officielle directe fiable intégrée']}}
   else:
    rows=dedupe(crawl_brand(brand,seed,pat))
   if not rows:
-   old=[x for x in previous.get('stores',[]) if x.get('enseigne')==brand]
+   old=normalize_existing([x for x in previous.get('stores',[]) if x.get('enseigne')==brand])
    rows=old; status='previous snapshot retained' if old else 'no high-confidence store parsed'
   else: status='partial' if regional and any(v['status'] not in ('collected','unsupported') for v in regional.values()) else 'ok'
   stats[brand]={'url':seed,'count':len(rows),'status':status,'regions':regional}; all_rows.extend(rows)
  out={'generatedAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'sources':stats,'stores':dedupe(all_rows)}
- with open('data/official-stores.json','w',encoding='utf-8') as f:json.dump(out,f,ensure_ascii=False,indent=2)
+ with open('data/official-stores.json','w',encoding='utf-8',newline='\n') as f:json.dump(out,f,ensure_ascii=False,indent=2)
  print('stores',len(out['stores']),stats)
 if __name__=='__main__':main()
-
