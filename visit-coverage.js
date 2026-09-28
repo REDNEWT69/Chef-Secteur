@@ -25,11 +25,12 @@
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 const DAY_MS=86400000;
 const ARCHIVE_KEY='chef_sector_plan_archive_v1';
+const RANGE_KEY='chef_sector_range_v1';
 const BLOCK_ID='planningCoverageV263';
 const QUICK_ID='sqCoverageV263';
 
 /* Règles du besoin de visite. `ratio` = jours depuis la dernière visite réelle / fréquence.
-   - trop tôt : moins de la moitié du cycle écoulée → pas reproposé automatiquement ;
+   - trop tôt : moins de la moitié du cycle écoulé → pas reproposé automatiquement ;
    - deux passages dans un même cycle et moins de 75 % écoulés → pas reproposé non plus ;
    - à partir de 75 % : « à visiter bientôt » ; à 100 % : « en retard » ; à 150 % : urgent.
    V263.3 — paliers (`tier`), du plus au moins prioritaire : très en retard (4) › jamais
@@ -206,6 +207,93 @@ function compute(state,options){
     unplannedCatchUp:catchUp.filter(r=>!r.plannedDate).length};
 }
 
+/* V263.6 — forecast pur sur les 3 semaines déjà calculées par le moteur terrain.
+   Aucun second moteur n'est créé ici : on relit le plan courant + l'archive du cycle,
+   les diagnostics `range.coverage` produits par terrain-planning-v1.js et la même source
+   de besoin `VisitCoverage`. Une visite ou un rendez-vous modifie donc le résultat au
+   prochain calcul, sans écrire `state`, l'archive ni le range. */
+function forecastWeekKey(value){const d=parse(value);return d?iso(monday(d)):''}
+function forecastRange(state,options){
+  const o=options||{};if(o.range&&typeof o.range==='object')return o.range;
+  try{const s=storage();return s?JSON.parse(s.getItem(RANGE_KEY)||'null'):null}catch(e){return null}
+}
+function forecastArchive(options){if(options&&options.archive&&typeof options.archive==='object')return options.archive;return readArchive()}
+function forecastFirstMonday(state,range,options,today){
+  const asked=parse(options&&options.firstMonday),fromRange=parse(range&&range.start),fromWeek=parse(state&&state.settings&&state.settings.weekDate),fromToday=parse(today);
+  return monday(asked||fromRange||fromWeek||fromToday||new Date())
+}
+function forecastWorkDays(state,range,options){
+  const raw=(options&&Array.isArray(options.workDays)&&options.workDays.length?options.workDays:(range&&Array.isArray(range.workDays)&&range.workDays.length?range.workDays:(state&&state.settings&&Array.isArray(state.settings.days)&&state.settings.days.length?state.settings.days:DAYS.slice(0,5))));
+  return raw.filter((d,i)=>DAYS.includes(d)&&raw.indexOf(d)===i)
+}
+function forecastUnavailableDates(range){
+  const out=new Set();for(const week of ((range&&range.planningDiagnostics)||[]))for(const day of ((week&&week.days)||[]))if(day&&day.date&&day.status==='blocked')out.add(String(day.date));return out
+}
+function forecastPlanDates(state,archive,first,today){
+  const out=new Map(),end=iso(addDays(first,21)),shown=forecastWeekKey(state&&state.settings&&state.settings.weekDate);
+  for(let wi=0;wi<3;wi++){
+    const mon=addDays(first,wi*7),key=iso(mon),snap=archive&&archive[key],plan=(shown===key&&state&&state.plan)?state.plan:((snap&&snap.plan)||{});
+    for(const day of DAYS){const idx=DAYS.indexOf(day),date=iso(addDays(mon,idx));if(date<today||date>=end)continue;for(const raw of ((plan&&plan[day])||[])){const id=String(raw&&raw.id||'');if(!id)continue;const prev=out.get(id);if(!prev||date<prev)out.set(id,date)}}
+  }
+  return out
+}
+function forecastLockDay(state,id,weekKey,options){
+  try{if(options&&typeof options.lockDayForWeek==='function'){const x=options.lockDayForWeek(id,weekKey);if(DAYS.includes(x))return x}}catch(e){}
+  try{if(root&&typeof root.storeRunnerLockDayForWeek==='function'){const x=root.storeRunnerLockDayForWeek(id,weekKey);if(DAYS.includes(x))return x}}catch(e){}
+  const raw=state&&state.locks&&state.locks[String(id)];if(typeof raw==='string')return DAYS.includes(raw)?raw:'';
+  if(raw&&typeof raw==='object'&&DAYS.includes(raw.day)&&(!raw.week||String(raw.week)===String(weekKey)))return raw.day;return''
+}
+function forecastConstraint(state,store,first,today,end,workDays,unavailable,options){
+  const id=String(store&&store.id||''),appointments=((state&&state.appointments)||[]).filter(a=>String(a&&a.storeId)===id&&String(a.date||'')>=today&&String(a.date||'')<end).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  if(appointments.length){const date=String(appointments[0].date).slice(0,10),d=parse(date),day=d?DAYS[(d.getDay()||7)-1]||'':'';return{type:'appointment',date,week:forecastWeekKey(date),day,compatible:!!day&&workDays.includes(day)&&!unavailable.has(date)}}
+  for(let wi=0;wi<3;wi++){const mon=addDays(first,wi*7),key=iso(mon),day=forecastLockDay(state,id,key,options);if(!day)continue;const date=iso(addDays(mon,DAYS.indexOf(day)));if(date<today||date>=end)continue;return{type:'lock',date,week:key,day,compatible:workDays.includes(day)&&!unavailable.has(date)}}
+  if(state&&state.included&&state.included[store.id])return{type:'imposed',date:'',week:'',day:'',compatible:true};
+  return{type:'',date:'',week:'',day:'',compatible:true}
+}
+function cloneVisitDaysMap(map){const out=new Map();for(const [id,days] of map||[])out.set(String(id),Array.from(days||[]).map(String).sort());return out}
+function addProjectedVisit(map,id,date){if(!date)return;const key=String(id),rows=map.get(key)||[];if(!rows.includes(date)){rows.push(date);rows.sort();map.set(key,rows)}}
+function lastAcceptableDate(workDates,firstAuto,dueDate){
+  if(!workDates.length)return'';if(!dueDate)return workDates[workDates.length-1];
+  const atOrBefore=workDates.filter(d=>d<=dueDate);if(atOrBefore.length)return atOrBefore[atOrBefore.length-1];
+  return firstAuto||workDates[0]
+}
+function forecastThreeWeeks(state,options){
+  const app=state||{},o=options||{},today=todayIso(o),range=forecastRange(app,o),archive=forecastArchive(o),first=forecastFirstMonday(app,range,o,today),start=iso(first),end=iso(addDays(first,21)),workDays=forecastWorkDays(app,range,o),unavailable=forecastUnavailableDates(range),planned=forecastPlanDates(app,archive,first,today),visitMap=o.visitDays instanceof Map?cloneVisitDaysMap(o.visitDays):visitDays(app),priorities=o.priorities instanceof Map?o.priorities:performancePriorities(app),needFn=needOf(app,{today,visitDays:visitMap,priorities});
+  const dayBlocked=typeof o.dayBlocked==='function'?o.dayBlocked:null,workDates=[];
+  for(let wi=0;wi<3;wi++){const mon=addDays(first,wi*7);for(const day of workDays){const date=iso(addDays(mon,DAYS.indexOf(day)));if(date<today||date>=end||unavailable.has(date))continue;let blocked=false;try{blocked=!!(dayBlocked&&dayBlocked(date,app))}catch(e){blocked=false}if(!blocked)workDates.push(date)}}
+  workDates.sort();
+  const coverage=range&&range.coverage||{},lateCapacity=new Set((coverage.uncoveredLate||[]).map(norm)),neverCapacity=new Set((coverage.uncoveredNever||[]).map(norm)),recentEngine=new Set((coverage.recentlyVisited||[]).map(norm)),excluded=app.excluded||{},stores=(app.stores||[]).filter(s=>s&&s.active!==false&&!excluded[s.id]);
+  const rows=[];
+  for(const store of stores){
+    const id=String(store.id),now=needFn(store,today),endNeed=needFn(store,workDates[workDates.length-1]||iso(addDays(first,20))),constraint=forecastConstraint(app,store,first,today,end,workDays,unavailable,o),autoDates=workDates.filter(date=>!needFn(store,date).blocked),firstAuto=autoDates[0]||'',constraintDate=constraint.date&&constraint.compatible?constraint.date:'',firstAcceptable=(constraintDate&&(!firstAuto||constraintDate<firstAuto))?constraintDate:(constraint.type==='imposed'&&!firstAuto?(workDates[0]||''):firstAuto),dueDate=now.nextDue||'',lastAcceptable=lastAcceptableDate(workDates,firstAcceptable,dueDate),planDate=planned.get(id)||'';
+    let recommendedDate='';if(constraintDate)recommendedDate=constraintDate;else if(planDate)recommendedDate=planDate;
+    const atRecommendation=recommendedDate?needFn(store,recommendedDate):now;
+    let reasonCode='',reason='';
+    if(constraint.type==='appointment'){reasonCode='appointment';reason=constraint.compatible?'Rendez-vous explicite':'Rendez-vous hors jour disponible'}
+    else if(constraint.type==='lock'){reasonCode='lock';reason=constraint.compatible?'Jour verrouillé '+constraint.day:'Jour verrouillé indisponible'}
+    else if(constraint.type==='imposed'){reasonCode='imposed';reason=recommendedDate?'Magasin imposé':'Magasin imposé non placé par le cycle courant'}
+    else if(recommendedDate){reasonCode='engine';reason=(atRecommendation.ratio!=null&&atRecommendation.ratio>=RULES.veryLateRatio?'Très en retard':atRecommendation.label)+(atRecommendation.priority?' · '+atRecommendation.priority:'')}
+    const keyName=norm(storeName(store));let uncoveredCode='',uncoveredReason='';
+    if(!recommendedDate){
+      if(!constraint.compatible){uncoveredCode='constraint-unavailable';uncoveredReason='Contrainte explicite incompatible avec les jours disponibles'}
+      else if(recentEngine.has(keyName)){uncoveredCode='too-recent';uncoveredReason='Écarté par le moteur car visité trop récemment'}
+      else if(lateCapacity.has(keyName)||neverCapacity.has(keyName)){uncoveredCode='capacity';uncoveredReason='Reste hors des 3 semaines faute de capacité du cycle'}
+      else if(!firstAcceptable){uncoveredCode='too-recent';uncoveredReason='Pas encore reproposable automatiquement dans cet horizon'}
+      else if(!workDates.length){uncoveredCode='no-workday';uncoveredReason='Aucun jour travaillé disponible dans cet horizon'}
+      else if(endNeed.status==='late'||endNeed.status==='never'||endNeed.status==='soon'){uncoveredCode='not-selected';uncoveredReason='Aucun créneau retenu par le moteur sur ces 3 semaines'}
+      else{uncoveredCode='not-needed';uncoveredReason='Aucune visite nécessaire sur cet horizon'}
+    }
+    rows.push({id,name:storeName(store),store,lastVisit:now.lastVisit||'',intervalDays:now.intervalDays,dueDate,status:now.status,statusLabel:now.label,tier:now.tier,priority:now.priority||'',firstAcceptableDate:firstAcceptable,firstAcceptableWeek:forecastWeekKey(firstAcceptable),lastAcceptableDate:lastAcceptable,lastAcceptableWeek:forecastWeekKey(lastAcceptable),dueWeek:forecastWeekKey(dueDate),plannedDate:planDate,plannedWeek:forecastWeekKey(planDate),constraintType:constraint.type,constraintDate:constraint.date,constraintWeek:constraint.week,constraintCompatible:constraint.compatible,recommendedDate,recommendedWeek:forecastWeekKey(recommendedDate),reasonCode,reason,uncoveredCode,uncoveredReason,willNeedVisitByHorizon:endNeed.status==='late'||endNeed.status==='never'||endNeed.status==='soon'})
+  }
+  const projectedDays=cloneVisitDaysMap(visitMap);for(const row of rows)if(row.recommendedDate)addProjectedVisit(projectedDays,row.id,row.recommendedDate);
+  const projectedNeed=needOf(app,{today,visitDays:projectedDays,priorities}),horizonRef=workDates[workDates.length-1]||iso(addDays(first,20));
+  for(const row of rows){const p=projectedNeed(row.store,horizonRef);row.projectedStatus=p.status;row.projectedStatusLabel=p.label;row.projectedTier=p.tier;row.projectedLastVisit=p.lastVisit||'';row.willBecomeLate=row.status!=='late'&&row.status!=='never'&&p.status==='late';row.remainsNever=p.status==='never'}
+  rows.sort((a,b)=>b.tier-a.tier||a.name.localeCompare(b.name,'fr')||a.id.localeCompare(b.id));
+  const currentCounts={never:0,late:0,soon:0,ok:0,enough:0,over:0},projectedCounts={never:0,late:0,soon:0,ok:0,enough:0,over:0};for(const row of rows){currentCounts[row.status]=(currentCounts[row.status]||0)+1;projectedCounts[row.projectedStatus]=(projectedCounts[row.projectedStatus]||0)+1}
+  const engineCoverageKnown=!!(coverage&&coverage.needAware),engineUncovered=(coverage.uncoveredLate||[]).length+(coverage.uncoveredNever||[]).length;
+  return{version:2636,today,start,end:iso(addDays(first,20)),workDays:workDays.slice(),availableWorkDates:workDates.slice(),rows,counts:{total:rows.length,recommended:rows.filter(r=>!!r.recommendedDate).length,uncovered:rows.filter(r=>r.uncoveredCode&&!['not-needed','too-recent'].includes(r.uncoveredCode)).length,becomesLate:rows.filter(r=>r.willBecomeLate).length,remainsNever:rows.filter(r=>r.remainsNever).length,current:currentCounts,projected:projectedCounts},engine:{rangeKnown:!!range,coverageKnown:engineCoverageKnown,capacitySufficient:engineCoverageKnown?engineUncovered===0:null,uncoveredLate:(coverage.uncoveredLate||[]).length,uncoveredNever:(coverage.uncoveredNever||[]).length}}
+}
+
 /* ------------------------------------------------------------------- interface ---- */
 function readArchive(){try{const s=storage();return s?JSON.parse(s.getItem(ARCHIVE_KEY)||'{}')||{}:{}}catch(e){return{}}}
 function shortDate(value){const d=parse(value);return d?pad(d.getDate())+'/'+pad(d.getMonth()+1):''}
@@ -331,5 +419,5 @@ function install(win){
   win.storeRunnerCoverageBlockedOnDay=blockedOnPlanningDay;
 }
 
-return{VERSION:263,RULES,STATUS,intervalDays,visitDays,performancePriorities,need,needOf,blocked,blockedOnPlanningDay,statusLabel,explain,plannedDates,compute,renderBlock,renderQuick,install};
+return{VERSION:263,RULES,STATUS,intervalDays,visitDays,performancePriorities,need,needOf,blocked,blockedOnPlanningDay,statusLabel,explain,plannedDates,compute,forecastThreeWeeks,renderBlock,renderQuick,install};
 });
