@@ -121,10 +121,10 @@ function row(out,id){const r=out.rows.find(x=>x.id===String(id));assert(r,'forec
   const planned={id:'planned',enseigne:'Boulanger',ville:'Prévu',intervalDays:30};
   const slipping={id:'slip',enseigne:'Darty',ville:'Bascule',intervalDays:30};
   const state=baseState([planned,slipping]);setVisit(state,'planned','2026-09-04');setVisit(state,'slip','2026-09-05');
-  const arch=archivePlan(START,'Jeudi',planned);
-  const out=forecast(state,{archive:arch});
+  state.plan.Jeudi=[planned];
+  const out=forecast(state);
   const p=row(out,'planned'),s=row(out,'slip');
-  assert.strictEqual(p.recommendedDate,'2026-10-01'.replace('10-01','10-01')); // garde une assertion littérale lisible
+  assert.strictEqual(p.recommendedDate,'2026-10-01');
   assert.notStrictEqual(p.projectedStatus,'late');
   assert.strictEqual(s.willBecomeLate,true);
   assert.strictEqual(s.projectedStatus,'late');
