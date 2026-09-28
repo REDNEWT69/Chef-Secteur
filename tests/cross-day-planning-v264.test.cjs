@@ -448,6 +448,18 @@ function measure(fixture, built, evaluateDay, cpuMs) {
     violationDetails: violations,
     cpuMs: Math.round(cpuMs * 10) / 10,
     signature: fnv1a(planSignature(built)),
+    crossDay: built.crossDay ? {
+      applied: !!built.crossDay.applied,
+      insertions: built.crossDay.insertions || 0,
+      moves: built.crossDay.moves || 0,
+      swaps: built.crossDay.swaps || 0,
+      replacements: built.crossDay.replacements || 0,
+      iterations: built.crossDay.iterations || 0,
+      evaluations: built.crossDay.evaluations || 0,
+      fixedDays: built.crossDay.fixedDays || 0,
+      fixedVisits: built.crossDay.fixedVisits || 0,
+      refused: built.crossDay.refused || {}
+    } : null,
     plan: planObject(built)
   };
 }
@@ -505,9 +517,86 @@ for (const result of results) {
   assert.ok(result.metrics.kilometers <= baseline.kilometers + 0.1, config.id + ' : kilomètres supérieurs à la baseline');
   assert.ok(result.metrics.driveMinutes <= baseline.driveMinutes + 0.1, config.id + ' : minutes supérieures à la baseline');
   assert.ok(result.metrics.cpuMs < 5000, config.id + ' : le moteur doit rester borné sous 5 s sur la machine de CI');
+  assert.equal(result.metrics.crossDay && result.metrics.crossDay.applied, true, config.id + ' : la passe cross-day doit être propriétaire de l’affectation');
+  assert.ok(result.metrics.crossDay.swaps + result.metrics.crossDay.moves + result.metrics.crossDay.replacements > 0, config.id + ' : la fixture doit exercer une amélioration locale réelle');
+  assert.ok(Object.values(result.metrics.plan).some(plan => DAYS.some(day => plan[day].includes(config.urgentIsolated))), config.id + ' : le magasin urgent isolé ne doit jamais être sacrifié aux kilomètres');
+  assert.deepEqual(new Set(result.fixture.stores.map(store => store.intervalDays)), new Set([7, 15, 30, 90]), config.id + ' : hebdomadaire, 15 jours, mensuel et trimestriel doivent être représentés');
+  assert.ok(result.metrics.dailyLoads.some(row => row.credits === config.maxCreditsPerDay), config.id + ' : la capacité saturée doit être exercée');
+  for (const blocked of config.blockedDates) {
+    const load = result.metrics.dailyLoads.find(row => row.date === blocked.date);
+    if (load) assert.equal(load.visits, 0, config.id + ' : le jour indisponible/férié ' + blocked.date + ' doit rester vide');
+  }
+  for (const id of config.excluded.concat(config.inactive)) assert.ok(!Object.values(result.metrics.plan).some(plan => DAYS.some(day => plan[day].includes(id))), config.id + ' : ' + id + ' exclu/inactif ne doit pas être planifié');
+  const appointment = config.appointments[0], appointmentPlan = result.metrics.plan[weekKeyOf(appointment.date)], appointmentDayName = DAYS[(parseIso(appointment.date).getDay() || 7) - 1];
+  assert.ok(appointmentPlan[appointmentDayName].includes(appointment.storeId), config.id + ' : le rendez-vous de milieu de journée doit rester sur sa date');
+  if (config.days.includes('Samedi')) assert.ok(result.metrics.dailyLoads.filter(row => parseIso(row.date).getDay() === 6).some(row => row.visits > 0), config.id + ' : samedi activé doit être utilisable');
+  else assert.ok(Object.values(result.metrics.plan).every(plan => plan.Samedi.length === 0), config.id + ' : samedi désactivé doit rester vide');
+  if (config.manualWeek) {
+    assert.ok(result.metrics.crossDay.refused.manualWeeks >= 1, config.id + ' : la semaine manuelle doit sortir du voisinage de recherche');
+    for (const [day, ids] of Object.entries(config.manualWeek.placements)) for (const id of ids) assert.ok(result.metrics.plan[config.manualWeek.week][day].includes(id), config.id + ' : pose manuelle ' + id + ' déplacée');
+  }
+  if (config.hotelReservations.length && !config.manualWeek) assert.ok(result.metrics.crossDay.refused.overnightDays >= 2, config.id + ' : les deux jours du découché existant doivent être figés');
+  assert.ok(result.metrics.crossDay.refused.pastDays >= 2, config.id + ' : les jours passés de la semaine entamée doivent être figés');
   const reruns = Array.from({ length: 3 }, () => runScenario(config).metrics.signature);
   assert.deepEqual(reruns, [result.metrics.signature, result.metrics.signature, result.metrics.signature], config.id + ' : même entrée, même planning');
 }
+
+/* Sélection pure : la géographie ne départage qu'après StoreRunnerVisitCoverage.
+   - un très-en-retard isolé bat un jamais-visité proche ;
+   - un jamais-visité bat un P1 seulement en retard ;
+   - entre deux jamais-visités strictement égaux, le magasin cohérent avec la journée gagne. */
+function runSelectionCase(candidates, needs) {
+  const anchor = { id: 'anchor', x: 100, lat: 45, lon: 4, active: true };
+  const weeks = [
+    { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [anchor] }), manual: false, frozenDays: [] },
+    { weekKey: '2026-10-05', plan: emptyPlan(), manual: true, frozenDays: [] },
+    { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+  ];
+  const needAt = store => needs[store.id] || { status: 'late', tier: 3, priority: '', blocked: false };
+  const evaluate = route => {
+    const orders = permutations(route), score = order => {
+      let distance = 0, previous = 0;
+      for (const store of order) { distance += Math.abs(store.x - previous); previous = store.x; }
+      return distance + Math.abs(previous);
+    };
+    const ordered = orders.sort((a, b) => score(a) - score(b) || a.map(row => row.id).join(',').localeCompare(b.map(row => row.id).join(',')))[0];
+    const distance = score(ordered);
+    return { route: ordered, feasible: true, kilometers: distance, driveMinutes: distance, credits: route.length };
+  };
+  const state = { included: { anchor: true }, hotelReservations: {}, settings: {} };
+  const report = terrain.optimizeThreeWeekCrossDay(weeks, {
+    state, days: ['Lundi'], target: 2, maxCreditsPerDay: 4,
+    ranked: [anchor].concat(candidates), memory: { usedKeys: new Set(), useCount: new Map() },
+    needAt, creditOf: () => 1, lockDayForWeek: () => '', appointmentDay: () => '', completedOn: () => false,
+    dayBlocked: () => false, dayFits: () => true, evaluateDayRoute: evaluate, distanceBetween: (a, b) => Math.abs(a.x - b.x), overnightReservations: {}
+  });
+  return { report, ids: weeks[0].plan.Lundi.map(store => store.id) };
+}
+
+(function businessBeforeGeographyAndGeographyInsideTies() {
+  const urgentFar = { id: 'z-urgent-far', x: -180, lat: 45, lon: 4, active: true };
+  const neverNear = { id: 'a-never-near', x: 102, lat: 45, lon: 4, active: true };
+  let result = runSelectionCase([neverNear, urgentFar], {
+    'z-urgent-far': { status: 'late', tier: 4, priority: '', blocked: false },
+    'a-never-near': { status: 'never', tier: 3.5, priority: '', blocked: false }
+  });
+  assert.ok(result.ids.includes('z-urgent-far') && !result.ids.includes('a-never-near'), 'un urgent isolé doit gagner même quand il coûte plus de route');
+  const lateP1 = { id: 'a-late-p1', x: 101, lat: 45, lon: 4, active: true };
+  const neverFar = { id: 'z-never-far', x: -120, lat: 45, lon: 4, active: true };
+  result = runSelectionCase([lateP1, neverFar], {
+    'a-late-p1': { status: 'late', tier: 3.25, priority: 'P1', blocked: false },
+    'z-never-far': { status: 'never', tier: 3.5, priority: '', blocked: false }
+  });
+  assert.ok(result.ids.includes('z-never-far') && !result.ids.includes('a-late-p1'), 'P1 reste un avantage interne : jamais visité doit battre P1 en retard');
+  const tieFar = { id: 'a-tie-far', x: -100, lat: 45, lon: 4, active: true };
+  const tieNear = { id: 'z-tie-near', x: 101, lat: 45, lon: 4, active: true };
+  result = runSelectionCase([tieFar, tieNear], {
+    'a-tie-far': { status: 'never', tier: 3.5, priority: '', blocked: false },
+    'z-tie-near': { status: 'never', tier: 3.5, priority: '', blocked: false }
+  });
+  assert.ok(result.ids.includes('z-tie-near') && !result.ids.includes('a-tie-far'), 'à besoin strictement égal, la cohérence géographique doit choisir le magasin');
+  assert.equal(result.report.insertions, 1, 'la construction cross-day doit sélectionner et affecter le magasin en une seule étape');
+})();
 
 console.log('=== V264 benchmark allocation cross-day ===');
 console.table(results.map(result => {
@@ -524,6 +613,7 @@ console.table(results.map(result => {
     load: current.minDayCredits + '-' + current.maxDayCredits,
     violations: current.violations,
     cpuMs: current.cpuMs,
+    search: current.crossDay ? [current.crossDay.insertions, current.crossDay.moves, current.crossDay.swaps, current.crossDay.replacements].join('/') : 'legacy',
     signature: current.signature
   };
 }));

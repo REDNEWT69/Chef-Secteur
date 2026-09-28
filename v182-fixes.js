@@ -81,7 +81,7 @@ function dayFitsV185(route,day,mon){
 function eventBlocksPlanningV185(e){
   if(!e)return false;if(e.inferredAway)return true;
   let text='';try{text=String((e.title||'')+' '+(e.location||'')+' '+(e.calendar||'')).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}catch(x){}
-  const hard=['formation','deplacement','seminaire','conge','vacances','salon professionnel','indisponible','indisponibilite','absence','absent','journee bloquee','jour bloque','repos','hors secteur'];
+  const hard=['formation','deplacement','seminaire','conge','vacances','salon professionnel','indisponible','indisponibilite','absence','absent','journee bloquee','jour bloque','jour ferie','ferie','public holiday','repos','hors secteur'];
   return hard.some(x=>text.includes(x))||/\bparis\b/.test(text)||!!(e.planningBlock&&!e.allDay)
 }
 function dayBlockedV185(date){
@@ -192,13 +192,16 @@ function terrainOvernightRow(week){
 }
 async function persistSnailGeography(result){
   if(!result||!Array.isArray(result.weeks)||!result.weeks.length)return false;
-  const archive=loadArchive();let changed=false;
-  for(const week of result.weeks){if(!week||week.manual)continue;const geo=rebalancePlanByGeography(week.plan,{weekKey:week.weekKey,preferNearFirst:true,frozenDays:week.frozenDays});if(!geo.ok)continue;if(geo.changed){week.plan=geo.plan;changed=true;const prev=archive[week.weekKey]||{weekMonday:week.weekKey};archive[week.weekKey]=Object.assign({},prev,{weekMonday:week.weekKey,plan:clone(geo.plan),manualEdited:false,generatedMode:'snail-distance-geo-v185',geographyOptimized:'v185',updatedAt:new Date().toISOString()})}}
+  const archive=loadArchive(),crossDay=!!(result.crossDay&&result.crossDay.applied);let changed=false;
+  /* V264 : terrain-planning-v1.js possède désormais l'affectation entre journées sur les
+     trois semaines. Repasser V185 semaine par semaine pourrait défaire un échange entre
+     semaines ; V185 reste le repli des anciens appels sans couverture/évaluateur. */
+  for(const week of result.weeks){if(!week||week.manual||crossDay)continue;const geo=rebalancePlanByGeography(week.plan,{weekKey:week.weekKey,preferNearFirst:true,frozenDays:week.frozenDays});if(!geo.ok)continue;if(geo.changed){week.plan=geo.plan;changed=true;const prev=archive[week.weekKey]||{weekMonday:week.weekKey};archive[week.weekKey]=Object.assign({},prev,{weekMonday:week.weekKey,plan:clone(geo.plan),manualEdited:false,generatedMode:'snail-distance-geo-v185',geographyOptimized:'v185',updatedAt:new Date().toISOString()})}}
   if(changed){saveArchive(archive);const first=result.weeks[0];if(first&&String(state.settings&&state.settings.weekDate||'')===String(first.weekKey||''))state.plan=Object.fromEntries(DAYS.map(d=>[d,((first.plan&&first.plan[d])||[]).map(resolveStore)]));try{if(typeof window.save==='function')window.save();else if(typeof save==='function')save()}catch(e){}}
   let finalDiagnostics=null,finalHours=null;
   try{const terrain=window.StoreRunnerTerrainPlanningV1;if(terrain&&typeof terrain.refreshThreeWeekDiagnostics==='function'){finalDiagnostics=terrain.refreshThreeWeekDiagnostics(result.weeks,state);result.dayCoverage=finalDiagnostics.dayCoverage;result.emptyWorkDays=finalDiagnostics.emptyWorkDays}if(terrain&&typeof terrain.summarizeOpeningHours==='function'){finalHours=terrain.summarizeOpeningHours(result.weeks,state);result.hoursReport=finalHours}}catch(e){console.warn('Diagnostic final escargot non recalculé',e)}
   const report=result.weeks.map(terrainOvernightRow);result.overnightReport=report;
-  try{const s=storage(),range=s&&JSON.parse(s.getItem(RANGE_KEY)||'null');if(range){range.overnightReport=report;if(finalDiagnostics){range.planningDiagnostics=finalDiagnostics.planningDiagnostics;range.dayCoverage=finalDiagnostics.dayCoverage}if(finalHours)range.hoursReport=finalHours;range.rotation='snail-distance-geo-v185';range.updatedAt=new Date().toISOString();s.setItem(RANGE_KEY,JSON.stringify(range))}if(s&&typeof s.flush==='function')await s.flush()}catch(e){}
+  try{const s=storage(),range=s&&JSON.parse(s.getItem(RANGE_KEY)||'null');if(range){range.overnightReport=report;if(finalDiagnostics){range.planningDiagnostics=finalDiagnostics.planningDiagnostics;range.dayCoverage=finalDiagnostics.dayCoverage}if(finalHours)range.hoursReport=finalHours;range.rotation=crossDay?'cross-day-v264':'snail-distance-geo-v185';if(crossDay)range.crossDayReport=result.crossDay;range.updatedAt=new Date().toISOString();s.setItem(RANGE_KEY,JSON.stringify(range))}if(s&&typeof s.flush==='function')await s.flush()}catch(e){}
   if(changed){try{if(typeof window.renderAll==='function')window.renderAll();else if(typeof renderAll==='function')renderAll()}catch(e){}}
   try{document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{source:'snail-geo-v185',weekDate:String(result.weeks[0]&&result.weeks[0].weekKey||'')}}))}catch(e){}
   return changed
