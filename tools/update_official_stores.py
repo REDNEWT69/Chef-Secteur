@@ -23,15 +23,21 @@ def load_previous(path):
   return {'stores': [], 'sources': {}}
 
 
+def normalize_row(row):
+ """Fiche d'un snapshot antérieur : région et département recalculés depuis le code postal."""
+ s = dict(row); postal = str(s.get('codePostal') or '')
+ s['dept'] = P.dept_from_postal(postal); s['regionCode'] = P.region_code_from_postal(postal); s['region'] = P.REGIONS[s['regionCode']][0]
+ return s
+
+
 def normalize_previous(rows, brand):
  """Fiches d'annuaire d'une collecte antérieure : continentales, région recalculée,
  vrais doublons (même nom au même endroit, collectés par deux méthodes) fusionnés."""
  out = []
  for row in sorted((r for r in rows if r.get('enseigne') == brand and str(r.get('source', '')).startswith('Annuaire officiel')), key=lambda r: str(r.get('sourceFetchedAt', '')), reverse=True):
-  s = dict(row); postal = str(s.get('codePostal') or '')
-  if not P.is_continental_postal(postal) or not P.valid_coords(s.get('lat'), s.get('lon')):
+  if not P.is_continental_postal(row.get('codePostal')) or not P.valid_coords(row.get('lat'), row.get('lon')):
    continue
-  s['dept'] = P.dept_from_postal(postal); s['regionCode'] = P.region_code_from_postal(postal); s['region'] = P.REGIONS[s['regionCode']][0]
+  s = normalize_row(row)
   if any(P.norm(o['sourceName']) == P.norm(s['sourceName']) and P.haversine((o['lat'], o['lon']), (s['lat'], s['lon'])) < 80 for o in out):
    continue
   out.append(s)
@@ -128,7 +134,7 @@ def main(argv=None):
  # Sources prouvables d'abord ; l'ordre du JSON reste celui de BRANDS.
  for brand in ['Darty', 'Cuisinella', 'Boulanger', 'Conforama', 'Fnac', 'Carrefour']:
   if brand not in wanted:
-   keep = [r for r in prev_rows if r.get('enseigne') == brand]
+   keep = [normalize_row(r) for r in prev_rows if r.get('enseigne') == brand and P.is_continental_postal(r.get('codePostal'))]
    stores.extend(keep)
    if brand in previous.get('sources', {}):
     sources[brand] = previous['sources'][brand]

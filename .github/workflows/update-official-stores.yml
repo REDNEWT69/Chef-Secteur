@@ -38,6 +38,8 @@ jobs:
         run: python tests/official_catalog_test.py
       - name: Diagnostiquer l'accès aux sources officielles
         continue-on-error: true
+        env:
+          PROBE_CUISINELLA: '1'
         run: python tools/probe_official_sources.py
       - name: Collecter les annuaires officiels
         env:

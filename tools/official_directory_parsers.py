@@ -401,7 +401,7 @@ def collect_cuisinella(get=None,fetched_at=None,workers=2):
 SIRENE_RULES={
  'Fnac':dict(q='fnac',params={'section_activite_principale':'G'},brand=r'\bFNAC\b',naf=r'^47\.',exclude=r'\bFNAC\s*(LOGISTIQUE|ACCES|DIRECT|TOURISME|JEUNES)\b|ANCIENS COMBATTANTS'),
  'Carrefour':dict(q='carrefour',params={'activite_principale':'47.11F'},brand=r'\bCARREFOUR\b',naf=r'^47\.11F$',exclude=r'\bCARREFOUR\s+(MARKET|CITY|EXPRESS|CONTACT|PROXI|MONTAGNE|BIO|DRIVE|BON\s*APP)\b'),
- 'Boulanger':dict(q='boulanger',params={'activite_principale':'47.54Z'},brand=r'^BOULANGER$|\(BOULANGER\)|^BOULANGER\s+(SA|S\.A\.)$',naf=r'^47\.(54Z|43Z|42Z|41Z)$',exclude=r'LOCATION|B LOC'),
+ 'Boulanger':dict(q='boulanger',params={'activite_principale':'47.54Z'},brand=r'^BOULANGER(\s+[A-Z0-9\'\- ]+)?$|\(BOULANGER\)$',naf=r'^47\.(54Z|43Z|42Z|41Z)$',exclude=r'LOCATION|B LOC'),
  'Conforama':dict(q='conforama',params={'section_activite_principale':'G'},brand=r'\bCONFORAMA\b',naf=r'^47\.',exclude=r''),
 }
 SIRENE_MAX_PAGES=6

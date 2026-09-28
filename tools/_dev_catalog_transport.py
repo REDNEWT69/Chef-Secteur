@@ -33,9 +33,8 @@ def sort_key(r):
 
 
 def keep_asis(row):
- s = dict(row); postal = str(s.get('codePostal') or '')
- s['dept'] = P.dept_from_postal(postal); s['regionCode'] = P.region_code_from_postal(postal); s['region'] = P.REGIONS[s['regionCode']][0]
- return s
+ import update_official_stores as U
+ return U.normalize_row(row)
 
 
 def fresh(brand, name, street, city, postal, lat, lon, url, t, store_id=None, source=None):

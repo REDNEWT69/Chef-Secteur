@@ -58,3 +58,29 @@ def main():
 
 if __name__ == '__main__':
  main()
+
+
+def cuisinella_structure():
+ """TEMPORAIRE (#467) : la page carte embarque-t-elle les fiches magasins ?"""
+ import re
+ text, _ = P.http_get(P.CUISINELLA_ROOT + '/fr-fr/magasins')
+ for label, rx in [('latitude', r'latitude'), ('lat"', r'"lat"'), ('data-lat', r'data-lat'), ('storeId', r'storeId'), ('fiches', r'/fr-fr/magasins/[a-z0-9-]+/[a-z0-9-]+'), ('postalCode', r'postalCode|codePostal|zipCode|"zip"')]:
+  hits = [m.start() for m in re.finditer(rx, text)]
+  print('### cuis', label, len(hits), flush=True)
+  if hits:
+   i = hits[0]; print('### cuis ctx', label, json.dumps(text[max(0, i - 300):i + 500]), flush=True)
+ for m in re.finditer(r'<script([^>]*)>', text):
+  attrs = m.group(1); body = text[m.end():text.find('</script>', m.end())]
+  if len(body) > 2000:
+   print('### cuis script', attrs[:120], len(body), json.dumps(body[:300]), flush=True)
+ t0 = time.time(); codes = []
+ for url in [P.CUISINELLA_ROOT + '/fr-fr/magasins/ain/beynost', P.CUISINELLA_ROOT + '/fr-fr/magasins/aisne/laon', P.CUISINELLA_ROOT + '/fr-fr/magasins/allier/moulins']:
+  try:
+   P.http_get(url, retries=0); codes.append(200)
+  except P.HttpError as e:
+   codes.append(e.status)
+ print('### cuis 3 fiches', codes, round(time.time() - t0, 1), 's', flush=True)
+
+
+if __name__ == '__main__' and os.environ.get('PROBE_CUISINELLA') == '1':
+ cuisinella_structure()
