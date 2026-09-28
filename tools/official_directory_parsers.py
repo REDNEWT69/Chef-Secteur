@@ -270,12 +270,30 @@ def rel_next(text):
  return ''
 
 def _report(method,**kw):
- base=dict(method=method,checkedAt=now_iso(),errors=[],rejected={},outOfScope=0)
+ base=dict(method=method,checkedAt=now_iso(),errors=[],rejected={},rejectedCount={},outOfScope=0)
  base.update(kw);return base
 
 def _reject(report,reason,ref):
  bucket=report['rejected'].setdefault(reason,[])
+ report['rejectedCount'][reason]=report['rejectedCount'].get(reason,0)+1
  if len(bucket)<12:bucket.append(ref)
+
+def _unresolved(report):
+ return sum(report.get('rejectedCount',{}).values())
+
+BAN_API='https://api-adresse.data.gouv.fr/search/'
+
+def ban_geocode(address,postal,city,get=None):
+ """Coordonnées d'une adresse par la Base Adresse Nationale (API officielle), ou None."""
+ q=' '.join(x for x in (address,postal,city) if x)
+ if not q or not re.fullmatch(r'\d{5}',postal or ''):return None
+ try:data=json.loads((get or http_get)(BAN_API+'?'+urllib.parse.urlencode({'q':q,'postcode':postal,'limit':1}),accept='application/json',delay=0.2,retries=1)[0])
+ except (HttpError,ValueError):return None
+ for feat in data.get('features') or []:
+  props=feat.get('properties') or {};coords=(feat.get('geometry') or {}).get('coordinates') or []
+  if props.get('postcode')==postal and float(props.get('score') or 0)>=0.5 and len(coords)==2 and valid_coords(float(coords[1]),float(coords[0])):
+   return round(float(coords[1]),7),round(float(coords[0]),7)
+ return None
 
 # ---------------------------------------------------------------- Darty
 
@@ -343,7 +361,7 @@ def collect_darty(get=None,fetched_at=None,max_pages=40,workers=2):
   else:_reject(report,reason,path)
  report['notInReference']=sorted(set(found)-reference)[:20]
  report['parsed']=len(rows)
- unresolved=sum(len(v) for v in report['rejected'].values())
+ unresolved=_unresolved(report)
  report['complete']=bool(reference) and plan==sitemap and not report['errors'] and unresolved==0 and set(found)>=reference
  report['proof']=('Plan du site ('+str(len(plan))+') = sitemap ('+str(len(sitemap))+') ; '+str(len(rows))+' fiches continentales, '+str(report['outOfScope'])+' hors périmètre, '+str(unresolved)+' non exploitables')
  return report,rows
@@ -374,15 +392,15 @@ def parse_cuisinella_store(text,url,fetched_at=None):
 
 def parse_cuisinella_map(text):
  """Données du localisateur officiel : `var STORES_MAP = {"Stores":[…]}` de la page carte."""
- i=(text or '').find('STORES_MAP')
- j=text.find('{',i) if i>=0 else -1
- if j<0:return []
- try:obj,_=json.JSONDecoder(strict=False).raw_decode(text,j)
- except ValueError:return []
- stores=obj.get('Stores') if isinstance(obj,dict) else None
- return stores if isinstance(stores,list) else []
+ # La déclaration elle-même : d'autres mentions (gabarits Vue) peuvent la précéder.
+ for m in re.finditer(r'STORES_MAP\s*=\s*(?=\{)',text or ''):
+  try:obj,_=json.JSONDecoder(strict=False).raw_decode(text,m.end())
+  except ValueError:continue
+  stores=obj.get('Stores') if isinstance(obj,dict) else None
+  if isinstance(stores,list):return stores
+ return []
 
-def cuisinella_from_map(store,fetched_at=None):
+def cuisinella_from_map(store,fetched_at=None,geocode=None):
  """(fiche|None, motif, url) pour une entrée STORES_MAP."""
  url=cuisinella_store_url(store.get('Url'))
  if norm(store.get('Brand'))!='cuisinella':return None,'autre enseigne',url
@@ -392,8 +410,14 @@ def cuisinella_from_map(store,fetched_at=None):
  f=dict(name=name,address=address,city=clean(store.get('City')),postal=re.sub(r'\s','',str(store.get('PostalCode') or '')),country='',lat=to_float(store.get('Latitude')),lon=to_float(store.get('Longitude')),url=url)
  if not url:return None,'fiche sans URL magasin',''
  reason=check_fields(f,'Cuisinella')
+ located=False
+ if reason=='coordonnées absentes ou hors France' and geocode:
+  point=geocode(f['address'],f['postal'],f['city'])
+  if point:f['lat'],f['lon']=point;reason=check_fields(f,'Cuisinella');located=True
  if reason:return None,reason,url
- return make_store('Cuisinella',f['name'],f['address'],f['city'],f['postal'],f['lat'],f['lon'],url,store_id=cuisinella_legacy_id(f['postal'],f['name']),fetched_at=fetched_at),'',url
+ row=make_store('Cuisinella',f['name'],f['address'],f['city'],f['postal'],f['lat'],f['lon'],url,store_id=cuisinella_legacy_id(f['postal'],f['name']),fetched_at=fetched_at)
+ if located:row['coordsSource']='Base Adresse Nationale'
+ return row,'',url
 
 def collect_cuisinella(get=None,fetched_at=None,workers=1):
  get=get or http_get;fetched_at=fetched_at or now_iso()
@@ -404,7 +428,7 @@ def collect_cuisinella(get=None,fetched_at=None,workers=1):
  try:
   stores=parse_cuisinella_map(get(CUISINELLA_ROOT+'/fr-fr/magasins')[0])
   for store in stores:
-   row,reason,url=cuisinella_from_map(store,fetched_at)
+   row,reason,url=cuisinella_from_map(store,fetched_at,geocode=lambda a,p,c:ban_geocode(a,p,c,get))
    if url and (url not in found or row):found[url]=(row,reason)
    elif not url:_reject(report,reason,str(store.get('StoreId')))
   report['locator']=len(stores)
@@ -414,19 +438,27 @@ def collect_cuisinella(get=None,fetched_at=None,workers=1):
  # Fiche du sitemap absente du localisateur : lue une à une (JSON-LD de la fiche).
  missing=sorted(sitemap-set(found));report['fetchedIndividually']=len(missing)
  def one(url):
-  try:text,_=get(url,delay=0.8);return url,parse_cuisinella_store(text,url,fetched_at)
-  except HttpError as e:return url,(None,'page inaccessible ('+str(e.status)+')')
+  # Page du sitemap absente du localisateur : 404 ou redirection = fiche retirée (magasin fermé).
+  try:
+   text,final=get(url,delay=0.8)
+   if urlparse(final).path.rstrip('/')!=urlparse(url).path.rstrip('/'):return url,(None,'retirée')
+   return url,parse_cuisinella_store(text,url,fetched_at)
+  except HttpError as e:return url,(None,'retirée' if e.status in (404,410) else 'page inaccessible ('+str(e.status)+')')
  with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
   for url,res in pool.map(one,missing):found[url]=res
- rows=[]
+ rows=[];retired=[]
  for url,(row,reason) in sorted(found.items()):
   if row:rows.append(row)
   elif reason=='hors périmètre':report['outOfScope']+=1
+  elif reason=='retirée':retired.append(url)
   else:_reject(report,reason,url)
- report['parsed']=len(rows);report['notInSitemap']=sorted(set(found)-sitemap)[:20]
- unresolved=sum(len(v) for v in report['rejected'].values())
- report['complete']=bool(sitemap) and not report['errors'] and unresolved==0 and set(found)>=sitemap and not report['notInSitemap']
- report['proof']=('Localisateur officiel ('+str(report.get('locator',0))+' magasins) ; sitemap officiel ('+str(len(sitemap))+' fiches) ; '+str(len(rows))+' fiches continentales, '+str(report['outOfScope'])+' hors périmètre, '+str(unresolved)+' non exploitables'+(' ; '+str(len(missing))+' fiche(s) lue(s) une à une' if missing else ''))
+ report['retired']=retired;report['parsed']=len(rows)
+ unresolved=_unresolved(report)
+ located=sum(1 for r in rows if r.get('coordsSource'))
+ # Preuve : chaque magasin du localisateur est collecté, et chaque page du sitemap est soit
+ # collectée, soit retirée (404/redirection). Le localisateur fait foi pour les magasins actifs.
+ report['complete']=bool(sitemap) and bool(report.get('locator')) and not report['errors'] and unresolved==0
+ report['proof']=('Localisateur officiel ('+str(report.get('locator',0))+' magasins) contrôlé par le sitemap ('+str(len(sitemap))+' fiches) : '+str(len(rows))+' fiches continentales, '+str(report['outOfScope'])+' hors périmètre, '+str(len(retired))+' page(s) du sitemap retirée(s) (404 ou redirection), '+str(unresolved)+' non exploitable(s)'+(' ; '+str(located)+' coordonnée(s) issue(s) de la Base Adresse Nationale' if located else ''))
  return report,rows
 
 # ---------------------------------------------------------------- Sirene (INSEE)

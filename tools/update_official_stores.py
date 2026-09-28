@@ -77,6 +77,8 @@ def summarize(brand, rows, report, meta, access):
   'officialAccess': access or {'status': 'ok'},
   'checkedAt': report.get('checkedAt') or P.now_iso(), 'errors': report.get('errors', [])[:6],
   'rejected': {k: v[:6] for k, v in (report.get('rejected') or {}).items()},
+  'rejectedCount': report.get('rejectedCount', {}),
+  'retired': (report.get('retired') or [])[:40],
   'outOfScope': report.get('outOfScope', 0),
   'sireneRejected': report.get('sireneRejected', {}),
   'composition': dict(sorted(composition.items())),
@@ -94,7 +96,7 @@ def collect_with_proof(brand, collector, previous_rows, fetched_at, reference):
  prev = normalize_previous(previous_rows, brand)
  new_ids = {x['id'] for x in rows}
  if rows and len(rows) >= 0.9 * len(prev):
-  why = '; '.join(report.get('errors', [])[:2] + [k + ' : ' + str(len(v)) for k, v in (report.get('rejected') or {}).items()]) or 'contrôle croisé incomplet'
+  why = '; '.join(report.get('errors', [])[:2] + [k + ' : ' + str(n) for k, n in (report.get('rejectedCount') or {}).items()]) or 'contrôle croisé incomplet'
   return rows, report, {'kind': 'official-partial', 'why': why}, access
  # Collecte nettement plus petite que la précédente : on garde aussi les anciennes fiches.
  return rows + [r for r in prev if r['id'] not in new_ids], report, {'kind': 'retained', 'sirene': False}, access

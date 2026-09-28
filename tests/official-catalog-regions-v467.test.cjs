@@ -112,4 +112,18 @@ const officialSrc = fs.readFileSync(path.join(ROOT, 'official-catalog.js'), 'utf
 assert.doesNotMatch(officialSrc, /'2A'|'2B'|'20':|'97[1-6]'/, 'DEPT_REGION sans Corse ni DROM');
 assert.match(fs.readFileSync(path.join(ROOT, 'region-stores.js'), 'utf8'), /StoreRunnerOfficialCatalog[^;]*regions\(\)/, 'ancien dialogue région : même source que le carnet');
 
+// 7. Magasins connus : un point de vente phare par région doit être retrouvé par
+//    la recherche enseigne + région (fiches officielles relevées le 28/09/2026).
+const KNOWN = [
+  ['Darty', '84', '/84-darty-la-part-dieu'], ['Darty', '27', '/145-darty-quetigny'], ['Darty', '53', '/156-darty-saint-malo'],
+  ['Darty', '24', '/133-darty-olivet'], ['Darty', '44', '/169-darty-strasbourg-les-halles'], ['Darty', '32', '/6-darty-amiens'],
+  ['Darty', '11', '/149-darty-republique'], ['Darty', '28', '/103-darty-lisieux'], ['Darty', '75', '/39-darty-brive'],
+  ['Darty', '76', '/140-darty-perpignan'], ['Darty', '52', '/8-darty-angers-atoll'], ['Darty', '93', '/41-darty-plan-de-campagne']
+];
+for (const [brand, code, path] of KNOWN) {
+  const hit = catalog.filter(data, brand, code).find(s => String(s.sourceUrl || '').endsWith(path));
+  assert.ok(hit, brand + ' ' + path + ' retrouvé en ' + code);
+}
+assert.deepEqual([...new Set(KNOWN.map(k => k[1]))].sort(), [...codes].sort(), 'un magasin connu dans chacune des 12 régions');
+
 console.log('Official catalog regions V467 tests: OK');

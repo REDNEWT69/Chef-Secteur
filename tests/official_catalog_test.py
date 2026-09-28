@@ -163,10 +163,30 @@ class CatalogTests(unittest.TestCase):
   self.assertEqual(sorted(r['ville'] for r in rows),['Ambérieu-en-Bugey','Paris'])
   # Même identifiant historique, que la fiche vienne du localisateur ou de sa page.
   self.assertEqual({r['id'] for r in rows},{'official-cuisinella-01500-cuisinella-amberieu-en-bugey','official-cuisinella-75011-cuisinella-paris-11-nation'})
-  # Une fiche du sitemap introuvable : jamais « complet ».
+  # Page du sitemap absente du localisateur et en 404 : fiche retirée (magasin fermé), la preuve tient.
   pages=cuisinella_site(map_missing=('paris/paris-11-nation',));del pages['https://www.ma.cuisinella/fr-fr/magasins/paris/paris-11-nation']
   rep,rows=c.collect_cuisinella(get=FakeWeb(pages))
-  self.assertFalse(rep['complete']);self.assertIn('page inaccessible (404)',rep['rejected'])
+  self.assertTrue(rep['complete'],rep);self.assertEqual(rep['retired'],['https://www.ma.cuisinella/fr-fr/magasins/paris/paris-11-nation'])
+  self.assertEqual(len(rows),1)
+  # Page du sitemap inaccessible pour une autre raison : jamais « complet ».
+  class Down(FakeWeb):
+   def __call__(self,url,**kw):
+    if url.endswith('paris-11-nation'):raise c.HttpError(url,503,'')
+    return super().__call__(url,**kw)
+  rep,_=c.collect_cuisinella(get=Down(cuisinella_site()))
+  self.assertFalse(rep['complete']);self.assertEqual(rep['rejectedCount'],{'page inaccessible (503)':1})
+  # Magasin actif du localisateur sans coordonnées : Base Adresse Nationale, source signalée.
+  pages=cuisinella_site(map_missing=());entry=json.loads(pages['https://www.ma.cuisinella/fr-fr/magasins'].split('STORES_MAP = ')[1].split(';')[0])
+  entry['Stores'][0]['Latitude']=None;entry['Stores'][0]['Longitude']=None
+  pages['https://www.ma.cuisinella/fr-fr/magasins']='<html><script>var STORES_MAP = '+json.dumps(entry)+';</script></html>'
+  class Ban(FakeWeb):
+   def __call__(self,url,**kw):
+    if url.startswith(c.BAN_API):return json.dumps({'features':[{'geometry':{'coordinates':[5.35891,45.95779]},'properties':{'postcode':'01500','score':0.93}}]}),url
+    return super().__call__(url,**kw)
+  rep,rows=c.collect_cuisinella(get=Ban(pages))
+  amb=[r for r in rows if r['codePostal']=='01500'][0]
+  self.assertEqual((amb['lat'],amb['lon'],amb['coordsSource']),(45.95779,5.35891,'Base Adresse Nationale'))
+  self.assertTrue(rep['complete'],rep)
   self.assertEqual(c.parse_cuisinella_map('<html>rien</html>'),[])
  def test_sirene_filters_brand_format_and_status(self):
   rep,rows=c.collect_sirene('Carrefour',get=FakeWeb({}),departments=['77'])
