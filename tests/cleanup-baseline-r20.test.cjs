@@ -28,10 +28,12 @@ function fnv1a(text) {
 function planSignature(plan) {
   return fnv1a(Object.keys(plan).sort().map(weekKey => weekKey + '|' + DAYS.map(day => day + ':' + (plan[weekKey][day] || []).join(',')).join('|')).join('\n'));
 }
-/* 1. Référence de release : les trois surfaces servies restent exactement r20. */
-assert.equal(JSON.parse(read('version.json')).latestBuild, baseline.reference.buildRev);
-assert.match(read('index.html'), new RegExp("const BUILD_REV='" + baseline.reference.buildRev + "'"));
-assert.match(read('sw.js'), new RegExp('const BUILD_REV = "' + baseline.reference.buildRev + '"'));
+/* 1. La photographie reste r20 ; les surfaces servies suivent ensemble la révision
+      courante afin que la même baseline protège les lots de suppression suivants. */
+const currentBuildRev = JSON.parse(read('version.json')).latestBuild;
+assert.equal(baseline.reference.buildRev, '20260929-r20-runtime-stabilization-264');
+assert.match(read('index.html'), new RegExp("const BUILD_REV='" + currentBuildRev + "'"));
+assert.match(read('sw.js'), new RegExp('const BUILD_REV = "' + currentBuildRev + '"'));
 assert.equal(baseline.reference.mainSha, 'b4a8137628098279532565b7da5be9d4c612cf1a');
 
 /* 2. Trois semaines : le fichier machine contient la sortie complète et cohérente.
