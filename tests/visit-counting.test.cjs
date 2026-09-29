@@ -13,6 +13,17 @@ const ctx={state,console,Date,Map,Set,RegExp,JSON,Object,Array,String,Number,Mat
 ctx.window=ctx;vm.runInNewContext(source,ctx);
 const V=ctx.StoreVisitCounting;
 assert(V,'le module de comptage doit exposer son API de test');
+assert.equal(typeof ctx.storeVisitCredit,'function','visit-counting.js doit installer storeVisitCredit sans daily-capacity.js');
+for(const store of [
+  {enseigne:'Darty'},
+  {enseigne:'Carrefour'},
+  {enseigne:'Fnac'},
+  {enseigne:'Darty',visitCreditOverride:1}
+]){
+  assert.equal(ctx.storeVisitCredit(store),V.credit(store),'storeVisitCredit(store) doit rester identique au propriétaire StoreVisitCounting.credit(store) sans daily-capacity.js');
+  assert.equal(V.planningCredit(store),V.credit(store),'planningCredit doit rester installé par visit-counting.js');
+}
+assert.match(source,/window\.storeVisitCredit=planningVisitCredit/,'visit-counting.js doit rester l’unique installateur runtime de planningVisitCredit');
 assert.equal(V.credit({enseigne:'Darty'}),2,'Darty doit compter pour deux visites par défaut');
 assert.equal(V.credit({enseigne:'Boulanger'}),2,'Boulanger doit compter pour deux visites par défaut');
 assert.equal(V.credit({enseigne:'BUT'}),2,'BUT doit compter pour deux visites par défaut');
