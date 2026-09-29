@@ -127,6 +127,7 @@ test('stabilisation : saveProfile garde une seule couche V184/V182 après 30 év
   // Les derniers rappels d'installation historiques partent à 1 400 ms / 1 200 ms.
   await page.waitForTimeout(1800);
   const initial = await page.evaluate(`(${profileLayersOf.toString()})(window.saveProfile)`);
+  expect(initial, 'ordre propriétaire saveProfile r20').toEqual(['v184', 'v182', 'owner']);
 
   await page.evaluate(() => {
     for (let index = 0; index < 10; index++) {

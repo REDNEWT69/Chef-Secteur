@@ -5,6 +5,7 @@
 // temps que le document runtime télécharge ses premiers scripts, puis l'ancien accueil
 // tant que home-refresh-v2.js n'avait pas monté l'interface finale.
 const { test, expect } = require('@playwright/test');
+const cleanupBaseline = require('./fixtures/cleanup-baseline-r20.json');
 
 const APP_URL = process.env.STORE_RUNNER_E2E_URL || 'http://127.0.0.1:4173/';
 const FIRST_RUN_URL = (() => {
@@ -104,6 +105,16 @@ test('V234 — un seul voile de démarrage couvre tout le montage, sans flash de
   const final = await etat(page);
   expect(final).toMatchObject({ voiles: 0, ancienLoader: false, drapeau: false, pret: true });
   expect(final.debordement).toBeLessThanOrEqual(1);
+
+  // Mesure r20 lisible par machine. Une suppression legacy pourra réduire ce total,
+  // mais aucun nettoyage ne doit le faire croître ni charger deux fois le même script.
+  const scriptResources = await page.evaluate(() => performance.getEntriesByType('resource')
+    .filter(entry => entry.initiatorType === 'script')
+    .map(entry => new URL(entry.name).pathname.split('/').pop())
+    .filter(Boolean));
+  expect(scriptResources.length).toBeGreaterThan(0);
+  expect(scriptResources.length).toBeLessThanOrEqual(cleanupBaseline.runtimeInventory.startupScriptResources);
+  expect(new Set(scriptResources).size, 'aucun script runtime ne doit être chargé deux fois').toBe(scriptResources.length);
 
   // Sur une installation neuve, l'onboarding peut couvrir l'accueil. On vérifie donc
   // d'abord qu'il est bien l'unique surface interactive puis on le ferme pour tester la nav.

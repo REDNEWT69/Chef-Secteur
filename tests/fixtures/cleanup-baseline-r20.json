@@ -1,0 +1,290 @@
+{
+  "schemaVersion": 1,
+  "reference": {
+    "mainSha": "b4a8137628098279532565b7da5be9d4c612cf1a",
+    "buildRev": "20260929-r20-runtime-stabilization-264",
+    "auditPr": 470,
+    "auditDocument": "AUDIT_MENAGE_V1.md",
+    "capturedAt": "2026-09-29"
+  },
+  "planning": {
+    "firstMonday": "2026-09-28",
+    "today": "2026-09-30",
+    "minimumReplays": 4,
+    "storeOrders": ["natural", "reverse", "rotate", "stable-hash"],
+    "scenarios": {
+      "sector-80-no-history": {
+        "description": "80 magasins sans aucun historique de visite, samedi désactivé",
+        "storeCount": 80,
+        "history": "none",
+        "saturday": false,
+        "maxCreditsPerDay": 4,
+        "metrics": {
+          "visits": 38,
+          "coveredStores": 38,
+          "dueCovered": 38,
+          "dueTotal": 78,
+          "urgentCovered": 0,
+          "urgentTotal": 0,
+          "neverCovered": 38,
+          "neverTotal": 78,
+          "kilometers": 3626.9,
+          "driveMinutes": 3956.6,
+          "violations": 0,
+          "crossDayApplied": false,
+          "signature": "4d4e2308"
+        },
+        "forecast": { "late": 8, "never": 40, "overdueDays": 1063 },
+        "archive": { "weekKeys": ["2026-09-28", "2026-10-05", "2026-10-12"], "manualWeeks": [] },
+        "range": {
+          "start": "2026-09-28",
+          "end": "2026-10-16",
+          "workDays": ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"]
+        },
+        "plan": {
+          "2026-09-28": {
+            "Lundi": [],
+            "Mardi": [],
+            "Mercredi": ["s22", "s11", "s66"],
+            "Jeudi": ["s33", "s44", "s55"],
+            "Vendredi": ["s2", "s6", "s7", "s77"],
+            "Samedi": []
+          },
+          "2026-10-05": {
+            "Lundi": ["s41", "s47", "s46"],
+            "Mardi": ["s3", "s8", "s42"],
+            "Mercredi": ["s4", "s9"],
+            "Jeudi": ["s21", "s26", "s48"],
+            "Vendredi": ["s43", "s10", "s5"],
+            "Samedi": []
+          },
+          "2026-10-12": {
+            "Lundi": ["s27", "s23", "s49"],
+            "Mardi": ["s29", "s28", "s50"],
+            "Mercredi": ["s45", "s68", "s67"],
+            "Jeudi": ["s16", "s12", "s24"],
+            "Vendredi": ["s17", "s30"],
+            "Samedi": []
+          }
+        }
+      },
+      "sector-80-saturday-off": {
+        "description": "80 magasins, historique réaliste et contraintes dures combinées, samedi désactivé",
+        "storeCount": 80,
+        "history": "realistic",
+        "saturday": false,
+        "maxCreditsPerDay": 4,
+        "metrics": {
+          "visits": 33,
+          "coveredStores": 31,
+          "dueCovered": 29,
+          "dueTotal": 76,
+          "urgentCovered": 14,
+          "urgentTotal": 16,
+          "neverCovered": 1,
+          "neverTotal": 13,
+          "kilometers": 3806.5,
+          "driveMinutes": 4152.5,
+          "violations": 0,
+          "crossDayApplied": true,
+          "signature": "dc30f653"
+        },
+        "forecast": { "late": 27, "never": 12, "overdueDays": 1252 },
+        "archive": { "weekKeys": ["2026-09-28", "2026-10-05", "2026-10-12"], "manualWeeks": ["2026-10-05"] },
+        "range": {
+          "start": "2026-09-28",
+          "end": "2026-10-16",
+          "workDays": ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"]
+        },
+        "plan": {
+          "2026-09-28": {
+            "Lundi": ["s20"],
+            "Mardi": ["s21"],
+            "Mercredi": ["s22", "s5", "s7"],
+            "Jeudi": ["s1", "s66"],
+            "Vendredi": ["s30", "s24", "s48", "s42"],
+            "Samedi": []
+          },
+          "2026-10-05": {
+            "Lundi": ["s70", "s7", "s18"],
+            "Mardi": ["s71", "s54", "s78", "s55"],
+            "Mercredi": ["s72", "s2", "s6", "s12"],
+            "Jeudi": ["s73", "s3"],
+            "Vendredi": ["s74"],
+            "Samedi": []
+          },
+          "2026-10-12": {
+            "Lundi": ["s33", "s26", "s7"],
+            "Mardi": ["s9", "s69"],
+            "Mercredi": ["s45", "s14", "s8"],
+            "Jeudi": [],
+            "Vendredi": [],
+            "Samedi": []
+          }
+        }
+      },
+      "sector-150-saturday-on": {
+        "description": "150 magasins, historique réaliste, samedi activé et capacité serrée",
+        "storeCount": 150,
+        "history": "realistic",
+        "saturday": true,
+        "maxCreditsPerDay": 4,
+        "metrics": {
+          "visits": 40,
+          "coveredStores": 38,
+          "dueCovered": 36,
+          "dueTotal": 146,
+          "urgentCovered": 22,
+          "urgentTotal": 29,
+          "neverCovered": 1,
+          "neverTotal": 28,
+          "kilometers": 4642.1,
+          "driveMinutes": 5064.1,
+          "violations": 0,
+          "crossDayApplied": true,
+          "signature": "54837c86"
+        },
+        "forecast": { "late": 70, "never": 27, "overdueDays": 2803 },
+        "archive": { "weekKeys": ["2026-09-28", "2026-10-05", "2026-10-12"], "manualWeeks": [] },
+        "range": {
+          "start": "2026-09-28",
+          "end": "2026-10-17",
+          "workDays": ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"]
+        },
+        "plan": {
+          "2026-09-28": {
+            "Lundi": ["s30"],
+            "Mardi": ["s31"],
+            "Mercredi": ["s32", "s11", "s5", "s7"],
+            "Jeudi": ["s24", "s18", "s48", "s66"],
+            "Vendredi": ["s54", "s84", "s90", "s78"],
+            "Samedi": ["s108"]
+          },
+          "2026-10-05": {
+            "Lundi": ["s2", "s6", "s42", "s60"],
+            "Mardi": ["s9", "s7", "s12"],
+            "Mercredi": ["s102", "s114", "s126"],
+            "Jeudi": ["s1", "s138"],
+            "Vendredi": ["s10", "s22"],
+            "Samedi": ["s8"]
+          },
+          "2026-10-12": {
+            "Lundi": [],
+            "Mardi": ["s33", "s26", "s7"],
+            "Mercredi": ["s21", "s81"],
+            "Jeudi": ["s45", "s57"],
+            "Vendredi": ["s117", "s93"],
+            "Samedi": ["s141"]
+          }
+        }
+      }
+    }
+  },
+  "hardConstraints": {
+    "combinedFixture": "sector-80-saturday-off",
+    "coveredTogether": [
+      "appointment",
+      "lock",
+      "imposed-store",
+      "manual-week",
+      "past-day",
+      "unavailable-day",
+      "agenda-multiday-event",
+      "public-holiday",
+      "completed-visit",
+      "excluded-store",
+      "inactive-store",
+      "saturated-hourly-capacity",
+      "saturday-off",
+      "existing-overnight-decision"
+    ],
+    "companionFixture": "sector-150-saturday-on",
+    "companionCoverage": ["saturday-on", "existing-overnight-decision", "saturated-hourly-capacity"],
+    "expected": {
+      "violations": 0,
+      "blockedDates": ["2026-10-15", "2026-10-16"],
+      "manualWeek": "2026-10-05",
+      "appointment": { "storeId": "s9", "date": "2026-10-13" },
+      "lock": { "storeId": "s8", "date": "2026-10-14" },
+      "imposedStore": "s7",
+      "excludedStore": "s79",
+      "inactiveStore": "s80",
+      "completedDates": ["2026-09-28", "2026-09-29", "2026-09-30"],
+      "overnight": { "fromDate": "2026-10-07", "toDate": "2026-10-08" }
+    }
+  },
+  "v251": {
+    "owner": "planning-route-optimizer-v251.js",
+    "inputOrder": ["A", "C", "B"],
+    "outputOrder": ["A", "B", "C"],
+    "selectionInvariant": ["A", "B", "C"],
+    "dayAssignmentInvariant": true,
+    "test": "tests/planning-route-optimizer-v251.test.cjs"
+  },
+  "visitCoverage": {
+    "owner": "visit-coverage.js",
+    "priorityOrder": ["very-late", "never", "late", "soon", "ok"],
+    "p1Policy": "tie-break-within-status",
+    "tests": [
+      "tests/never-visited-priority-v263-3.test.cjs",
+      "tests/three-week-forecast-v263-6.test.cjs",
+      "tests/cross-day-planning-v264.test.cjs"
+    ]
+  },
+  "overnight": {
+    "modes": ["auto", "mandatory", "never"],
+    "automaticThresholdKm": 80,
+    "existingReservationPreserved": true,
+    "bannerRenderOwner": "StoreRunnerOvernightV182.render",
+    "tests": [
+      "tests/mandatory-overnight-v263-4.test.cjs",
+      "tests/mandatory-overnight-v263-4-browser.spec.cjs",
+      "tests/overnight-render-owner-v263-5.test.cjs",
+      "tests/overnight-render-owner-v263-5-browser.spec.cjs"
+    ]
+  },
+  "saveProfile": {
+    "chain": ["v184", "v182", "owner"],
+    "events": { "store-runner:planning-updated": 10, "store-runner:home-rendered": 10, "store-runner:data-restored": 10 },
+    "maximumLayers": 3,
+    "overnightRendersPerSave": 1,
+    "planRestored": true,
+    "profilePreserved": true,
+    "test": "tests/visit-coverage-v263-1-browser.spec.cjs"
+  },
+  "agenda": {
+    "owner": "calendar-oauth.js#chefSecteurEventCoversDate",
+    "allDayEvent": { "start": "2026-10-05", "endExclusive": "2026-10-10" },
+    "blockedDates": ["2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09"],
+    "exclusiveDate": "2026-10-10",
+    "cases": ["one-day", "overlap", "outside-horizon", "event-order-permutation", "public-holiday", "started-week"],
+    "test": "tests/agenda-multiday-v264.test.cjs"
+  },
+  "persistence": {
+    "roundTrips": 3,
+    "keys": {
+      "state": "sector_planner_universal_v1",
+      "archive": "chef_sector_plan_archive_v1",
+      "range": "chef_sector_range_v1"
+    },
+    "workDaysPreserved": true,
+    "tests": [
+      "tests/storage-engine-v256.test.cjs",
+      "tests/storage-durability-v256.test.cjs",
+      "tests/planning-manual-week-protection.test.cjs",
+      "tests/three-week-forecast-v263-6.test.cjs"
+    ]
+  },
+  "runtimeInventory": {
+    "startupScriptResources": 75,
+    "cleanupAssertion": "non-increasing-and-no-duplicates",
+    "test": "tests/boot-v234-browser.spec.cjs"
+  },
+  "existingProtections": {
+    "boot": ["tests/boot-v234.test.cjs", "tests/boot-v234-browser.spec.cjs"],
+    "pwa": ["tests/pwa-cache-contract.test.cjs", "tests/pwa-update-v260.test.cjs", "tests/pwa-update-v260-browser.spec.cjs"],
+    "cacheMigration": ["tests/update-manager.test.cjs", "tests/update-manager-reload.test.cjs"],
+    "mobile390": ["tests/mobile-browser.spec.cjs", "tests/mobile-ux-v262-browser.spec.cjs", "tests/planning-card-mobile-browser.spec.cjs"],
+    "catalog": ["tests/official-catalog-regions-v467.test.cjs", "tests/official_catalog_test.py"]
+  }
+}

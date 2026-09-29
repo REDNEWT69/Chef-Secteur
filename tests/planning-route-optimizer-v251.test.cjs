@@ -37,6 +37,10 @@ assert.deepEqual(result.route.map(s=>s.id),['A','B','C']);
 assert.deepEqual(new Set(result.route.map(s=>s.id)),new Set(['A','B','C']));
 assert.ok(result.after.driveMinutes<result.before.driveMinutes);
 assert.equal(result.after.feasible,true);
+for(let replay=0;replay<10;replay++){
+  const same=optimizer.explainOptimization([A,C,B],'Jeudi',state,{weekMonday:new Date('2026-09-21T12:00:00')});
+  assert.deepEqual(same.route.map(s=>s.id),['A','B','C'],'mêmes entrées => même ordre V251, replay '+(replay+1));
+}
 
 // Une contrainte horaire/rendez-vous gagne sur la distance : si B avant A est déclaré
 // incompatible, l'optimiseur doit conserver une proposition faisable.

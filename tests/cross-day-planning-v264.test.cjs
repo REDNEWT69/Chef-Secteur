@@ -7,6 +7,7 @@ const { performance } = require('perf_hooks');
 const ROOT = path.join(__dirname, '..');
 const FIXTURE_PATH = path.join(__dirname, 'fixtures', 'cross-day-planning-v264.json');
 const FIXTURE = JSON.parse(fs.readFileSync(FIXTURE_PATH, 'utf8'));
+const CLEANUP_BASELINE = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'cleanup-baseline-r20.json'), 'utf8'));
 const TERRAIN_PATH = process.env.CROSS_DAY_ENGINE_PATH ? path.resolve(process.env.CROSS_DAY_ENGINE_PATH) : path.join(ROOT, 'terrain-planning-v1.js');
 const terrain = require(TERRAIN_PATH);
 const coverage = require('../visit-coverage.js');
@@ -17,6 +18,30 @@ const STATUS_SEQUENCE = ['never', 'late', 'soon', 'ok', 'blocked', 'veryLate'];
 const INTERVALS = [7, 15, 30, 90];
 const BRANDS = ['Fnac', 'Carrefour', 'Darty', 'Boulanger', 'Auchan', 'But'];
 const PRIORITY_CASE = ((process.argv.find(value => value.startsWith('--priority-case=')) || '').split('=')[1] || '');
+const STORE_ORDER = ((process.argv.find(value => value.startsWith('--store-order=')) || '').split('=')[1] || 'natural');
+
+function loadAgendaDateOwner() {
+  const source = fs.readFileSync(path.join(ROOT, 'calendar-oauth.js'), 'utf8');
+  const storage = { getItem() { return null; }, setItem() {}, removeItem() {} };
+  const document = {
+    readyState: 'loading', hidden: false, head: { appendChild() {} },
+    addEventListener() {}, dispatchEvent() {}, getElementById() { return null; },
+    querySelector() { return null; }, createElement() { return { style: {}, appendChild() {}, setAttribute() {} }; }
+  };
+  const context = {
+    console, document, localStorage: storage, sessionStorage: storage,
+    Date, JSON, Math, Map, Set, Promise,
+    setTimeout() { return 0; }, clearTimeout() {},
+    CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init && init.detail; } },
+    addEventListener() {}, dispatchEvent() {}
+  };
+  context.window = context;
+  vm.runInNewContext(source, context, { filename: 'calendar-oauth.js' });
+  assert.equal(typeof context.chefSecteurEventCoversDate, 'function', 'Agenda doit rester propriétaire des bornes de dates');
+  return context.chefSecteurEventCoversDate;
+}
+
+globalThis.chefSecteurEventCoversDate = loadAgendaDateOwner();
 
 function pad(value) { return String(value).padStart(2, '0'); }
 function parseIso(value) {
@@ -131,11 +156,11 @@ function buildScenario(config) {
     excluded: Object.fromEntries(config.excluded.map(id => [id, true])),
     locks: {},
     appointments: clone(config.appointments),
-    calendarEvents: config.blockedDates.map((row, index) => ({ id: 'block-' + index, date: row.date, title: row.title, allDay: true, inferredAway: true })),
+    calendarEvents: clone(config.calendarEvents || config.blockedDates.map((row, index) => ({ id: 'block-' + index, date: row.date, title: row.title, allDay: true, inferredAway: true }))),
     manualWeekEdits: {},
     hotelReservations: Object.fromEntries(config.hotelReservations.map(row => [row.fromDate, clone(row)]))
   };
-  for (const store of stores) {
+  if (!config.withoutHistory) for (const store of stores) {
     const day = lastVisit(FIXTURE.today, store.intervalDays, store.statusClass);
     if (day) state.visits[store.id] = { lastVisit: day, history: [day] };
   }
@@ -179,7 +204,16 @@ function appointmentDay(fixture, id, monday) {
   const row = fixture.state.appointments.find(item => String(item.storeId) === String(id) && weekKeyOf(item.date) === key);
   return row ? DAYS[(parseIso(row.date).getDay() || 7) - 1] || '' : '';
 }
-function isBlockedDate(fixture, date) { return fixture.config.blockedDates.some(row => row.date === date); }
+function isBlockedDate(fixture, date) { return terrain.dateBlocked(date, fixture.state); }
+
+function permuteStores(stores, order) {
+  const rows = stores.slice();
+  if (order === 'natural') return rows;
+  if (order === 'reverse') return rows.reverse();
+  if (order === 'rotate') return rows.slice(17).concat(rows.slice(0, 17));
+  if (order === 'stable-hash') return rows.sort((a, b) => fnv1a('cleanup-r20|' + a.id).localeCompare(fnv1a('cleanup-r20|' + b.id)) || byStoreId(a, b));
+  throw new Error('Permutation de magasins inconnue : ' + order);
+}
 
 function permutations(rows) {
   if (rows.length < 2) return [rows.slice()];
@@ -359,6 +393,24 @@ function planObject(built) {
   return Object.fromEntries(built.weeks.map(week => [week.weekKey, Object.fromEntries(DAYS.map(day => [day, (week.plan[day] || []).map(store => store.id)]))]));
 }
 
+function cleanupMetricSnapshot(actual) {
+  return {
+    visits: actual.visits,
+    coveredStores: actual.coveredStores,
+    dueCovered: actual.dueCovered,
+    dueTotal: actual.dueTotal,
+    urgentCovered: actual.urgentCovered,
+    urgentTotal: actual.urgentTotal,
+    neverCovered: actual.neverCovered,
+    neverTotal: actual.neverTotal,
+    kilometers: actual.kilometers,
+    driveMinutes: actual.driveMinutes,
+    violations: actual.violations,
+    crossDayApplied: !!(actual.crossDay && actual.crossDay.applied),
+    signature: actual.signature
+  };
+}
+
 function constraintViolations(fixture, built, evaluateDay) {
   const violations = [];
   const occurrences = new Map();
@@ -478,6 +530,8 @@ function measure(fixture, built, evaluateDay, cpuMs) {
 function runScenario(config, runOptions) {
   runOptions = runOptions || {};
   const fixture = buildScenario(config);
+  fixture.stores = permuteStores(fixture.stores, runOptions.storeOrder || 'natural');
+  fixture.state.stores = fixture.stores;
   const evaluateDay = createDayEvaluator(fixture);
   const options = {
     state: fixture.state,
@@ -652,10 +706,17 @@ function assertForecastOracle(result) {
   };
 }
 
-const results = PRIORITY_CASE ? [] : FIXTURE.scenarios.map(runScenario);
+const results = PRIORITY_CASE ? [] : FIXTURE.scenarios.map(config => runScenario(config, {
+  storeOrder: STORE_ORDER,
+  crossDayEnabled: config.withoutHistory ? false : undefined
+}));
 
 if (process.argv.includes('--capture')) {
-  console.log(JSON.stringify(Object.fromEntries(results.map(row => [row.fixture.config.id, row.metrics])), null, 2));
+  for (const row of results) assertForecastOracle(row);
+  console.log(JSON.stringify(Object.fromEntries(results.map(row => [row.fixture.config.id, {
+    ...row.metrics,
+    forecast: row.forecast.current
+  }])), null, 2));
   process.exit(0);
 }
 
@@ -665,6 +726,16 @@ for (const result of results) {
   assert.ok(baseline && baseline.signature, config.id + ' : baseline manquante');
   assertHardConstraintIdentity(result);
   assertForecastOracle(result);
+  const cleanup = CLEANUP_BASELINE.planning.scenarios[config.id];
+  assert.ok(cleanup, config.id + ' : baseline ménage r20 manquante');
+  assert.deepEqual(cleanupMetricSnapshot(result.metrics), cleanup.metrics, config.id + '/' + STORE_ORDER + ' : métriques r20 modifiées');
+  assert.deepEqual(result.forecast.current, cleanup.forecast, config.id + '/' + STORE_ORDER + ' : forecast r20 modifié');
+  assert.deepEqual(result.metrics.plan, cleanup.plan, config.id + '/' + STORE_ORDER + ' : magasin → semaine/jour/ordre r20 modifié');
+  assert.deepEqual(Object.keys(result.metrics.plan).sort(), cleanup.archive.weekKeys, config.id + ' : semaines archivées modifiées');
+  assert.deepEqual(config.manualWeek ? [config.manualWeek.week] : [], cleanup.archive.manualWeeks, config.id + ' : propriété manuelle des archives modifiée');
+  assert.deepEqual(config.days, cleanup.range.workDays, config.id + ' : jours travaillés de la plage modifiés');
+  const lastWeek = cleanup.archive.weekKeys[cleanup.archive.weekKeys.length - 1];
+  assert.equal(dateFor(lastWeek, cleanup.range.workDays[cleanup.range.workDays.length - 1]), cleanup.range.end, config.id + ' : borne de plage modifiée');
   assert.equal(result.metrics.violations, 0, config.id + ' : aucune contrainte dure ne peut être violée\n' + result.metrics.violationDetails.join('\n'));
   assert.ok(result.metrics.coveredStores >= baseline.coveredStores, config.id + ' : couverture totale en régression');
   assert.ok(result.metrics.dueCovered >= baseline.dueCovered, config.id + ' : couverture des magasins dus en régression');
@@ -673,9 +744,13 @@ for (const result of results) {
   assert.ok(result.metrics.kilometers <= baseline.kilometers + 0.1, config.id + ' : kilomètres supérieurs à la baseline');
   assert.ok(result.metrics.driveMinutes <= baseline.driveMinutes + 0.1, config.id + ' : minutes supérieures à la baseline');
   assert.ok(result.metrics.cpuMs < 5000, config.id + ' : le moteur doit rester borné sous 5 s sur la machine de CI');
-  assert.equal(result.metrics.crossDay && result.metrics.crossDay.applied, true, config.id + ' : la passe cross-day doit être propriétaire de l’affectation');
-  assert.ok(result.metrics.crossDay.swaps + result.metrics.crossDay.moves + result.metrics.crossDay.replacements > 0, config.id + ' : la fixture doit exercer une amélioration locale réelle');
-  assert.ok(Object.values(result.metrics.plan).some(plan => DAYS.some(day => plan[day].includes(config.urgentIsolated))), config.id + ' : le magasin urgent isolé ne doit jamais être sacrifié aux kilomètres');
+  if (config.withoutHistory) {
+    assert.equal(result.metrics.crossDay && result.metrics.crossDay.applied, false, config.id + ' : sans historique, la baseline doit conserver le chemin historique sans passe cross-day');
+  } else {
+    assert.equal(result.metrics.crossDay && result.metrics.crossDay.applied, true, config.id + ' : la passe cross-day doit être propriétaire de l’affectation');
+    assert.ok(result.metrics.crossDay.swaps + result.metrics.crossDay.moves + result.metrics.crossDay.replacements > 0, config.id + ' : la fixture doit exercer une amélioration locale réelle');
+    assert.ok(Object.values(result.metrics.plan).some(plan => DAYS.some(day => plan[day].includes(config.urgentIsolated))), config.id + ' : le magasin urgent isolé ne doit jamais être sacrifié aux kilomètres');
+  }
   assert.deepEqual(new Set(result.fixture.stores.map(store => store.intervalDays)), new Set([7, 15, 30, 90]), config.id + ' : hebdomadaire, 15 jours, mensuel et trimestriel doivent être représentés');
   assert.ok(result.metrics.dailyLoads.some(row => row.credits === config.maxCreditsPerDay), config.id + ' : la capacité saturée doit être exercée');
   for (const blocked of config.blockedDates) {
@@ -683,17 +758,23 @@ for (const result of results) {
     if (load) assert.equal(load.visits, 0, config.id + ' : le jour indisponible/férié ' + blocked.date + ' doit rester vide');
   }
   for (const id of config.excluded.concat(config.inactive)) assert.ok(!Object.values(result.metrics.plan).some(plan => DAYS.some(day => plan[day].includes(id))), config.id + ' : ' + id + ' exclu/inactif ne doit pas être planifié');
-  const appointment = config.appointments[0], appointmentPlan = result.metrics.plan[weekKeyOf(appointment.date)], appointmentDayName = DAYS[(parseIso(appointment.date).getDay() || 7) - 1];
-  assert.ok(appointmentPlan[appointmentDayName].includes(appointment.storeId), config.id + ' : le rendez-vous de milieu de journée doit rester sur sa date');
+  const appointment = config.appointments[0];
+  if (appointment) {
+    const appointmentPlan = result.metrics.plan[weekKeyOf(appointment.date)], appointmentDayName = DAYS[(parseIso(appointment.date).getDay() || 7) - 1];
+    assert.ok(appointmentPlan[appointmentDayName].includes(appointment.storeId), config.id + ' : le rendez-vous de milieu de journée doit rester sur sa date');
+  }
   if (config.days.includes('Samedi')) assert.ok(result.metrics.dailyLoads.filter(row => parseIso(row.date).getDay() === 6).some(row => row.visits > 0), config.id + ' : samedi activé doit être utilisable');
   else assert.ok(Object.values(result.metrics.plan).every(plan => plan.Samedi.length === 0), config.id + ' : samedi désactivé doit rester vide');
   if (config.manualWeek) {
     assert.ok(result.metrics.crossDay.refused.manualWeeks >= 1, config.id + ' : la semaine manuelle doit sortir du voisinage de recherche');
     for (const [day, ids] of Object.entries(config.manualWeek.placements)) for (const id of ids) assert.ok(result.metrics.plan[config.manualWeek.week][day].includes(id), config.id + ' : pose manuelle ' + id + ' déplacée');
   }
-  if (config.hotelReservations.length && !config.manualWeek) assert.ok(result.metrics.crossDay.refused.overnightDays >= 2, config.id + ' : les deux jours du découché existant doivent être figés');
-  assert.ok(result.metrics.crossDay.refused.pastDays >= 2, config.id + ' : les jours passés de la semaine entamée doivent être figés');
-  const reruns = Array.from({ length: 3 }, () => runScenario(config).metrics.signature);
+  if (!config.withoutHistory && config.hotelReservations.length && !config.manualWeek) assert.ok(result.metrics.crossDay.refused.overnightDays >= 2, config.id + ' : les deux jours du découché existant doivent être figés');
+  if (!config.withoutHistory) assert.ok(result.metrics.crossDay.refused.pastDays >= 2, config.id + ' : les jours passés de la semaine entamée doivent être figés');
+  const reruns = Array.from({ length: 3 }, () => runScenario(config, {
+    storeOrder: STORE_ORDER,
+    crossDayEnabled: config.withoutHistory ? false : undefined
+  }).metrics.signature);
   assert.deepEqual(reruns, [result.metrics.signature, result.metrics.signature, result.metrics.signature], config.id + ' : même entrée, même planning');
 }
 
