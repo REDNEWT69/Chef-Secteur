@@ -65,10 +65,7 @@ test('B2 : V185 garde Agenda en cache pendant le vrai moteur 3 semaines puis dé
   });
   await page.waitForTimeout(3200);
   const before = await page.evaluate(`(${layersOf.toString()})(window.StoreRunnerTerrainPlanningV1.generateThreeWeekSnail)`);
-  expect(before.filter(x => x === 'v184'), 'V184 éventuel ne doit jamais se réempiler : ' + before.join('>')).toHaveLength(before.includes('v184') ? 1 : 0);
-  expect(before.filter(x => x === 'v185'), "V185 doit rester l'enveloppe propriétaire : " + before.join('>')).toHaveLength(1);
-  expect(before.filter(x => x === 'v248'), 'V248 doit rester sous V185 : ' + before.join('>')).toHaveLength(1);
-  expect(before.indexOf('v185'), before.join('>')).toBeLessThan(before.indexOf('v248'));
+  expect(before, 'chaîne B2 après retrait de V184').toEqual(['v185', 'v248', 'moteur']);
 
   await page.evaluate(() => {
     window.__v2631 = [];

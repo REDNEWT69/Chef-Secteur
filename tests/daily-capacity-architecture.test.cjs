@@ -13,6 +13,7 @@ if(!/store-runner:planning-updated/.test(source))throw new Error('Capacité jour
 if(/state\.plan/.test(source)||/capPlan\s*\(/.test(source)||/route\.slice\s*\(\s*0\s*,\s*max\s*\)/.test(source))throw new Error('Capacité journalière: le réglage ne doit jamais tronquer ni muter le planning existant.');
 if(!/planning déjà généré est conservé/.test(source))throw new Error('Capacité journalière: l’interface doit préciser que le planning existant est conservé.');
 if(!/target\.addEventListener\('input'/.test(source)||!/state\.settings\.target/.test(source))throw new Error('Objectif hebdomadaire: persistance immédiate absente.');
+if(/bindPlanningCreditsToUserLimit|StoreVisitCounting|storeVisitCredit|planningCredit/.test(source))throw new Error('Capacité journalière: le fallback de crédits B4 ne doit plus être réinstallé.');
 
 function capacityEnv(explicitMax){
   const targetListeners={},docListeners={};let saves=0;
