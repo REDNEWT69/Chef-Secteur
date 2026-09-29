@@ -1,10 +1,9 @@
 const { test, expect } = require('@playwright/test');
 
 // V263.1 — cas qui demandent le runtime complet, sur un vrai téléphone 390 px.
-//  a. V185 exécute le vrai moteur 3 semaines avec le drapeau de génération actif,
-//     laisse Agenda en lecture du cache, puis V251 finalise une fois. L'appel direct de
-//     la couche V185 contourne volontairement V184 : la protection ne dépend donc pas
-//     de l'enveloppe legacy destinée à être retirée par le lot B2.
+//  a. Le contrôleur pose le drapeau avant d'entrer dans V185, le vrai moteur laisse
+//     Agenda en lecture du cache, puis V251 finalise une fois. La protection vérifie
+//     ainsi le nouveau propriétaire du drapeau sans dépendre de l'enveloppe V184 retirée.
 //  g. Pilotage ouvert : suppression d'une visite ou planning modifié → anneau et tuiles
 //     à jour sans rouvrir le panneau.
 const APP_URL = process.env.STORE_RUNNER_E2E_URL || 'http://127.0.0.1:4173/';
@@ -29,7 +28,7 @@ function profileLayersOf(fn) {
   return out;
 }
 
-test('B2 : V185 garde Agenda en cache pendant le vrai moteur 3 semaines puis déclenche V251', async ({ page }) => {
+test('B2 : le contrôleur garde Agenda en cache pendant le vrai moteur 3 semaines puis déclenche V251', async ({ page }) => {
   const errors = [];
   page.on('pageerror', e => errors.push(String(e && e.message || e)));
   page.on('dialog', d => d.accept().catch(() => {}));
@@ -39,7 +38,7 @@ test('B2 : V185 garde Agenda en cache pendant le vrai moteur 3 semaines puis dé
     window.Date = FixedDate;
   });
   await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => window.StoreRunnerTerrainPlanningV1 && window.StoreRunnerRoadMatrixV248 && window.StoreRunnerRouteOptimizerV251 && typeof window.syncGoogleCalendar === 'function' && window.state && document.getElementById('planPanel'));
+  await page.waitForFunction(() => window.StoreRunnerTerrainPlanningV1 && window.StoreRunnerRoadMatrixV248 && window.StoreRunnerRouteOptimizerV251 && typeof window.storeRunnerGenerateThreeWeeks === 'function' && typeof window.syncGoogleCalendar === 'function' && window.state && document.getElementById('planPanel'));
   await page.waitForFunction(() => { try { save(); return true } catch (e) { return false } });
   await page.evaluate(() => {
     const st = window.state;
@@ -73,30 +72,36 @@ test('B2 : V185 garde Agenda en cache pendant le vrai moteur 3 semaines puis dé
   });
   const generation = await page.evaluate(async () => {
     const api = window.StoreRunnerTerrainPlanningV1;
-    let current = api.generateThreeWeekSnail, v185 = null, guard = 0;
-    while (typeof current === 'function' && guard++ < 32) {
-      if (current.__v185Geo) { v185 = current; break; }
-      current = current.__v184Original || current.__v185Original || current.__v248Original || current.__original || null;
-    }
-    if (!v185) throw new Error('Enveloppe V185 introuvable');
+    const owner = api.generateThreeWeekSnail;
     const previous = window.__storeRunnerPlanningGenerationActive;
-    window.__storeRunnerPlanningGenerationActive = 'before-v185';
+    window.__storeRunnerPlanningGenerationActive = 'before-controller';
+    const entryFlags = [];
+    api.generateThreeWeekSnail = async function() {
+      entryFlags.push(window.__storeRunnerPlanningGenerationActive);
+      return owner.apply(this, arguments);
+    };
     try {
-      const built = await v185.call(api, { start: '2026-09-14' });
+      const response = await window.storeRunnerGenerateThreeWeeks();
+      const built = response && response.result;
       return {
+        ok: !!(response && response.ok),
         totalVisits: Number(built && built.totalVisits) || 0,
         weeks: Array.isArray(built && built.weeks) ? built.weeks.length : 0,
         restored: window.__storeRunnerPlanningGenerationActive,
+        entryFlags,
         calendar: window.__v2631CalendarTrace.slice()
       };
     } finally {
+      api.generateThreeWeekSnail = owner;
       window.__storeRunnerPlanningGenerationActive = previous;
     }
   });
+  expect(generation.ok).toBe(true);
+  expect(generation.entryFlags, 'le contrôleur doit poser le drapeau avant V185').toEqual([true]);
   expect(generation.totalVisits, 'la génération réelle doit réussir').toBeGreaterThan(0);
   expect(generation.weeks).toBe(3);
-  expect(generation.restored, 'V185 doit restaurer la valeur précédente du drapeau').toBe('before-v185');
-  expect(generation.calendar, 'Agenda doit être consulté une fois par semaine sous le drapeau V185').toHaveLength(3);
+  expect(generation.restored, 'le contrôleur doit restaurer la valeur précédente du drapeau').toBe('before-controller');
+  expect(generation.calendar, 'Agenda doit être consulté une fois par semaine sous le drapeau du contrôleur').toHaveLength(3);
   for (const call of generation.calendar) {
     expect(call.active, 'le vrai moteur doit appeler Agenda avec le drapeau strictement true').toBe(true);
     expect(call).toMatchObject({ ok: true, cached: true, reason: 'planning-cache' });

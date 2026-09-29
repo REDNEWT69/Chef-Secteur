@@ -42,6 +42,8 @@ assert.equal((CONTROLLER.match(/window\.generateWeek\s*=(?!=)/g) || []).length, 
   'la génération d’une seule semaine garde un propriétaire unique et inchangé');
 assert.match(CONTROLLER, /window\.storeRunnerGenerateThreeWeeks\s*=/,
   'l’action 3 semaines doit être publique pour que le planning puisse la rappeler');
+assert.match(CONTROLLER, /const previousThreeWeekPlanningFlag=window\.__storeRunnerPlanningGenerationActive;[\s\S]*window\.__storeRunnerPlanningGenerationActive=true;[\s\S]*try\{built=await api\.generateThreeWeekSnail\(\{start:start\}\)\}[\s\S]*finally\{window\.__storeRunnerPlanningGenerationActive=previousThreeWeekPlanningFlag\}/,
+  'le contrôleur doit posséder le drapeau Agenda pendant toute la vraie génération 3 semaines');
 
 // --- 3. L'action séparée a disparu du menu, les autres actions restent ---------------
 assert.doesNotMatch(TERRAIN_SOURCE, /Générer 3 semaines · escargot/,
