@@ -7,6 +7,7 @@ const version = JSON.parse(fs.readFileSync('version.json','utf8'));
 const source = fs.readFileSync('terrain-planning-v1.js','utf8');
 const capacity = fs.readFileSync('daily-capacity.js','utf8');
 const routeOptimizer = fs.readFileSync('planning-route-optimizer-v251.js','utf8');
+const planningPro = fs.readFileSync('planning-pro-plus.js','utf8');
 
 assert(index.includes("'./range-planner-v2.js','./store-opening-hours.js','./boulanger-default-hours.js','./store-photos.js','./terrain-planning-v1.js','./working-hours-end.js'"), 'les horaires enseigne et les photos doivent charger avant le module terrain');
 assert(sw.includes('"./terrain-planning-v1.js"'), 'le module terrain doit être disponible hors ligne');
@@ -36,7 +37,9 @@ assert(capacity.includes("target.addEventListener('input'"), 'l’objectif hebdo
 assert(capacity.includes('state.settings.target='), 'le module capacité doit conserver la valeur hebdomadaire choisie');
 assert(index.includes('window.__storeRunnerPlanningGenerationActive=true'), 'V184 doit activer la capacité planning pendant la génération 3 semaines');
 assert(index.includes('api.generateThreeWeekSnail=wrapped'), 'V184 doit envelopper le générateur terrain 3 semaines');
-assert(index.includes('terrainSnailBtn')&&index.includes('api.generateThreeWeekSnail()'), 'le bouton terrain existant doit être rebranché vers le générateur corrigé');
+assert(!index.includes('terrainSnailBtn'), 'V184 ne doit plus réparer le bouton terrain retiré');
+assert(!index.includes('window.StoreRunnerV184='), 'V184 ne doit plus exposer une API de diagnostic sans consommateur');
+assert(!planningPro.includes("getElementById('planningProPlus')"), 'planning-pro-plus ne doit plus nettoyer un ancien conteneur jamais créé');
 assert(index.includes("'./performance-ui-v190.js','./assistant-performance-context-v192.js','./visit-mobile-ux-v215.js','./visit-mobile-tabs-v216.js','./update-manager.js'"),'le pont performance V192 puis les couches UX visite V215/V216 doivent charger avant le gestionnaire de mise à jour');
 assert(sw.includes('"./assistant-performance-context-v192.js"'),'le pont performance V192 doit rester disponible hors ligne');
 assert(sw.includes('"./visit-mobile-ux-v215.js"'),'l’UX visite V215 doit rester disponible hors ligne');
