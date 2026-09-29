@@ -26,7 +26,8 @@ assert(!source.includes('srRuntimeBoot'),'V234 : le voile de démarrage n’appa
    l'enregistrement Secteur reste neutre pour le planning et le GPS interne est masqué. */
 assert(index.includes('window.__storeRunnerPlanningGenerationActive=true'),'la génération 3 semaines doit activer la capacité planning Boulanger');
 assert(index.includes('api.generateThreeWeekSnail=wrapped'),'le générateur 3 semaines public doit être enveloppé');
-assert(index.includes('terrainSnailBtn')&&index.includes('api.generateThreeWeekSnail()'),'le bouton 3 semaines doit appeler le générateur enveloppé');
+assert(!index.includes('terrainSnailBtn'),'V184 ne doit plus réparer le bouton terrain retiré');
+assert(!index.includes('window.StoreRunnerV184='),'V184 ne doit plus exposer une API de diagnostic sans consommateur');
 assert(index.includes('pBaseLat')&&index.includes('pBaseLon'),'V184 doit repérer les coordonnées internes');
 assert(index.includes('grid.hidden=true')&&index.includes('grid.style.display'),'Latitude et Longitude doivent être masquées sans supprimer les valeurs GPS');
 assert(index.includes('var before=clonePlan(window.state&&state.plan)'),'la sauvegarde Secteur doit capturer le planning courant');

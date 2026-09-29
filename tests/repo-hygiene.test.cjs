@@ -14,14 +14,18 @@ const RETIRES = [
   'payload',
   'applepayload',
   'applepayload2',
-  'tools/build_payload.py'
+  'tools/build_payload.py',
+  'store-runner-logo.jpg',
+  'status-home-after.png',
+  'status-plan-after.png',
+  'status-plan-before.png'
 ];
 
 for (const cible of RETIRES) {
   assert.equal(
     fs.existsSync(path.join(ROOT, cible)),
     false,
-    `${cible} a été retiré en V231-B : ne pas le réintroduire sans propriétaire runtime`
+    `${cible} a été retiré : ne pas le réintroduire sans propriétaire runtime`
   );
 }
 
