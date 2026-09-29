@@ -19,6 +19,15 @@ function layersOf(fn) {
   return out;
 }
 
+function profileLayersOf(fn) {
+  const out = []; let cur = fn, guard = 0;
+  while (typeof cur === 'function' && guard++ < 200) {
+    out.push(cur.__v184PlanNeutral ? 'v184' : cur.__v182Wrapped ? 'v182' : 'owner');
+    cur = cur.__v184Original || cur.__v182Original || cur.__original || null;
+  }
+  return out;
+}
+
 test('V263.1 a : un clic « Générer mes 3 semaines » = un regroupement V185 puis une finalisation V251', async ({ page }) => {
   const errors = [];
   page.on('pageerror', e => errors.push(String(e && e.message || e)));
@@ -107,4 +116,76 @@ test('V263.1 g : Pilotage ouvert — visite supprimée ou planning modifié → 
   await expect(panel).toHaveClass(/active/);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test('stabilisation : saveProfile garde une seule couche V184/V182 après 30 événements', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(String(error && error.message || error)));
+  page.on('dialog', dialog => dialog.accept().catch(() => {}));
+  await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.saveProfile === 'function' && window.StoreRunnerOvernightV182 && typeof StoreRunnerOvernightV182.render === 'function' && document.getElementById('pSaving'));
+  // Les derniers rappels d'installation historiques partent à 1 400 ms / 1 200 ms.
+  await page.waitForTimeout(1800);
+  const initial = await page.evaluate(`(${profileLayersOf.toString()})(window.saveProfile)`);
+
+  await page.evaluate(() => {
+    for (let index = 0; index < 10; index++) {
+      document.dispatchEvent(new CustomEvent('store-runner:planning-updated', { detail: { reason: 'save-profile-stability' } }));
+      document.dispatchEvent(new CustomEvent('store-runner:home-rendered', { detail: { reason: 'save-profile-stability' } }));
+      document.dispatchEvent(new CustomEvent('store-runner:data-restored', { detail: { reason: 'save-profile-stability' } }));
+    }
+  });
+  await page.waitForTimeout(300);
+  const afterEvents = await page.evaluate(`(${profileLayersOf.toString()})(window.saveProfile)`);
+
+  expect(afterEvents, 'chaîne initiale=' + initial.join('>') + ' ; après 30 événements=' + afterEvents.join('>')).toEqual(initial);
+  expect(afterEvents.filter(layer => layer === 'v184'), afterEvents.join('>')).toHaveLength(1);
+  expect(afterEvents.filter(layer => layer === 'v182'), afterEvents.join('>')).toHaveLength(1);
+  expect(afterEvents.length, afterEvents.join('>')).toBeLessThanOrEqual(3);
+
+  const saved = await page.evaluate(async profileLayersSource => {
+    state.profile = Object.assign({}, state.profile || {}, { sectorName: 'Avant', baseLat: 45.75, baseLon: 4.85, overnightMode: 'auto', overnightMinSaving: 80 });
+    const keptStore = { id: 'kept', enseigne: 'Test', ville: 'Lyon', adresse: '1 rue du Test', active: true, lat: 45.75, lon: 4.85 };
+    state.stores = [keptStore];
+    state.plan = { Lundi: [keptStore], Mardi: [], Mercredi: [], Jeudi: [], Vendredi: [], Samedi: [] };
+    const values = {
+      pSector: 'Secteur stable', pRep: 'Leia', pBaseName: 'Lyon', pBaseAddress: '1 rue du Test',
+      pBaseLat: '45.75', pBaseLon: '4.85', pOvernight: 'never', pSaving: '0'
+    };
+    for (const [id, value] of Object.entries(values)) document.getElementById(id).value = value;
+    const planBefore = JSON.stringify(state.plan);
+    const owner = StoreRunnerOvernightV182.render;
+    let overnightRenders = 0;
+    StoreRunnerOvernightV182.render = function() { overnightRenders++; return owner.apply(this, arguments); };
+    const renderAllOwner = window.renderAll;
+    const showErrorOwner = window.showError;
+    const profileErrors = [];
+    window.showError = message => profileErrors.push(String(message || ''));
+    window.renderAll = function() { state.plan.Lundi.push({ id: 'profile-side-effect' }); };
+    try {
+      const result = await window.saveProfile();
+      return {
+        result, overnightRenders, profileErrors, planBefore, planAfter: JSON.stringify(state.plan),
+        sectorName: state.profile.sectorName, repName: state.profile.repName,
+        overnightMode: state.profile.overnightMode, overnightMinSaving: state.profile.overnightMinSaving,
+        overnightText: String((document.getElementById('overnightBox') || {}).textContent || ''),
+        layers: (0, eval)('(' + profileLayersSource + ')(window.saveProfile)')
+      };
+    } finally {
+      window.renderAll = renderAllOwner;
+      window.showError = showErrorOwner;
+      StoreRunnerOvernightV182.render = owner;
+    }
+  }, profileLayersOf.toString());
+
+  expect(saved.result, 'erreur saveProfile : ' + saved.profileErrors.join(' | ')).toBe(true);
+  expect(saved.sectorName).toBe('Secteur stable');
+  expect(saved.repName).toBe('Leia');
+  expect(saved.overnightMode).toBe('never');
+  expect(saved.overnightMinSaving).toBe(0);
+  expect(saved.planAfter).toBe(saved.planBefore);
+  expect(saved.overnightRenders, 'un saveProfile ne doit plus multiplier les rendus découché').toBe(1);
+  expect(saved.overnightText).toContain('Découché désactivé');
+  expect(saved.layers).toEqual(afterEvents);
+  expect(errors).toEqual([]);
 });

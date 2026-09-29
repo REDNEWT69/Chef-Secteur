@@ -264,8 +264,10 @@ function renderOvernightV182(){
    passes de réparation différées ne réécrivent donc plus le bandeau avec l'ancienne vue, qui
    effaçait la réservation d'hôtel et ignorait le filtre des nuits futures. */
 function renderOvernightOwner(){const api=window.StoreRunnerOvernightV182,fn=api&&typeof api.render==='function'?api.render:renderOvernightV182;return fn()}
+/* Stabilisation V264 : V184 et V182 réparent saveProfile sur les mêmes événements.
+   La garde doit donc parcourir toute la chaîne commune, pas seulement la fonction de tête. */
 function wrapOnce(name,wrapper){
-  const original=window[name];if(typeof original!=='function'||original.__v182Wrapped)return false;
+  const original=window[name];if(typeof original!=='function'||chainHas(original,'__v182Wrapped'))return false;
   const wrapped=wrapper(original);wrapped.__v182Wrapped=true;wrapped.__v182Original=original;window[name]=wrapped;return true
 }
 function patchOvernight(){
