@@ -12,9 +12,9 @@ assert.doesNotMatch(plannerSource,/DEFAULT_RULES|visitCreditsByBrand/,'le planif
 assert.match(plannerSource,/window\.storeVisitCredit/,'le planificateur consomme l’API publique des crédits');
 assert.match(plannerSource,/routeCredits\(plan\[day\]\)\+cost>max/,'la limite réglée doit rester le seul budget journalier');
 assert.match(countingSource,/function planningVisitCredit\(store\)\{return visitCredit\(store\)\}/,'visit-counting doit exposer le vrai crédit comme crédit planning');
+assert.match(countingSource,/window\.storeVisitCredit=planningVisitCredit/,'visit-counting doit installer planningVisitCredit sans intervention de daily-capacity');
 assert.doesNotMatch(countingSource,/planningCapacityActive|max-1|Boulanger garde sa réserve/,'aucune réserve Boulanger ne doit subsister dans la source de vérité');
-assert.match(capacitySource,/bindPlanningCreditsToUserLimit/,'daily-capacity garde un filet de compatibilité pour les sessions déjà chargées');
-assert.match(capacitySource,/api\.planningCredit=api\.credit/,'l’API planning doit exposer le vrai crédit métier');
+assert.doesNotMatch(capacitySource,/bindPlanningCreditsToUserLimit|StoreVisitCounting|storeVisitCredit|planningCredit/,'daily-capacity ne doit plus intervenir dans les crédits de visite');
 assert.doesNotMatch(capacitySource,/max-1/,'aucune réserve Boulanger ne doit être recréée dans le module de capacité');
 
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
@@ -63,7 +63,6 @@ function env(options){
   };
   ctx.window=ctx;
   vm.runInNewContext(countingSource,ctx);
-  vm.runInNewContext(capacitySource,ctx);
   vm.runInNewContext(plannerSource,ctx);
   return {ctx,state,proposals,els};
 }

@@ -333,8 +333,8 @@
    * était rangé derrière une action séparée dans « Planifier plusieurs semaines » alors
    * que c'est l'usage réel du terrain. Cette fonction ne replanifie rien elle-même :
    * elle prend la semaine affichée comme première semaine du cycle et délègue au moteur
-   * existant, lu au moment de l'appel pour conserver les enveloppes V184 (capacité
-   * quotidienne) et V185 (optimisation géographique) posées par-dessus.
+   * existant, lu au moment de l'appel pour conserver les enveloppes V185
+   * (optimisation géographique) et V248 (matrice routière) posées par-dessus.
    *
    * La génération d'une seule semaine (`generateWeek`) reste intacte pour ses autres
    * appelants — assistant, régénération d'une journée — mais n'est plus déclenchée par
@@ -355,7 +355,11 @@
     setGenerateBusy(true);
     generationStatus('Génération de 3 semaines · rotation géographique…','busy');
     try{
-      const built=await api.generateThreeWeekSnail({start:start});
+      const previousThreeWeekPlanningFlag=window.__storeRunnerPlanningGenerationActive;
+      window.__storeRunnerPlanningGenerationActive=true;
+      let built;
+      try{built=await api.generateThreeWeekSnail({start:start})}
+      finally{window.__storeRunnerPlanningGenerationActive=previousThreeWeekPlanningFlag}
       const visits=Number(built&&built.totalVisits)||0,stores=Number(built&&built.uniqueStores)||0;
       /* V263 : le bilan de couverture (magasins écartés car visités trop récemment, magasins
          en retard restés hors du cycle) appartient au moteur 3 semaines ; on le relaie. */

@@ -24,7 +24,7 @@ const fs=require('fs'),os=require('os'),path=require('path'),http=require('http'
 const ROOT=path.join(__dirname,'..');
 const SW=fs.readFileSync(path.join(ROOT,'sw.js'),'utf8');
 const REV=SW.match(/const BUILD_REV = "([^"]+)"/)[1];
-const OLD='20260929-r20-runtime-stabilization-264';
+const OLD='20260929-r21-cleanup-l1-264';
 const TARGET=REV;
 const CACHE_SUFFIX=(SW.match(/const CACHE_NAME = "chef-secteur-stable-" \+ BUILD_REV(?: \+ "([^"]*)")?;/)||[])[1]||'';
 const cacheName=rev=>'chef-secteur-stable-'+rev+CACHE_SUFFIX;
@@ -134,13 +134,13 @@ test('V260 : première installation sans rechargement parasite, hors ligne, réo
   await again.context.close();
 });
 
-test('L1 : build r20 → r21 — nouveau shell malgré un index CDN r20 ancien',async()=>{
+test('B2/B4 : build r21 → r22 — nouveau shell malgré un index CDN r21 ancien',async()=>{
   test.setTimeout(150000);
   const {context,page,nav}=await install('open');
   await seed(page);
   site.current='new';
   /* Le manifeste et le worker sont déjà ceux du nouveau déploiement, mais le CDN peut
-     encore répondre l'ancien index r20 à la navigation déclenchée après activation. */
+     encore répondre l'ancien index r21 à la navigation déclenchée après activation. */
   site.staleNavigation=true;
   await page.evaluate(()=>StoreRunnerUpdates.checkForUpdates(true));
   const banner=page.locator('#storeRunnerUpdateBanner');

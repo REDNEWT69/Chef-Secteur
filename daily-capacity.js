@@ -1,21 +1,6 @@
 (function(){
   'use strict';
 
-  /* V261.1 — la capacité du recalcul appartient à l'utilisateur.
-     Les enseignes gardent leur vrai crédit métier (Boulanger/Darty/BUT/Conforama x2),
-     mais aucune enseigne ne réserve désormais de capacité supplémentaire en cachette.
-     `maxVisitsPerDay` devient donc l'unique plafond de crédits utilisé par les moteurs. */
-  function bindPlanningCreditsToUserLimit(){
-    try{
-      var api=window.StoreVisitCounting;
-      if(!api||typeof api.credit!=='function')return false;
-      window.storeVisitCredit=function(entry){return api.credit(entry)};
-      api.planningCredit=api.credit;
-      return true;
-    }catch(e){return false}
-  }
-  bindPlanningCreditsToUserLimit();
-
   function ensure(){
     try{
       if(!state.settings)state.settings={};
@@ -63,7 +48,6 @@
   }
 
   function installField(){
-    bindPlanningCreditsToUserLimit();
     if(!ensure())return false;
     bindWeeklyTarget();
     if(document.getElementById('maxVisitsPerDay'))return syncField();
@@ -93,8 +77,8 @@
     return true;
   }
 
-  function recover(){bindPlanningCreditsToUserLimit();if(!document.getElementById('maxVisitsPerDay'))installField();else{bindWeeklyTarget();syncField()}}
-  function boot(){bindPlanningCreditsToUserLimit();installField()}
+  function recover(){if(!document.getElementById('maxVisitsPerDay'))installField();else{bindWeeklyTarget();syncField()}}
+  function boot(){installField()}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});
   else boot();
 

@@ -1,9 +1,9 @@
 const { test, expect } = require('@playwright/test');
 
 // V263.1 — cas qui demandent le runtime complet, sur un vrai téléphone 390 px.
-//  a. « Générer mes 3 semaines » → V185 regroupe une fois, puis V251 finalise une fois.
-//     Les enveloppes V184 (capacité), V185 (géographie) et V248 (matrice routière) posées
-//     sur le générateur doivent se reconnaître : aucune ne se réempile à chaque événement.
+//  a. Le contrôleur pose le drapeau avant d'entrer dans V185, le vrai moteur laisse
+//     Agenda en lecture du cache, puis V251 finalise une fois. La protection vérifie
+//     ainsi le nouveau propriétaire du drapeau sans dépendre de l'enveloppe V184 retirée.
 //  g. Pilotage ouvert : suppression d'une visite ou planning modifié → anneau et tuiles
 //     à jour sans rouvrir le panneau.
 const APP_URL = process.env.STORE_RUNNER_E2E_URL || 'http://127.0.0.1:4173/';
@@ -28,7 +28,7 @@ function profileLayersOf(fn) {
   return out;
 }
 
-test('V263.1 a : un clic « Générer mes 3 semaines » = un regroupement V185 puis une finalisation V251', async ({ page }) => {
+test('B2 : le contrôleur garde Agenda en cache pendant le vrai moteur 3 semaines puis déclenche V251', async ({ page }) => {
   const errors = [];
   page.on('pageerror', e => errors.push(String(e && e.message || e)));
   page.on('dialog', d => d.accept().catch(() => {}));
@@ -38,7 +38,7 @@ test('V263.1 a : un clic « Générer mes 3 semaines » = un regroupement V185 p
     window.Date = FixedDate;
   });
   await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => window.StoreRunnerTerrainPlanningV1 && window.StoreRunnerRouteOptimizerV251 && window.state && document.getElementById('planPanel'));
+  await page.waitForFunction(() => window.StoreRunnerTerrainPlanningV1 && window.StoreRunnerRoadMatrixV248 && window.StoreRunnerRouteOptimizerV251 && typeof window.storeRunnerGenerateThreeWeeks === 'function' && typeof window.syncGoogleCalendar === 'function' && window.state && document.getElementById('planPanel'));
   await page.waitForFunction(() => { try { save(); return true } catch (e) { return false } });
   await page.evaluate(() => {
     const st = window.state;
@@ -48,7 +48,14 @@ test('V263.1 a : un clic « Générer mes 3 semaines » = un regroupement V185 p
     st.settings = Object.assign({}, st.settings || {}, { weekDate: '2026-09-14', days: ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'], target: 10, maxVisitsPerDay: 3, startTime: '08:30', endTime: '18:00', visitMinutes: 45, brands: [], products: [] });
     st.stores = stores; st.plan = { Lundi: [], Mardi: [], Mercredi: [], Jeudi: [], Vendredi: [], Samedi: [] };
     st.included = {}; st.excluded = {}; st.appointments = []; st.calendarEvents = []; st.manualWeekEdits = {}; st.locks = {}; st.visits = {};
-    window.syncGoogleCalendar = async () => ({ ok: true });
+    const calendarOwner = window.syncGoogleCalendar;
+    window.__v2631CalendarTrace = [];
+    window.syncGoogleCalendar = async function() {
+      const active = window.__storeRunnerPlanningGenerationActive;
+      const result = await calendarOwner.apply(this, arguments);
+      window.__v2631CalendarTrace.push({ active, ok: !!(result && result.ok), cached: !!(result && result.cached), reason: String(result && result.reason || '') });
+      return result;
+    };
     const db = window.__chefStorage || localStorage; db.removeItem('chef_sector_range_v1'); db.removeItem('chef_sector_plan_archive_v1');
     const week = document.getElementById('weekDate'); if (week) week.value = '2026-09-14';
     if (typeof save === 'function') save(); if (typeof renderAll === 'function') renderAll(); if (typeof goTab === 'function') goTab('planPanel');
@@ -57,13 +64,48 @@ test('V263.1 a : un clic « Générer mes 3 semaines » = un regroupement V185 p
   });
   await page.waitForTimeout(3200);
   const before = await page.evaluate(`(${layersOf.toString()})(window.StoreRunnerTerrainPlanningV1.generateThreeWeekSnail)`);
-  for (const marker of ['v184', 'v185', 'v248']) expect(before.filter(x => x === marker).length, 'couche ' + marker + ' avant génération : ' + before.join('>')).toBeLessThanOrEqual(1);
+  expect(before, 'chaîne B2 après retrait de V184').toEqual(['v185', 'v248', 'moteur']);
 
   await page.evaluate(() => {
     window.__v2631 = [];
     document.addEventListener('store-runner:planning-updated', e => window.__v2631.push(String(e.detail && e.detail.source || '') + '/' + String(e.detail && e.detail.reason || '')));
   });
-  await page.locator('#planningToolsV2 [data-planning-generate="three-weeks"]').tap();
+  const generation = await page.evaluate(async () => {
+    const api = window.StoreRunnerTerrainPlanningV1;
+    const owner = api.generateThreeWeekSnail;
+    const previous = window.__storeRunnerPlanningGenerationActive;
+    window.__storeRunnerPlanningGenerationActive = 'before-controller';
+    const entryFlags = [];
+    api.generateThreeWeekSnail = async function() {
+      entryFlags.push(window.__storeRunnerPlanningGenerationActive);
+      return owner.apply(this, arguments);
+    };
+    try {
+      const response = await window.storeRunnerGenerateThreeWeeks();
+      const built = response && response.result;
+      return {
+        ok: !!(response && response.ok),
+        totalVisits: Number(built && built.totalVisits) || 0,
+        weeks: Array.isArray(built && built.weeks) ? built.weeks.length : 0,
+        restored: window.__storeRunnerPlanningGenerationActive,
+        entryFlags,
+        calendar: window.__v2631CalendarTrace.slice()
+      };
+    } finally {
+      api.generateThreeWeekSnail = owner;
+      window.__storeRunnerPlanningGenerationActive = previous;
+    }
+  });
+  expect(generation.ok).toBe(true);
+  expect(generation.entryFlags, 'le contrôleur doit poser le drapeau avant V185').toEqual([true]);
+  expect(generation.totalVisits, 'la génération réelle doit réussir').toBeGreaterThan(0);
+  expect(generation.weeks).toBe(3);
+  expect(generation.restored, 'le contrôleur doit restaurer la valeur précédente du drapeau').toBe('before-controller');
+  expect(generation.calendar, 'Agenda doit être consulté une fois par semaine sous le drapeau du contrôleur').toHaveLength(3);
+  for (const call of generation.calendar) {
+    expect(call.active, 'le vrai moteur doit appeler Agenda avec le drapeau strictement true').toBe(true);
+    expect(call).toMatchObject({ ok: true, cached: true, reason: 'planning-cache' });
+  }
   await page.waitForFunction(() => { const r = JSON.parse((window.__chefStorage || localStorage).getItem('chef_sector_range_v1') || 'null'); return r && r.routeOptimized === 'v251' }, undefined, { timeout: 20000 });
   await page.waitForTimeout(1500);
   const trace = await page.evaluate(() => window.__v2631.slice());
@@ -73,7 +115,7 @@ test('V263.1 a : un clic « Générer mes 3 semaines » = un regroupement V185 p
   expect(order.indexOf('route-opt-v251')).toBeGreaterThan(order.indexOf('snail-geo-v185'));
   expect(trace.filter(x => x.endsWith('/three-week-snail')), 'le contrat historique reason:three-week-snail reste publié').toHaveLength(1);
   const after = await page.evaluate(`(${layersOf.toString()})(window.StoreRunnerTerrainPlanningV1.generateThreeWeekSnail)`);
-  for (const marker of ['v184', 'v185', 'v248']) expect(after.filter(x => x === marker).length, 'couche ' + marker + ' après génération : ' + after.join('>')).toBeLessThanOrEqual(1);
+  expect(after, 'la chaîne ne doit pas croître pendant la génération').toEqual(before);
   expect(errors).toEqual([]);
 });
 

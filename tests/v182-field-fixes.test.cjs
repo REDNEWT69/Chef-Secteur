@@ -22,10 +22,12 @@ assert(sw.includes('"./priority-campaign-v187.js"'),'le moteur de priorités V18
 assert(source.includes('removeHomePilotageShortcut'),'Pilotage doit rester retiré de l’accueil');
 assert(!source.includes('srRuntimeBoot'),'V234 : le voile de démarrage n’appartient plus à ce module');
 
-/* V184 reste en place : le flux 3 semaines utilise la capacité planning Boulanger,
-   l'enregistrement Secteur reste neutre pour le planning et le GPS interne est masqué. */
-assert(index.includes('window.__storeRunnerPlanningGenerationActive=true'),'la génération 3 semaines doit activer la capacité planning Boulanger');
-assert(index.includes('api.generateThreeWeekSnail=wrapped'),'le générateur 3 semaines public doit être enveloppé');
+/* B2 : V184 reste seulement propriétaire de la neutralité profil et du masquage GPS.
+   Le drapeau de génération 3 semaines appartient désormais à V185. */
+assert(!index.includes('__v184PlanningCapacity'),'V184 ne doit plus envelopper le générateur 3 semaines');
+assert(!index.includes('function patchThreeWeeks()'),'le patch legacy 3 semaines V184 doit être supprimé');
+assert(source.includes('window.__storeRunnerPlanningGenerationActive=true'),'V185 doit conserver le drapeau lu par Agenda');
+assert(source.includes('patchThreeWeekGeography'),'V185 doit rester autour du moteur 3 semaines');
 assert(!index.includes('terrainSnailBtn'),'V184 ne doit plus réparer le bouton terrain retiré');
 assert(!index.includes('window.StoreRunnerV184='),'V184 ne doit plus exposer une API de diagnostic sans consommateur');
 assert(index.includes('pBaseLat')&&index.includes('pBaseLon'),'V184 doit repérer les coordonnées internes');
