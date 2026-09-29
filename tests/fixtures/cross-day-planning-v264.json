@@ -1,5 +1,5 @@
 {
-  "fixtureVersion": 1,
+  "fixtureVersion": 2,
   "baselineSha": "83dd02f729abe9786f9f6355a005682f2a899448",
   "firstMonday": "2026-09-28",
   "today": "2026-09-30",
@@ -9,6 +9,80 @@
     "lon": 4.85
   },
   "scenarios": [
+    {
+      "id": "sector-80-no-history",
+      "storeCount": 80,
+      "withoutHistory": true,
+      "days": ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"],
+      "target": 14,
+      "maxCreditsPerDay": 4,
+      "zones": [
+        { "bearing": 8, "radiusKm": 68, "count": 10 },
+        { "bearing": 52, "radiusKm": 72, "count": 10 },
+        { "bearing": 97, "radiusKm": 70, "count": 10 },
+        { "bearing": 142, "radiusKm": 74, "count": 10 },
+        { "bearing": 187, "radiusKm": 69, "count": 10 },
+        { "bearing": 232, "radiusKm": 73, "count": 10 },
+        { "bearing": 277, "radiusKm": 71, "count": 10 },
+        { "bearing": 322, "radiusKm": 75, "count": 10 }
+      ],
+      "urgentIsolated": "s1",
+      "urgentCluster": [],
+      "included": [],
+      "excluded": ["s79"],
+      "inactive": ["s80"],
+      "locks": [],
+      "appointments": [],
+      "blockedDates": [],
+      "calendarEvents": [],
+      "pastVisits": [],
+      "hotelReservations": [],
+      "tieIds": ["s60", "s61", "s62", "s63"],
+      "baseline": {
+        "capturedFrom": "r20 legacy-compatible allocation without visit history",
+        "visits": 38,
+        "coveredStores": 38,
+        "dueCovered": 38,
+        "dueTotal": 78,
+        "urgentCovered": 0,
+        "urgentTotal": 0,
+        "neverCovered": 38,
+        "neverTotal": 78,
+        "kilometers": 3626.9,
+        "driveMinutes": 3956.6,
+        "minDayCredits": 0,
+        "maxDayCredits": 4,
+        "loadSpread": 4,
+        "violations": 0,
+        "signature": "4d4e2308",
+        "plan": {
+          "2026-09-28": {
+            "Lundi": [],
+            "Mardi": [],
+            "Mercredi": ["s22", "s11", "s66"],
+            "Jeudi": ["s33", "s44", "s55"],
+            "Vendredi": ["s2", "s6", "s7", "s77"],
+            "Samedi": []
+          },
+          "2026-10-05": {
+            "Lundi": ["s41", "s47", "s46"],
+            "Mardi": ["s3", "s8", "s42"],
+            "Mercredi": ["s4", "s9"],
+            "Jeudi": ["s21", "s26", "s48"],
+            "Vendredi": ["s43", "s10", "s5"],
+            "Samedi": []
+          },
+          "2026-10-12": {
+            "Lundi": ["s27", "s23", "s49"],
+            "Mardi": ["s29", "s28", "s50"],
+            "Mercredi": ["s45", "s68", "s67"],
+            "Jeudi": ["s16", "s12", "s24"],
+            "Vendredi": ["s17", "s30"],
+            "Samedi": []
+          }
+        }
+      }
+    },
     {
       "id": "sector-80-saturday-off",
       "storeCount": 80,
@@ -39,6 +113,10 @@
       "blockedDates": [
         { "date": "2026-10-15", "title": "Jour férié" },
         { "date": "2026-10-16", "title": "Formation secteur" }
+      ],
+      "calendarEvents": [
+        { "id": "leave-80", "title": "Formation secteur", "date": "2026-10-15", "start": "2026-10-15", "end": "2026-10-17", "allDay": true, "calendar": "Google Agenda" },
+        { "id": "holiday-80", "title": "Jour férié", "date": "2026-10-15", "start": "2026-10-15", "end": "2026-10-16", "allDay": true, "calendar": "Google Agenda" }
       ],
       "pastVisits": [
         { "storeId": "s20", "date": "2026-09-28" },
