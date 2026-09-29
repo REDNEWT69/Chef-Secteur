@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'264',
+      title:'Trois semaines mieux organisées, sans sacrifier les priorités',
+      items:[
+        'Le planning choisit désormais ensemble les magasins et leurs jours sur les trois semaines, au lieu d’optimiser chaque journée isolément.',
+        'À priorité métier égale, les magasins proches sont regroupés pour limiter les détours et les kilomètres inutiles.',
+        'Les visites urgentes restent prioritaires : rendez-vous, journées figées, indisponibilités et visites déjà réalisées ne sont jamais déplacés.',
+        'Le résultat reste identique à chaque recalcul avec les mêmes données.'
+      ]
+    },
+    {
       version:'263',
       title:'Un planning qui tient compte de tes vraies visites',
       items:[

@@ -82,7 +82,8 @@ function eventBlocksPlanningV185(e){
   if(!e)return false;if(e.inferredAway)return true;
   let text='';try{text=String((e.title||'')+' '+(e.location||'')+' '+(e.calendar||'')).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}catch(x){}
   const hard=['formation','deplacement','seminaire','conge','vacances','salon professionnel','indisponible','indisponibilite','absence','absent','journee bloquee','jour bloque','repos','hors secteur'];
-  return hard.some(x=>text.includes(x))||/\bparis\b/.test(text)||!!(e.planningBlock&&!e.allDay)
+  const holiday=/\bferies?\b/.test(text)||/\bpublic holidays?\b/.test(text);
+  return hard.some(x=>text.includes(x))||holiday||/\bparis\b/.test(text)||!!(e.planningBlock&&!e.allDay)
 }
 function dayBlockedV185(date){
   try{if(typeof window.calendarEventsForDate==='function')return (window.calendarEventsForDate(date)||[]).some(eventBlocksPlanningV185)}catch(e){}
@@ -115,6 +116,7 @@ function candidateScoreV185(plan,day,store,trial,workDays){
 }
 function rebalancePlanByGeography(plan,options){
   options=options||{};if(!window.state||!plan)return{ok:false,plan:plan||{},changed:false,reason:'no-state'};
+  const preserveImposed=options.preserveImposed!==false;
   const workDays=(options.days||selectedWorkDays()).filter(d=>DAYS.includes(d)),weekKey=String(options.weekKey||currentWeekKey()),mon=parse(weekKey)||monday(parse((state.settings&&state.settings.weekDate)||'')||new Date()),max=Math.max(1,Math.min(8,Number(state.settings&&state.settings.maxVisitsPerDay)||4));
   if(!workDays.length||!homePoint())return{ok:false,plan,changed:false,reason:'no-days-or-base'};
   /* V263 : `frozenDays` (journées déjà passées d'une semaine entamée, posées par le cycle
@@ -129,7 +131,7 @@ function rebalancePlanByGeography(plan,options){
   const openDays=new Map(),mayGo=(store,day)=>{const id=String(store&&store.id||'');if(!openDays.has(id)){const open=movableDays.filter(d=>!blockedOnDay(store,d));openDays.set(id,open.length?new Set(open):null)}const open=openDays.get(id);return !open||open.has(day)};
   const out=Object.fromEntries(DAYS.map(d=>[d,movableDays.includes(d)?[]:clone((plan&&plan[d])||[])])),free=[],seen=new Set(),origin={},fixedIds=new Set();
   for(const day of workDays)if(frozen.has(day))for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(id){seen.add(id);fixedIds.add(id)}}
-  for(const day of movableDays)for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(!id||seen.has(id))continue;seen.add(id);origin[id]=day;let fixed=lockDayV185(id,weekKey)||appointmentDayV185(id,mon)||(visitedOnV185(id,iso(addDays(mon,DAYS.indexOf(day))))?day:'');if(fixed&&frozen.has(fixed))fixed=day;if(fixed){if(!workDays.includes(fixed))return{ok:false,plan,changed:false,reason:'fixed-outside'};out[fixed].push(store);fixedIds.add(id)}else free.push(store)}
+  for(const day of movableDays)for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(!id||seen.has(id))continue;seen.add(id);origin[id]=day;let fixed=lockDayV185(id,weekKey)||appointmentDayV185(id,mon)||((preserveImposed&&state.included&&state.included[id])?day:'')||(visitedOnV185(id,iso(addDays(mon,DAYS.indexOf(day))))?day:'');if(fixed&&frozen.has(fixed))fixed=day;if(fixed){if(!workDays.includes(fixed))return{ok:false,plan,changed:false,reason:'fixed-outside'};out[fixed].push(store);fixedIds.add(id)}else free.push(store)}
   for(const day of movableDays){out[day]=optimizeRouteV185(out[day]);if(routeCreditsV185(out[day])>max||!dayFitsV185(out[day],day,mon))return{ok:false,plan,changed:false,reason:'fixed-capacity'}}
   const sortDirection=options.preferNearFirst?1:-1;
   free.sort((a,b)=>sortDirection*(homeDistance(a)-homeDistance(b))||DAYS.indexOf(origin[String(a.id)])-DAYS.indexOf(origin[String(b.id)]));
@@ -192,13 +194,16 @@ function terrainOvernightRow(week){
 }
 async function persistSnailGeography(result){
   if(!result||!Array.isArray(result.weeks)||!result.weeks.length)return false;
-  const archive=loadArchive();let changed=false;
-  for(const week of result.weeks){if(!week||week.manual)continue;const geo=rebalancePlanByGeography(week.plan,{weekKey:week.weekKey,preferNearFirst:true,frozenDays:week.frozenDays});if(!geo.ok)continue;if(geo.changed){week.plan=geo.plan;changed=true;const prev=archive[week.weekKey]||{weekMonday:week.weekKey};archive[week.weekKey]=Object.assign({},prev,{weekMonday:week.weekKey,plan:clone(geo.plan),manualEdited:false,generatedMode:'snail-distance-geo-v185',geographyOptimized:'v185',updatedAt:new Date().toISOString()})}}
+  const archive=loadArchive(),crossDay=!!(result.crossDay&&result.crossDay.applied);let changed=false;
+  /* V264 : terrain-planning-v1.js possède désormais l'affectation entre journées sur les
+     trois semaines. Repasser V185 semaine par semaine pourrait défaire un échange entre
+     semaines ; V185 reste le repli des anciens appels sans couverture/évaluateur. */
+  for(const week of result.weeks){if(!week||week.manual||crossDay)continue;const geo=rebalancePlanByGeography(week.plan,{weekKey:week.weekKey,preferNearFirst:true,frozenDays:week.frozenDays});if(!geo.ok)continue;if(geo.changed){week.plan=geo.plan;changed=true;const prev=archive[week.weekKey]||{weekMonday:week.weekKey};archive[week.weekKey]=Object.assign({},prev,{weekMonday:week.weekKey,plan:clone(geo.plan),manualEdited:false,generatedMode:'snail-distance-geo-v185',geographyOptimized:'v185',updatedAt:new Date().toISOString()})}}
   if(changed){saveArchive(archive);const first=result.weeks[0];if(first&&String(state.settings&&state.settings.weekDate||'')===String(first.weekKey||''))state.plan=Object.fromEntries(DAYS.map(d=>[d,((first.plan&&first.plan[d])||[]).map(resolveStore)]));try{if(typeof window.save==='function')window.save();else if(typeof save==='function')save()}catch(e){}}
   let finalDiagnostics=null,finalHours=null;
   try{const terrain=window.StoreRunnerTerrainPlanningV1;if(terrain&&typeof terrain.refreshThreeWeekDiagnostics==='function'){finalDiagnostics=terrain.refreshThreeWeekDiagnostics(result.weeks,state);result.dayCoverage=finalDiagnostics.dayCoverage;result.emptyWorkDays=finalDiagnostics.emptyWorkDays}if(terrain&&typeof terrain.summarizeOpeningHours==='function'){finalHours=terrain.summarizeOpeningHours(result.weeks,state);result.hoursReport=finalHours}}catch(e){console.warn('Diagnostic final escargot non recalculé',e)}
   const report=result.weeks.map(terrainOvernightRow);result.overnightReport=report;
-  try{const s=storage(),range=s&&JSON.parse(s.getItem(RANGE_KEY)||'null');if(range){range.overnightReport=report;if(finalDiagnostics){range.planningDiagnostics=finalDiagnostics.planningDiagnostics;range.dayCoverage=finalDiagnostics.dayCoverage}if(finalHours)range.hoursReport=finalHours;range.rotation='snail-distance-geo-v185';range.updatedAt=new Date().toISOString();s.setItem(RANGE_KEY,JSON.stringify(range))}if(s&&typeof s.flush==='function')await s.flush()}catch(e){}
+  try{const s=storage(),range=s&&JSON.parse(s.getItem(RANGE_KEY)||'null');if(range){range.overnightReport=report;if(finalDiagnostics){range.planningDiagnostics=finalDiagnostics.planningDiagnostics;range.dayCoverage=finalDiagnostics.dayCoverage}if(finalHours)range.hoursReport=finalHours;range.rotation=crossDay?'cross-day-v264':'snail-distance-geo-v185';if(crossDay)range.crossDayReport=result.crossDay;range.updatedAt=new Date().toISOString();s.setItem(RANGE_KEY,JSON.stringify(range))}if(s&&typeof s.flush==='function')await s.flush()}catch(e){}
   if(changed){try{if(typeof window.renderAll==='function')window.renderAll();else if(typeof renderAll==='function')renderAll()}catch(e){}}
   try{document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{source:'snail-geo-v185',weekDate:String(result.weeks[0]&&result.weeks[0].weekKey||'')}}))}catch(e){}
   return changed
@@ -338,6 +343,6 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduledR
 [120,500,1200].forEach(ms=>window.setTimeout(repairAll,ms));
 window.StoreRunnerOvernightV182={threshold:overnightThreshold,analyze:overnightAnalysis,render:renderOvernightV182};
 window.StoreRunnerPartialRangeV182={mergeWeekPlan,run:runPartialRange,bind:bindPartialRange};
-window.StoreRunnerGeographyV185={rebalance:rebalancePlanByGeography,routeKm:routeKmV185,homeDistance,patchSingle:patchSingleWeekGeography,patchThreeWeeks:patchThreeWeekGeography,remoteMinKm:V185_REMOTE_MIN_KM,mandatoryMinSavingKm:V185_MANDATORY_MIN_SAVING_KM};
+window.StoreRunnerGeographyV185={rebalance:rebalancePlanByGeography,eventBlocksPlanning:eventBlocksPlanningV185,routeKm:routeKmV185,homeDistance,patchSingle:patchSingleWeekGeography,patchThreeWeeks:patchThreeWeekGeography,remoteMinKm:V185_REMOTE_MIN_KM,mandatoryMinSavingKm:V185_MANDATORY_MIN_SAVING_KM};
 window.storeRunnerRepairMobileRuntime=repairMobileRuntime;
 })();

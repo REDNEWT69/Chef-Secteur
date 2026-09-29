@@ -1,0 +1,213 @@
+{
+  "fixtureVersion": 1,
+  "baselineSha": "83dd02f729abe9786f9f6355a005682f2a899448",
+  "firstMonday": "2026-09-28",
+  "today": "2026-09-30",
+  "base": {
+    "id": "BASE",
+    "lat": 45.75,
+    "lon": 4.85
+  },
+  "scenarios": [
+    {
+      "id": "sector-80-saturday-off",
+      "storeCount": 80,
+      "days": ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"],
+      "target": 14,
+      "maxCreditsPerDay": 4,
+      "zones": [
+        { "bearing": 8, "radiusKm": 68, "count": 10 },
+        { "bearing": 52, "radiusKm": 72, "count": 10 },
+        { "bearing": 97, "radiusKm": 70, "count": 10 },
+        { "bearing": 142, "radiusKm": 74, "count": 10 },
+        { "bearing": 187, "radiusKm": 69, "count": 10 },
+        { "bearing": 232, "radiusKm": 73, "count": 10 },
+        { "bearing": 277, "radiusKm": 71, "count": 10 },
+        { "bearing": 322, "radiusKm": 75, "count": 10 }
+      ],
+      "urgentIsolated": "s1",
+      "urgentCluster": ["s2", "s3", "s4", "s5", "s6"],
+      "included": ["s7"],
+      "excluded": ["s79"],
+      "inactive": ["s80"],
+      "locks": [
+        { "storeId": "s8", "week": "2026-10-12", "day": "Mercredi" }
+      ],
+      "appointments": [
+        { "id": "appt-80", "storeId": "s9", "date": "2026-10-13", "time": "11:30", "duration": 60 }
+      ],
+      "blockedDates": [
+        { "date": "2026-10-15", "title": "Jour férié" },
+        { "date": "2026-10-16", "title": "Formation secteur" }
+      ],
+      "pastVisits": [
+        { "storeId": "s20", "date": "2026-09-28" },
+        { "storeId": "s21", "date": "2026-09-29" },
+        { "storeId": "s22", "date": "2026-09-30" }
+      ],
+      "manualWeek": {
+        "week": "2026-10-05",
+        "placements": {
+          "Lundi": ["s70", "s7"],
+          "Mardi": ["s71"],
+          "Mercredi": ["s72"],
+          "Jeudi": ["s73"],
+          "Vendredi": ["s74"]
+        }
+      },
+      "hotelReservations": [
+        {
+          "fromDate": "2026-10-07",
+          "toDate": "2026-10-08",
+          "hotelName": "Hôtel fixture 80",
+          "reference": "FIX-80",
+          "lat": 46.174,
+          "lon": 5.701,
+          "zone": "Zone Est"
+        }
+      ],
+      "tieIds": ["s60", "s61", "s62", "s63"],
+      "baseline": {
+        "capturedFrom": "legacy snail allocation + V185 geography + V251-equivalent daily ordering",
+        "visits": 33,
+        "coveredStores": 31,
+        "dueCovered": 29,
+        "dueTotal": 76,
+        "urgentCovered": 14,
+        "urgentTotal": 16,
+        "neverCovered": 1,
+        "neverTotal": 13,
+        "kilometers": 3820.6,
+        "driveMinutes": 4167.9,
+        "minDayCredits": 0,
+        "maxDayCredits": 4,
+        "loadSpread": 4,
+        "violations": 0,
+        "cpuMs": 67.2,
+        "signature": "bb93a2fb",
+        "plan": {
+          "2026-09-28": {
+            "Lundi": ["s20"],
+            "Mardi": ["s21"],
+            "Mercredi": ["s22", "s5", "s7"],
+            "Jeudi": ["s1", "s66"],
+            "Vendredi": ["s30", "s24", "s48", "s42"],
+            "Samedi": []
+          },
+          "2026-10-05": {
+            "Lundi": ["s70", "s7", "s18"],
+            "Mardi": ["s71", "s54", "s78", "s55"],
+            "Mercredi": ["s72", "s2", "s6", "s12"],
+            "Jeudi": ["s73", "s3"],
+            "Vendredi": ["s74"],
+            "Samedi": []
+          },
+          "2026-10-12": {
+            "Lundi": ["s33", "s26", "s7"],
+            "Mardi": ["s9", "s45"],
+            "Mercredi": ["s14", "s8", "s69"],
+            "Jeudi": [],
+            "Vendredi": [],
+            "Samedi": []
+          }
+        }
+      }
+    },
+    {
+      "id": "sector-150-saturday-on",
+      "storeCount": 150,
+      "days": ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"],
+      "target": 20,
+      "maxCreditsPerDay": 4,
+      "zones": [
+        { "bearing": 4, "radiusKm": 82, "count": 15 },
+        { "bearing": 40, "radiusKm": 78, "count": 15 },
+        { "bearing": 76, "radiusKm": 84, "count": 15 },
+        { "bearing": 112, "radiusKm": 80, "count": 15 },
+        { "bearing": 148, "radiusKm": 86, "count": 15 },
+        { "bearing": 184, "radiusKm": 79, "count": 15 },
+        { "bearing": 220, "radiusKm": 85, "count": 15 },
+        { "bearing": 256, "radiusKm": 81, "count": 15 },
+        { "bearing": 292, "radiusKm": 87, "count": 15 },
+        { "bearing": 328, "radiusKm": 83, "count": 15 }
+      ],
+      "urgentIsolated": "s1",
+      "urgentCluster": ["s2", "s3", "s4", "s5", "s6", "s10", "s11"],
+      "included": ["s7"],
+      "excluded": ["s149"],
+      "inactive": ["s150"],
+      "locks": [
+        { "storeId": "s8", "week": "2026-10-05", "day": "Samedi" }
+      ],
+      "appointments": [
+        { "id": "appt-150", "storeId": "s9", "date": "2026-10-06", "time": "11:30", "duration": 60 }
+      ],
+      "blockedDates": [
+        { "date": "2026-10-12", "title": "Jour férié" },
+        { "date": "2026-10-12", "title": "Indisponible" }
+      ],
+      "pastVisits": [
+        { "storeId": "s30", "date": "2026-09-28" },
+        { "storeId": "s31", "date": "2026-09-29" },
+        { "storeId": "s32", "date": "2026-09-30" }
+      ],
+      "hotelReservations": [
+        {
+          "fromDate": "2026-10-01",
+          "toDate": "2026-10-02",
+          "hotelName": "Hôtel fixture 150",
+          "reference": "FIX-150",
+          "lat": 45.128,
+          "lon": 5.883,
+          "zone": "Zone Alpes"
+        }
+      ],
+      "tieIds": ["s130", "s131", "s132", "s133", "s134", "s135"],
+      "baseline": {
+        "capturedFrom": "legacy snail allocation + V185 geography + V251-equivalent daily ordering",
+        "visits": 39,
+        "coveredStores": 37,
+        "dueCovered": 35,
+        "dueTotal": 146,
+        "urgentCovered": 22,
+        "urgentTotal": 29,
+        "neverCovered": 1,
+        "neverTotal": 28,
+        "kilometers": 4930.3,
+        "driveMinutes": 5378.5,
+        "minDayCredits": 0,
+        "maxDayCredits": 4,
+        "loadSpread": 4,
+        "violations": 0,
+        "cpuMs": 85.6,
+        "signature": "9af555bf",
+        "plan": {
+          "2026-09-28": {
+            "Lundi": ["s30"],
+            "Mardi": ["s31"],
+            "Mercredi": ["s32", "s11", "s5", "s7"],
+            "Jeudi": ["s24", "s18", "s48", "s66"],
+            "Vendredi": ["s54", "s84", "s90", "s78"],
+            "Samedi": ["s108"]
+          },
+          "2026-10-05": {
+            "Lundi": ["s2", "s6", "s42", "s60"],
+            "Mardi": ["s9", "s7", "s12"],
+            "Mercredi": ["s102", "s114", "s138"],
+            "Jeudi": ["s1", "s126"],
+            "Vendredi": ["s10"],
+            "Samedi": ["s8"]
+          },
+          "2026-10-12": {
+            "Lundi": [],
+            "Mardi": ["s33", "s26", "s7"],
+            "Mercredi": ["s21", "s81"],
+            "Jeudi": ["s117", "s57"],
+            "Vendredi": ["s141", "s45"],
+            "Samedi": ["s93"]
+          }
+        }
+      }
+    }
+  ]
+}
