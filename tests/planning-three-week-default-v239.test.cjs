@@ -9,7 +9,7 @@
 //     « Planifier plusieurs semaines », sans laisser de séparateur ni de vide ;
 //   * les autres actions de ce menu restent en place ;
 //   * les protections métier du moteur — visites manuelles, magasins posés, capacité et
-//     horaires — sont inchangées, et le recalcul du reste n'est pas touché.
+//     horaires — sont inchangées, et l'ancien recalcul mort du contrôleur ne revient pas.
 const fs = require('fs');
 const vm = require('vm');
 const assert = require('assert/strict');
@@ -176,12 +176,14 @@ async function anIncompleteBaseStopsBeforeTheEngine() {
   assert.match(t.status(), /Point de départ incomplet/, 'le garde-fou du point de départ reste identique');
 }
 
-function recalculationIsUntouched() {
+function deadControllerRecalculationDoesNotReturn() {
   const t = boot();
-  assert.equal(typeof t.ctx.storeRunnerRecalculateRemainingWeek, 'function',
-    'le recalcul d’un planning existant doit rester disponible');
-  assert.equal(typeof t.ctx.__storeRunnerBuildRemainingWeekPlan, 'function',
-    'le moteur de recalcul doit rester exposé pour ses propres tests');
+  assert.equal(typeof t.ctx.storeRunnerRecalculateRemainingWeek, 'undefined',
+    'le contrôleur seul ne doit plus publier l’ancien recalcul mort');
+  assert.equal(typeof t.ctx.__storeRunnerBuildRemainingWeekPlan, 'undefined',
+    'le contrôleur seul ne doit plus publier l’ancien build de recalcul');
+  assert.doesNotMatch(CONTROLLER, /function\s+buildRemainingWeekPlan|async\s+function\s+recalculateRemainingWeek|window\.storeRunnerRecalculateRemainingWeek\s*=|window\.__storeRunnerBuildRemainingWeekPlan\s*=/,
+    'le recalcul restant appartient à la cascade, pas au contrôleur');
   assert.equal(typeof t.ctx.generateWeek, 'function',
     'generateWeek reste disponible pour ses autres appelants (assistant, régénération d’une journée)');
 }
@@ -263,6 +265,6 @@ function build(options) {
   await mainButtonRunsTheExistingThreeWeekEngine();
   await aFailureKeepsTheExistingErrorMechanism();
   await anIncompleteBaseStopsBeforeTheEngine();
-  recalculationIsUntouched();
+  deadControllerRecalculationDoesNotReturn();
   console.log('V239 : bouton principal branché sur le cycle 3 semaines ESCARGOT, action redondante retirée, protections intactes.');
 })();

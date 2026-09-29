@@ -3,10 +3,21 @@ const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
 test.use({viewport:{width:390,height:844},hasTouch:true,isMobile:true,serviceWorkers:'block'});
 // Le message détaillé est garanti dans errorBox, la zone de statut courte peut ne pas être montée dans la feuille Réglages.
 
+async function expectCascadeRecalcOwner(page,label){
+  const owner=await page.evaluate(()=>({
+    recalc:String(window.storeRunnerRecalculateRemainingWeek||''),
+    build:String(window.__storeRunnerBuildRemainingWeekPlan||'')
+  }));
+  expect(owner.recalc,label+' recalc owner').toMatch(/recalculatePlanningCascade|Recalcul stable du planning/);
+  expect(owner.build,label+' build owner').toMatch(/cascade-credit-v181|MAX_WEEKS/);
+  expect(owner.recalc,label+' dead controller owner').not.toMatch(/Recalculer seulement ce qu.il reste|recalculateRemainingWeek/);
+}
+
 test('V261.4 : recalcul du planning respecte seulement le plafond de crédits sans séparer les Boulanger',async({page})=>{
   page.on('dialog',d=>d.accept());
   await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.state&&typeof window.storeRunnerRecalculateRemainingWeek==='function'&&document.getElementById('recalculateRemainingWeekBtn')&&document.getElementById('planningSettingsShortcut'));
+  await expectCascadeRecalcOwner(page,'boot');
   await page.evaluate(()=>{
     const mk=(id,enseigne,ville)=>({id,enseigne,ville,adresse:'1 rue test',dept: '99',active:true,lat:43.6,lon:-0.6,priority:3});
     const a=mk('b1','Boulanger','Ville-Test C'),b=mk('b2','Boulanger','Ville-Test H'),f=mk('f1','Fnac','Ville-Test B'),but=mk('but1','BUT','Ville-Test E');
@@ -22,6 +33,10 @@ test('V261.4 : recalcul du planning respecte seulement le plafond de crédits sa
     if(typeof renderAll==='function')renderAll();
     if(typeof goTab==='function')goTab('planPanel');
   });
+  await page.evaluate(()=>document.dispatchEvent(new CustomEvent('store-runner:data-restored')));
+  await expectCascadeRecalcOwner(page,'data-restored');
+  await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+  await expectCascadeRecalcOwner(page,'visibilitychange');
 
   const settingsShortcut=page.locator('#planningSettingsShortcut');
   await expect(settingsShortcut).toBeVisible();
@@ -33,16 +48,22 @@ test('V261.4 : recalcul du planning respecte seulement le plafond de crédits sa
   await expect(button).toContainText('Recalculer le reste');
   const before=await page.evaluate(()=>Object.values(state.plan).flat().map(s=>s.id).sort());
 
-  const recalc=await page.evaluate(async()=>await window.storeRunnerRecalculateRemainingWeek());
-  expect(recalc&&recalc.ok,JSON.stringify(recalc)).toBeTruthy();
+  await page.evaluate(()=>{
+    window.__b1CascadeEvents=[];
+    document.addEventListener('store-runner:planning-updated',event=>window.__b1CascadeEvents.push(event.detail&&event.detail.source),{once:true});
+  });
+  await button.click();
+  await page.waitForFunction(()=>Array.isArray(window.__b1CascadeEvents)&&window.__b1CascadeEvents.includes('recalculatePlanningCascade'));
 
   const result=await page.evaluate(()=>({
     after:Object.values(state.plan).flat().map(s=>s.id).sort(),
     routes:Object.fromEntries(Object.entries(state.plan).map(([d,r])=>[d,(r||[]).map(s=>({id:s.id,enseigne:s.enseigne,credit:StoreVisitCounting.credit(s)}))])),
     manual:!!(state.manualWeekEdits&&Object.keys(state.manualWeekEdits).length),
+    eventSources:window.__b1CascadeEvents||[],
     overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth
   }));
   expect(result.after).toEqual(before);
+  expect(result.eventSources).toContain('recalculatePlanningCascade');
   expect(Object.values(result.routes).some(route=>route.filter(s=>/boulanger/i.test(s.enseigne)).length===2)).toBeTruthy();
   for(const route of Object.values(result.routes))expect(route.reduce((n,s)=>n+s.credit,0)).toBeLessThanOrEqual(4);
   expect(result.manual).toBeTruthy();
