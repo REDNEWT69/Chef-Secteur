@@ -60,7 +60,12 @@ function dayFits(route,day,state=root.state,weekMonday){
   return work==null?true:start+work<=end+0.001;
 }
 function dateBlocked(date,state=root.state){
-  const rows=(state.calendarEvents||[]).filter(e=>String(e.date||String(e.start||'').slice(0,10))===date);
+  /* Agenda possède les bornes (fin exclusive des événements all-day). Le moteur terrain
+     conserve ici sa liste historique de motifs bloquants, mais ne redéfinit plus les plages. */
+  const covers=typeof root.chefSecteurEventCoversDate==='function'
+    ? e=>root.chefSecteurEventCoversDate(e,date)
+    : e=>String(e.date||String(e.start||'').slice(0,10))===date;
+  const rows=(state.calendarEvents||[]).filter(e=>{try{return covers(e)}catch(x){return false}});
   return rows.some(e=>{
     if(e&&e.inferredAway)return true;
     const t=norm((e&&e.title||'')+' '+(e&&e.location||'')+' '+(e&&e.calendar||''));
