@@ -20,14 +20,14 @@ assert(index.includes("scriptTag('./store-runner-visits.js')+scriptTag('./store-
 assert(sw.includes('"./store-runner-opportunities.js"'),'Opportunity doit fonctionner hors ligne');
 assert(index.includes("'./planning-generation-controller.js','./planning-cascade-v181.js','./calendar-enhancements.js'"), 'la cascade doit prendre la main juste après le contrôleur planning');
 assert(sw.includes('"./planning-cascade-v181.js"'), 'le recalcul en cascade doit rester disponible hors ligne');
-assert(index.includes("'./sector-pilotage.js','./v182-fixes.js','./planning-route-optimizer-v251.js','./priority-campaign-v187.js'"), 'V251 doit s’installer après la géographie V185 et avant la finalisation des priorités runtime');
+assert(index.includes("'./sector-pilotage.js','./v182-fixes.js','./planning-route-optimizer-v251.js','./auto-planning-fix.js'"), 'V251 doit s’installer après la géographie V185 et avant la finalisation runtime');
 assert(sw.includes('"./planning-route-optimizer-v251.js"'), 'l’optimiseur routier V251 doit rester disponible hors ligne');
 assert(routeOptimizer.includes("source!=='snail-geo-v185'&&source!=='generateWeek'"), 'V251 ne doit se déclencher qu’après une génération explicite finalisée');
 assert(!routeOptimizer.includes('window.generateWeek='), 'V251 ne doit pas reprendre le propriétaire generateWeek');
 assert(!routeOptimizer.includes('root.generateWeek='), 'V251 ne doit pas reprendre le propriétaire generateWeek');
-assert(index.includes("'./sector-pilotage.js','./v182-fixes.js','./planning-route-optimizer-v251.js','./priority-campaign-v187.js','./auto-planning-fix.js'"), 'le moteur de priorités V188 doit charger après les règles géographiques/routières et avant la finalisation runtime');
+assert(!index.includes("'./priority-campaign-v187.js'"), 'la campagne échue V187 ne doit plus être chargée');
 assert(sw.includes('"./v182-fixes.js"'), 'les correctifs V182/V185 doivent rester disponibles hors ligne');
-assert(sw.includes('"./priority-campaign-v187.js"'), 'le moteur de priorités V188 doit rester disponible hors ligne');
+assert(!sw.includes('"./priority-campaign-v187.js"'), 'la campagne échue V187 ne doit plus être précachée');
 assert(sw.includes('"./store-opening-hours.js"'), 'horaires disponibles hors ligne');
 assert(sw.includes('"./boulanger-default-hours.js"'), 'défauts Boulanger/Darty disponibles hors ligne');
 assert(sw.includes('"./store-photos.js"'), 'mémoire photo magasin disponible hors ligne');

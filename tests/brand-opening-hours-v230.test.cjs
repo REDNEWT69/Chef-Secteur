@@ -99,13 +99,16 @@ const old=clone(state);delete old.brandOpeningHours;R.persist(R.capture(old,db),
 for(const invalid of [[],null,{Darty:{}},{darty:{Lundi:'fermé'}},{darty:{Lundi:[{open:'19:00',close:'09:00'}]}},{darty:{Inconnu:[]}},JSON.parse('{"__proto__":{}}')])assert.throws(()=>R.validateState({...state,brandOpeningHours:invalid}));
 
 // Ownership : une seule définition du parseur et de l'ordonnanceur dans le runtime.
-const index=fs.readFileSync('index.html','utf8'),source=fs.readFileSync('store-opening-hours.js','utf8'),adapter=fs.readFileSync('boulanger-default-hours.js','utf8');
+const index=fs.readFileSync('index.html','utf8'),sw=fs.readFileSync('sw.js','utf8'),source=fs.readFileSync('store-opening-hours.js','utf8'),adapter=fs.readFileSync('boulanger-default-hours.js','utf8');
 const files=[...new Set([...index.matchAll(/['"]\.\/([A-Za-z0-9_./-]+\.js)['"]/g)].map(m=>m[1]))];
 for(const name of ['parseDayHours','intervalsFor','fitOpening','fitWithBlocks','scheduleRoute']){
   const owners=files.filter(file=>new RegExp('function '+name+'\\(').test(fs.readFileSync(file,'utf8')));assert.deepEqual(owners,['store-opening-hours.js'],name+' : propriétaire unique');
 }
-for(const file of ['planning-cascade-v181.js','priority-campaign-v187.js'])assert.match(fs.readFileSync(file,'utf8'),/api\.routeFits\(/,'les helpers historiques routeFits délèguent au moteur');
-assert.deepEqual(files.filter(file=>/function routeFits\(/.test(fs.readFileSync(file,'utf8'))).sort(),['planning-cascade-v181.js','priority-campaign-v187.js','store-opening-hours.js'],'aucun nouveau routeFits concurrent');
+assert.match(fs.readFileSync('planning-cascade-v181.js','utf8'),/api\.routeFits\(/,'le helper historique routeFits délègue au moteur');
+assert.deepEqual(files.filter(file=>/function routeFits\(/.test(fs.readFileSync(file,'utf8'))).sort(),['planning-cascade-v181.js','store-opening-hours.js'],'aucun nouveau routeFits concurrent');
+assert.ok(!fs.existsSync('priority-campaign-v187.js'),'le module de campagne V187 doit être supprimé');
+assert.ok(!index.includes("'./priority-campaign-v187.js'"),'le module de campagne V187 ne doit plus être chargé');
+assert.ok(!sw.includes('"./priority-campaign-v187.js"'),'le module de campagne V187 ne doit plus être précaché');
 assert.match(fs.readFileSync('calendar-enhancements.js','utf8'),/if\(window\.StoreOpeningHoursV1\)return;/,'le décorateur historique reste désactivé quand le moteur unique est chargé');
 assert.match(adapter,/hours\.legacyBrandDefaults/);assert.doesNotMatch(adapter,/function (defaultHours|shouldApply|applyStore)|09:30.*19:30.*const/);
 assert.doesNotMatch(source,/store\.type|setInterval\s*\(|root\.(generateWeek|renderAll|syncGoogleCalendar)\s*=(?!=)/);
