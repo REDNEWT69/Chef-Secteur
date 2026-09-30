@@ -10,6 +10,159 @@ const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
 test.use({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1,
   serviceWorkers:'block',screenshot:'only-on-failure',trace:'retain-on-failure'});
 
+function profileLayersOf(fn){
+  const out=[];let cur=fn,guard=0;
+  while(typeof cur==='function'&&guard++<20){
+    out.push(cur.__v184PlanNeutral?'v184':cur.__v182Wrapped?'v182':'owner');
+    cur=cur.__v184Original||cur.__v182Original||cur.__original||null;
+  }
+  return out;
+}
+
+test('r25 : le seuil 0 km survit au vrai saveProfile async, au formulaire et à la restauration',async({page})=>{
+  const errors=[];let nominatimRequests=0;
+  page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+  await page.route('https://nominatim.openstreetmap.org/search**',async route=>{
+    nominatimRequests++;
+    await new Promise(resolve=>setTimeout(resolve,120));
+    await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{
+      lat:'45.736600',lon:'4.763600',display_name:'1 rue du Test, 69340 Francheville, France',
+      address:{town:'Francheville',postcode:'69340'}
+    }])});
+  });
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.state&&window.__chefStorage&&window.ChefReliability&&
+    typeof window.saveProfile==='function'&&typeof window.fillProfileForm==='function'&&
+    document.getElementById('pSaving'));
+  await page.waitForTimeout(1800);
+
+  const saved=await page.evaluate(async()=>{
+    state.profile=Object.assign({},state.profile||{}, {
+      sectorName:'Secteur r25',repName:'Leia',baseName:'',baseAddress:'',baseLat:null,baseLon:null,
+      overnightMode:'auto',overnightMinSaving:80
+    });
+    save();
+    const values={pSector:'Secteur r25',pRep:'Leia',pBaseName:'Francheville',
+      pBaseAddress:'1 rue du Test, Francheville',pBaseLat:'',pBaseLon:'',pOvernight:'auto',pSaving:'0'};
+    for(const [id,value] of Object.entries(values))document.getElementById(id).value=value;
+    const result=await window.saveProfile();
+    const afterSave=state.profile.overnightMinSaving;
+    fillProfileForm();
+    const formAfterSave=document.getElementById('pSaving').value;
+    if(typeof window.__chefStorage.flush==='function')await window.__chefStorage.flush();
+    const persisted=ChefReliability.load(window.__chefStorage);
+    const persistedValue=persisted.profile.overnightMinSaving;
+    window.state=persisted;
+    fillProfileForm();
+    return{result,afterSave,formAfterSave,persistedValue,
+      restoredValue:state.profile.overnightMinSaving,
+      formAfterRestore:document.getElementById('pSaving').value,
+      lat:state.profile.baseLat,lon:state.profile.baseLon};
+  });
+
+  expect(saved.result).toBe(true);
+  expect(nominatimRequests,'le chemin async doit réellement géocoder une fois').toBe(1);
+  expect(saved.lat).toBe(45.7366);
+  expect(saved.lon).toBe(4.7636);
+  expect(saved.afterSave).toBe(0);
+  expect(saved.formAfterSave).toBe('0');
+  expect(saved.persistedValue).toBe(0);
+  expect(saved.restoredValue).toBe(0);
+  expect(saved.formAfterRestore).toBe('0');
+
+  const contract=await page.evaluate(async()=>{
+    const input=document.getElementById('pSaving'),values={};
+    input.value='';await window.saveProfile();values.empty=state.profile.overnightMinSaving;
+    input.type='text';input.value='pas-un-nombre';await window.saveProfile();values.nonNumeric=state.profile.overnightMinSaving;
+    input.type='number';input.value='37.5';await window.saveProfile();values.numeric=state.profile.overnightMinSaving;
+    input.value='0';await window.saveProfile();values.zero=state.profile.overnightMinSaving;
+    if(typeof window.__chefStorage.flush==='function')await window.__chefStorage.flush();
+    values.persisted=ChefReliability.load(window.__chefStorage).profile.overnightMinSaving;
+    fillProfileForm();values.form=document.getElementById('pSaving').value;
+    return values;
+  });
+  expect(contract).toEqual({empty:80,nonNumeric:80,numeric:37.5,zero:0,persisted:0,form:'0'});
+
+  await page.evaluate(()=>{
+    for(const type of ['store-runner:profile-saved','store-runner:planning-updated','store-runner:home-rendered','store-runner:data-restored']){
+      document.dispatchEvent(new CustomEvent(type,{detail:{reason:'r25-zero-stability'}}));
+    }
+  });
+  await page.waitForTimeout(1500);
+  expect(await page.evaluate(()=>({state:state.profile.overnightMinSaving,form:(fillProfileForm(),document.getElementById('pSaving').value)})))
+    .toEqual({state:0,form:'0'});
+  expect(errors).toEqual([]);
+});
+
+test('B3 : ownership découché stable et rafraîchi au changement de jour',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+  await page.addInitScript(()=>{
+    const RealDate=Date;
+    window.__r25Now=RealDate.parse('2026-09-14T09:00:00');
+    class R25Date extends RealDate{
+      constructor(...args){super(...(args.length?args:[window.__r25Now]))}
+      static now(){return window.__r25Now}
+    }
+    window.Date=R25Date;
+  });
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.state&&window.StoreRunnerOvernightV182&&window.StoreRunnerStoreControlsV189&&
+    typeof window.saveProfile==='function'&&typeof window.storeRunnerRefreshOvernightDecision==='function');
+  await page.waitForTimeout(1800);
+  await page.evaluate(()=>{
+    const mk=(id,lat)=>({id,enseigne:'Test',ville:'Ville '+id,adresse:'1 rue Test',dept:'99',
+      lat,lon:1,active:true,priority:3,intervalDays:30,freq:'Mensuel',products:['Blanc']});
+    state.profile=Object.assign({},state.profile,{baseName:'Base',baseAddress:'Base',baseLat:47,baseLon:1,
+      overnightMode:'auto',overnightMinSaving:0});
+    state.settings=Object.assign({},state.settings,{weekDate:'2026-09-14',days:['Lundi','Mardi','Mercredi']});
+    state.stores=[mk('lundi',49),mk('mardi',49.01),mk('mercredi',48.6)];
+    state.plan={Lundi:[state.stores[0]],Mardi:[state.stores[1]],Mercredi:[state.stores[2]],Jeudi:[],Vendredi:[],Samedi:[]};
+    state.excluded={};state.included={};state.locks={};state.calendarEvents=[];state.appointments=[];state.hotelReservations={};
+    document.getElementById('weekDate').value='2026-09-14';
+    save();renderAll();
+  });
+  const before=await page.evaluate(profileLayers=>({
+    layers:(0,eval)('('+profileLayers+')(window.saveProfile)'),
+    analyzeAvailable:typeof StoreRunnerOvernightV182.analyze==='function',
+    v189AnalyzeOwner:StoreRunnerOvernightV182.analyze===StoreRunnerStoreControlsV189.futureOvernightAnalysis,
+    v189RenderOwner:StoreRunnerOvernightV182.render===window.renderOvernight,
+    fromDate:storeRunnerRefreshOvernightDecision(state.plan).candidate.fromDate
+  }),profileLayersOf.toString());
+  expect(before.layers).toEqual(['v184','v182','owner']);
+  expect(before.analyzeAvailable).toBe(true);
+  expect(before.v189AnalyzeOwner).toBe(true);
+  expect(before.v189RenderOwner).toBe(true);
+  expect(before.fromDate).toBe('2026-09-14');
+
+  await page.evaluate(()=>{
+    for(let index=0;index<12;index++)for(const type of ['store-runner:planning-updated','store-runner:home-rendered','store-runner:data-restored']){
+      document.dispatchEvent(new CustomEvent(type,{detail:{reason:'b3-ownership'}}));
+    }
+  });
+  await page.waitForTimeout(500);
+  const after=await page.evaluate(profileLayers=>{
+    window.__r25Now=Date.parse('2026-09-15T09:00:00');
+    const analysis=storeRunnerRefreshOvernightDecision(state.plan);
+    return{
+      layers:(0,eval)('('+profileLayers+')(window.saveProfile)'),
+      analyzeAvailable:typeof StoreRunnerOvernightV182.analyze==='function',
+      v189AnalyzeOwner:StoreRunnerOvernightV182.analyze===StoreRunnerStoreControlsV189.futureOvernightAnalysis,
+      v189RenderOwner:StoreRunnerOvernightV182.render===window.renderOvernight,
+      fromDate:analysis&&analysis.candidate&&analysis.candidate.fromDate,
+      box:document.getElementById('overnightBox').textContent
+    };
+  },profileLayersOf.toString());
+  expect(after.layers).toEqual(before.layers);
+  expect(after.layers.filter(x=>x==='v184')).toHaveLength(1);
+  expect(after.layers.filter(x=>x==='v182')).toHaveLength(1);
+  expect(after.analyzeAvailable).toBe(true);
+  expect(after.v189AnalyzeOwner).toBe(true);
+  expect(after.v189RenderOwner).toBe(true);
+  expect(after.fromDate,'le jour passé doit être écarté lors du rafraîchissement').toBe('2026-09-15');
+  expect(after.box).toContain('Nuit sur place');
+  expect(errors).toEqual([]);
+});
+
 test('V263.5 : la réservation d’hôtel reste affichée après chaque rafraîchissement du découché',async({page})=>{
   const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
   await page.addInitScript(()=>{
