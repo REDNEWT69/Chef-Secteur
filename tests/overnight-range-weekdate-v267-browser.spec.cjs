@@ -81,13 +81,19 @@ test('r27 : S2 et S3 utilisent leur weekKey réel sans ressusciter S1',async({pa
 
     const past=owner(plans[keys[0]],keys[0]);
     const wrongS2=owner(plans[keys[1]]);
+    const s2AsDisplayedWeek=owner(plans[keys[1]],keys[0]);
     const correctS2=owner(plans[keys[1]],keys[1]);
     const correctS3=owner(plans[keys[2]],keys[2]);
 
+    /* finalizeRange appelle l'analyseur pour deux raisons : overnightRowV185, une fois par
+       ligne du rapport 3 semaines (objet de P0.1), puis refreshCurrentOvernight pour le seul
+       plan affiché, dont le repli sur state.settings.weekDate est légitime. La pile sépare
+       les deux sans rien neutraliser du runtime. */
     const calls=[];
     function capture(plan){
-      const weekKey=arguments[1];
-      calls.push({weekKey,argCount:arguments.length,firstId:String(plan.Lundi[0].id)});
+      const weekKey=arguments[1],first=plan&&plan.Lundi&&plan.Lundi[0];
+      calls.push({weekKey,argCount:arguments.length,firstId:String(first&&first.id||''),
+        rangeRow:/\bovernightRowV185\b/.test(String(new Error().stack||''))});
       return owner(plan,weekKey);
     }
     StoreRunnerOvernightV182.analyze=capture;
@@ -95,11 +101,15 @@ test('r27 : S2 et S3 utilisent leur weekKey réel sans ressusciter S1',async({pa
     StoreRunnerOvernightV182.analyze=owner;
     if(typeof __chefStorage.flush==='function')await __chefStorage.flush();
     const range=JSON.parse(__chefStorage.getItem('chef_sector_range_v1'));
+    const strip=({rangeRow,...call})=>call;
 
     return{
-      ownership,captureArity:capture.length,result,calls,
+      ownership,captureArity:capture.length,result,
+      rangeCalls:calls.filter(call=>call.rangeRow).map(strip),
+      otherCalls:calls.filter(call=>!call.rangeRow).map(strip),
       pastCandidate:past.candidate,
       wrongS2:{reason:wrongS2.reason,candidate:wrongS2.candidate},
+      s2AsDisplayedWeek:{reason:s2AsDisplayedWeek.reason,candidate:s2AsDisplayedWeek.candidate},
       correctS2:correctS2.candidate&&{fromDate:correctS2.candidate.fromDate,toDate:correctS2.candidate.toDate},
       correctS3:correctS3.candidate&&{fromDate:correctS3.candidate.fromDate,toDate:correctS3.candidate.toDate},
       report:range.overnightReport.map(row=>({weekKey:row.weekKey,selected:row.selected,
@@ -109,18 +119,25 @@ test('r27 : S2 et S3 utilisent leur weekKey réel sans ressusciter S1',async({pa
 
   expect(proof.ownership,'V189 doit posséder StoreRunnerOvernightV182.analyze après boot').toBe(true);
   expect(proof.captureArity,'un analyseur V182 à un paramètre reste compatible').toBe(1);
-  expect(proof.result.changed).toBe(true);
-  expect(proof.calls).toEqual([
-    {weekKey:'2026-09-28',argCount:2,firstId:'S1A'},
-    {weekKey:'2026-10-05',argCount:2,firstId:'S2A'},
-    {weekKey:'2026-10-12',argCount:2,firstId:'S3A'}
-  ]);
 
+  /* Reproduction V189, vraie sur r26 comme sur r27 : sans weekDate, S2 est analysée avec
+     la semaine affichée 2026-09-28, donc filtrée comme passée. */
   expect(proof.pastCandidate,'aucune nuit passée de S1 ne doit être ressuscitée').toBeNull();
+  expect(proof.wrongS2,'sans weekDate, V189 analyse S2 comme la semaine affichée 2026-09-28').toEqual(proof.s2AsDisplayedWeek);
   expect(proof.wrongS2.candidate,'la reproduction r26 replie S2 sur la semaine affichée passée').toBeNull();
   expect(proof.wrongS2.reason).toBe('no-future-pair');
   expect(proof.correctS2).toEqual({fromDate:'2026-10-05',toDate:'2026-10-06'});
   expect(proof.correctS3).toEqual({fromDate:'2026-10-12',toDate:'2026-10-13'});
+
+  /* Contrat V251, rouge sur r26 : chaque ligne du rapport transmet sa propre semaine. */
+  expect(proof.result.changed).toBe(true);
+  expect(proof.rangeCalls).toEqual([
+    {weekKey:'2026-09-28',argCount:2,firstId:'S1A'},
+    {weekKey:'2026-10-05',argCount:2,firstId:'S2A'},
+    {weekKey:'2026-10-12',argCount:2,firstId:'S3A'}
+  ]);
+  expect(proof.otherCalls.filter(call=>!call.firstId.startsWith('S1')&&!call.weekKey),
+    'hors rapport, aucun plan S2/S3 n’est analysé sans sa semaine').toEqual([]);
   expect(proof.report).toEqual([
     {weekKey:'2026-09-28',selected:false,fromDate:null,toDate:null},
     {weekKey:'2026-10-05',selected:true,fromDate:'2026-10-05',toDate:'2026-10-06'},
