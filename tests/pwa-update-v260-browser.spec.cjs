@@ -24,8 +24,9 @@ const fs=require('fs'),os=require('os'),path=require('path'),http=require('http'
 const ROOT=path.join(__dirname,'..');
 const SW=fs.readFileSync(path.join(ROOT,'sw.js'),'utf8');
 const REV=SW.match(/const BUILD_REV = "([^"]+)"/)[1];
-const OLD='20260929-r22-cleanup-fallbacks-264';
+const OLD='20260929-r23-cleanup-dead-recalc-264';
 const TARGET=REV;
+const REMOVED_CAMPAIGN='priority-campaign-v187.js';
 const CACHE_SUFFIX=(SW.match(/const CACHE_NAME = "chef-secteur-stable-" \+ BUILD_REV(?: \+ "([^"]*)")?;/)||[])[1]||'';
 const cacheName=rev=>'chef-secteur-stable-'+rev+CACHE_SUFFIX;
 const NEXT=TARGET;
@@ -37,8 +38,13 @@ const MARKED=['store-runner-visit-model.js','update-manager.js','store-runner-br
 function listOf(name){return Array.from(SW.match(new RegExp('const '+name+' = \\[([\\s\\S]*?)\\];'))[1].matchAll(/"\.\/([^"]*)"/g)).map(m=>m[1]).filter(Boolean)}
 function publish(dir,rev,mark){
   const files=[...new Set(['index.html','sw.js','version.json',...listOf('CORE_SHELL'),...listOf('OPTIONAL_SHELL')])];
+  if(rev===OLD)files.push(REMOVED_CAMPAIGN);
   for(const f of files){
-    let body=fs.readFileSync(path.join(ROOT,f));
+    let body=f===REMOVED_CAMPAIGN
+      ?Buffer.from(';window.StoreRunnerPriorityCampaignV188={legacy:true};')
+      :fs.readFileSync(path.join(ROOT,f));
+    if(rev===OLD&&f==='index.html')body=Buffer.from(body.toString('utf8').replace("'./planning-route-optimizer-v251.js','./auto-planning-fix.js'","'./planning-route-optimizer-v251.js','./priority-campaign-v187.js','./auto-planning-fix.js'"));
+    if(rev===OLD&&f==='sw.js')body=Buffer.from(body.toString('utf8').replace('"./planning-route-optimizer-v251.js", "./auto-planning-fix.js"','"./planning-route-optimizer-v251.js", "./priority-campaign-v187.js", "./auto-planning-fix.js"'));
     if(/\.(html|js|json)$/.test(f)&&rev!==REV)body=Buffer.from(body.toString('utf8').split(REV).join(rev));
     if(f==='version.json'){const v=JSON.parse(body.toString('utf8'));v.latestBuild=rev;v.displayVersion=rev.match(/(\d+)$/)[1];body=Buffer.from(JSON.stringify(v))}
     if(MARKED.includes(f))body=Buffer.concat([body,Buffer.from(`\n;(window.__MARKS=window.__MARKS||{})[${JSON.stringify(f)}]=${JSON.stringify(mark)};\n`)]);
@@ -90,7 +96,10 @@ async function snapshot(page){
     const reg=await navigator.serviceWorker.getRegistration();
     let waitingBuild=null;
     if(reg&&reg.waiting)waitingBuild=await new Promise(r=>{const ch=new MessageChannel();ch.port1.onmessage=e=>r(e.data&&e.data.buildRev);reg.waiting.postMessage({type:'GET_BUILD_REV'},[ch.port2]);setTimeout(()=>r('silence'),1500)});
-    return {build:window.__STORE_RUNNER_BUILD_REV,marks:Object.values(window.__MARKS||{}),worker,waiting:!!(reg&&reg.waiting),waitingBuild,caches:(await caches.keys()).filter(k=>k.startsWith('chef-secteur-'))};
+    const cacheNames=(await caches.keys()).filter(k=>k.startsWith('chef-secteur-'));
+    const cacheAssets={};
+    for(const name of cacheNames)cacheAssets[name]=(await (await caches.open(name)).keys()).map(request=>new URL(request.url).pathname);
+    return {build:window.__STORE_RUNNER_BUILD_REV,marks:Object.values(window.__MARKS||{}),worker,waiting:!!(reg&&reg.waiting),waitingBuild,caches:cacheNames,cacheAssets};
   });
 }
 function coherent(s,rev,mark){
@@ -134,13 +143,15 @@ test('V260 : première installation sans rechargement parasite, hors ligne, réo
   await again.context.close();
 });
 
-test('B2/B4 : build r22 → r23 — nouveau shell malgré un index CDN r22 ancien',async()=>{
+test('A4 : build r23 → r24 — ancien cache supprimé et campagne V187 absente du nouveau shell',async()=>{
   test.setTimeout(150000);
   const {context,page,nav}=await install('open');
+  const oldSnapshot=await snapshot(page);
+  expect(oldSnapshot.cacheAssets[cacheName(OLD)]).toContain('/'+REMOVED_CAMPAIGN);
   await seed(page);
   site.current='new';
   /* Le manifeste et le worker sont déjà ceux du nouveau déploiement, mais le CDN peut
-     encore répondre l'ancien index r21 à la navigation déclenchée après activation. */
+     encore répondre l'ancien index r23 à la navigation déclenchée après activation. */
   site.staleNavigation=true;
   await page.evaluate(()=>StoreRunnerUpdates.checkForUpdates(true));
   const banner=page.locator('#storeRunnerUpdateBanner');
@@ -163,6 +174,8 @@ test('B2/B4 : build r22 → r23 — nouveau shell malgré un index CDN r22 ancie
   expect(nav.n,'exactement un rechargement').toBe(1);
   const after=await snapshot(page);coherent(after,NEXT,'new');
   expect(after.worker).toBe(NEXT);expect(after.caches).toEqual([cacheName(NEXT)]);
+  expect(Object.values(after.cacheAssets).flat()).not.toContain('/'+REMOVED_CAMPAIGN);
+  expect(await page.evaluate(()=>({api:typeof window.StoreRunnerPriorityCampaignV188,element:!!document.getElementById('priorityCampaignV187')}))).toEqual({api:'undefined',element:false});
   expect(await data(page)).toEqual(DATA);
   for(let i=0;i<2;i++){nav.n=0;await page.reload({waitUntil:'domcontentloaded'});await ready(page);await page.waitForTimeout(1500);expect(nav.n,'aucune boucle').toBe(1);coherent(await snapshot(page),NEXT,'new')}
   await context.setOffline(true);await page.reload({waitUntil:'domcontentloaded'});await ready(page);
