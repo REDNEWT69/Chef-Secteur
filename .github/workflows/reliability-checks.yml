@@ -61,6 +61,7 @@ jobs:
       - run: node tests/terrain-planning-v1.test.cjs
       - run: node tests/terrain-planning-runtime.test.cjs
       - run: node tests/planning-three-week-default-v239.test.cjs
+      - run: node tests/planning-recalc-owner.test.cjs
       - run: node tests/planning-engine-benchmark-v241.test.cjs
       - run: node tests/planning-engine-benchmark-v253.test.cjs
       - run: node tests/cross-day-planning-v264.test.cjs
