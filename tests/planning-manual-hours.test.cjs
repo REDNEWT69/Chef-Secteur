@@ -31,7 +31,7 @@ assert(!/\bsetInterval\s*\(/.test(CODE), 'aucune boucle de surveillance permanen
 // jour-là ; ce serait faux pour un horaire manuel, qui ne fait que contraindre une visite
 // déjà placée. Sans cette garde, un rechargement déplaçait le magasin en fin de journée.
 const RUNTIME = fs.readFileSync(__dirname + '/../src/chef-secteur.html', 'utf8');
-const applyFn = RUNTIME.slice(RUNTIME.indexOf('window.applyAppointmentsToPlan='), RUNTIME.indexOf('window.generateWeek='));
+const applyFn = RUNTIME.slice(RUNTIME.indexOf('window.applyAppointmentsToPlan='), RUNTIME.indexOf('var originalSaveAppointment=saveAppointment;'));
 assert(/manualHours\s*!==\s*true/.test(applyFn),
   'applyAppointmentsToPlan doit ignorer les horaires manuels pour ne pas réordonner la tournée');
 

@@ -206,14 +206,6 @@
       let out;
       try{out=await generator.apply(this,arguments)}finally{window.__storeRunnerPlanningGenerationActive=previousPlanningFlag}
 
-      /* Le moteur spécialisé filtre lui-même les vraies indisponibilités Agenda.
-         L'ancien enforceBlockedDays reste réservé au moteur historique afin qu'un
-         simple événement Google « toute la journée » ne puisse plus vider une
-         semaine déjà validée par le moteur V2. */
-      if(!specialized&&typeof window.chefSecteurEnforceBlockedDays==='function'){
-        try{window.chefSecteurEnforceBlockedDays()}catch(e){console.warn('Application des jours bloqués impossible :',e)}
-      }
-
       const afterCount=countVisits(window.state&&state.plan);
       if(beforeCount>0&&afterCount===0&&out&&out.__storeRunnerRejectedEmpty!==true){
         console.warn('Le planning est devenu vide après génération. Le moteur spécialisé doit protéger ce cas.');
@@ -260,7 +252,6 @@
 
   window.storeRunnerGenerateThreeWeeks=generateThreeWeeks;
   window.storeRunnerRefreshOvernightDecision=refreshOvernightDecision;
-  window.storeRunnerEnsureUnifiedPlanningUi=ensureUnifiedGenerationUi;
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
   window.addEventListener('load',ensureUnifiedGenerationUi,{once:true});
   document.addEventListener('store-runner:planning-updated',ensureUnifiedGenerationUi);
