@@ -255,7 +255,7 @@ test('l’annulation rétablit l’ordre précédent, une seule fois et seulemen
 test('un magasin avec rendez-vous garde sa place à chaque ouverture',()=>{
   const html=read('src/chef-secteur.html');
   const helpers=['parseISO','isoDate','mondayFor'].map(name=>{const m=html.match(new RegExp('function '+name+'\\([^)]*\\)\\{[^\\n]*'));assert.ok(m,name);return m[0]}).join('\n');
-  const start=html.indexOf('window.applyAppointmentsToPlan=function(){'),end=html.indexOf('// remplace generateWeek',start);
+  const start=html.indexOf('window.applyAppointmentsToPlan=function(){'),end=html.indexOf('var originalSaveAppointment=saveAppointment;',start);
   assert.ok(start>0&&end>start,'applyAppointmentsToPlan introuvable');
   const source=helpers+'\n'+html.slice(start,end);
   const run=(plan,appointments)=>{

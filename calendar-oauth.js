@@ -88,35 +88,6 @@
     window.__calendarSemanticBlocks=true;
     return true;
   }
-  function weekMonday(){
-    const raw=(state.settings&&state.settings.weekDate)||new Date().toISOString().slice(0,10),d=new Date(raw+'T12:00:00'),w=d.getDay()||7;d.setDate(d.getDate()-w+1);return d;
-  }
-  function dateForDay(day){const d=weekMonday();d.setDate(d.getDate()+Math.max(0,DAYS.indexOf(day)));return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-  function dayIsBlocked(day){
-    try{const rows=typeof window.calendarEventsForDate==='function'?window.calendarEventsForDate(dateForDay(day)):[];return rows.some(e=>e.allDay||e.planningBlock)}catch(e){return false}
-  }
-  function enforceBlockedDays(){
-    if(!window.state||!state.plan)return;
-    const chosen=(state.settings&&state.settings.days)||DAYS.slice(0,5),overflow=[],free=[];
-    for(const day of chosen){
-      if(dayIsBlocked(day)){
-        if(Array.isArray(state.plan[day])&&state.plan[day].length)overflow.push.apply(overflow,state.plan[day]);
-        state.plan[day]=[];
-      }else free.push(day);
-    }
-    if(!free.length){if(typeof window.save==='function')window.save();if(typeof window.renderAll==='function')window.renderAll();return;}
-    while(overflow.length){
-      const store=overflow.shift();
-      let best=free[0];
-      for(const d of free)if((state.plan[d]||[]).length<(state.plan[best]||[]).length)best=d;
-      if(!state.plan[best])state.plan[best]=[];
-      state.plan[best].push(store);
-    }
-    try{if(typeof window.twoOpt==='function'&&typeof window.nearestRoute==='function'){for(const d of free)state.plan[d]=window.twoOpt(window.nearestRoute(state.plan[d]||[]))}}catch(e){}
-    try{if(typeof window.applyAppointmentsToPlan==='function')window.applyAppointmentsToPlan()}catch(e){}
-    if(typeof window.save==='function')window.save();
-    if(typeof window.renderAll==='function')window.renderAll();
-  }
   function wrapSync(){
     if(window.__storeRunnerCalendarSyncOwner||typeof window.syncGoogleCalendar!=='function')return false;
     const base=window.syncGoogleCalendar;
@@ -165,10 +136,7 @@
     }
     if(hasToken()&&typeof window.syncGoogleCalendar==='function')try{await window.syncGoogleCalendar(true)}catch(e){}
   }
-  window.chefSecteurCalendarPlanningBlock=isPlanningBlock;
   window.chefSecteurAwayRanges=inferAwayRanges;
   window.chefSecteurEventCoversDate=eventCoversDate;
-  window.chefSecteurEnforceBlockedDays=enforceBlockedDays;
-  window.chefSecteurInstallGoogleDisclosure=installOAuthDisclosure;
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
 })();

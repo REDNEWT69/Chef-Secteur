@@ -100,14 +100,19 @@ if((calendar.match(/window\.syncGoogleCalendar\s*=(?!=)/g)||[]).length!==1)throw
 if(/window\.generateWeek\s*=/.test(calendar))throw new Error('Agenda: generateWeek doit appartenir au contrôleur planning');
 requireMatch('calendar-oauth.js','marqueur propriétaire synchro',/__storeRunnerCalendarSyncOwner/);
 requireMatch('calendar-oauth.js','préparation Agenda avant planning',/chefSecteurPrepareCalendarForPlanning/);
+if(/enforceBlockedDays/.test(calendar))throw new Error('Agenda: enforceBlockedDays ne doit pas revenir');
 
 const generation=read('planning-generation-controller.js');
 if((generation.match(/window\.generateWeek\s*=/g)||[]).length!==1)throw new Error('Planning: un seul propriétaire generateWeek attendu');
 requireMatch('planning-generation-controller.js','marqueur propriétaire génération',/__storeRunnerPlanningGenerateOwner/);
 requireMatch('planning-generation-controller.js','préparation Agenda appelée',/chefSecteurPrepareCalendarForPlanning/);
-requireMatch('planning-generation-controller.js','jours Agenda appliqués après génération',/chefSecteurEnforceBlockedDays/);
+if(/enforceBlockedDays/.test(generation))throw new Error('Planning: enforceBlockedDays ne doit pas revenir');
 requireMatch('planning-generation-controller.js','événement planning publié',/store-runner:planning-updated/);
 requireMatch('planning-generation-controller.js','moteur semaine spécialisé consulté',/storeRunnerGenerateSingleWeek/);
+
+const core=read('src/chef-secteur.html');
+if((core.match(/window\.generateWeek\s*=/g)||[]).length!==1)throw new Error('Noyau: un seul writer window.generateWeek attendu');
+if(/\bfunction\s+generateWeek\s*\(/.test(core))throw new Error('Noyau: function generateWeek historique interdit');
 
 const ai=read('ai-gateway-config.js');
 if(/\b(?:client_secret|api[_-]?key)\b\s*[:=]\s*['"][^'"]{12,}['"]/i.test(ai))throw new Error('IA: secret ou clé API détecté côté navigateur');
