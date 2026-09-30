@@ -277,7 +277,8 @@
       state.profile.baseLat=lat;
       state.profile.baseLon=lon;
       state.profile.overnightMode=document.getElementById('pOvernight').value;
-      state.profile.overnightMinSaving=parseFloat(document.getElementById('pSaving').value)||80;
+      const overnightMinSaving=parseFloat(document.getElementById('pSaving').value);
+      state.profile.overnightMinSaving=Number.isFinite(overnightMinSaving)&&overnightMinSaving>=0?overnightMinSaving:80;
       save();
       installPersistedBase();
       if(typeof renderAll==='function')renderAll();
