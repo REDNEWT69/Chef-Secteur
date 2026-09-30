@@ -414,7 +414,12 @@ function eventBlocksPlanning(e){
   if(/\bparis\b/.test(text))return true;
   return !!(e.planningBlock&&!e.allDay);
 }
-function dateBlocked(date){try{const rows=typeof window.calendarEventsForDate==='function'?window.calendarEventsForDate(date):[];return rows.some(eventBlocksPlanning)}catch(e){return false}}
+/* P0.2b — la génération semaine/période bloque au moins les dates que bloque la génération
+   3 semaines : elle interroge d'abord le prédicat du moteur terrain
+   (StoreRunnerTerrainPlanningV1.dateBlocked, qui reconnaît notamment les jours fériés de
+   l'Agenda), puis garde sa règle historique, qui voit en plus les déplacements déduits
+   (inferredAway). Sans le module terrain, ou s'il échoue, rien ne change. */
+function dateBlocked(date){try{const terrain=window.StoreRunnerTerrainPlanningV1;if(terrain&&typeof terrain.dateBlocked==='function'&&terrain.dateBlocked(date,state))return true}catch(e){}try{const rows=typeof window.calendarEventsForDate==='function'?window.calendarEventsForDate(date):[];return rows.some(eventBlocksPlanning)}catch(e){return false}}
 function activeDays(mon,days,start,end){return days.filter(day=>{const dt=addDays(mon,DAYS.indexOf(day));return dt>=start&&dt<=end&&!dateBlocked(iso(dt))})}
 
 async function strictSingleWeek(){
