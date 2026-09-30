@@ -1,5 +1,5 @@
 {
-  "latestBuild": "20260930-r26-cleanup-generateweek-chain-264",
+  "latestBuild": "20260930-r27-fix-overnight-range-weekdate-264",
   "displayVersion": "264",
   "channel": "stable",
   "releasedAt": "2026-09-29"

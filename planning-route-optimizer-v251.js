@@ -178,11 +178,13 @@ async function finalizeSingleWeek(state,options){
 function rangeWeekKeys(range){
   const first=parseISO(range&&range.start);if(!first)return[];const count=Math.max(1,Math.min(12,Number(range&&range.weeks)||3));return Array.from({length:count},(_,i)=>iso(addDays(first,i*7)))
 }
+/* Chaque ligne du rapport transmet sa propre semaine : sans elle, le propriétaire V189
+   retombe sur state.settings.weekDate et analyse S2/S3 comme la semaine affichée. */
 function overnightRowV185(week){
   try{
     const api=root.StoreRunnerOvernightV182;
     if(!api||typeof api.analyze!=='function')return null;
-    const a=api.analyze(week&&week.plan),best=a&&a.candidate?a.candidate:(a&&a.reason==='threshold'?a.bestRemote||null:(a&&a.mode==='never'?a.bestRemote||a.best||null:null));
+    const a=api.analyze(week&&week.plan,week&&week.weekKey),best=a&&a.candidate?a.candidate:(a&&a.reason==='threshold'?a.bestRemote||null:(a&&a.mode==='never'?a.bestRemote||a.best||null:null));
     return{weekKey:String(week&&week.weekKey||''),mode:a&&a.mode||'auto',threshold:Number(a&&a.threshold)||80,selected:!!(a&&a.candidate),reason:a&&a.candidate?'selected':a&&a.reason==='threshold'?'below-threshold':a&&a.reason==='disabled'?'disabled':'no-candidate',best}
   }catch(e){return null}
 }
