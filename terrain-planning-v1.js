@@ -670,6 +670,13 @@ function buildThreeWeekSnail(options){
     return needMemo.get(k);
   };
   const recentlySkipped=new Set();
+  /* P0.4-C3 — semaines retouchées à la main dans les 3 semaines du cycle. Leurs magasins y sont
+     réservés : la sélection libre d'une semaine antérieure du cycle ne les prend pas. Rien n'est
+     compté d'avance dans used : un magasin réservé n'entre dans le cycle qu'avec sa semaine.
+     RDV, verrous et imposés restent des contraintes explicites, honorées comme avant. */
+  const reservedUntil=new Map();
+  for(let wi=0;wi<3;wi++){const key=iso(addDays(first,wi*7)),manual=protectedPlanFor(key,state,archive);if(manual)for(const s of flattenPlan(manual)){const k=s&&storeKey(s);if(k&&!(reservedUntil.get(k)>key))reservedUntil.set(k,key)}}
+  const reservedLater=(k,weekKey)=>{const until=reservedUntil.get(k);return !!until&&until>weekKey};
   for(let wi=0;wi<3;wi++){
     const mon=addDays(first,wi*7),weekKey=iso(mon),protectedPlan=protectedPlanFor(weekKey,state,archive),ref=refOf(mon);
     const dateOf=day=>iso(addDays(mon,DAYS.indexOf(day)));
@@ -778,13 +785,13 @@ function buildThreeWeekSnail(options){
          déjà utilisé récemment n'est plus reproposé tant qu'il reste un magasin frais. */
       for(const s of group){
         if(count()>=target)break;
-        const k=storeKey(s);if(used.has(k)||weekPlaced.has(k)||memory.usedKeys.has(k))continue;
+        const k=storeKey(s);if(used.has(k)||weekPlaced.has(k)||memory.usedKeys.has(k)||reservedLater(k,weekKey))continue;
         if(!place(s))unplaced.push(s);
       }
       /* V243 — palier 2 « rotation » : on reprend ceux déjà utilisés, du moins récemment
          vu au plus récemment vu, pour qu'aucun magasin ne reste durablement hors rotation. */
       if(count()<target){
-        const due=sortByLeastRecentlyUsed(group.filter(s=>{const k=storeKey(s);return !used.has(k)&&!weekPlaced.has(k)}),memory);
+        const due=sortByLeastRecentlyUsed(group.filter(s=>{const k=storeKey(s);return !used.has(k)&&!weekPlaced.has(k)&&!reservedLater(k,weekKey)}),memory);
         for(const s of due){
           if(count()>=target)break;
           if(!place(s))unplaced.push(s);

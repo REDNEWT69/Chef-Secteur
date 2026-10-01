@@ -561,6 +561,19 @@ async function generateRange(){
     const target=Math.max(1,Number(state.settings.target)||20),max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4)),archive=loadArchive(),first=monday(start),last=monday(end),seed=rotationMemoryV211(pool,iso(first),target,archive),usedKeys=seed.usedKeys,useCount=seed.useCount,lastUsedWeek=seed.lastUsedWeek,unique=new Set();
     showStatus('Synchronisation Google Agenda puis génération de la période…');
     const calendarSynced=await syncCalendarRange(first,last);
+    /* P0.4-C3 — semaines retouchées à la main dans la période (mêmes marques que la branche
+       « semaine manuelle » ci-dessous). Leurs magasins y sont réservés : la sélection libre d'une
+       semaine antérieure de la période ne les prend pas. Rien n'est compté d'avance dans
+       usedKeys, useCount ni lastUsedWeek : un magasin réservé n'entre dans la rotation qu'avec sa
+       semaine. RDV, verrous et imposés restent des contraintes explicites, honorées comme avant. */
+    const reservedUntil=new Map();
+    for(let m=new Date(first);m<=last;m=addDays(m,7)){
+      const key=iso(m),snap=archive[key],entry=state.manualWeekEdits&&state.manualWeekEdits[key];
+      if(!((snap&&snap.manualEdited)||entry))continue;
+      const manual=(snap&&snap.plan)||(entry&&entry.plan)||{};
+      for(const d of DAYS)for(const s of ((manual&&manual[d])||[])){const k=s&&storeKey(s);if(k&&!(reservedUntil.get(k)>key))reservedUntil.set(k,key)}
+    }
+    const reservedLater=(s,weekKey,usable)=>{const until=reservedUntil.get(storeKey(s));return !!until&&until>weekKey&&!(forcedRank(s,weekKey)>0)&&!usable.includes(appointmentDayForWeek(s&&s.id,weekKey))};
     let mon=new Date(first),weekIndex=0,weeks=0,totalVisits=0,totalCredits=0,totalUnplaced=0;
     while(mon<=last){
       const weekKey=iso(mon),archived=archive[weekKey],manualEntry=state.manualWeekEdits&&state.manualWeekEdits[weekKey],manualState=!!manualEntry;
@@ -591,7 +604,7 @@ async function generateRange(){
       if(!usable.length&&!Object.keys(kept).length){archive[iso(mon)]=snapshot(mon,start,end,Object.fromEntries(DAYS.map(d=>[d,[]])),days);mon=addDays(mon,7);weekIndex++;weeks++;continue}
       let built={plan:Object.fromEntries(DAYS.map(d=>[d,[]])),unplaced:[]};
       if(usable.length){
-        const open=started?pool.filter(s=>openInStartedWeek(started,s,weekKey)):pool,done=doneToday(started,usable),limits=selectionNeed(open,usable,target-(started?started.count:0),max,weekKey);
+        const open=started||reservedUntil.size?pool.filter(s=>(!started||openInStartedWeek(started,s,weekKey))&&!reservedLater(s,weekKey,usable)):pool,done=doneToday(started,usable),limits=selectionNeed(open,usable,target-(started?started.count:0),max,weekKey);
         const chosen=chooseStores(open,usedKeys,useCount,lastUsedWeek,limits.targetCount,limits.capacityCredits-(done?routeCredits(done[started.todayName]):0),weekKey,weekIndex,usable);built=buildWeekUnique(chosen,usable,weekKey,done);ensureForcedPlaced(built,weekKey);
       }
       const plan=Object.assign(built.plan,kept),weekSeen=new Set();
