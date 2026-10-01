@@ -255,14 +255,16 @@ function plannedRuntime(o) {
     assert.equal(result.moved, 1, 'une seule visite déplacée');
   });
 
-  /* ------------------------------------ contraintes explicites : elles restent ---- */
-  for (const kind of ['rendez-vous', 'verrou', 'pose manuelle verrouillée', 'visite déjà réalisée']) {
-    await scenario('E — ' + kind + ' sur le férié : reste fixe, la visite libre du même jour part', async () => {
+  /* --------------------- contraintes explicites sur le férié (contrat P0.3) ---- */
+  /* Un rendez-vous, un verrou ou une pose manuelle verrouillée sur le férié est une contrainte
+     future impossible : le recalcul est refusé, plan et archive restent intacts. Une visite déjà
+     réalisée ce jour-là est un fait : elle reste en place et la visite libre du même jour part. */
+  for (const [label, kind] of [['E-A', 'rendez-vous'], ['E-B', 'verrou'], ['E-C', 'pose manuelle verrouillée']]) {
+    await scenario(label + ' — ' + kind + ' sur le férié : recalcul refusé, plan et archive inchangés', async () => {
       const stores = [store('K', 10, 10), store('FREE', -12, 6), store('Z', 8, -14)];
       const o = { stores, calendarEvents: [HOLIDAY_GOOGLE], plan: { Mercredi: ['K', 'FREE'], Jeudi: ['Z'] } };
       if (kind === 'rendez-vous') o.appointments = [{ id: 'rdv-ferie', storeId: 'K', date: HOLIDAY, time: '10:00', duration: 60, type: 'Visite', note: '' }];
       if (kind === 'verrou') o.locks = { K: 'Mercredi' };
-      if (kind === 'visite déjà réalisée') { o.now = HOLIDAY + 'T15:00:00'; o.visits = { K: { lastVisit: HOLIDAY, history: [HOLIDAY] } }; }
       if (kind === 'pose manuelle verrouillée') o.plan = { Mardi: ['K'], Mercredi: ['FREE'], Jeudi: ['Z'] };
       const rt = plannedRuntime(o);
       if (kind === 'pose manuelle verrouillée') {
@@ -272,13 +274,28 @@ function plannedRuntime(o) {
         assert.deepEqual(rt.ctx.state.locks.K, { day: 'Mercredi', week: WEEK }, 'précondition : verrou daté écrit par la pose manuelle');
         assert.deepEqual(ids(rt.ctx.state.plan.Mercredi).sort(), ['FREE', 'K'], 'précondition : K posé sur le férié');
       }
+      const plan = JSON.stringify(rt.ctx.state.plan), archive = rt.db.getItem(ARCHIVE_KEY);
       const result = build(rt);
-      assert.equal(result.ok, true, result.error || 'recalcul possible');
-      assert.deepEqual(ids(result.weeks[WEEK].Mercredi), ['K'], kind + ' : seul K doit rester sur le férié (obtenu : ' + ids(result.weeks[WEEK].Mercredi).join(', ') + ')');
-      assert.equal(placements(result, 'FREE').length, 1, 'la visite libre est replacée exactement une fois');
-      assert.notEqual(placements(result, 'FREE')[0], HOLIDAY);
+      assert.equal(result.ok, false, kind + ' sur le férié : le recalcul doit être refusé (obtenu ok=' + result.ok + ')');
+      assert.match(result.error, /n’est pas disponible/);
+      assert.match(result.error, /Rien n’a été changé/);
+      const applied = await rt.ctx.storeRunnerRecalculateRemainingWeek();
+      assert.equal(applied.ok, false, 'l’application du recalcul est refusée elle aussi');
+      assert.equal(JSON.stringify(rt.ctx.state.plan), plan, kind + ' : le plan affiché reste inchangé');
+      assert.equal(rt.db.getItem(ARCHIVE_KEY), archive, kind + ' : l’archive reste inchangée');
     });
   }
+
+  await scenario('E-D — visite déjà réalisée sur le férié : elle reste en place, la visite libre du même jour part (comportement historique, aucun faux conflit)', async () => {
+    const stores = [store('K', 10, 10), store('FREE', -12, 6), store('Z', 8, -14)];
+    const rt = plannedRuntime({ stores, calendarEvents: [HOLIDAY_GOOGLE], plan: { Mercredi: ['K', 'FREE'], Jeudi: ['Z'] },
+      now: HOLIDAY + 'T15:00:00', visits: { K: { lastVisit: HOLIDAY, history: [HOLIDAY] } } });
+    const result = build(rt);
+    assert.equal(result.ok, true, result.error || 'recalcul possible : une visite réalisée n’est pas un conflit');
+    assert.deepEqual(ids(result.weeks[WEEK].Mercredi), ['K'], 'seule la visite réalisée K doit rester sur le férié (obtenu : ' + ids(result.weeks[WEEK].Mercredi).join(', ') + ')');
+    assert.equal(placements(result, 'FREE').length, 1, 'la visite libre est replacée exactement une fois');
+    assert.notEqual(placements(result, 'FREE')[0], HOLIDAY);
+  });
 
   /* ---------------------------------------------------------- non-régressions ---- */
   /* Chaque cas : même décision qu'avant P0.2a (règle historique seule, module terrain absent,

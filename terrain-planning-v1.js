@@ -229,7 +229,9 @@ function sortByLeastRecentlyUsed(list,memory){
    cycle. L'ordre des arrêts déjà posés n'est pas retouché et aucun jour hors activeDays
    (bloqué ou non travaillé) n'est complété : le réétalement géographique d'une semaine
    protégée reste hors périmètre de ce correctif, exactement comme V185 l'ignore déjà
-   volontairement (cf. persistSnailGeography, if(week.manual)continue). */
+   volontairement (cf. persistSnailGeography, if(week.manual)continue).
+   P0.3 : le cycle 3 semaines ne l'appelle plus — une vraie retouche utilisateur est désormais
+   figée telle quelle. L'aide reste exposée et testée isolément. */
 /* V263 : `extra` (facultatif, fourni par le runtime) apporte le besoin de visite réel.
    Le complément d'une semaine protégée ne réinjecte alors plus un magasin trop récemment
    visité : il sert d'abord les contraintes explicites (verrou, rendez-vous, magasin imposé),
@@ -271,6 +273,10 @@ function completeProtectedWeek(protectedPlan,activeDays,mon,weekKey,target,ranke
     plan[day]=route;
   }
   return plan;
+}
+function constraintRefusal(store,kind,day,date){
+  const d=parseISO(date),name=(((store&&store.enseigne)||'Magasin')+' '+((store&&store.ville)||'')).trim(),when=day.toLowerCase()+(d?' '+pad(d.getDate())+'/'+pad(d.getMonth()+1):'');
+  return new Error(name+(kind==='rendez-vous'?' a un rendez-vous le ':' est verrouillé sur le ')+when+', mais ce jour n’est pas disponible. Le planning précédent est conservé.');
 }
 function safeDistance(a,b,distanceFn){
   try{const d=Number((distanceFn||root.hav)(a,b));return Number.isFinite(d)?d:Infinity}catch(e){return Infinity}
@@ -662,14 +668,22 @@ function buildThreeWeekSnail(options){
     const mon=addDays(first,wi*7),weekKey=iso(mon),protectedPlan=protectedPlanFor(weekKey,state,archive),ref=refOf(mon);
     const dateOf=day=>iso(addDays(mon,DAYS.indexOf(day)));
     const frozenDays=today&&existingPlanFor?DAYS.filter(day=>dateOf(day)<today):[],frozenSet=new Set(frozenDays);
+    /* P0.3 — une vraie retouche utilisateur est figée telle quelle : ni complément, ni retrait,
+       ni déplacement, ni réordonnancement. Elle compte toujours dans le cycle (used, diagnostics). */
     if(protectedPlan){
-      const activeDaysProtected=days.filter(day=>!frozenSet.has(day)&&!blocked(dateOf(day)));
-      const extra=needOf?{needAt:s=>needAt(s,ref),imposed,countDays:activeDaysProtected.concat(frozenDays)}:undefined;
-      const completedPlan=completeProtectedWeek(protectedPlan,activeDaysProtected,mon,weekKey,target,ranked,used,max,credit,fits,lockFor,apptFor,extra);
-      for(const s of flattenPlan(completedPlan))used.add(storeKey(s));
-      const diagnostics=weekDistributionDiagnostics({mon,days,activeDays:days,plan:completedPlan,target,max,ranked,used,weekPlaced:new Set(flattenPlan(completedPlan).map(storeKey)),credit,fits,manual:true,frozenDays});
-      weeks.push({weekKey,plan:completedPlan,manual:true,unplaced:[],diagnostics,frozenDays});
+      for(const s of flattenPlan(protectedPlan))used.add(storeKey(s));
+      const diagnostics=weekDistributionDiagnostics({mon,days,activeDays:days,plan:protectedPlan,target,max,ranked,used,weekPlaced:new Set(flattenPlan(protectedPlan).map(storeKey)),credit,fits,manual:true,frozenDays});
+      weeks.push({weekKey,plan:protectedPlan,manual:true,unplaced:[],diagnostics,frozenDays});
       continue
+    }
+    /* P0.3 — un rendez-vous (prioritaire) ou un verrou daté ou récurrent posé sur un jour
+       impossible de la semaine générée — non travaillé ou bloqué par l'Agenda — n'est jamais
+       rendu au vivier libre : le cycle est refusé avant toute application. Une journée déjà
+       passée, conservée telle quelle, n'est pas jugée. */
+    for(const s of ranked){
+      const ad=apptFor(s.id,mon),day=ad||lockFor(s.id,weekKey);
+      if(!day||!DAYS.includes(day)||frozenSet.has(day)||(days.includes(day)&&!blocked(dateOf(day))))continue;
+      throw constraintRefusal(s,ad?'rendez-vous':'verrou',day,dateOf(day));
     }
     const plan=emptyPlan(),weekPlaced=new Set(),unplaced=[];
     let frozenCount=0;
