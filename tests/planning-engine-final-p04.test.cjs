@@ -47,6 +47,11 @@
 //   R5 V211 régénère la semaine entamée : visite réalisée effacée, visites posées dans le passé ;
 //   R6 V211 période : rotation faussée dès la 2e semaine (repeatReadinessV211) ;
 //   R7 terrain et V211 période re-planifient plus tôt les magasins d'une semaine manuelle future.
+//
+// Contrat tranché au lot P0.4-B1 (H4 et F3, auparavant AMBIGUS) : le réglage des jours
+// travaillés est prospectif. Décocher un jour le retire des prochaines propositions ; il ne
+// supprime aucune visite déjà planifiée (state.plan, archive, semaine manuelle,
+// state.manualWeekEdits), et l'onglet d'un jour décoché qui porte encore des visites reste visible.
 const fs = require('fs'), vm = require('vm'), path = require('path');
 
 const ROOT = path.join(__dirname, '..');
@@ -210,7 +215,8 @@ function runtime(o) {
     readyState: 'loading', hidden: false, head: { appendChild() {} }, body: { appendChild() {} },
     addEventListener: (t, fn) => docBus.add(t, fn), removeEventListener: (t, fn) => docBus.remove(t, fn), dispatchEvent: e => docBus.fire(e),
     getElementById: id => els[id] || null, querySelector: () => null,
-    querySelectorAll: sel => sel === '[data-day]' ? dayBoxes : [],
+    /* Onglets de la bande de période (#dayTabs) : seulement quand la fixture en fournit (F3). */
+    querySelectorAll: sel => sel === '[data-day]' ? dayBoxes : sel === '#dayTabs .periodDayTab' ? (o.tabs || []) : [],
     createElement: tag => ({ tagName: String(tag).toUpperCase(), style: {}, dataset: {}, classList: { add() {}, remove() {}, contains: () => false, toggle() {} }, setAttribute() {}, appendChild() {}, addEventListener() {}, insertAdjacentElement() {}, querySelector: () => null, querySelectorAll: () => [] })
   };
   ctx.window = ctx;
@@ -817,15 +823,40 @@ const flatIds = plan => DAYS.flatMap(d => ids(plan && plan[d]));
     await scenario('H2', 'Cycle 3 semaines avec deux semaines manuelles (02/11 affichée et 09/11), chaîne V185 + V251 comprise', 'terrain 3 semaines', 'H M', async c => { await exercise(c, 'terrain', h2, {}); });
     const h3 = protect({ stores: ringStores, weekDate: W0, target: 8, max: 2, rangeStart: W0, rangeEnd: '2026-11-20' }, W1, planOf(ringStores, { Lundi: ['s12'], Jeudi: ['s03'] }));
     await scenario('H3', 'Période 02/11 → 20/11 avec une semaine manuelle au milieu (09/11)', 'V211 période', 'H M', async c => { await exercise(c, 'V211p', h3, {}); });
-    await scenario('H4', 'Samedi désactivé et semaine manuelle future qui garde une visite le samedi (posée quand le samedi était travaillé)', 'terrain 3 semaines (+ workdays-enforcer)', 'H F', async c => {
+    await scenario('H4', 'Samedi décoché après coup : la semaine manuelle du 09/11, qui garde une visite le samedi, reste strictement identique (réglage, démarrage, puis génération 3 semaines)', 'workdays-enforcer + terrain 3 semaines', 'H F A', async c => {
       const sat = named(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'z']), manualSat = planOf(sat, { Lundi: ['a'], Samedi: ['z'] });
-      const h4 = protect({ stores: sat, weekDate: W0, target: 6, max: 2, start: W0 }, W1, manualSat), seen = {};
-      for (const mode of ['brut', 'chaîne']) {
-        const out = await runEngine('terrain', h4, mode); c.ran.add(ENGINES.terrain.label);
-        if (out.crash || out.refused) { c.fail('—', out.crash ? 11 : 12, ENGINES.terrain.label + ' (' + mode + ')', JSON.stringify(out.crash || out.refused)); continue; }
-        seen[mode] = { archive: show(out.archive[W1].plan), edits: show(out.rt.ctx.state.manualWeekEdits[W1].plan) };
+      const uncheck = { type: 'change', target: { matches: sel => sel === '[data-day]' } };
+      /* La semaine manuelle est la même dans l'archive (marque manuelle comprise), dans
+         state.manualWeekEdits et, quand elle est affichée, dans state.plan : ordre compris. */
+      const synced = (rt, where) => {
+        const archived = archiveOf(rt)[W1], edit = rt.ctx.state.manualWeekEdits[W1], shown = weekOf(String(rt.ctx.state.settings.weekDate)) === W1;
+        if (!archived || !samePlan(archived.plan, manualSat) || !archived.manualEdited) c.fail('H', 5, where, 'archive du 09/11 : ' + (archived ? diffPlans(manualSat, archived.plan) + (archived.manualEdited ? '' : ', marque manuelle perdue') : 'absente'));
+        if (!edit || !samePlan(edit.plan, manualSat)) c.fail('H', 5, where, 'state.manualWeekEdits du 09/11 : ' + (edit ? diffPlans(manualSat, edit.plan) : 'absent'));
+        if (shown && !samePlan(rt.ctx.state.plan, manualSat)) c.fail('H', 5, where, 'state.plan (semaine affichée du 09/11) : ' + diffPlans(manualSat, rt.ctx.state.plan));
+        return 'archive [' + show(archived && archived.plan) + '] · manualWeekEdits [' + show(edit && edit.plan) + ']' + (shown ? ' · state.plan [' + show(rt.ctx.state.plan) + ']' : '');
+      };
+      /* 1. Le samedi était travaillé ; l'utilisateur le décoche (événement change sur [data-day]),
+         la semaine manuelle étant future (02/11 affichée) puis affichée (09/11). */
+      for (const shownWeek of [W0, W1]) {
+        const where = 'workdays-enforcer (samedi décoché, semaine manuelle ' + (shownWeek === W1 ? 'affichée' : 'future') + ')';
+        const rt = runtime(protect({ stores: sat, weekDate: shownWeek, plan: shownWeek === W1 ? copy(manualSat) : emptyPlan(), days: DAYS.slice(), target: 6, max: 2, chain: true }, W1, manualSat));
+        precondition(c, 'samedi travaillé et z posé le samedi 14/11 avant le décochage', rt.ctx.state.settings.days.includes('Samedi') && ids(archiveOf(rt)[W1].plan.Samedi).includes('z'));
+        rt.ctx.state.settings.days = WORK.slice();
+        const before = snapshot(rt);
+        rt.ctx.document.dispatchEvent(uncheck); await rt.settle();
+        const written = snapshotDiff(before, snapshot(rt));
+        if (written) c.fail('H', 10, where, 'le simple changement de réglage a écrit : ' + written);
+        c.note(where + ' : 09/11 ' + synced(rt, where));
       }
-      c.ambiguity('contrats H (semaine manuelle figée) et F (samedi désactivé) en conflit. Brut : la semaine du 09/11 reste [' + (seen['brut'] && seen['brut'].archive) + ']. Chaîne : workdays-enforcer.js (événement chef-range-generated) vide le samedi de l’archive protégée [' + (seen['chaîne'] && seen['chaîne'].archive) + '] sans toucher state.manualWeekEdits [' + (seen['chaîne'] && seen['chaîne'].edits) + '] : z disparaît du planning, la sauvegarde manuelle le garde. À trancher : la semaine manuelle prime-t-elle sur le réglage des jours ?');
+      /* 2. Démarrage avec le samedi déjà décoché et la semaine manuelle affichée. */
+      {
+        const where = 'workdays-enforcer (démarrage, samedi déjà décoché)';
+        c.note(where + ' : 09/11 ' + synced(runtime(protect({ stores: sat, weekDate: W1, plan: copy(manualSat), days: WORK.slice(), target: 6, max: 2, chain: true }, W1, manualSat)), where));
+      }
+      /* 3. Génération 3 semaines, samedi décoché : la semaine manuelle reste identique et aucune
+         nouvelle visite n'est posée un samedi (exercise : deux couches, deux exécutions, A→P). */
+      const outs = await exercise(c, 'terrain', protect({ stores: sat, weekDate: W0, days: WORK.slice(), target: 6, max: 2, start: W0 }, W1, manualSat), {});
+      for (const [mode, out] of Object.entries(outs)) if (!out.crash && !out.refused) c.note(ENGINES.terrain.label + ' (' + mode + ') : 09/11 ' + synced(out.rt, ENGINES.terrain.label + ' (' + mode + ')'));
     });
     await scenario('H5', 'RDV jeudi 12/11 d’un magasin posé à la main lundi 09/11 dans une semaine manuelle future', 'terrain · V211 période · V181', 'H I', async c => {
       const st5 = named(['K', 'a', 'b', 'c', 'd', 'e', 'f', 'g']), manualK = planOf(st5, { Lundi: ['K', 'a'] }), w0 = planOf(st5, { Lundi: ['b'], Mardi: ['c'], Mercredi: ['d'], Jeudi: ['e'], Vendredi: ['f'] });
@@ -949,20 +980,41 @@ const flatIds = plan => DAYS.flatMap(d => ids(plan && plan[d]));
     await scenario('F2', 'RDV le samedi 14/11, samedi désactivé — refus atomique attendu', 'V211 semaine · V211 période · terrain · V181', 'F I A', async c => {
       for (const engine of ['V211s', 'V211p', 'terrain', 'V181']) await exercise(c, engine, f2, { expect: 'refus', inv: 'F' });
     });
-    await scenario('F3', 'Jour décoché après coup : visites déjà planifiées ce jour-là (workdays-enforcer.js, aucun moteur appelé)', 'workdays-enforcer (chaîne)', 'F A', async c => {
+    await scenario('F3', 'Jour décoché après coup : les visites déjà planifiées ce jour-là restent (réglage prospectif) et leur onglet reste visible (workdays-enforcer.js, aucun moteur appelé)', 'workdays-enforcer (chaîne)', 'F A', async c => {
       const sf = named(['a', 'b', 'c', 'd', 'e', 'f']), w1 = planOf(sf, { Lundi: ['a'], Mercredi: ['c', 'd'], Jeudi: ['e'] }), w2 = planOf(sf, { Mercredi: ['f'], Vendredi: ['b'] });
-      const base = { stores: sf, weekDate: W1, plan: copy(w1), archive: { [W1]: { weekMonday: W1, plan: copy(w1) }, [W2]: { weekMonday: W2, plan: copy(w2) } }, max: 2, chain: true };
-      const present = (rt, id) => [rt.ctx.state.plan].concat(Object.values(archiveOf(rt)).map(s => s.plan)).some(p => DAYS.some(d => ids(p[d]).includes(id)));
+      const noWednesday = ['Lundi', 'Mardi', 'Jeudi', 'Vendredi'], where = 'workdays-enforcer (chaîne)';
+      /* Bande de période telle que period-day-slider.js l'a construite à la génération, quand le
+         mercredi était travaillé : trois semaines du lundi au vendredi. Les mercredis 11/11
+         (semaine affichée) et 18/11 portent des visites ; le 25/11, jamais planifié, est vide. */
+      const fixture = days => ({ stores: sf, weekDate: W1, plan: copy(w1), archive: { [W1]: { weekMonday: W1, plan: copy(w1) }, [W2]: { weekMonday: W2, plan: copy(w2) } }, max: 2, chain: true, days,
+        tabs: [W1, W2, W3].flatMap(w => WORK.map(d => ({ dataset: { date: dateOf(w, d) }, style: {} }))) });
+      /* Rien n'est retiré : la semaine affichée (state.plan et archive) et la semaine future gardent
+         leurs visites du mercredi, dans le même ordre. */
+      const intact = (rt, label) => {
+        const archive = archiveOf(rt);
+        for (const [what, plan, want] of [['state.plan du 09/11', rt.ctx.state.plan, w1], ['archive du 09/11', archive[W1] && archive[W1].plan, w1], ['archive du 16/11', archive[W2] && archive[W2].plan, w2]])
+          if (!samePlan(plan, want)) c.fail('A', 1, where, label + ' : ' + what + ' ' + diffPlans(want, plan || emptyPlan()));
+        return 'state.plan [' + show(rt.ctx.state.plan) + '] · archive 09/11 [' + show(archive[W1].plan) + '] · 16/11 [' + show(archive[W2].plan) + ']';
+      };
+      /* Un jour décoché qui porte encore des visites garde son onglet ; vide, il est masqué. */
+      const tabs = (o, label) => {
+        const hidden = o.tabs.filter(t => t.style.display === 'none').map(t => ddmm(t.dataset.date)), want = [ddmm(dateOf(W3, 'Mercredi'))];
+        if (hidden.join() !== want.join()) c.fail('A', 12, where, label + ' : onglets masqués [' + hidden.join(', ') + '], attendu [' + want.join(', ') + '] : les mercredis 11/11 et 18/11 portent encore des visites');
+        return 'onglets masqués [' + hidden.join(', ') + '] sur ' + o.tabs.length;
+      };
       /* 1. L'utilisateur décoche le mercredi dans les réglages (événement change sur [data-day]). */
-      const rt = runtime(base);
-      precondition(c, 'c, d et f planifiés avant le décochage', ['c', 'd', 'f'].every(id => present(rt, id)));
-      rt.ctx.state.settings.days = ['Lundi', 'Mardi', 'Jeudi', 'Vendredi'];
+      const o1 = fixture(WORK.slice()), rt = runtime(o1);
+      precondition(c, 'c, d (mercredi 11/11) et f (mercredi 18/11) planifiés et quinze onglets visibles avant le décochage', ids(rt.ctx.state.plan.Mercredi).join() === 'c,d' && ids(archiveOf(rt)[W2].plan.Mercredi).join() === 'f' && o1.tabs.every(t => t.style.display !== 'none'));
+      rt.ctx.state.settings.days = noWednesday.slice();
+      const before = snapshot(rt);
       rt.ctx.document.dispatchEvent({ type: 'change', target: { matches: sel => sel === '[data-day]' } });
       await rt.settle();
-      const gone = ['c', 'd', 'f'].filter(id => !present(rt, id));
+      const written = snapshotDiff(before, snapshot(rt));
+      if (written) c.fail('A', 10, where, 'mercredi décoché : le simple changement de réglage a écrit ' + written);
+      c.note('mercredi décoché : ' + intact(rt, 'mercredi décoché') + ' · ' + tabs(o1, 'mercredi décoché'));
       /* 2. Démarrage avec un mercredi déjà non travaillé (sauvegarde restaurée, autre appareil). */
-      const boot = runtime(Object.assign({}, base, { days: ['Lundi', 'Mardi', 'Jeudi', 'Vendredi'] })), shown = boot.ctx.state.plan, stored = archiveOf(boot)[W1].plan;
-      c.ambiguity('F respecté par suppression : après décochage du mercredi, ' + (gone.join(', ') || 'aucun magasin') + ' dispara' + (gone.length > 1 ? 'issent' : 'ît') + ' de state.plan et de l’archive (semaine affichée et semaine future), sans report ni message ; aucun moteur de planning n’est appelé. A (aucune perte silencieuse) et F (aucune visite un jour non travaillé) se contredisent pour les visites déjà planifiées. Au démarrage, seul state.plan est vidé [' + show(shown) + '] alors que l’archive garde [' + show(stored) + '] jusqu’à la prochaine génération. À trancher : supprimer, reporter, ou demander ?');
+      const o2 = fixture(noWednesday.slice()), boot = runtime(o2);
+      c.note('démarrage, mercredi déjà décoché : ' + intact(boot, 'démarrage') + ' · ' + tabs(o2, 'démarrage'));
     });
   }
 

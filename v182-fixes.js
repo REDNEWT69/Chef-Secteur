@@ -183,9 +183,14 @@ async function persistGeoWeek(result,weekKey,source){
    étrangère au-dessus rendait la sienne invisible et elle se réempilait à chaque
    événement planning, soit une passe géographique de plus par couche à chaque clic. */
 function chainHas(fn,marker){let cur=fn,n=0;while(typeof cur==='function'&&n++<32){if(cur[marker])return true;cur=cur.__v185Original||cur.__v184Original||cur.__v182Original||cur.__v248Original||cur.__original||null}return false}
+/* P0.4-B1 — une semaine retouchée à la main est un résultat final. Quand V211 répond
+   `preservedManual` (ou que la semaine porte la marque manuelle, même lecture que V251),
+   V185 ne rééquilibre rien, ne réordonne rien et n'écrit ni state.plan ni l'archive :
+   state.manualWeekEdits reste la seule source de cette semaine et l'ordre manuel tient. */
+function manualWeekV185(key){try{if(state.manualWeekEdits&&state.manualWeekEdits[key])return true;const snap=loadArchive()[key];return !!(snap&&snap.manualEdited)}catch(e){return false}}
 function patchSingleWeekGeography(){
   const original=window.storeRunnerGenerateSingleWeek;if(typeof original!=='function'||chainHas(original,'__v185Geo'))return false;
-  const wrapped=async function(){const previous=window.__storeRunnerPlanningGenerationActive;window.__storeRunnerPlanningGenerationActive=true;try{const out=await original.apply(this,arguments);if(out&&out.ok===true&&state&&state.plan){const geo=rebalancePlanByGeography(state.plan,{weekKey:currentWeekKey()});if(geo.ok&&geo.changed)await persistGeoWeek(geo,currentWeekKey(),'single-week-geo-v185');out.geographyOptimized=!!(geo&&geo.ok&&geo.changed)}return out}finally{window.__storeRunnerPlanningGenerationActive=previous}};
+  const wrapped=async function(){const previous=window.__storeRunnerPlanningGenerationActive;window.__storeRunnerPlanningGenerationActive=true;try{const out=await original.apply(this,arguments);if(out&&out.ok===true&&state&&state.plan){if(out.preservedManual===true||manualWeekV185(currentWeekKey())){out.geographyOptimized=false;return out}const geo=rebalancePlanByGeography(state.plan,{weekKey:currentWeekKey()});if(geo.ok&&geo.changed)await persistGeoWeek(geo,currentWeekKey(),'single-week-geo-v185');out.geographyOptimized=!!(geo&&geo.ok&&geo.changed)}return out}finally{window.__storeRunnerPlanningGenerationActive=previous}};
   wrapped.__v185Geo=true;wrapped.__v185Original=original;window.storeRunnerGenerateSingleWeek=wrapped;return true
 }
 function terrainOvernightRow(week){
