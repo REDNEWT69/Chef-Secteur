@@ -147,6 +147,23 @@ function visitCredit(s){
   return 1;
 }
 function routeCredits(route){return (route||[]).reduce((n,s)=>n+visitCredit(s),0)}
+/* P0.4-A — horaires d'ouverture. StoreOpeningHoursV1 reste le seul propriétaire de leur
+   résolution (magasin, puis enseigne, puis repli historique) : une liste d'intervalles vide
+   veut dire fermé ce jour-là, un horaire inconnu reste ouvert, exactement comme pour le cycle
+   3 semaines et le recalcul. Un magasin libre n'est jamais posé un jour de fermeture ; un
+   rendez-vous ou un verrou qui l'y impose est une contrainte impossible, refusée avant toute
+   proposition. Sans le module, rien ne change. */
+function closedOn(store,day){
+  try{
+    const api=window.StoreOpeningHoursV1;if(!api||typeof api.intervalsFor!=='function')return false;
+    const canonical=(state.stores||[]).find(s=>String(s&&s.id)===String(store&&store.id))||store,rows=api.intervalsFor(canonical,day,state);
+    return Array.isArray(rows)&&rows.length===0;
+  }catch(e){return false}
+}
+function closedConstraintError(store,appointment,day,dt){
+  const name=(store.enseigne||'Magasin')+' '+(store.ville||''),when=day.toLowerCase()+' '+String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0');
+  return new Error(name+(appointment?' a un rendez-vous le ':' est verrouillé sur le ')+when+', mais le magasin est fermé ce jour-là. Le planning précédent est conservé.');
+}
 /* Magasins « posés » : une visite placée ou remplacée à la main par l'utilisateur ne
    doit jamais être déplacée, remplacée ni retirée par la génération automatique. On
    réutilise state.locks, qui porte déjà exactement cette sémantique et que le moteur
@@ -346,6 +363,7 @@ function buildWeekUnique(chosen,days,weekKey){
     const locked=lockDayForWeek(store.id,weekKey),appointment=appointmentDayForWeek(store.id,weekKey),fixed=(days.includes(appointment)?appointment:'')||locked;
     if(!fixed){free.push(store);continue}
     if(!days.includes(fixed))throw new Error((store.enseigne||'Magasin')+' '+(store.ville||'')+' est verrouillé sur '+fixed+', mais ce jour n’est pas disponible. Le planning précédent est conservé.');
+    if(closedOn(store,fixed))throw closedConstraintError(store,fixed===appointment,fixed,addDays(parse(weekKey),DAYS.indexOf(fixed)));
     plan[fixed].push(store);
   }
   for(const day of days){
@@ -362,7 +380,7 @@ function buildWeekUnique(chosen,days,weekKey){
     const cost=visitCredit(store);
     const candidates=rankCandidateDaysV249(plan,days,store);
     for(const day of candidates){
-      if(routeCredits(plan[day])+cost>max)continue;
+      if(closedOn(store,day)||routeCredits(plan[day])+cost>max)continue;
       const route=optimizeRoute((plan[day]||[]).concat([store]));
       if(finish(route,day)<=limitFor(day)){plan[day]=route;placed=true;break}
     }
@@ -379,12 +397,14 @@ function buildWeekUnique(chosen,days,weekKey){
 /* P0.3 — un rendez-vous (prioritaire) ou un verrou daté ou récurrent dont le jour n'est pas
    utilisable dans la semaine générée — non travaillé ou bloqué par l'Agenda — n'est jamais rendu
    au vivier libre : refus contrôlé avant toute proposition. Seuls les jours du périmètre généré
-   sont jugés. Le message du verrou reste celui de buildWeekUnique. */
+   sont jugés. Le message du verrou reste celui de buildWeekUnique.
+   P0.4-A — un jour utilisable où le magasin est fermé est lui aussi impossible : même refus. */
 function ensureExplicitConstraintsUsable(pool,mon,weekKey,usable,start,end){
   for(const s of (pool||[])){
     const id=s&&s.id,appointment=appointmentDayForWeek(id,weekKey),fixed=appointment||lockDayForWeek(id,weekKey);
-    if(!fixed||usable.includes(fixed))continue;
+    if(!fixed)continue;
     const dt=addDays(mon,DAYS.indexOf(fixed));if(dt<start||dt>end)continue;
+    if(usable.includes(fixed)){if(closedOn(s,fixed))throw closedConstraintError(s,!!appointment,fixed,dt);continue}
     const name=(s.enseigne||'Magasin')+' '+(s.ville||'');
     if(appointment)throw new Error(name+' a un rendez-vous le '+fixed.toLowerCase()+' '+String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0')+', mais ce jour n’est pas disponible. Le planning précédent est conservé.');
     throw new Error(name+' est verrouillé sur '+fixed+', mais ce jour n’est pas disponible. Le planning précédent est conservé.');

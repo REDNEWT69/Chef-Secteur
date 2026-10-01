@@ -37,7 +37,10 @@ function blocks(e){if(!e)return false;if(e.inferredAway)return true;const text=n
    voit en plus les déplacements déduits (inferredAway). Sans le module terrain, rien ne change. */
 function blocked(date){try{const terrain=window.StoreRunnerTerrainPlanningV1;if(terrain&&typeof terrain.dateBlocked==='function'&&terrain.dateBlocked(date,state))return true}catch(e){}try{return (typeof window.calendarEventsForDate==='function'?window.calendarEventsForDate(date):[]).some(blocks)}catch(e){return false}}
 function fixedError(day,route,max){const actual=actualRouteCredits(route),rows=(route||[]).map(s=>storeName(s)+' ('+actualCredit(s)+')');let m=day+' contient déjà '+actual+' crédit'+(actual>1?'s':'')+' fixe'+(actual>1?'s':'')+(rows.length?' : '+rows.join(' + '):'')+'. Ton maximum est réglé sur '+max+'. ';if(actual>max)m+=(actual<=8?'Passe-le à '+actual+' dans Réglages ou libère une visite. ':'Augmente le maximum dans Réglages si c’est volontaire, ou libère une visite. ');return m+'Rien n’a été changé.'}
-function impossibleError(store,kind,day,date){const d=parse(date),when=day.toLowerCase()+(d?' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'):'');return storeName(store)+(kind==='rendez-vous'?' a un rendez-vous le ':' est verrouillé sur le ')+when+', mais ce jour n’est pas disponible. Rien n’a été changé.'}
+function impossibleError(store,kind,day,date,why){const d=parse(date),when=day.toLowerCase()+(d?' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'):'');return storeName(store)+(kind==='rendez-vous'?' a un rendez-vous le ':' est verrouillé sur le ')+when+', mais '+(why||'ce jour n’est pas disponible')+'. Rien n’a été changé.'}
+/* P0.4-A — fermeture du magasin lue chez son propriétaire, StoreOpeningHoursV1 : une liste
+   d'intervalles vide veut dire fermé ce jour-là, un horaire inconnu reste ouvert. */
+function closedOn(store,day){try{const api=window.StoreOpeningHoursV1;if(!api||typeof api.intervalsFor!=='function')return false;const rows=api.intervalsFor(canonical(store),day,state);return Array.isArray(rows)&&rows.length===0}catch(e){return false}}
 function keyOf(s){const id=storeId(s);return id?'id|'+id:norm(s&&s.enseigne)+'|'+norm(s&&s.ville)+'|'+norm(s&&s.adresse)}
 function stats(archive,start,end){let stores=0,visits=0;const unique=new Set();for(const [key,snap] of Object.entries(archive||{})){const mon=parse((snap&&snap.weekMonday)||key);if(!mon||!snap||!snap.plan)continue;for(let i=0;i<DAYS.length;i++){const date=iso(add(mon,i));if(date<start||date>end)continue;for(const s of snap.plan[DAYS[i]]||[]){stores++;visits+=actualCredit(s);unique.add(keyOf(s))}}}return{stores,visits,uniqueStores:unique.size}}
 function cascadeRange(archive,startWeek,lastWeek,days){const previous=load(RANGE_KEY,null)||{},priorEnd=parse(previous.end),cascadeEnd=add(parse(lastWeek)||parse(startWeek),5),end=iso(priorEnd&&priorEnd>cascadeEnd?priorEnd:cascadeEnd),start=startWeek,startMon=monday(parse(start)),endMon=monday(parse(end)),weeks=Math.max(1,Math.round((endMon-startMon)/604800000)+1),s=stats(archive,start,end);return Object.assign({},previous,{start,end,weeks,workDays:days.slice(),uniqueStores:s.uniqueStores,totalStores:s.stores,totalVisits:s.visits,rotation:'cascade-credit-v181',updatedAt:new Date().toISOString()})}
@@ -167,9 +170,11 @@ function build(){
       const done=visitedOn(id,date),appt=appointmentDay(id,wm),lock=lockDay(id,key),fixed=done?day:(appt||lock);
       /* P0.3 — un rendez-vous (prioritaire) ou un verrou à venir posé sur un jour impossible
          (non travaillé ou bloqué par l'Agenda) : refus contrôlé avant tout déplacement. Une
-         visite réellement réalisée reste un fait et garde sa priorité historique. */
+         visite réellement réalisée reste un fait et garde sa priorité historique.
+         P0.4-A — un jour où le magasin est fermé est lui aussi impossible : même refus. */
       const target=done?'':(appt||lock),targetDate=target?dayDate(wm,target):'';
       if(target&&targetDate>=today&&(!days.includes(target)||blocked(targetDate)))return{ok:false,error:impossibleError(canonical(store),appt?'rendez-vous':'verrou',target,targetDate)};
+      if(target&&targetDate>=today&&closedOn(store,target))return{ok:false,error:impossibleError(canonical(store),appt?'rendez-vous':'verrou',target,targetDate,'le magasin est fermé ce jour-là')};
       if(done)visited++;else if(appt)appointments++;else if(lock)locks++;
       if(!fixed&&date<today)past++;
       entries[key].push({store,id,key,day,date,index,fixed});
@@ -210,13 +215,30 @@ function build(){
   movable.sort((a,b)=>a.date===b.date?a.index-b.index:(a.date<b.date?-1:1));
   const limit=add(parse(weekKey),MAX_WEEKS*7-1);let latest=today;
   for(const item of movable){
-    let cursor=parse(item.date<today?today:item.date),placed=false;
+    const id=storeId(item.store);let cursor=parse(item.date<today?today:item.date),placed=false;
     while(cursor&&cursor<=limit){
-      const date=iso(cursor),day=dayName(date);
-      if(day&&days.includes(day)&&!blocked(date)&&!closedWeek(iso(monday(cursor)))){
-        const wk=iso(monday(cursor)),plan=weekPlan(wk),route=plan[day],id=storeId(item.store),trial=route.concat(item.store);
-        if(!DAYS.some(d=>plan[d].some(s=>storeId(s)===id))&&routeCapacity(trial)<=max&&routeFits(trial,day,date)){
-          route.push(item.store);placed=true;if(date>latest)latest=date;break;
+      const date=iso(cursor),day=dayName(date),wk=iso(monday(cursor));
+      if(day&&!closedWeek(wk)){
+        const wm=parse(wk),plan=weekPlan(wk);
+        if(!DAYS.some(d=>plan[d].some(s=>storeId(s)===id))){
+          /* P0.4-A — dans la semaine d'arrivée, le rendez-vous du magasin, sinon son verrou
+             (daté ou récurrent), fixe son jour : la visite reportée n'est posée que ce jour-là,
+             jamais un autre jour de la même semaine. Si ce jour ne peut pas la recevoir (non
+             travaillé, bloqué, magasin fermé, journée complète), le recalcul est refusé : rien
+             n'est écrit. Une contrainte déjà passée ferme la semaine à ce magasin. */
+          const appt=appointmentDay(id,wm),fixed=appt||lockDay(id,wk);
+          if(fixed){
+            const fixedDate=dayDate(wm,fixed);
+            if(fixedDate<date){cursor=add(wm,7);continue}
+            if(fixedDate>date){cursor=parse(fixedDate);continue}
+            const trial=plan[fixed].concat(item.store),why=!days.includes(fixed)||blocked(fixedDate)?'':closedOn(item.store,fixed)?'le magasin est fermé ce jour-là':routeCapacity(trial)>max?'cette journée est déjà complète':!routeFits(trial,fixed,fixedDate)?'cette journée ne tient plus dans les horaires':null;
+            if(why!==null)return{ok:false,error:impossibleError(canonical(item.store),appt?'rendez-vous':'verrou',fixed,fixedDate,why)};
+            plan[fixed].push(item.store);placed=true;if(fixedDate>latest)latest=fixedDate;break;
+          }
+          if(days.includes(day)&&!blocked(date)){
+            const route=plan[day],trial=route.concat(item.store);
+            if(routeCapacity(trial)<=max&&routeFits(trial,day,date)){route.push(item.store);placed=true;if(date>latest)latest=date;break}
+          }
         }
       }
       cursor=add(cursor,1);
