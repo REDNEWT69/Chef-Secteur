@@ -1,12 +1,12 @@
-// P0.3 — PHASE ROUGE : protections du planning (semaine manuelle, rendez-vous, verrous, cascade).
+// P0.3 — protections du planning (semaine manuelle, rendez-vous, verrous, cascade).
 //
 // Contrat métier commun aux trois chemins de planning, figé AVANT toute correction :
 //   - génération V211 semaine / période ............ range-planner-v2.js
 //   - génération standard 3 semaines ............... terrain-planning-v1.js
 //   - « Recalculer le reste du planning » (cascade) . planning-cascade-v181.js
 //
-// Aucun runtime n'est corrigé dans cette phase : les cas qui démontrent un vrai défaut r29
-// restent volontairement rouges, les cas déjà conformes sont verts.
+// Écrit en phase rouge sur r29 (A, B, E, G, J, K, L rouges ; C, D, F, H, I déjà verts), puis
+// rendu vert par la correction des trois moteurs (PR #482), sans changer aucune attente.
 //
 // Tout est rejoué sur les VRAIS modules : calendarEventsForDate du noyau (lignes extraites
 // telles quelles de src/chef-secteur.html), calendar-oauth.js, visit-counting.js,
@@ -642,6 +642,6 @@ async function scenario(letter, title, fn) {
     console.log('\nExceptions observées :');
     for (const e of exceptions) console.log('  ' + e.case + ' — ' + e.type + (e.controlled ? ' (refus volontaire du moteur)' : ' (crash)') + ' : « ' + e.message + ' »');
   }
-  console.log('\nP0.3 : ' + (cases.length - red) + '/' + cases.length + ' cas verts · ' + red + ' rouge' + (red > 1 ? 's' : '') + ' (phase rouge : aucun runtime corrigé)');
+  console.log('\nP0.3 : ' + (cases.length - red) + '/' + cases.length + ' cas verts · ' + red + ' rouge' + (red > 1 ? 's' : ''));
   if (red) process.exit(1);
 })().catch(e => { console.error(e); process.exit(1); });

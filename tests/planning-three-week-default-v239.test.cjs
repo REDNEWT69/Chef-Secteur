@@ -225,9 +225,10 @@ function build(options) {
 })();
 
 (function manualWeeksAndPinnedStoresStayProtected() {
-  // V242 : une semaine modifiée à la main garde ses visites posées sur leur jour, mais
-  // n'est plus condamnée à rester avec des jours vides — la capacité encore libre se
-  // complète avec le vivier normal (cf. terrain-planning-v1.js, completeProtectedWeek).
+  // P0.3 : une vraie semaine modifiée à la main est figée telle quelle. Le contrat V242 —
+  // compléter sa capacité libre avec le vivier normal — est obsolète : s99 reste seul le
+  // jeudi, rien n'est ajouté, retiré, déplacé ni réordonné. Les semaines non manuelles du
+  // cycle continuent leur génération normale.
   const manualPlan = Object.fromEntries(DAYS.map(d => [d, []]));
   manualPlan.Jeudi = [store(99)];
   const built = build({
@@ -235,17 +236,23 @@ function build(options) {
     lockDayForWeek: (id, weekKey) => (String(id) === 's1' && weekKey === '2026-10-05' ? 'Vendredi' : '')
   });
   assert.equal(built.weeks[1].manual, true, 'une semaine modifiée à la main doit rester intacte');
+  assert.deepEqual(
+    Object.fromEntries(DAYS.map(d => [d, (built.weeks[1].plan[d] || []).map(s => s.id)])),
+    Object.fromEntries(DAYS.map(d => [d, manualPlan[d].map(s => s.id)])),
+    'la semaine manuelle du 12/10 doit rester strictement identique au plan posé à la main');
   assert.ok(built.weeks[1].plan.Jeudi.some(s => s.id === 's99'),
     'la visite posée à la main ne doit jamais être déplacée de son jour');
-  assert.equal(flatten(built.weeks[1].plan).length, 20,
-    'les jours restés vides doivent maintenant se compléter jusqu’à l’objectif hebdomadaire');
+  assert.equal(flatten(built.weeks[1].plan).length, 1,
+    'aucune visite ne doit être ajoutée ni retirée dans la semaine modifiée à la main');
+  for (const week of [built.weeks[0], built.weeks[2]]) assert.equal(flatten(week.plan).length, 20,
+    week.weekKey + ' : les semaines non manuelles continuent leur génération normale');
   const all = flatten(built.weeks[0].plan).concat(flatten(built.weeks[1].plan), flatten(built.weeks[2].plan)).map(s => s.id);
   assert.equal(new Set(all).size, all.length,
-    'le complètement de la semaine protégée ne doit pas dupliquer un magasin déjà pris ailleurs dans le cycle');
+    'aucun magasin ne doit être planifié deux fois dans le cycle');
   assert.ok((built.weeks[0].plan.Vendredi || []).some(s => s.id === 's1'),
     'un magasin posé/verrouillé doit rester sur son jour');
   assert.ok(!flatten(built.weeks[1].plan).some(s => s.id === 's1'),
-    's1, déjà pris par la semaine 1 via son verrou, ne doit pas être réutilisé pour compléter la semaine protégée');
+    's1, déjà pris par la semaine 1 via son verrou, ne doit pas apparaître dans la semaine protégée');
 })();
 
 (function capacityAndOpeningHoursStillDecide() {

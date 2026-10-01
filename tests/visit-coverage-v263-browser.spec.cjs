@@ -1,9 +1,16 @@
 const {test,expect}=require('@playwright/test');
 const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
 test.use({viewport:{width:390,height:844},hasTouch:true,isMobile:true,serviceWorkers:'block'});
+/* Horloge du navigateur figée avant tout chargement : `new Date()` et `Date.now()` rendent le
+   mercredi 30/09/2026 12:00 UTC, `new Date(valeur)` reste normal. Sans elle, le classement
+   dépendait du jour où tournait la CI : Darty Chambéry, visité il y a 40 jours, n'est « très en
+   retard » au lundi suivant que si ce lundi tombe au moins 5 jours plus tard (du lundi au mercredi). */
+const FIXED_NOW='2026-09-30T12:00:00Z';
+test.beforeEach(async({page})=>{await page.clock.setFixedTime(new Date(FIXED_NOW))});
 
 /* V263 — bloc « Couverture » du planning et aperçu du recalcul, sur un vrai téléphone 390 px.
-   Les dates sont calculées depuis la vraie date du navigateur : le test ne vieillit pas. */
+   Les dates sont calculées depuis l'horloge figée du navigateur (FIXED_NOW) : le scénario est
+   déterministe, quel que soit le jour où le test s'exécute. */
 async function seed(page){
   return page.evaluate(()=>{
     const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');

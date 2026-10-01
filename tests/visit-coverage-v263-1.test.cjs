@@ -195,12 +195,21 @@ function weeklySector(){
     assert.ok(ids(plan.Jeudi).includes('E')&&ids(plan.Mardi).includes('F'),'chaque rendez-vous sur son jour : '+DAYS.map(d=>d+'='+ids(plan[d]).join(',')).join(' '));
   });
 
-  await scenario('b6 — V211 : rendez-vous un jour non travaillé → pas déplacé sur un autre jour malgré la garde',async()=>{
-    const t=rangeEnv(Object.assign({today:FRIDAY,weekDate:'2026-09-28',target:4,days:['Lundi','Mardi','Mercredi','Vendredi']},appointmentSector(false)));
+  /* Contrat P0.3 : un rendez-vous dont le jour n'est pas travaillé n'est jamais rendu au vivier
+     libre — la génération est refusée avant toute proposition, le planning d'entrée reste intact. */
+  await scenario('b6 — V211 : rendez-vous un jour non travaillé → génération refusée, E jamais placé un autre jour, planning d’entrée inchangé',async()=>{
+    const sector=appointmentSector(false),by=id=>sector.stores.find(s=>s.id===id);
+    const plan=Object.assign(emptyPlan(),{Lundi:[by('L1')],Mardi:[by('L2')],Vendredi:[by('L3')]});
+    const t=rangeEnv(Object.assign({today:FRIDAY,weekDate:'2026-09-28',target:4,days:['Lundi','Mardi','Mercredi','Vendredi'],plan:copy(plan),archive:{'2026-09-28':{weekMonday:'2026-09-28',plan:copy(plan)}}},sector));
+    const planBefore=JSON.stringify(t.state.plan),archiveBefore=t.ctx.__chefStorage.getItem(ARCHIVE_KEY);
     const r=await t.ctx.testV2631.strictSingleWeek();
-    assert.equal(r.ok,true,r.error);
-    const plan=t.proposals[0].plan;
-    assert.ok(!weekIds(plan).includes('E'),'E visité il y a 3 j, rendez-vous un jeudi non travaillé : il ne doit pas être posé un autre jour ('+DAYS.map(d=>d+'='+ids(plan[d]).join(',')).join(' ')+')');
+    assert.equal(r.ok,false,'E a un rendez-vous un jeudi non travaillé : la génération doit être refusée ('+JSON.stringify(r)+')');
+    assert.match(String(r.error||''),/rendez-vous/,'le refus nomme le rendez-vous : '+r.error);
+    assert.match(String(r.error||''),/n’est pas disponible/,'le refus dit que ce jour est indisponible : '+r.error);
+    assert.equal(t.proposals.length,0,'aucune proposition ChefReliability.propose');
+    assert.ok(!weekIds(t.state.plan).includes('E'),'E n’est placé sur aucun autre jour');
+    assert.equal(JSON.stringify(t.state.plan),planBefore,'le planning d’entrée reste inchangé');
+    assert.equal(t.ctx.__chefStorage.getItem(ARCHIVE_KEY),archiveBefore,'l’archive d’entrée reste inchangée');
   });
 
   await scenario('c — cycle : hebdo visité vendredi, bloqué lundi mais proposé plus tard dans la même semaine, jamais un jour bloqué',async()=>{

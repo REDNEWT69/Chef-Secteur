@@ -69,27 +69,27 @@
         }
       },
       "sector-80-saturday-off": {
-        "description": "80 magasins, historique réaliste et contraintes dures combinées, samedi désactivé",
+        "description": "80 magasins, historique réaliste et contraintes dures combinées, samedi désactivé ; plan figé remesuré sur 6368be0 avec la semaine manuelle stricte P0.3 (plus de complément V242)",
         "storeCount": 80,
         "history": "realistic",
         "saturday": false,
         "maxCreditsPerDay": 4,
         "metrics": {
-          "visits": 33,
-          "coveredStores": 31,
-          "dueCovered": 29,
+          "visits": 26,
+          "coveredStores": 24,
+          "dueCovered": 22,
           "dueTotal": 76,
-          "urgentCovered": 14,
+          "urgentCovered": 12,
           "urgentTotal": 16,
-          "neverCovered": 1,
+          "neverCovered": 0,
           "neverTotal": 13,
-          "kilometers": 3806.5,
-          "driveMinutes": 4152.5,
+          "kilometers": 3544.3,
+          "driveMinutes": 3866.5,
           "violations": 0,
           "crossDayApplied": true,
-          "signature": "dc30f653"
+          "signature": "79361009"
         },
-        "forecast": { "late": 27, "never": 12, "overdueDays": 1252 },
+        "forecast": { "late": 33, "never": 13, "overdueDays": 1339 },
         "archive": { "weekKeys": ["2026-09-28", "2026-10-05", "2026-10-12"], "manualWeeks": ["2026-10-05"] },
         "range": {
           "start": "2026-09-28",
@@ -106,17 +106,17 @@
             "Samedi": []
           },
           "2026-10-05": {
-            "Lundi": ["s70", "s7", "s18"],
-            "Mardi": ["s71", "s54", "s78", "s55"],
-            "Mercredi": ["s72", "s2", "s6", "s12"],
-            "Jeudi": ["s73", "s3"],
+            "Lundi": ["s70", "s7"],
+            "Mardi": ["s71"],
+            "Mercredi": ["s72"],
+            "Jeudi": ["s73"],
             "Vendredi": ["s74"],
             "Samedi": []
           },
           "2026-10-12": {
-            "Lundi": ["s33", "s26", "s7"],
-            "Mardi": ["s9", "s69"],
-            "Mercredi": ["s45", "s14", "s8"],
+            "Lundi": ["s6", "s2", "s7", "s78"],
+            "Mardi": ["s9", "s54"],
+            "Mercredi": ["s33", "s18", "s8"],
             "Jeudi": [],
             "Vendredi": [],
             "Samedi": []
