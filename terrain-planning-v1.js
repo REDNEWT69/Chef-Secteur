@@ -278,6 +278,12 @@ function constraintRefusal(store,kind,day,date){
   const d=parseISO(date),name=(((store&&store.enseigne)||'Magasin')+' '+((store&&store.ville)||'')).trim(),when=day.toLowerCase()+(d?' '+pad(d.getDate())+'/'+pad(d.getMonth()+1):'');
   return new Error(name+(kind==='rendez-vous'?' a un rendez-vous le ':' est verrouillé sur le ')+when+', mais ce jour n’est pas disponible. Le planning précédent est conservé.');
 }
+/* P0.4-B2 — rendez-vous contredit par une semaine retouchée à la main : le magasin y est posé
+   un autre jour (placedOn) ou n'y figure pas. */
+function manualAppointmentRefusal(store,day,date,weekKey,placedOn){
+  const d=parseISO(date),w=parseISO(weekKey),name=(((store&&store.enseigne)||'Magasin')+' '+((store&&store.ville)||'')).trim(),when=day.toLowerCase()+(d?' '+pad(d.getDate())+'/'+pad(d.getMonth()+1):'');
+  return new Error(name+' a un rendez-vous le '+when+', mais la semaine du '+(w?pad(w.getDate())+'/'+pad(w.getMonth()+1):weekKey)+' a été modifiée manuellement et '+(placedOn.length?'place déjà ce magasin le '+placedOn.map(x=>x.toLowerCase()).join(' et le '):'ne contient pas ce magasin')+'. Le planning précédent est conservé.');
+}
 function safeDistance(a,b,distanceFn){
   try{const d=Number((distanceFn||root.hav)(a,b));return Number.isFinite(d)?d:Infinity}catch(e){return Infinity}
 }
@@ -664,6 +670,13 @@ function buildThreeWeekSnail(options){
     return needMemo.get(k);
   };
   const recentlySkipped=new Set();
+  /* P0.4-C3 — semaines retouchées à la main dans les 3 semaines du cycle. Leurs magasins y sont
+     réservés : la sélection libre d'une semaine antérieure du cycle ne les prend pas. Rien n'est
+     compté d'avance dans used : un magasin réservé n'entre dans le cycle qu'avec sa semaine.
+     RDV, verrous et imposés restent des contraintes explicites, honorées comme avant. */
+  const reservedUntil=new Map();
+  for(let wi=0;wi<3;wi++){const key=iso(addDays(first,wi*7)),manual=protectedPlanFor(key,state,archive);if(manual)for(const s of flattenPlan(manual)){const k=s&&storeKey(s);if(k&&!(reservedUntil.get(k)>key))reservedUntil.set(k,key)}}
+  const reservedLater=(k,weekKey)=>{const until=reservedUntil.get(k);return !!until&&until>weekKey};
   for(let wi=0;wi<3;wi++){
     const mon=addDays(first,wi*7),weekKey=iso(mon),protectedPlan=protectedPlanFor(weekKey,state,archive),ref=refOf(mon);
     const dateOf=day=>iso(addDays(mon,DAYS.indexOf(day)));
@@ -671,6 +684,16 @@ function buildThreeWeekSnail(options){
     /* P0.3 — une vraie retouche utilisateur est figée telle quelle : ni complément, ni retrait,
        ni déplacement, ni réordonnancement. Elle compte toujours dans le cycle (used, diagnostics). */
     if(protectedPlan){
+      /* P0.4-B2 — la retouche et le rendez-vous sont deux intentions explicites. Si le magasin
+         est déjà posé le jour exact de son rendez-vous, la semaine reste figée telle quelle ;
+         posé un autre jour ou absent, aucune des deux ne gagne en silence : le cycle est
+         refusé avant toute application. Une journée déjà passée n'est pas jugée. */
+      for(const s of ranked){
+        const ad=apptFor(s.id,mon);
+        if(!ad||!DAYS.includes(ad)||frozenSet.has(ad)||(today&&dateOf(ad)<today))continue;
+        const placedOn=DAYS.filter(d=>(protectedPlan[d]||[]).some(x=>String(x&&x.id)===String(s.id)));
+        if(!placedOn.includes(ad))throw manualAppointmentRefusal(s,ad,dateOf(ad),weekKey,placedOn);
+      }
       for(const s of flattenPlan(protectedPlan))used.add(storeKey(s));
       const diagnostics=weekDistributionDiagnostics({mon,days,activeDays:days,plan:protectedPlan,target,max,ranked,used,weekPlaced:new Set(flattenPlan(protectedPlan).map(storeKey)),credit,fits,manual:true,frozenDays});
       weeks.push({weekKey,plan:protectedPlan,manual:true,unplaced:[],diagnostics,frozenDays});
@@ -762,13 +785,13 @@ function buildThreeWeekSnail(options){
          déjà utilisé récemment n'est plus reproposé tant qu'il reste un magasin frais. */
       for(const s of group){
         if(count()>=target)break;
-        const k=storeKey(s);if(used.has(k)||weekPlaced.has(k)||memory.usedKeys.has(k))continue;
+        const k=storeKey(s);if(used.has(k)||weekPlaced.has(k)||memory.usedKeys.has(k)||reservedLater(k,weekKey))continue;
         if(!place(s))unplaced.push(s);
       }
       /* V243 — palier 2 « rotation » : on reprend ceux déjà utilisés, du moins récemment
          vu au plus récemment vu, pour qu'aucun magasin ne reste durablement hors rotation. */
       if(count()<target){
-        const due=sortByLeastRecentlyUsed(group.filter(s=>{const k=storeKey(s);return !used.has(k)&&!weekPlaced.has(k)}),memory);
+        const due=sortByLeastRecentlyUsed(group.filter(s=>{const k=storeKey(s);return !used.has(k)&&!weekPlaced.has(k)&&!reservedLater(k,weekKey)}),memory);
         for(const s of due){
           if(count()>=target)break;
           if(!place(s))unplaced.push(s);

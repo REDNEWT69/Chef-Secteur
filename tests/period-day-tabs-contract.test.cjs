@@ -247,4 +247,116 @@ assert.equal(box.innerHTML,ownedHtml,'le rendu historique ne doit pas réécrire
 world.tabs().forEach((tab,i)=>assert.equal(tab,initialTabs[i],'le rendu historique ne doit détruire aucun onglet'));
 assert.equal(box.scrollLeft,412,'le rendu historique ne doit pas remettre le défilement à zéro');
 
-console.log('PASS: #dayTabs a quatre écrivains et un seul propriétaire · le message de semaine vide suit la bande, l’étoile hôtel suit la date de l’onglet sans réécrire le DOM, la lune du découché reste unique et à sa date, masquer un jour ne retire pas son onglet, et rien de tout cela ne reconstruit la bande.');
+// --- 7. Un jour décoché qui porte encore des visites (P0.4-B1.1) ---------------------
+// Décocher un jour le retire des prochaines générations (state.settings.days), pas de
+// l'affichage : tant qu'il porte des visites dans sa semaine, son onglet reste dans la
+// bande, s'ouvre, et le noyau affiche bien sa journée. Un jour décoché vide disparaît.
+// Monde neuf, sur les vrais modules : la bande (period-day-slider.js), le masquage
+// (workdays-enforcer.js) et le bloc planning du noyau (renderDayTabs, selectPlanningDay,
+// renderWeek, daySchedule). Qu'aucun moteur ne pose de visite libre un jour décoché reste
+// prouvé par F1 de tests/planning-engine-final-p04.test.cjs ; ici, rien ne touche à
+// state.settings.days, que ces moteurs lisent.
+{
+  const W1='2026-11-09',W2='2026-11-16',WORK=['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],NO_WED=['Lundi','Mardi','Jeudi','Vendredi'];
+  const shop=id=>({id,enseigne:'Fnac',ville:'Ville-'+id,adresse:'',lat:45.75,lon:4.85});
+  const weekPlan=o=>Object.assign(EMPTY_PLAN(),o);
+  const w1=weekPlan({Lundi:[shop('a')],Mercredi:[shop('c'),shop('d')],Jeudi:[shop('e')]}),w2=weekPlan({Mercredi:[shop('f')],Vendredi:[shop('b')]});
+  const data={
+    /* Période de trois semaines générée quand le mercredi était encore travaillé ; la
+       semaine du 23/11 n'a aucune visite le mercredi. */
+    [RANGE]:JSON.stringify({start:W1,end:'2026-11-27',workDays:WORK}),
+    [ARCHIVE]:JSON.stringify({[W1]:{weekMonday:W1,plan:w1},[W2]:{weekMonday:W2,plan:w2}})
+  };
+  const storage=d=>({getItem:k=>Object.prototype.hasOwnProperty.call(d,k)?d[k]:null,setItem(k,v){d[k]=String(v)},removeItem(k){delete d[k]}});
+  const st={profile:{overnightMode:'never'},settings:{days:WORK.slice(),weekDate:W1,brands:[],visitMinutes:45},
+    stores:['a','b','c','d','e','f'].map(shop),plan:JSON.parse(JSON.stringify(w1)),calendarEvents:[],appointments:[],excluded:{},included:{},locks:{}};
+  const dom2=createFakeDom(),doc2=dom2.document,weekInput={value:W1};
+  const panel2=doc2.createElement('div');panel2.id='planPanel';panel2.classList.add('active');
+  const band=doc2.createElement('div');band.id='dayTabs';panel2.appendChild(band);
+  const timeline2=doc2.createElement('div');timeline2.id='week';panel2.appendChild(timeline2);
+  dom2.registry.set('weekDate',weekInput);
+  const c2={
+    state:st,console,Date:FrozenDate,JSON,Object,Array,String,Number,Math,Map,Set,Intl,RegExp,Boolean,
+    setTimeout(){return 0},clearTimeout(){},requestAnimationFrame(){return 0},
+    localStorage:storage(data),__chefStorage:storage(data),sessionStorage:storage({}),
+    save(){},renderAll(){},addEventListener(){},removeEventListener(){},getComputedStyle:()=>({}),
+    MutationObserver:function(){this.observe=()=>{};this.disconnect=()=>{}},
+    CustomEvent:function(type,opts){return{type,detail:opts&&opts.detail}},
+    /* Dépendances globales du bloc planning, hors de ce qui est éprouvé ici. */
+    DAYS:['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'],esc:v=>String(v),hav:()=>8,baseObj:()=>({lat:45.76,lon:4.84}),
+    todayISO:()=>W1,dayStartTime:()=>'08:30',calendarEventsForDate:()=>[],brandClass:()=>'brandFnac',lockDayNow:()=>'',goTab(){},
+    document:doc2,window:null
+  };
+  c2.window=c2;
+  const coreBlock=fs.readFileSync(ROOT+'/src/chef-secteur.html','utf8').match(/<script id="v37-apple-planning-js">\n([\s\S]*?)<\/script>/);
+  assert(coreBlock,'le bloc planning du noyau (v37-apple-planning-js) doit rester identifiable');
+  const coreSrc=coreBlock[1].replace(/\}\)\(\);\s*$/,'window.__corePlanning={get selectedPlanningDay(){return selectedPlanningDay}};})();');
+  assert.notEqual(coreSrc,coreBlock[1],'le bloc planning doit rester une IIFE dont le test peut lire le jour sélectionné');
+  vm.runInNewContext(coreSrc,c2);
+  vm.runInNewContext(expose('period-day-slider.js','window.__periodTest={renderTabs,loadDate};'),c2);
+  vm.runInNewContext(expose('workdays-enforcer.js','window.__workdaysTest={filterTabs};'),c2);
+  const bandSlider=c2.__periodTest,bandMask=c2.__workdaysTest,corePlanning=c2.__corePlanning;
+  const tabs=()=>band.children.filter(t=>t.classList.contains('periodDayTab'));
+  const shown=()=>tabs().filter(t=>t.style.display!=='none');
+  const wednesdays=list=>list.map(t=>t.dataset.date).filter(d=>new Date(d+'T12:00:00').getDay()===3);
+
+  // A. Avant le décochage, la période compte trois mercredis.
+  assert.equal(bandSlider.renderTabs(),true);
+  assert.deepEqual(wednesdays(tabs()),['2026-11-11','2026-11-18','2026-11-25'],'avant le décochage, la bande compte trois mercredis');
+  // L'utilisateur décoche le mercredi : le masquage cache aussitôt le seul mercredi vide…
+  st.settings.days=NO_WED.slice();
+  bandMask.filterTabs();
+  assert.deepEqual(wednesdays(shown()),['2026-11-11','2026-11-18'],'après décochage, les mercredis qui portent des visites restent visibles et le 25/11 vide est masqué');
+  // … et la bande reconstruite ne recrée que les mercredis qui portent des visites.
+  assert.equal(bandSlider.renderTabs(),true);
+  assert.deepEqual(wednesdays(tabs()),['2026-11-11','2026-11-18'],'la bande reconstruite garde le 11/11 (c, d) et le 18/11 (f) sans réintroduire le 25/11 vide');
+  assert.equal(tabs().length,14,'trois semaines de quatre jours travaillés, plus les deux mercredis planifiés');
+  assert.equal(shown().length,14,'aucun onglet de la bande reconstruite n’est masqué');
+  // Même chose quand la période a été régénérée sans le mercredi : ses jours travaillés ne le
+  // comptent plus, mais les mercredis encore planifiés gardent leur onglet.
+  data[RANGE]=JSON.stringify({start:W1,end:'2026-11-27',workDays:NO_WED});
+  const period=data[RANGE];
+  assert.equal(bandSlider.renderTabs(),true);
+  assert.deepEqual(wednesdays(tabs()),['2026-11-11','2026-11-18'],'après une génération sans le mercredi, les mercredis planifiés restent dans la bande');
+  assert.equal(tabs().length,14);
+
+  // B. Ouvrir le mercredi 11/11 : le noyau garde Mercredi et affiche c et d.
+  assert.equal(bandSlider.loadDate(new Date('2026-11-11T12:00:00')),true,'un mercredi décoché qui porte des visites doit s’ouvrir');
+  assert.equal(corePlanning.selectedPlanningDay,'Mercredi','le noyau doit garder le mercredi sélectionné au lieu de revenir au lundi');
+  assert.equal(c2.selectedPlanningDay,'Mercredi');
+  assert.match(timeline2.innerHTML,/openStoreQuick\('c','Mercredi'/,'la journée affichée doit être celle du mercredi : c');
+  assert.match(timeline2.innerHTML,/openStoreQuick\('d','Mercredi'/,'la journée affichée doit être celle du mercredi : d');
+  assert.doesNotMatch(timeline2.innerHTML,/openStoreQuick\('a'/,'la journée du lundi ne doit pas s’afficher à la place du mercredi');
+
+  // C. Ouvrir le mercredi 18/11 : semaine suivante, f affiché.
+  assert.equal(bandSlider.loadDate(new Date('2026-11-18T12:00:00')),true,'le mercredi 18/11, planifié dans l’archive, doit s’ouvrir');
+  assert.equal(st.settings.weekDate,W2);
+  assert.equal(corePlanning.selectedPlanningDay,'Mercredi');
+  assert.match(timeline2.innerHTML,/openStoreQuick\('f','Mercredi'/,'la journée du 18/11 doit afficher f');
+
+  // D. Le mercredi 25/11, décoché et vide : ni onglet, ni ouverture, rien de modifié.
+  const kept=JSON.stringify({plan:st.plan,week:st.settings.weekDate});
+  assert.equal(bandSlider.loadDate(new Date('2026-11-25T12:00:00')),false,'un mercredi décoché et vide doit être refusé');
+  assert.equal(JSON.stringify({plan:st.plan,week:st.settings.weekDate}),kept,'un refus ne doit rien changer');
+  assert.equal(tabs().some(t=>t.dataset.date==='2026-11-25'),false,'aucun onglet pour le mercredi 25/11 vide');
+  // Une sélection restée sur un mercredi décoché et vide (semaine du 23/11) revient au
+  // premier jour travaillé, comme avant.
+  assert.equal(bandSlider.loadDate(new Date('2026-11-23T12:00:00')),true);
+  c2.selectPlanningDay('Mercredi');
+  assert.equal(corePlanning.selectedPlanningDay,'Lundi','décoché et vide, le mercredi rend la main au premier jour travaillé');
+  assert.match(timeline2.innerHTML,/Aucune visite pour Lundi/);
+  // Onglets historiques du noyau, sans bande de période : même règle d'affichage.
+  band.innerHTML='';delete band.dataset.periodSliderOwner;
+  c2.renderWeek();
+  assert.doesNotMatch(band.innerHTML,/selectPlanningDay\('Mercredi'\)/,'semaine du 23/11 : pas d’onglet pour un mercredi décoché vide');
+  st.plan=JSON.parse(JSON.stringify(w1));st.settings.weekDate=W1;weekInput.value=W1;
+  c2.selectPlanningDay('Mercredi');
+  assert.deepEqual((band.innerHTML.match(/selectPlanningDay\('\w+'\)/g)||[]).map(x=>x.slice(19,-2)),['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],'semaine du 09/11 : le mercredi planifié garde sa place dans l’ordre naturel');
+  assert.equal(corePlanning.selectedPlanningDay,'Mercredi');
+
+  // E. Rien de tout cela ne rend le mercredi à la génération.
+  assert.deepEqual(st.settings.days,NO_WED,'state.settings.days reste sans Mercredi');
+  assert.equal(data[RANGE],period,'la bande n’écrit jamais la période');
+}
+
+console.log('PASS: #dayTabs a quatre écrivains et un seul propriétaire · le message de semaine vide suit la bande, l’étoile hôtel suit la date de l’onglet sans réécrire le DOM, la lune du découché reste unique et à sa date, masquer un jour ne retire pas son onglet, et rien de tout cela ne reconstruit la bande · un jour décoché qui porte des visites garde son onglet, s’ouvre et s’affiche, un jour décoché vide disparaît (B1.1).');

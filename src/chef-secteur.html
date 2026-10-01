@@ -635,9 +635,14 @@ setTimeout(function(){try{applyAppointmentsToPlan();save();renderAll();decorateW
   }
   function dotClass(s){return brandClass(s.enseigne)+'-dot'}
   function renderDayTabs(){
-    var days=(state.settings&&state.settings.days)||DAYS;
+    /* P0.4-B1.1 — affichage seulement : les jours travaillés, plus tout jour décoché qui
+       porte encore des visites dans state.plan, dans l'ordre naturel de la semaine. Un jour
+       décoché vide n'est pas affiché ; state.settings.days, qui décide des générations,
+       n'est jamais modifié ici. Un jour sélectionné décoché et vide revient au premier jour
+       travaillé, comme avant. */
+    var worked=(state.settings&&state.settings.days)||DAYS,days=DAYS.filter(function(d){return worked.indexOf(d)>=0||((state.plan&&state.plan[d])||[]).length>0});
     if(!days.length)return;
-    if(!selectedPlanningDay||days.indexOf(selectedPlanningDay)<0)selectedPlanningDay=days[0];
+    if(!selectedPlanningDay||days.indexOf(selectedPlanningDay)<0)selectedPlanningDay=days.filter(function(d){return worked.indexOf(d)>=0})[0]||days[0];
     var el=document.getElementById('dayTabs'); if(!el)return;
     /* La bande de période (period-day-slider.js) prend en charge #dayTabs : elle pose
        le marqueur periodSliderOwner une fois ses onglets réellement écrits. Continuer à
@@ -680,8 +685,10 @@ setTimeout(function(){try{applyAppointmentsToPlan();save();renderAll();decorateW
 
   window.renderWeek=function(){
     renderDayTabs(); renderPlanMetrics();
-    var days=(state.settings&&state.settings.days)||DAYS;
-    if(!selectedPlanningDay||days.indexOf(selectedPlanningDay)<0)selectedPlanningDay=days[0];
+    /* P0.4-B1.1 — même liste d'affichage que renderDayTabs : un jour décoché qui porte
+       encore des visites reste sélectionné et sa journée s'affiche avec ses actions. */
+    var worked=(state.settings&&state.settings.days)||DAYS,days=DAYS.filter(function(d){return worked.indexOf(d)>=0||((state.plan&&state.plan[d])||[]).length>0});
+    if(!selectedPlanningDay||days.indexOf(selectedPlanningDay)<0)selectedPlanningDay=days.filter(function(d){return worked.indexOf(d)>=0})[0]||days[0];
     var rows=daySchedule(selectedPlanningDay),h='';
     if(!rows.length)h='<div class="timelineEmpty">Aucune visite pour '+esc(selectedPlanningDay)+'.</div>';
     for(var i=0;i<rows.length;i++){

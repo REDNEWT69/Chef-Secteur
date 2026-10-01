@@ -15,6 +15,26 @@
   function currentWorkDays(){try{return ((window.state&&window.state.settings&&window.state.settings.days)||DAYS.slice(0,5)).slice()}catch(e){return DAYS.slice(0,5)}}
   function range(){const r=load(RANGE_KEY);let start=parse(r.start),end=parse(r.end);if(!start||!end){let w=null;try{w=parse(window.state&&window.state.settings&&window.state.settings.weekDate)}catch(e){};w=monday(w||new Date());start=w;end=addDays(w,5)}return{start,end,workDays:Array.isArray(r.workDays)&&r.workDays.length?r.workDays.slice():currentWorkDays()}}
   function resolveStore(x){try{return (state.stores||[]).find(s=>String(s.id)===String(x.id))||x}catch(e){return x}}
+  /* P0.4-B1.1 — décocher un jour le retire des prochaines générations, pas de la bande quand
+     il porte encore des visites : son onglet reste affiché et s'ouvre. Un jour encore coché
+     suit les jours travaillés de la période, comme avant ; un jour décoché n'apparaît que
+     s'il a au moins une visite dans sa semaine (semaine affichée : state.plan ; autres
+     semaines : l'archive). Un jour décoché vide n'est jamais réintroduit ; le dimanche reste
+     hors bande. */
+  function weekKeyOf(v){const d=parse(String(v||'').slice(0,10));return d?iso(monday(d)):''}
+  function dayHasVisits(date,archive){
+    try{
+      const key=iso(monday(date)),name=dayName(date),shown=weekKeyOf(state.settings&&state.settings.weekDate);
+      const plan=key===shown?state.plan:((archive()[key]||{}).plan);
+      return !!(plan&&Array.isArray(plan[name])&&plan[name].length);
+    }catch(e){return false}
+  }
+  function dayShown(date,r,archive){
+    const name=dayName(date);if(name==='Dimanche')return false;
+    if(currentWorkDays().includes(name))return r.workDays.includes(name);
+    return dayHasVisits(date,archive);
+  }
+  function archiveReader(){let cached=null;return()=>cached||(cached=load(ARCHIVE_KEY))}
   function scheduleRender(){if(renderScheduled)return;renderScheduled=true;const run=()=>{renderScheduled=false;renderTabs()};if(typeof requestAnimationFrame==='function')requestAnimationFrame(run);else setTimeout(run,0)}
   function syncPlanningHero(){
     const active=document.querySelector('#dayTabs .periodDayTab.active[data-date]');if(!active)return false;
@@ -52,7 +72,7 @@
   }
   function loadDate(date){
     const a=load(ARCHIVE_KEY),mon=monday(date),key=iso(mon),snap=a[key],name=dayName(date),r=range();
-    if(name==='Dimanche'||!r.workDays.includes(name))return false;
+    if(!dayShown(date,r,()=>a))return false;
     let currentWeek='';try{currentWeek=String((state.settings&&state.settings.weekDate)||'').slice(0,10)}catch(e){}
     const missing=(!snap||!snap.plan)&&key!==currentWeek;
     if(missing){archiveCurrentWeek();state.plan=emptyPlan()}
@@ -113,8 +133,8 @@
     return true;
   }
   function buildEntries(r){
-    const entries=[];let d=new Date(r.start),count=0;
-    while(d<=r.end&&count<100){const name=dayName(d);if(name!=='Dimanche'&&r.workDays.includes(name))entries.push(new Date(d));d=addDays(d,1);count++}
+    const entries=[],archive=archiveReader();let d=new Date(r.start),count=0;
+    while(d<=r.end&&count<100){if(dayShown(d,r,archive))entries.push(new Date(d));d=addDays(d,1);count++}
     return entries;
   }
   function focusTodayIfVisible(now){

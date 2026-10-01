@@ -147,6 +147,29 @@ function visitCredit(s){
   return 1;
 }
 function routeCredits(route){return (route||[]).reduce((n,s)=>n+visitCredit(s),0)}
+/* P0.4-A — horaires d'ouverture. StoreOpeningHoursV1 reste le seul propriétaire de leur
+   résolution (magasin, puis enseigne, puis repli historique) : une liste d'intervalles vide
+   veut dire fermé ce jour-là, un horaire inconnu reste ouvert, exactement comme pour le cycle
+   3 semaines et le recalcul. Un magasin libre n'est jamais posé un jour de fermeture ; un
+   rendez-vous ou un verrou qui l'y impose est une contrainte impossible, refusée avant toute
+   proposition. Sans le module, rien ne change. */
+function closedOn(store,day){
+  try{
+    const api=window.StoreOpeningHoursV1;if(!api||typeof api.intervalsFor!=='function')return false;
+    const canonical=(state.stores||[]).find(s=>String(s&&s.id)===String(store&&store.id))||store,rows=api.intervalsFor(canonical,day,state);
+    return Array.isArray(rows)&&rows.length===0;
+  }catch(e){return false}
+}
+function closedConstraintError(store,appointment,day,dt){
+  const name=(store.enseigne||'Magasin')+' '+(store.ville||''),when=day.toLowerCase()+' '+String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0');
+  return new Error(name+(appointment?' a un rendez-vous le ':' est verrouillé sur le ')+when+', mais le magasin est fermé ce jour-là. Le planning précédent est conservé.');
+}
+/* P0.4-B2 — rendez-vous contredit par une semaine retouchée à la main : le magasin y est posé
+   un autre jour (placedOn) ou n'y figure pas. */
+function manualAppointmentError(store,day,dt,weekKey,placedOn){
+  const mon=parse(weekKey),fmt=d=>String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+  return new Error((store.enseigne||'Magasin')+' '+(store.ville||'')+' a un rendez-vous le '+day.toLowerCase()+' '+fmt(dt)+', mais la semaine du '+(mon?fmt(mon):weekKey)+' a été modifiée manuellement et '+(placedOn.length?'place déjà ce magasin le '+placedOn.map(d=>d.toLowerCase()).join(' et le '):'ne contient pas ce magasin')+'. Le planning précédent est conservé.');
+}
 /* Magasins « posés » : une visite placée ou remplacée à la main par l'utilisateur ne
    doit jamais être déplacée, remplacée ni retirée par la génération automatique. On
    réutilise state.locks, qui porte déjà exactement cette sémantique et que le moteur
@@ -240,7 +263,10 @@ function rotationMemoryV211(pool,weekKey,targetCount,archiveSource){
 }
 function repeatReadinessV211(s,lastUsedWeek,weekIndex){
   const k=storeKey(s),last=lastUsedWeek.get(k);if(last==null)return 0;
-  const elapsed=Math.max(0,(Number(weekIndex)||0-last)*7),perf=performancePriorityV211(s),factor=perf==='P1'?.75:perf==='P2'?.9:1;
+  /* P0.4-C2 — écart réel entre la semaine construite et le dernier passage planifié :
+     (weekIndex − lastUsedWeek) semaines. L'ancienne écriture se lisait
+     Number(weekIndex)||(0−last) et ignorait le dernier passage dès la 2e semaine. */
+  const elapsed=Math.max(0,((Number(weekIndex)||0)-last)*7),perf=performancePriorityV211(s),factor=perf==='P1'?.75:perf==='P2'?.9:1;
   const dueAfter=Math.max(7,Math.round(storeIntervalDaysV211(s)*factor));
   return elapsed/dueAfter
 }
@@ -331,9 +357,12 @@ function rankCandidateDaysV249(plan,days,store){
 }
 function countPlan(plan,days){return (days||DAYS).reduce((n,d)=>n+((plan&&Array.isArray(plan[d]))?plan[d].length:0),0)}
 
-function buildWeekUnique(chosen,days,weekKey){
+function buildWeekUnique(chosen,days,weekKey,done){
   const plan=Object.fromEntries(DAYS.map(d=>[d,[]]));
-  if(!days.length||!chosen.length)return{plan,unplaced:chosen.slice()};
+  /* P0.4-C1 — une visite déjà faite aujourd'hui reste sur aujourd'hui : elle prend sa part du
+     plafond et des horaires avant les magasins libres, sans être jugée comme une contrainte. */
+  const keepDone=()=>{for(const d of Object.keys(done||{}))if(days.includes(d))plan[d]=plan[d].concat(done[d])};
+  if(!days.length||!chosen.length){keepDone();return{plan,unplaced:chosen.slice()}}
   const unique=[],seen=new Set();
   for(const s of chosen){const k=storeKey(s);if(k&&!seen.has(k)){seen.add(k);unique.push(s)}}
   /* Conserver ici l'ordre de sélection (forcé → frais → équilibrage/LRU).
@@ -346,6 +375,7 @@ function buildWeekUnique(chosen,days,weekKey){
     const locked=lockDayForWeek(store.id,weekKey),appointment=appointmentDayForWeek(store.id,weekKey),fixed=(days.includes(appointment)?appointment:'')||locked;
     if(!fixed){free.push(store);continue}
     if(!days.includes(fixed))throw new Error((store.enseigne||'Magasin')+' '+(store.ville||'')+' est verrouillé sur '+fixed+', mais ce jour n’est pas disponible. Le planning précédent est conservé.');
+    if(closedOn(store,fixed))throw closedConstraintError(store,fixed===appointment,fixed,addDays(parse(weekKey),DAYS.indexOf(fixed)));
     plan[fixed].push(store);
   }
   for(const day of days){
@@ -354,6 +384,7 @@ function buildWeekUnique(chosen,days,weekKey){
     plan[day]=optimizeRoute(plan[day]);
     if(plan[day].length&&finish(plan[day],day)>limitFor(day))throw new Error('Les magasins verrouillés sur '+day+' ne tiennent pas dans les horaires. Le planning précédent est conservé.');
   }
+  keepDone();
   const unplaced=[];
   for(const store of free){
     let placed=false;
@@ -362,7 +393,7 @@ function buildWeekUnique(chosen,days,weekKey){
     const cost=visitCredit(store);
     const candidates=rankCandidateDaysV249(plan,days,store);
     for(const day of candidates){
-      if(routeCredits(plan[day])+cost>max)continue;
+      if(closedOn(store,day)||routeCredits(plan[day])+cost>max)continue;
       const route=optimizeRoute((plan[day]||[]).concat([store]));
       if(finish(route,day)<=limitFor(day)){plan[day]=route;placed=true;break}
     }
@@ -379,12 +410,14 @@ function buildWeekUnique(chosen,days,weekKey){
 /* P0.3 — un rendez-vous (prioritaire) ou un verrou daté ou récurrent dont le jour n'est pas
    utilisable dans la semaine générée — non travaillé ou bloqué par l'Agenda — n'est jamais rendu
    au vivier libre : refus contrôlé avant toute proposition. Seuls les jours du périmètre généré
-   sont jugés. Le message du verrou reste celui de buildWeekUnique. */
+   sont jugés. Le message du verrou reste celui de buildWeekUnique.
+   P0.4-A — un jour utilisable où le magasin est fermé est lui aussi impossible : même refus. */
 function ensureExplicitConstraintsUsable(pool,mon,weekKey,usable,start,end){
   for(const s of (pool||[])){
     const id=s&&s.id,appointment=appointmentDayForWeek(id,weekKey),fixed=appointment||lockDayForWeek(id,weekKey);
-    if(!fixed||usable.includes(fixed))continue;
+    if(!fixed)continue;
     const dt=addDays(mon,DAYS.indexOf(fixed));if(dt<start||dt>end)continue;
+    if(usable.includes(fixed)){if(closedOn(s,fixed))throw closedConstraintError(s,!!appointment,fixed,dt);continue}
     const name=(s.enseigne||'Magasin')+' '+(s.ville||'');
     if(appointment)throw new Error(name+' a un rendez-vous le '+fixed.toLowerCase()+' '+String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0')+', mais ce jour n’est pas disponible. Le planning précédent est conservé.');
     throw new Error(name+' est verrouillé sur '+fixed+', mais ce jour n’est pas disponible. Le planning précédent est conservé.');
@@ -435,6 +468,47 @@ function eventBlocksPlanning(e){
    (inferredAway). Sans le module terrain, ou s'il échoue, rien ne change. */
 function dateBlocked(date){try{const terrain=window.StoreRunnerTerrainPlanningV1;if(terrain&&typeof terrain.dateBlocked==='function'&&terrain.dateBlocked(date,state))return true}catch(e){}try{const rows=typeof window.calendarEventsForDate==='function'?window.calendarEventsForDate(date):[];return rows.some(eventBlocksPlanning)}catch(e){return false}}
 function activeDays(mon,days,start,end){return days.filter(day=>{const dt=addDays(mon,DAYS.indexOf(day));return dt>=start&&dt<=end&&!dateBlocked(iso(dt))})}
+/* P0.4-C1 — semaine entamée. Dans la semaine qui contient aujourd'hui, une journée déjà passée
+   est de l'histoire : elle reste exactement telle qu'elle est (ni ajout, ni retrait, ni
+   réordonnancement) et la génération commence aujourd'hui. Aujourd'hui reste recalculable, mais
+   une visite déjà faite aujourd'hui y reste fixée. Visite faite : lecture de visit-coverage.js,
+   comme le cycle 3 semaines. Les autres semaines ne passent jamais par ici. */
+function doneOnReader(){
+  try{const api=window.StoreRunnerVisitCoverage;if(api&&typeof api.visitDays==='function'){const map=api.visitDays(state);return(id,date)=>(map.get(String(id))||[]).includes(date)}}catch(e){}
+  return(id,date)=>{
+    const legacy=state.visits&&state.visits[String(id)];
+    if(legacy&&(String(legacy.lastVisit||'').slice(0,10)===date||(Array.isArray(legacy.history)&&legacy.history.some(d=>String(d||'').slice(0,10)===date))))return true;
+    const rows=state.businessV2&&Array.isArray(state.businessV2.visits)?state.businessV2.visits:[];
+    return rows.some(v=>v&&String(v.storeId)===String(id)&&v.status==='completed'&&String(v.completedDate||'').slice(0,10)===date);
+  };
+}
+function startedWeek(mon,weekKey,existing){
+  const today=iso(new Date());if(iso(monday(parse(today)))!==weekKey)return null;
+  const at=d=>iso(addDays(mon,DAYS.indexOf(d))),doneOn=doneOnReader();
+  const rows=d=>(existing&&Array.isArray(existing[d])?existing[d]:[]).filter(Boolean).map(s=>(state.stores||[]).find(x=>String(x&&x.id)===String(s.id))||s);
+  const frozen=DAYS.filter(d=>at(d)<today),todayName=DAYS.find(d=>at(d)===today)||'',kept={};
+  for(const d of frozen)kept[d]=rows(d);
+  const todayDone=todayName?rows(todayName).filter(s=>doneOn(s.id,today)):[],all=frozen.flatMap(d=>kept[d]).concat(todayDone);
+  return{from:parse(today),frozen,kept,todayName,todayDone,keys:new Set(all.map(storeKey)),count:all.length};
+}
+/* Un magasin déjà sur une journée passée ou fait aujourd'hui n'est pas reproposé dans la semaine ;
+   un magasin dont le rendez-vous ou le verrou tombe sur une journée passée appartient à cette
+   journée : il n'est ni imposé, ni posé un autre jour. */
+function openInStartedWeek(started,s,weekKey){
+  if(started.keys.has(storeKey(s)))return false;
+  const fixed=appointmentDayForWeek(s&&s.id,weekKey)||lockDayForWeek(s&&s.id,weekKey);
+  return !fixed||!started.frozen.includes(fixed);
+}
+/* Journées rendues telles quelles : les journées passées, et les visites faites aujourd'hui quand
+   aujourd'hui n'est pas généré (jour non travaillé, bloqué ou hors période). */
+function keptDays(started,usable){
+  const out={};if(!started)return out;
+  for(const d of started.frozen)out[d]=started.kept[d].slice();
+  if(started.todayDone.length&&!usable.includes(started.todayName))out[started.todayName]=started.todayDone.slice();
+  return out;
+}
+function doneToday(started,usable){return started&&started.todayDone.length&&usable.includes(started.todayName)?{[started.todayName]:started.todayDone.slice()}:null}
+function keepInSnapshot(snap,kept){for(const d of Object.keys(kept))snap.plan[d]=kept[d].map(cloneStore);return snap}
 
 async function strictSingleWeek(){
   if(generationBusy)return{ok:false,busy:true};
@@ -451,16 +525,20 @@ async function strictSingleWeek(){
     showStatus('Synchronisation Google Agenda puis génération de la semaine…');
     const synced=await window.syncGoogleCalendar(true);
     if((!synced||!synced.ok)&&!confirm('Google Agenda n’a pas pu être vérifié. Continuer avec les derniers événements conservés ?'))throw Error('Génération annulée.');
-    const usable=activeDays(mon,days,mon,addDays(mon,6));
-    if(!usable.length)throw new Error('Aucun jour disponible cette semaine. Vérifie les jours travaillés et les indisponibilités Agenda. Le planning précédent est conservé.');
+    /* P0.4-C1 — semaine entamée : la génération commence aujourd'hui (voir startedWeek). */
+    const started=startedWeek(mon,weekKey,state.plan),from=started?started.from:mon;
+    const usable=activeDays(mon,days,from,addDays(mon,6));
+    if(!usable.length)throw new Error(started&&days.every(d=>addDays(mon,DAYS.indexOf(d))<from)?'Les jours travaillés de cette semaine sont déjà passés : génère la semaine suivante. Le planning précédent est conservé.':'Aucun jour disponible cette semaine. Vérifie les jours travaillés et les indisponibilités Agenda. Le planning précédent est conservé.');
     const pool=eligible();if(!pool.length)throw new Error('Aucun magasin actif ne correspond aux filtres. Ouvre « Enseignes » et vérifie la sélection.');
-    ensureExplicitConstraintsUsable(pool,mon,weekKey,usable,mon,addDays(mon,6));
+    ensureExplicitConstraintsUsable(pool,mon,weekKey,usable,from,addDays(mon,6));
     const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
-    const limits=selectionNeed(pool,usable,Number(state.settings.target)||20,max,weekKey);
-    const memory=rotationMemoryV211(pool,weekKey,limits.targetCount),chosen=chooseStores(pool,memory.usedKeys,memory.useCount,memory.lastUsedWeek,limits.targetCount,limits.capacityCredits,weekKey,0,usable),built=buildWeekUnique(chosen,usable,weekKey);ensureForcedPlaced(built,weekKey);const visits=countPlan(built.plan,usable);
+    const open=started?pool.filter(s=>openInStartedWeek(started,s,weekKey)):pool,done=doneToday(started,usable),kept=keptDays(started,usable);
+    const limits=selectionNeed(open,usable,(Number(state.settings.target)||20)-(started?started.count:0),max,weekKey);
+    const memory=rotationMemoryV211(pool,weekKey,limits.targetCount),chosen=chooseStores(open,memory.usedKeys,memory.useCount,memory.lastUsedWeek,limits.targetCount,limits.capacityCredits-(done?routeCredits(done[started.todayName]):0),weekKey,0,usable),built=buildWeekUnique(chosen,usable,weekKey,done);ensureForcedPlaced(built,weekKey);const visits=countPlan(built.plan,usable);
     const credits=usable.reduce((n,d)=>n+routeCredits(built.plan[d]),0);
     if(!visits)throw new Error('0 visite possible avec les réglages actuels. Vérifie l’heure de fin, la durée par magasin et ton point de départ. Le planning précédent est conservé.');
-    const nextArchive=loadArchive();nextArchive[weekKey]=snapshot(mon,mon,addDays(mon,6),built.plan,days);
+    Object.assign(built.plan,kept);
+    const nextArchive=loadArchive();nextArchive[weekKey]=keepInSnapshot(snapshot(mon,mon,addDays(mon,6),built.plan,days),kept);
     if(!await ChefReliability.propose({plan:built.plan,weekDate:iso(mon),archive:nextArchive})){showStatus('Planning précédent conservé.');return{ok:false,cancelled:true}}
     showStatus('Semaine générée : '+visits+' visites · '+credits+' crédit'+(credits>1?'s':'')+' de visite'+(built.unplaced.length?' · '+built.unplaced.length+' non placée'+(built.unplaced.length>1?'s':'')+' faute de créneau':'')+'.');
     return{ok:true,visits,credits,unplaced:built.unplaced.length};
@@ -483,11 +561,34 @@ async function generateRange(){
     const target=Math.max(1,Number(state.settings.target)||20),max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4)),archive=loadArchive(),first=monday(start),last=monday(end),seed=rotationMemoryV211(pool,iso(first),target,archive),usedKeys=seed.usedKeys,useCount=seed.useCount,lastUsedWeek=seed.lastUsedWeek,unique=new Set();
     showStatus('Synchronisation Google Agenda puis génération de la période…');
     const calendarSynced=await syncCalendarRange(first,last);
+    /* P0.4-C3 — semaines retouchées à la main dans la période (mêmes marques que la branche
+       « semaine manuelle » ci-dessous). Leurs magasins y sont réservés : la sélection libre d'une
+       semaine antérieure de la période ne les prend pas. Rien n'est compté d'avance dans
+       usedKeys, useCount ni lastUsedWeek : un magasin réservé n'entre dans la rotation qu'avec sa
+       semaine. RDV, verrous et imposés restent des contraintes explicites, honorées comme avant. */
+    const reservedUntil=new Map();
+    for(let m=new Date(first);m<=last;m=addDays(m,7)){
+      const key=iso(m),snap=archive[key],entry=state.manualWeekEdits&&state.manualWeekEdits[key];
+      if(!((snap&&snap.manualEdited)||entry))continue;
+      const manual=(snap&&snap.plan)||(entry&&entry.plan)||{};
+      for(const d of DAYS)for(const s of ((manual&&manual[d])||[])){const k=s&&storeKey(s);if(k&&!(reservedUntil.get(k)>key))reservedUntil.set(k,key)}
+    }
+    const reservedLater=(s,weekKey,usable)=>{const until=reservedUntil.get(storeKey(s));return !!until&&until>weekKey&&!(forcedRank(s,weekKey)>0)&&!usable.includes(appointmentDayForWeek(s&&s.id,weekKey))};
     let mon=new Date(first),weekIndex=0,weeks=0,totalVisits=0,totalCredits=0,totalUnplaced=0;
     while(mon<=last){
       const weekKey=iso(mon),archived=archive[weekKey],manualEntry=state.manualWeekEdits&&state.manualWeekEdits[weekKey],manualState=!!manualEntry;
       if((archived&&archived.manualEdited)||manualState){
         const protectedPlan=(archived&&archived.plan)||(manualEntry&&manualEntry.plan)||{};
+        /* P0.4-B2 — la retouche et le rendez-vous sont deux intentions explicites. Si le magasin
+           est déjà posé le jour exact de son rendez-vous, la semaine reste telle quelle ; posé
+           un autre jour ou absent, aucune des deux ne gagne en silence : refus contrôlé avant
+           toute proposition. Seuls les jours de la période demandée sont jugés. */
+        for(const s of pool){
+          const appt=appointmentDayForWeek(s&&s.id,weekKey);if(!appt||!DAYS.includes(appt))continue;
+          const dt=addDays(mon,DAYS.indexOf(appt));if(dt<start||dt>end)continue;
+          const placedOn=DAYS.filter(d=>((protectedPlan&&protectedPlan[d])||[]).some(x=>String(x&&x.id)===String(s.id)));
+          if(!placedOn.includes(appt))throw manualAppointmentError(s,appt,dt,weekKey,placedOn);
+        }
         if(!archive[weekKey])archive[weekKey]={weekMonday:weekKey,plan:Object.fromEntries(DAYS.map(d=>[d,((protectedPlan&&protectedPlan[d])||[]).map(cloneStore)])),manualEdited:true,manualEditedAt:(manualEntry&&manualEntry.at)||new Date().toISOString()};
         const weekSeen=new Set();
         for(const d of DAYS)for(const s of ((protectedPlan&&protectedPlan[d])||[])){
@@ -495,14 +596,21 @@ async function generateRange(){
         }
         mon=addDays(mon,7);weekIndex++;weeks++;await new Promise(r=>setTimeout(r,10));continue;
       }
-      const usable=activeDays(mon,days,start,end);
-      ensureExplicitConstraintsUsable(pool,mon,weekKey,usable,start,end);
-      if(!usable.length){archive[iso(mon)]=snapshot(mon,start,end,Object.fromEntries(DAYS.map(d=>[d,[]])),days);mon=addDays(mon,7);weekIndex++;weeks++;continue}
-      const limits=selectionNeed(pool,usable,target,max,weekKey);
-      const chosen=chooseStores(pool,usedKeys,useCount,lastUsedWeek,limits.targetCount,limits.capacityCredits,weekKey,weekIndex,usable),built=buildWeekUnique(chosen,usable,weekKey);ensureForcedPlaced(built,weekKey);const plan=built.plan,weekSeen=new Set();
+      /* P0.4-C1 — semaine entamée : la génération commence aujourd'hui (voir startedWeek). La
+         semaine affichée vit dans state.plan, les autres dans l'archive. */
+      const started=startedWeek(mon,weekKey,weekKey===currentWeekKey()?state.plan:(archived&&archived.plan)),from=started&&started.from>start?started.from:start;
+      const usable=activeDays(mon,days,from,end),kept=keptDays(started,usable);
+      ensureExplicitConstraintsUsable(pool,mon,weekKey,usable,from,end);
+      if(!usable.length&&!Object.keys(kept).length){archive[iso(mon)]=snapshot(mon,start,end,Object.fromEntries(DAYS.map(d=>[d,[]])),days);mon=addDays(mon,7);weekIndex++;weeks++;continue}
+      let built={plan:Object.fromEntries(DAYS.map(d=>[d,[]])),unplaced:[]};
+      if(usable.length){
+        const open=started||reservedUntil.size?pool.filter(s=>(!started||openInStartedWeek(started,s,weekKey))&&!reservedLater(s,weekKey,usable)):pool,done=doneToday(started,usable),limits=selectionNeed(open,usable,target-(started?started.count:0),max,weekKey);
+        const chosen=chooseStores(open,usedKeys,useCount,lastUsedWeek,limits.targetCount,limits.capacityCredits-(done?routeCredits(done[started.todayName]):0),weekKey,weekIndex,usable);built=buildWeekUnique(chosen,usable,weekKey,done);ensureForcedPlaced(built,weekKey);
+      }
+      const plan=Object.assign(built.plan,kept),weekSeen=new Set();
       totalUnplaced+=built.unplaced.length;
-      for(const d of usable)for(const s of (plan[d]||[])){const k=storeKey(s);if(!k||weekSeen.has(k))continue;weekSeen.add(k);unique.add(k);usedKeys.add(k);useCount.set(k,(useCount.get(k)||0)+1);lastUsedWeek.set(k,weekIndex);totalVisits++;totalCredits+=visitCredit(s)}
-      archive[iso(mon)]=snapshot(mon,start,end,plan,days);mon=addDays(mon,7);weekIndex++;weeks++;await new Promise(r=>setTimeout(r,10));
+      for(const d of usable.concat(Object.keys(kept)))for(const s of (plan[d]||[])){const k=storeKey(s);if(!k||weekSeen.has(k))continue;weekSeen.add(k);unique.add(k);usedKeys.add(k);useCount.set(k,(useCount.get(k)||0)+1);lastUsedWeek.set(k,weekIndex);totalVisits++;totalCredits+=visitCredit(s)}
+      archive[iso(mon)]=keepInSnapshot(snapshot(mon,start,end,plan,days),kept);mon=addDays(mon,7);weekIndex++;weeks++;await new Promise(r=>setTimeout(r,10));
     }
     if(!totalVisits)throw new Error('La période donnerait 0 visite. Rien n’a été remplacé : vérifie les jours, les horaires et les indisponibilités Agenda.');
     const range={start:iso(start),end:iso(end),weeks,workDays:days,uniqueStores:unique.size,totalVisits,rotation:'pilot-v211',pilotWindowWeeks:seed.windowWeeks,calendarSynced,updatedAt:new Date().toISOString()};

@@ -187,7 +187,7 @@ function mainSector(){
   await scenario('Cas G — semaine modifiée à la main : le complément ne réinjecte pas un magasin sur-visité',async()=>{
     const sector=mainSector(),by=id=>sector.stores.find(s=>s.id===id),manual=emptyPlan();
     manual.Mercredi=[by('L6')];
-    const r=await runThreeWeeks(Object.assign({},sector,{today:FRIDAY,target:6,manualWeekEdits:{'2026-09-28':{at:'2026-09-25T08:00:00Z',plan:manual}}}));
+    const r=await runThreeWeeks(Object.assign({},sector,{today:FRIDAY,target:6,appointments:[],manualWeekEdits:{'2026-09-28':{at:'2026-09-25T08:00:00Z',plan:manual}}}));
     const w=r.weeks[0];
     assert.equal(w.manual,true);
     assert.ok(ids(w.plan.Mercredi).includes('L6'),'le magasin posé à la main reste');

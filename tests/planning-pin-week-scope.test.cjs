@@ -14,7 +14,7 @@ const coreSource=fs.readFileSync(__dirname+'/../src/chef-secteur.html','utf8');
 // --- Garde-fous statiques -----------------------------------------------------------
 assert.match(plannerSource,/function lockDayForWeek\(id,weekKey,source\)/,'la règle des deux formes doit exister en un seul endroit');
 assert.match(plannerSource,/state\.locks\[String\(id\)\]=\{day,week:currentWeekKey\(\)\}/,'une pose doit être datée de la semaine courante');
-assert.match(plannerSource,/function buildWeekUnique\(chosen,days,weekKey\)/,'la construction d’une semaine doit savoir de quelle semaine il s’agit');
+assert.match(plannerSource,/function buildWeekUnique\(chosen,days,weekKey(,done)?\)/,'la construction d’une semaine doit savoir de quelle semaine il s’agit');
 assert.match(plannerSource,/const locked=lockDayForWeek\(store\.id,weekKey\)/,'le verrou appliqué doit être celui de la semaine construite');
 assert.match(plannerSource,/function forcedRank\(s,weekKey\)/,'une pose datée ne doit pas réserver un créneau sur les autres semaines');
 assert.match(plannerSource,/iso\(monday\(weekDate\)\)!==week/,'un objet de pose doit porter un lundi ISO valide, sinon il est refusé');
@@ -40,6 +40,10 @@ assert.match(coreSource,/var lock=lockDayNow\(selected\[i\]\.id\);if\(lock&&grou
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 const WORK=['Lundi','Mardi','Mercredi','Jeudi','Vendredi'];
 
+/* Horloge figée avant les périodes testées (vendredi 04/09/2026) : sans elle, la semaine réelle
+   en cours fige ses journées passées (P0.4-C1) et le résultat dépend du jour d'exécution. */
+const NOW=new Date('2026-09-04T08:00:00');
+class FixedDate extends Date{constructor(...a){super(...(a.length?a:[NOW.getTime()]))}static now(){return NOW.getTime()}}
 function env(options){
   const opts=options||{};
   const workDays=opts.workDays||WORK;
@@ -63,7 +67,7 @@ function env(options){
   };
   const proposals=[],checkpoints=[];
   const ctx={
-    state,console,Date,Map,Set,JSON,Object,Array,String,Number,Math,RegExp,Promise,
+    state,console,Date:FixedDate,Map,Set,JSON,Object,Array,String,Number,Math,RegExp,Promise,
     CustomEvent:class{constructor(type,init){this.type=type;Object.assign(this,init)}},
     localStorage:{getItem:k=>archiveStore[k]||null,setItem(k,v){archiveStore[k]=String(v)},removeItem(k){delete archiveStore[k]}},
     document:{
