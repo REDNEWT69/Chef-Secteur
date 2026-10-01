@@ -56,11 +56,11 @@ function flat(week){
   }
 })();
 
-(function manualWeekKeepsPinnedStoreAndFillsGaps(){
-  // V242 : une semaine protégée qui n'a qu'un seul magasin posé ne doit plus rester
-  // gelée avec quatre jours vides. Le magasin posé reste sur son jour, le reste de la
-  // capacité disponible (jusqu'à target) se remplit avec le vivier normal, sans doublon
-  // avec les deux autres semaines du cycle.
+(function manualWeekStaysStrictlyIdentical(){
+  // P0.3 : une vraie semaine manuelle est figée telle quelle. Le contrat V242 — compléter une
+  // semaine protégée qui n'a qu'un magasin posé — est obsolète : s41 reste seul sur son lundi,
+  // rien n'est ajouté, retiré, déplacé ni réordonné. Les deux autres semaines du cycle
+  // continuent d'utiliser le vivier normalement, sans reprendre le magasin de la semaine manuelle.
   const stores = Array.from({length:50}, (_,i)=>store(i+1));
   const protectedPlan = {Lundi:[stores[40]],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
   const state = {manualWeekEdits:{'2026-09-21':{at:'2026-09-13T00:00:00Z',plan:protectedPlan}}};
@@ -71,12 +71,15 @@ function flat(week){
   });
   const week = built.weeks[1];
   assert.strictEqual(week.manual, true);
-  assert.ok(week.plan.Lundi.some(s=>s.id==='s41'), 's41 doit rester posé sur son jour d’origine');
-  assert.strictEqual(flat(week).length, 10, 'la semaine complétée doit atteindre la cible, pas dépasser la capacité de chaque jour');
-  const ids = flat(week).map(s=>s.id);
-  assert.strictEqual(new Set(ids).size, ids.length, 'aucun doublon à l’intérieur de la semaine complétée');
+  assert.deepStrictEqual(
+    Object.fromEntries(['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'].map(d=>[d,(week.plan[d]||[]).map(s=>s.id)])),
+    {Lundi:['s41'],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]},
+    'la vraie semaine manuelle doit rester strictement identique : s41 seul, le lundi'
+  );
+  assert.strictEqual(flat(week).length, 1, 'aucune visite ajoutée ni retirée dans une vraie semaine manuelle');
+  for(const other of [built.weeks[0], built.weeks[2]]) assert.strictEqual(flat(other).length, 10, other.weekKey+' : les autres semaines du cycle utilisent le vivier normalement');
   const all = built.weeks.flatMap(flat).map(s=>s.id);
-  assert.strictEqual(new Set(all).size, all.length, 'le remplissage ne doit pas réutiliser un magasin déjà pris par une autre semaine du cycle');
+  assert.strictEqual(new Set(all).size, all.length, 'le magasin de la semaine manuelle n’est pas repris par une autre semaine du cycle');
 })();
 
 (function fullyLoadedProtectedWeekIsUntouched(){

@@ -376,6 +376,20 @@ function buildWeekUnique(chosen,days,weekKey){
   }
   return{plan,unplaced};
 }
+/* P0.3 — un rendez-vous (prioritaire) ou un verrou daté ou récurrent dont le jour n'est pas
+   utilisable dans la semaine générée — non travaillé ou bloqué par l'Agenda — n'est jamais rendu
+   au vivier libre : refus contrôlé avant toute proposition. Seuls les jours du périmètre généré
+   sont jugés. Le message du verrou reste celui de buildWeekUnique. */
+function ensureExplicitConstraintsUsable(pool,mon,weekKey,usable,start,end){
+  for(const s of (pool||[])){
+    const id=s&&s.id,appointment=appointmentDayForWeek(id,weekKey),fixed=appointment||lockDayForWeek(id,weekKey);
+    if(!fixed||usable.includes(fixed))continue;
+    const dt=addDays(mon,DAYS.indexOf(fixed));if(dt<start||dt>end)continue;
+    const name=(s.enseigne||'Magasin')+' '+(s.ville||'');
+    if(appointment)throw new Error(name+' a un rendez-vous le '+fixed.toLowerCase()+' '+String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0')+', mais ce jour n’est pas disponible. Le planning précédent est conservé.');
+    throw new Error(name+' est verrouillé sur '+fixed+', mais ce jour n’est pas disponible. Le planning précédent est conservé.');
+  }
+}
 function ensureForcedPlaced(built,weekKey){
   const blocked=((built&&built.unplaced)||[]).filter(s=>forcedRank(s,weekKey)>0);
   if(!blocked.length)return;
@@ -440,6 +454,7 @@ async function strictSingleWeek(){
     const usable=activeDays(mon,days,mon,addDays(mon,6));
     if(!usable.length)throw new Error('Aucun jour disponible cette semaine. Vérifie les jours travaillés et les indisponibilités Agenda. Le planning précédent est conservé.');
     const pool=eligible();if(!pool.length)throw new Error('Aucun magasin actif ne correspond aux filtres. Ouvre « Enseignes » et vérifie la sélection.');
+    ensureExplicitConstraintsUsable(pool,mon,weekKey,usable,mon,addDays(mon,6));
     const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
     const limits=selectionNeed(pool,usable,Number(state.settings.target)||20,max,weekKey);
     const memory=rotationMemoryV211(pool,weekKey,limits.targetCount),chosen=chooseStores(pool,memory.usedKeys,memory.useCount,memory.lastUsedWeek,limits.targetCount,limits.capacityCredits,weekKey,0,usable),built=buildWeekUnique(chosen,usable,weekKey);ensureForcedPlaced(built,weekKey);const visits=countPlan(built.plan,usable);
@@ -481,6 +496,7 @@ async function generateRange(){
         mon=addDays(mon,7);weekIndex++;weeks++;await new Promise(r=>setTimeout(r,10));continue;
       }
       const usable=activeDays(mon,days,start,end);
+      ensureExplicitConstraintsUsable(pool,mon,weekKey,usable,start,end);
       if(!usable.length){archive[iso(mon)]=snapshot(mon,start,end,Object.fromEntries(DAYS.map(d=>[d,[]])),days);mon=addDays(mon,7);weekIndex++;weeks++;continue}
       const limits=selectionNeed(pool,usable,target,max,weekKey);
       const chosen=chooseStores(pool,usedKeys,useCount,lastUsedWeek,limits.targetCount,limits.capacityCredits,weekKey,weekIndex,usable),built=buildWeekUnique(chosen,usable,weekKey);ensureForcedPlaced(built,weekKey);const plan=built.plan,weekSeen=new Set();

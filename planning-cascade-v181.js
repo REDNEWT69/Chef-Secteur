@@ -37,6 +37,7 @@ function blocks(e){if(!e)return false;if(e.inferredAway)return true;const text=n
    voit en plus les déplacements déduits (inferredAway). Sans le module terrain, rien ne change. */
 function blocked(date){try{const terrain=window.StoreRunnerTerrainPlanningV1;if(terrain&&typeof terrain.dateBlocked==='function'&&terrain.dateBlocked(date,state))return true}catch(e){}try{return (typeof window.calendarEventsForDate==='function'?window.calendarEventsForDate(date):[]).some(blocks)}catch(e){return false}}
 function fixedError(day,route,max){const actual=actualRouteCredits(route),rows=(route||[]).map(s=>storeName(s)+' ('+actualCredit(s)+')');let m=day+' contient déjà '+actual+' crédit'+(actual>1?'s':'')+' fixe'+(actual>1?'s':'')+(rows.length?' : '+rows.join(' + '):'')+'. Ton maximum est réglé sur '+max+'. ';if(actual>max)m+=(actual<=8?'Passe-le à '+actual+' dans Réglages ou libère une visite. ':'Augmente le maximum dans Réglages si c’est volontaire, ou libère une visite. ');return m+'Rien n’a été changé.'}
+function impossibleError(store,kind,day,date){const d=parse(date),when=day.toLowerCase()+(d?' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'):'');return storeName(store)+(kind==='rendez-vous'?' a un rendez-vous le ':' est verrouillé sur le ')+when+', mais ce jour n’est pas disponible. Rien n’a été changé.'}
 function keyOf(s){const id=storeId(s);return id?'id|'+id:norm(s&&s.enseigne)+'|'+norm(s&&s.ville)+'|'+norm(s&&s.adresse)}
 function stats(archive,start,end){let stores=0,visits=0;const unique=new Set();for(const [key,snap] of Object.entries(archive||{})){const mon=parse((snap&&snap.weekMonday)||key);if(!mon||!snap||!snap.plan)continue;for(let i=0;i<DAYS.length;i++){const date=iso(add(mon,i));if(date<start||date>end)continue;for(const s of snap.plan[DAYS[i]]||[]){stores++;visits+=actualCredit(s);unique.add(keyOf(s))}}}return{stores,visits,uniqueStores:unique.size}}
 function cascadeRange(archive,startWeek,lastWeek,days){const previous=load(RANGE_KEY,null)||{},priorEnd=parse(previous.end),cascadeEnd=add(parse(lastWeek)||parse(startWeek),5),end=iso(priorEnd&&priorEnd>cascadeEnd?priorEnd:cascadeEnd),start=startWeek,startMon=monday(parse(start)),endMon=monday(parse(end)),weeks=Math.max(1,Math.round((endMon-startMon)/604800000)+1),s=stats(archive,start,end);return Object.assign({},previous,{start,end,weeks,workDays:days.slice(),uniqueStores:s.uniqueStores,totalStores:s.stores,totalVisits:s.visits,rotation:'cascade-credit-v181',updatedAt:new Date().toISOString()})}
@@ -147,16 +148,28 @@ function build(){
   source[weekKey]=clone(state.plan||empty());for(const [key,snap] of Object.entries(archive))if(key>weekKey&&snap&&snap.plan&&parse(key))source[key]=clone(snap.plan);
   const userManual={};for(const key of Object.keys(source))userManual[key]=userManualWeek(key,archive,source[key]);
   const weekPlan=key=>weeks[key]||(weeks[key]=empty());
+  /* P0.3 — une vraie retouche utilisateur à venir est une zone fermée : son plan est recopié tel
+     quel, rien n'y est retiré, ajouté, déplacé ni réordonné, et la cascade la traverse sans s'y
+     poser. La semaine affichée, que l'utilisateur demande de recalculer, reste recalculée ; une
+     semaine marquée par un recalcul précédent (recalcOnly) reste ouverte. */
+  const closedWeek=key=>key>weekKey&&(Object.prototype.hasOwnProperty.call(userManual,key)?userManual[key]:userManualWeek(key,archive,(archive[key]&&archive[key].plan)||empty()));
 
   /* V252 : on commence par décrire le planning actuel au lieu de le vider. Une visite
      future valide doit avoir le droit de rester exactement sur son jour ; seules les
      visites réellement incompatibles rejoignent ensuite la cascade. */
   for(const key of Object.keys(source).sort()){
-    const wm=parse(key),plan=source[key]||empty(),seen=new Set();weekPlan(key);entries[key]=[];
+    const wm=parse(key),plan=source[key]||empty(),seen=new Set(),shut=closedWeek(key);entries[key]=[];
+    if(shut)weeks[key]=Object.assign(empty(),clone(plan));else weekPlan(key);
     for(const day of DAYS){const date=dayDate(wm,day);for(let index=0;index<(plan[day]||[]).length;index++){
       const store=plan[day][index],id=storeId(store);if(!id||seen.has(id))return{ok:false,error:'Magasin invalide ou en double dans la semaine du '+key+'. Rien n’a été changé.'};
       seen.add(id);total++;
+      if(shut)continue;
       const done=visitedOn(id,date),appt=appointmentDay(id,wm),lock=lockDay(id,key),fixed=done?day:(appt||lock);
+      /* P0.3 — un rendez-vous (prioritaire) ou un verrou à venir posé sur un jour impossible
+         (non travaillé ou bloqué par l'Agenda) : refus contrôlé avant tout déplacement. Une
+         visite réellement réalisée reste un fait et garde sa priorité historique. */
+      const target=done?'':(appt||lock),targetDate=target?dayDate(wm,target):'';
+      if(target&&targetDate>=today&&(!days.includes(target)||blocked(targetDate)))return{ok:false,error:impossibleError(canonical(store),appt?'rendez-vous':'verrou',target,targetDate)};
       if(done)visited++;else if(appt)appointments++;else if(lock)locks++;
       if(!fixed&&date<today)past++;
       entries[key].push({store,id,key,day,date,index,fixed});
@@ -188,7 +201,7 @@ function build(){
   /* V261.4 : une journée déjà fixée aujourd'hui peut avoir été volontairement chargée
      au-delà du plafond. On la conserve telle quelle, mais elle devient fermée à tout ajout.
      Pour les jours futurs, le seul critère de capacité est le total de crédits métier. */
-  for(const [key,plan] of Object.entries(weeks)){const wm=parse(key);for(const day of DAYS){
+  for(const [key,plan] of Object.entries(weeks)){if(closedWeek(key))continue;const wm=parse(key);for(const day of DAYS){
     const date=dayDate(wm,day),route=plan[day]||[],actual=actualRouteCredits(route),cap=routeCapacity(route);
     if(date<today)continue;
     if(cap>max){if(date===today&&actual>max){overCapacityKept.push({week:key,day,date,actual,max});continue}return{ok:false,error:fixedError(day,route,max)}}
@@ -200,7 +213,7 @@ function build(){
     let cursor=parse(item.date<today?today:item.date),placed=false;
     while(cursor&&cursor<=limit){
       const date=iso(cursor),day=dayName(date);
-      if(day&&days.includes(day)&&!blocked(date)){
+      if(day&&days.includes(day)&&!blocked(date)&&!closedWeek(iso(monday(cursor)))){
         const wk=iso(monday(cursor)),plan=weekPlan(wk),route=plan[day],id=storeId(item.store),trial=route.concat(item.store);
         if(!DAYS.some(d=>plan[d].some(s=>storeId(s)===id))&&routeCapacity(trial)<=max&&routeFits(trial,day,date)){
           route.push(item.store);placed=true;if(date>latest)latest=date;break;
