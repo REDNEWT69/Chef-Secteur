@@ -263,7 +263,10 @@ function rotationMemoryV211(pool,weekKey,targetCount,archiveSource){
 }
 function repeatReadinessV211(s,lastUsedWeek,weekIndex){
   const k=storeKey(s),last=lastUsedWeek.get(k);if(last==null)return 0;
-  const elapsed=Math.max(0,(Number(weekIndex)||0-last)*7),perf=performancePriorityV211(s),factor=perf==='P1'?.75:perf==='P2'?.9:1;
+  /* P0.4-C2 — écart réel entre la semaine construite et le dernier passage planifié :
+     (weekIndex − lastUsedWeek) semaines. L'ancienne écriture se lisait
+     Number(weekIndex)||(0−last) et ignorait le dernier passage dès la 2e semaine. */
+  const elapsed=Math.max(0,((Number(weekIndex)||0)-last)*7),perf=performancePriorityV211(s),factor=perf==='P1'?.75:perf==='P2'?.9:1;
   const dueAfter=Math.max(7,Math.round(storeIntervalDaysV211(s)*factor));
   return elapsed/dueAfter
 }
