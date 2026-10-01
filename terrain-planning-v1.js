@@ -278,6 +278,12 @@ function constraintRefusal(store,kind,day,date){
   const d=parseISO(date),name=(((store&&store.enseigne)||'Magasin')+' '+((store&&store.ville)||'')).trim(),when=day.toLowerCase()+(d?' '+pad(d.getDate())+'/'+pad(d.getMonth()+1):'');
   return new Error(name+(kind==='rendez-vous'?' a un rendez-vous le ':' est verrouillé sur le ')+when+', mais ce jour n’est pas disponible. Le planning précédent est conservé.');
 }
+/* P0.4-B2 — rendez-vous contredit par une semaine retouchée à la main : le magasin y est posé
+   un autre jour (placedOn) ou n'y figure pas. */
+function manualAppointmentRefusal(store,day,date,weekKey,placedOn){
+  const d=parseISO(date),w=parseISO(weekKey),name=(((store&&store.enseigne)||'Magasin')+' '+((store&&store.ville)||'')).trim(),when=day.toLowerCase()+(d?' '+pad(d.getDate())+'/'+pad(d.getMonth()+1):'');
+  return new Error(name+' a un rendez-vous le '+when+', mais la semaine du '+(w?pad(w.getDate())+'/'+pad(w.getMonth()+1):weekKey)+' a été modifiée manuellement et '+(placedOn.length?'place déjà ce magasin le '+placedOn.map(x=>x.toLowerCase()).join(' et le '):'ne contient pas ce magasin')+'. Le planning précédent est conservé.');
+}
 function safeDistance(a,b,distanceFn){
   try{const d=Number((distanceFn||root.hav)(a,b));return Number.isFinite(d)?d:Infinity}catch(e){return Infinity}
 }
@@ -671,6 +677,16 @@ function buildThreeWeekSnail(options){
     /* P0.3 — une vraie retouche utilisateur est figée telle quelle : ni complément, ni retrait,
        ni déplacement, ni réordonnancement. Elle compte toujours dans le cycle (used, diagnostics). */
     if(protectedPlan){
+      /* P0.4-B2 — la retouche et le rendez-vous sont deux intentions explicites. Si le magasin
+         est déjà posé le jour exact de son rendez-vous, la semaine reste figée telle quelle ;
+         posé un autre jour ou absent, aucune des deux ne gagne en silence : le cycle est
+         refusé avant toute application. Une journée déjà passée n'est pas jugée. */
+      for(const s of ranked){
+        const ad=apptFor(s.id,mon);
+        if(!ad||!DAYS.includes(ad)||frozenSet.has(ad)||(today&&dateOf(ad)<today))continue;
+        const placedOn=DAYS.filter(d=>(protectedPlan[d]||[]).some(x=>String(x&&x.id)===String(s.id)));
+        if(!placedOn.includes(ad))throw manualAppointmentRefusal(s,ad,dateOf(ad),weekKey,placedOn);
+      }
       for(const s of flattenPlan(protectedPlan))used.add(storeKey(s));
       const diagnostics=weekDistributionDiagnostics({mon,days,activeDays:days,plan:protectedPlan,target,max,ranked,used,weekPlaced:new Set(flattenPlan(protectedPlan).map(storeKey)),credit,fits,manual:true,frozenDays});
       weeks.push({weekKey,plan:protectedPlan,manual:true,unplaced:[],diagnostics,frozenDays});

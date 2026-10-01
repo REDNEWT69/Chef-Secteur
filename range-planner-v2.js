@@ -164,6 +164,12 @@ function closedConstraintError(store,appointment,day,dt){
   const name=(store.enseigne||'Magasin')+' '+(store.ville||''),when=day.toLowerCase()+' '+String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0');
   return new Error(name+(appointment?' a un rendez-vous le ':' est verrouillé sur le ')+when+', mais le magasin est fermé ce jour-là. Le planning précédent est conservé.');
 }
+/* P0.4-B2 — rendez-vous contredit par une semaine retouchée à la main : le magasin y est posé
+   un autre jour (placedOn) ou n'y figure pas. */
+function manualAppointmentError(store,day,dt,weekKey,placedOn){
+  const mon=parse(weekKey),fmt=d=>String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+  return new Error((store.enseigne||'Magasin')+' '+(store.ville||'')+' a un rendez-vous le '+day.toLowerCase()+' '+fmt(dt)+', mais la semaine du '+(mon?fmt(mon):weekKey)+' a été modifiée manuellement et '+(placedOn.length?'place déjà ce magasin le '+placedOn.map(d=>d.toLowerCase()).join(' et le '):'ne contient pas ce magasin')+'. Le planning précédent est conservé.');
+}
 /* Magasins « posés » : une visite placée ou remplacée à la main par l'utilisateur ne
    doit jamais être déplacée, remplacée ni retirée par la génération automatique. On
    réutilise state.locks, qui porte déjà exactement cette sémantique et que le moteur
@@ -508,6 +514,16 @@ async function generateRange(){
       const weekKey=iso(mon),archived=archive[weekKey],manualEntry=state.manualWeekEdits&&state.manualWeekEdits[weekKey],manualState=!!manualEntry;
       if((archived&&archived.manualEdited)||manualState){
         const protectedPlan=(archived&&archived.plan)||(manualEntry&&manualEntry.plan)||{};
+        /* P0.4-B2 — la retouche et le rendez-vous sont deux intentions explicites. Si le magasin
+           est déjà posé le jour exact de son rendez-vous, la semaine reste telle quelle ; posé
+           un autre jour ou absent, aucune des deux ne gagne en silence : refus contrôlé avant
+           toute proposition. Seuls les jours de la période demandée sont jugés. */
+        for(const s of pool){
+          const appt=appointmentDayForWeek(s&&s.id,weekKey);if(!appt||!DAYS.includes(appt))continue;
+          const dt=addDays(mon,DAYS.indexOf(appt));if(dt<start||dt>end)continue;
+          const placedOn=DAYS.filter(d=>((protectedPlan&&protectedPlan[d])||[]).some(x=>String(x&&x.id)===String(s.id)));
+          if(!placedOn.includes(appt))throw manualAppointmentError(s,appt,dt,weekKey,placedOn);
+        }
         if(!archive[weekKey])archive[weekKey]={weekMonday:weekKey,plan:Object.fromEntries(DAYS.map(d=>[d,((protectedPlan&&protectedPlan[d])||[]).map(cloneStore)])),manualEdited:true,manualEditedAt:(manualEntry&&manualEntry.at)||new Date().toISOString()};
         const weekSeen=new Set();
         for(const d of DAYS)for(const s of ((protectedPlan&&protectedPlan[d])||[])){

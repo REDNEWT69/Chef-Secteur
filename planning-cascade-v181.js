@@ -58,6 +58,21 @@ function canStay(plan,store,day,date,max,days){
 function canonical(store){const id=storeId(store);return (state.stores||[]).find(s=>String(s&&s.id)===id)||store}
 function coverageNeed(){try{const api=window.StoreRunnerVisitCoverage;if(api&&typeof api.needOf==='function')return api.needOf(state)}catch(e){}return null}
 function passesFilters(s){try{if(typeof window.includedByFilters==='function')return !!window.includedByFilters(s)}catch(e){}return true}
+/* P0.4-B2 — une vraie retouche à venir (zone fermée) et un rendez-vous sont deux intentions
+   explicites. Pour chaque magasin planifiable qui a un rendez-vous à venir dans cette semaine :
+   déjà posé le jour exact, la semaine reste recopiée telle quelle ; posé un autre jour ou
+   absent, aucune des deux ne gagne en silence et le recalcul est refusé. */
+function manualAppointmentConflict(key,wm,plan,today){
+  for(const s of (state.stores||[])){
+    if(!s||s.active===false||(state.excluded&&state.excluded[s.id])||!passesFilters(s))continue;
+    const id=storeId(s),day=id&&appointmentDay(id,wm);if(!day)continue;
+    const date=dayDate(wm,day);if(date<today)continue;
+    const placedOn=DAYS.filter(d=>(plan[d]||[]).some(x=>storeId(x)===id));if(placedOn.includes(day))continue;
+    const d=parse(date),w=parse(key),fmt=x=>String(x.getDate()).padStart(2,'0')+'/'+String(x.getMonth()+1).padStart(2,'0');
+    return storeName(s)+' a un rendez-vous le '+day.toLowerCase()+' '+fmt(d)+', mais la semaine du '+fmt(w)+' a été modifiée manuellement et '+(placedOn.length?'place déjà ce magasin le '+placedOn.map(x=>x.toLowerCase()).join(' et le '):'ne contient pas ce magasin')+'. Rien n’a été changé.';
+  }
+  return '';
+}
 function distanceBetween(a,b){try{if(typeof window.hav==='function'){const n=Number(window.hav(a,b));if(Number.isFinite(n))return n}}catch(e){}return Infinity}
 function baseDistance(s){try{if(typeof window.havBase==='function'){const n=Number(window.havBase(s));if(Number.isFinite(n))return n}}catch(e){}return Infinity}
 function cohesion(route,s){if(!route||!route.length)return baseDistance(s);let best=Infinity;for(const x of route)best=Math.min(best,distanceBetween(x,s));return best}
@@ -162,6 +177,7 @@ function build(){
      visites réellement incompatibles rejoignent ensuite la cascade. */
   for(const key of Object.keys(source).sort()){
     const wm=parse(key),plan=source[key]||empty(),seen=new Set(),shut=closedWeek(key);entries[key]=[];
+    if(shut){const conflict=manualAppointmentConflict(key,wm,plan,today);if(conflict)return{ok:false,error:conflict}}
     if(shut)weeks[key]=Object.assign(empty(),clone(plan));else weekPlan(key);
     for(const day of DAYS){const date=dayDate(wm,day);for(let index=0;index<(plan[day]||[]).length;index++){
       const store=plan[day][index],id=storeId(store);if(!id||seen.has(id))return{ok:false,error:'Magasin invalide ou en double dans la semaine du '+key+'. Rien n’a été changé.'};

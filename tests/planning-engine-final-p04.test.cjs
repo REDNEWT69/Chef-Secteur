@@ -52,6 +52,9 @@
 // travaillés est prospectif. Décocher un jour le retire des prochaines propositions ; il ne
 // supprime aucune visite déjà planifiée (state.plan, archive, semaine manuelle,
 // state.manualWeekEdits), et l'onglet d'un jour décoché qui porte encore des visites reste visible.
+// Contrat tranché au lot P0.4-B2 (H5, auparavant AMBIGU) : un RDV exact qui contredit une vraie
+// semaine manuelle (magasin posé un autre jour, ou absent) est refusé sans rien écrire ; un RDV
+// déjà respecté par la semaine manuelle la laisse identique.
 const fs = require('fs'), vm = require('vm'), path = require('path');
 
 const ROOT = path.join(__dirname, '..');
@@ -858,18 +861,29 @@ const flatIds = plan => DAYS.flatMap(d => ids(plan && plan[d]));
       const outs = await exercise(c, 'terrain', protect({ stores: sat, weekDate: W0, days: WORK.slice(), target: 6, max: 2, start: W0 }, W1, manualSat), {});
       for (const [mode, out] of Object.entries(outs)) if (!out.crash && !out.refused) c.note(ENGINES.terrain.label + ' (' + mode + ') : 09/11 ' + synced(out.rt, ENGINES.terrain.label + ' (' + mode + ')'));
     });
-    await scenario('H5', 'RDV jeudi 12/11 d’un magasin posé à la main lundi 09/11 dans une semaine manuelle future', 'terrain · V211 période · V181', 'H I', async c => {
-      const st5 = named(['K', 'a', 'b', 'c', 'd', 'e', 'f', 'g']), manualK = planOf(st5, { Lundi: ['K', 'a'] }), w0 = planOf(st5, { Lundi: ['b'], Mardi: ['c'], Mercredi: ['d'], Jeudi: ['e'], Vendredi: ['f'] });
-      const h5 = protect({ stores: st5, weekDate: W0, plan: copy(w0), archive: { [W0]: { weekMonday: W0, plan: copy(w0) } }, target: 5, max: 2, start: W0, rangeStart: W0, rangeEnd: '2026-11-20', appointments: [rdv('K', '2026-11-12')] }, W1, manualK);
-      const seen = [];
-      for (const engine of ['terrain', 'V211p', 'V181']) {
-        c.ran.add(ENGINES[engine].label);
-        const out = await runEngine(engine, h5, 'brut');
-        if (out.crash) { c.fail('—', 11, ENGINES[engine].label, 'crash ' + out.crash.type + ' « ' + out.crash.message + ' »'); continue; }
-        const week = out.archive[W1] ? out.archive[W1].plan : (out.written[W1] || emptyPlan());
-        seen.push(ENGINES[engine].label + ' : ' + (out.refused ? 'refus « ' + out.refused.message + ' »' : 'K ' + DAYS.filter(d => ids(week[d]).includes('K')).map(d => d.toLowerCase()).join(',')));
+    /* Contrat tranché au lot P0.4-B2 (H5, auparavant AMBIGU) : une vraie semaine manuelle et un
+       rendez-vous exact sont deux intentions explicites. Compatibles (le magasin y est déjà le
+       jour du RDV), la semaine reste identique ; contradictoires (autre jour) ou incomplètes
+       (magasin absent), aucune ne gagne en silence : refus contrôlé, planning conservé. */
+    await scenario('H5', 'RDV jeudi 12/11 et semaine manuelle future du 09/11 : K posé le jour du RDV conservé, K posé lundi ou absent refusé sans rien écrire', 'terrain · V211 période · V181', 'H I A', async c => {
+      const st5 = named(['K', 'a', 'b', 'c', 'd', 'e', 'f', 'g']), w0 = planOf(st5, { Lundi: ['b'], Mardi: ['c'], Mercredi: ['d'], Jeudi: ['e'], Vendredi: ['f'] });
+      const fixture = manual => protect({ stores: st5, weekDate: W0, plan: copy(w0), archive: { [W0]: { weekMonday: W0, plan: copy(w0) } }, target: 5, max: 2, start: W0, rangeStart: W0, rangeEnd: '2026-11-20', appointments: [rdv('K', '2026-11-12')] }, W1, manual);
+      const ending = '\\. (Le planning précédent est conservé|Rien n’a été changé)\\.$';
+      const variants = [
+        ['A', 'K posé à la main lundi 09/11, RDV jeudi 12/11', planOf(st5, { Lundi: ['K', 'a'] }), new RegExp('Ville K a un rendez-vous le jeudi 12/11, mais la semaine du 09/11 a été modifiée manuellement et place déjà ce magasin le lundi' + ending)],
+        ['B', 'K posé à la main jeudi 12/11, le jour de son RDV', planOf(st5, { Lundi: ['a'], Jeudi: ['K'] }), null],
+        ['C', 'semaine manuelle sans K, RDV jeudi 12/11', planOf(st5, { Lundi: ['a'] }), new RegExp('Ville K a un rendez-vous le jeudi 12/11, mais la semaine du 09/11 a été modifiée manuellement et ne contient pas ce magasin' + ending)]
+      ];
+      for (const [tag, label, manual, message] of variants) for (const engine of ['terrain', 'V211p', 'V181']) {
+        /* exercise : deux couches, deux exécutions chacune ; un refus attendu doit être contrôlé
+           et n'écrire strictement rien (état et stockage), sinon cause 10. */
+        const outs = await exercise(c, engine, fixture(manual), message ? { expect: 'refus', inv: 'H' } : {});
+        for (const [mode, out] of Object.entries(outs)) {
+          const where = tag + ' · ' + ENGINES[engine].label + ' (' + mode + ')';
+          if (message && out.refused && !message.test(out.refused.message)) c.fail('H', 12, where, label + ' : le refus ne nomme pas le conflit « ' + out.refused.message + ' »');
+          if (!message && !out.refused && !out.crash) c.note(where + ' : ' + label + ' → semaine du 09/11 [' + show(out.written[W1]) + ']');
+        }
       }
-      c.ambiguity('contrats H (semaine manuelle intouchable) et I (RDV exact) en conflit, aucun texte ne les ordonne. Observé, cohérent entre moteurs : ' + seen.join(' · ') + '. La semaine manuelle prime ; le RDV du 12/11 n’y est pas reporté.');
     });
   }
 
