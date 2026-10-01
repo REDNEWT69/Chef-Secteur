@@ -88,6 +88,30 @@ function performancePriorityV211(s){
     return String(row.prio)
   }catch(e){return ''}
 }
+/* Brief hebdomadaire V246 : seule sa contribution `brief` entre dans le besoin, pour la semaine
+   réellement calculée. La priorité structurelle et le P1/P2 y sont déjà comptés : planningPriority()
+   les recompterait tous deux, weekBoost() le P1/P2. StoreRunnerWeeklyBriefV246 reste seul juge des
+   règles (confirmée, sans attente, dans sa fenêtre validFrom/validTo et son périmètre) et rien
+   n'est écrit : ni store.priority, ni le fichier performance, ni weeklyBriefs. Évaluer un magasin
+   apparie tout le fichier performance : pendant une génération, chaque semaine est donc évaluée une
+   seule fois pour tout le secteur (effectivePriorities, même calcul), puis relue. Sans module, sans
+   règle valable ou en cas d'erreur, l'apport est nul et le classement V211 reste celui d'avant. */
+let briefWeeksV211=null;
+function briefContributionV211(s,weekMonday){
+  try{
+    const api=window.StoreRunnerWeeklyBriefV246;
+    if(!api||typeof api.effectivePriority!=='function'||typeof api.isoWeek!=='function'||!s||s.id==null)return 0;
+    const week=api.isoWeek(weekMonday),opts={state,db:storage()};
+    let lot=briefWeeksV211&&briefWeeksV211.get(week);
+    if(!lot&&briefWeeksV211&&typeof api.effectivePriorities==='function'){
+      const all=api.effectivePriorities(week,opts);
+      lot=new Map(((all&&all.rows)||[]).map(r=>[String(r.storeId),r]));
+      briefWeeksV211.set(week,lot);
+    }
+    const r=(lot&&lot.get(String(s.id)))||api.effectivePriority(s,week,opts);
+    return r&&r.week===week?Number(r.contributions&&r.contributions.brief)||0:0;
+  }catch(e){return 0}
+}
 function planningNeedV211(s,weekKey){
   const ref=monday(parse(weekKey)||parse(state.settings&&state.settings.weekDate)||new Date()),last=visitDateV211(s),interval=storeIntervalDaysV211(s),p=Number(s&&s.priority)||3;
   const lastDate=parse(last),age=lastDate?Math.max(0,Math.floor((ref-lastDate)/86400000)):null,ratio=lastDate?age/Math.max(1,interval):5;
@@ -96,6 +120,8 @@ function planningNeedV211(s,weekKey){
   if(st==='priority')value=p*50+ratio*45;
   if(st==='near'){try{value=value-(Number(havBase(s))||0)*.7}catch(e){}}
   const perf=performancePriorityV211(s),boost=performanceBoost(s);value+=boost;
+  /* Le brief pèse sur le score seulement : il départage à palier égal, comme le bonus P1. */
+  const brief=briefContributionV211(s,iso(ref));value+=brief;
   let tier=1;const reasons=[];
   /* V263.3 — même hiérarchie que visit-coverage.js : très en retard (5) › jamais visité
      (4,5) › en retard (4). Le ratio fictif 5 d'un magasin jamais visité ne sert plus qu'au
@@ -110,11 +136,12 @@ function planningNeedV211(s,weekKey){
   else if(perf==='P2'){tier=Math.max(tier,3);value+=40;reasons.unshift('P2')}
   if(p>=5){tier=Math.max(tier,3);reasons.push('priorité forte')}
   else if(p>=4)tier=Math.max(tier,2);
+  if(brief)reasons.push('brief '+(brief>0?'+':'')+brief);
   if(last&&age<Math.min(7,Math.max(3,Math.round(interval*.25)))&&ratio<.5){
     tier=Math.min(tier,perf==='P1'?3:2);value-=120;reasons.push('visité récemment')
   }
   const overdueDays=age==null?null:Math.max(0,age-interval),dueInDays=age==null?null:interval-age;
-  return{tier,score:Math.round(value*10)/10,week:iso(ref),lastVisit:last,intervalDays:interval,ageDays:age,overdueDays,dueInDays,performancePriority:perf,structuralPriority:p,reasons:[...new Set(reasons)]}
+  return{tier,score:Math.round(value*10)/10,week:iso(ref),lastVisit:last,intervalDays:interval,ageDays:age,overdueDays,dueInDays,performancePriority:perf,structuralPriority:p,briefContribution:brief,reasons:[...new Set(reasons)]}
 }
 function compareNeedV211(a,b,weekKey){
   const na=planningNeedV211(a,weekKey),nb=planningNeedV211(b,weekKey);
@@ -512,7 +539,7 @@ function keepInSnapshot(snap,kept){for(const d of Object.keys(kept))snap.plan[d]
 
 async function strictSingleWeek(){
   if(generationBusy)return{ok:false,busy:true};
-  generationBusy=true;
+  generationBusy=true;briefWeeksV211=new Map();
   try{
     const days=readControls(),raw=parse((state.settings&&state.settings.weekDate)||iso(new Date())),mon=monday(raw||new Date());
     const weekKey=iso(mon),archived=loadArchive()[weekKey],manualState=!!(state.manualWeekEdits&&state.manualWeekEdits[weekKey]);
@@ -545,7 +572,7 @@ async function strictSingleWeek(){
   }catch(e){
     const message=e&&e.message?e.message:String(e);showStatus('Génération impossible : '+message,true);
     return{ok:false,__storeRunnerRejectedEmpty:true,error:message};
-  }finally{generationBusy=false}
+  }finally{generationBusy=false;briefWeeksV211=null}
 }
 
 async function generateRange(){
@@ -554,7 +581,7 @@ async function generateRange(){
   if(!start||!end)return showStatus('Choisis une date de début et une date de fin.',true);
   if(end<start)return showStatus('La date de fin doit être après la date de début.',true);
   if(Math.round((end-start)/86400000)+1>93)return showStatus('Limite la génération à 3 mois maximum.',true);
-  const btn=document.getElementById('generateRangeBtn');generationBusy=true;if(btn)btn.disabled=true;
+  const btn=document.getElementById('generateRangeBtn');generationBusy=true;briefWeeksV211=new Map();if(btn)btn.disabled=true;
   try{
     ChefReliability.checkpoint('Avant génération de la période');
     const days=readControls(),pool=eligible();if(!pool.length)throw new Error('Aucun magasin actif ne correspond aux filtres.');
@@ -621,7 +648,7 @@ async function generateRange(){
     if(!await ChefReliability.propose({plan:candidate,weekDate:iso(displayMon),archive,range})){showStatus('Planning précédent conservé.');return}
     showStatus('Période appliquée : '+weeks+' semaines · '+totalVisits+' visites · '+totalCredits+' crédit'+(totalCredits>1?'s':'')+' de visite · '+unique.size+' magasins distincts'+(totalUnplaced?' · '+totalUnplaced+' visite'+(totalUnplaced>1?'s':'')+' non placée'+(totalUnplaced>1?'s':''):'')+' · '+(calendarSynced?'Agenda Google vérifié.':'Agenda Google non vérifié, données conservées utilisées.'));
     window.dispatchEvent(new CustomEvent('chef-range-generated',{detail:{start:iso(start),end:iso(end),weeks,workDays:days,uniqueStores:unique.size}}));
-  }catch(e){showStatus('Erreur pendant la génération : '+(e.message||String(e)),true)}finally{generationBusy=false;if(btn)btn.disabled=false}
+  }catch(e){showStatus('Erreur pendant la génération : '+(e.message||String(e)),true)}finally{generationBusy=false;briefWeeksV211=null;if(btn)btn.disabled=false}
 }
 
 function dayDate(day){const base=monday(parse(state.settings&&state.settings.weekDate)||new Date()),idx=DAYS.indexOf(day);return iso(addDays(base,Math.max(0,idx)))}
