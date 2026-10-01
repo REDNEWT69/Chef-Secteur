@@ -188,9 +188,12 @@ function chainHas(fn,marker){let cur=fn,n=0;while(typeof cur==='function'&&n++<3
    V185 ne rééquilibre rien, ne réordonne rien et n'écrit ni state.plan ni l'archive :
    state.manualWeekEdits reste la seule source de cette semaine et l'ordre manuel tient. */
 function manualWeekV185(key){try{if(state.manualWeekEdits&&state.manualWeekEdits[key])return true;const snap=loadArchive()[key];return !!(snap&&snap.manualEdited)}catch(e){return false}}
+/* P0.4-C1 — semaine entamée : comme pour le cycle 3 semaines, les journées déjà passées de la
+   semaine en cours sont transmises en `frozenDays` et restent exactement telles quelles. Les
+   autres semaines n'en ont aucune. */
 function patchSingleWeekGeography(){
   const original=window.storeRunnerGenerateSingleWeek;if(typeof original!=='function'||chainHas(original,'__v185Geo'))return false;
-  const wrapped=async function(){const previous=window.__storeRunnerPlanningGenerationActive;window.__storeRunnerPlanningGenerationActive=true;try{const out=await original.apply(this,arguments);if(out&&out.ok===true&&state&&state.plan){if(out.preservedManual===true||manualWeekV185(currentWeekKey())){out.geographyOptimized=false;return out}const geo=rebalancePlanByGeography(state.plan,{weekKey:currentWeekKey()});if(geo.ok&&geo.changed)await persistGeoWeek(geo,currentWeekKey(),'single-week-geo-v185');out.geographyOptimized=!!(geo&&geo.ok&&geo.changed)}return out}finally{window.__storeRunnerPlanningGenerationActive=previous}};
+  const wrapped=async function(){const previous=window.__storeRunnerPlanningGenerationActive;window.__storeRunnerPlanningGenerationActive=true;try{const out=await original.apply(this,arguments);if(out&&out.ok===true&&state&&state.plan){if(out.preservedManual===true||manualWeekV185(currentWeekKey())){out.geographyOptimized=false;return out}const wk=currentWeekKey(),today=iso(new Date()),frozenDays=wk===iso(monday(new Date()))?DAYS.filter(d=>iso(addDays(parse(wk),DAYS.indexOf(d)))<today):[];const geo=rebalancePlanByGeography(state.plan,{weekKey:wk,frozenDays});if(geo.ok&&geo.changed)await persistGeoWeek(geo,currentWeekKey(),'single-week-geo-v185');out.geographyOptimized=!!(geo&&geo.ok&&geo.changed)}return out}finally{window.__storeRunnerPlanningGenerationActive=previous}};
   wrapped.__v185Geo=true;wrapped.__v185Original=original;window.storeRunnerGenerateSingleWeek=wrapped;return true
 }
 function terrainOvernightRow(week){

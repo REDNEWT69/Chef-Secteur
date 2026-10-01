@@ -8,6 +8,10 @@ function makeStore(id,priority,enseigne='Fnac'){
   return {id,enseigne,ville:'Ville '+id,adresse:'Adresse '+id,lat:45,lon:4,priority,active:true};
 }
 
+/* Horloge figée avant les périodes testées (vendredi 04/09/2026) : sans elle, la semaine réelle
+   en cours fige ses journées passées (P0.4-C1) et le résultat dépend du jour d'exécution. */
+const NOW=new Date('2026-09-04T08:00:00');
+class FixedDate extends Date{constructor(...a){super(...(a.length?a:[NOW.getTime()]))}static now(){return NOW.getTime()}}
 function env(options={}){
   const workDays=options.workDays||['Lundi'];
   const stores=(options.stores||[]).map(s=>Object.assign({},s));
@@ -25,7 +29,7 @@ function env(options={}){
     profile:{},stores,plan:{Lundi:[{id:'old'}]},included:options.included||{},excluded:{},locks:options.locks||{},appointments:[],calendarEvents:[]
   };
   const ctx={
-    state,console,Date,Map,Set,JSON,Object,Array,String,Number,Math,RegExp,
+    state,console,Date:FixedDate,Map,Set,JSON,Object,Array,String,Number,Math,RegExp,
     CustomEvent:class{constructor(type,init){this.type=type;Object.assign(this,init)}},
     localStorage:{getItem:()=>null,setItem(){},removeItem(){}},
     document:{
