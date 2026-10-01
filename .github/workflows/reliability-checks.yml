@@ -93,6 +93,7 @@ jobs:
       - run: node tests/recalc-holiday-p02a.test.cjs
       - run: node tests/range-holiday-p02b.test.cjs
       - run: node tests/planning-protections-p03.test.cjs
+      - run: node tests/planning-engine-final-p04.test.cjs
       - run: node tests/visit-coverage-v263.test.cjs
       - run: node tests/visit-coverage-v263-1.test.cjs
       - run: node tests/never-visited-priority-v263-3.test.cjs
