@@ -19,7 +19,7 @@
 // Jour bloqué standard : mercredi 11/11/2026, agenda « Jours fériés en France », événement
 // « Armistice 1918 », reconnu par le vrai StoreRunnerTerrainPlanningV1.dateBlocked.
 //
-// Verdict E/F/G. VERT si le moteur refuse proprement l'opération (refus volontaire, aucune
+// Verdict E/F/G/K/L. VERT si le moteur refuse proprement l'opération (refus volontaire, aucune
 // mutation), ou renvoie un plan applicable STRICTEMENT identique au plan sentinelle sur tout
 // le périmètre de l'opération. ROUGE, avec sa cause, si le plan renvoyé est applicable et :
 //   1. le magasin contraint a disparu ;
@@ -190,6 +190,15 @@ function dayOf(date) { return DAYS[(new RealDate(date + 'T12:00:00').getDay() ||
 function weekOf(date) { const d = new RealDate(date + 'T12:00:00'); d.setDate(d.getDate() - ((d.getDay() || 7) - 1)); return dateOf(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'), 'Lundi'); }
 function planIds(plan) { return Object.fromEntries(DAYS.map(d => [d, ids(plan && plan[d])])); }
 function sameIds(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+/* Instantané structurel déterministe d'une valeur quelconque (objet de verrous, liste de
+   rendez-vous…) : clés d'objet triées, ordre des tableaux conservé. C'est une chaîne : prise
+   avant l'opération, elle ne peut pas suivre une mutation en place de l'objet observé. */
+function canonical(value) {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])]));
+  return value;
+}
+function structural(value) { return JSON.stringify(canonical(value === undefined ? null : value)); }
 function samePlan(a, b) { return sameIds(planIds(a), planIds(b)); }
 function archiveOf(rt) { return JSON.parse(rt.db.getItem(ARCHIVE_KEY) || '{}'); }
 function signatureOf(plan) { return DAYS.map(day => ids(plan && plan[day]).join('|')).join('||'); }
@@ -408,6 +417,7 @@ async function scenario(letter, title, fn) {
       archive: { [W1]: { weekMonday: W1, plan: copy(sentinel[W1]) }, [W2]: { weekMonday: W2, plan: copy(sentinel[W2]) } } }, constraint.o));
     c.check(label + ' — précondition : seul l’Armistice 1918 bloque le 11/11 (vrai dateBlocked terrain)', holidayIsOnlyBlocker(rt));
     const perimeter = mode === 'semaine' ? [W1] : [W1, W2], before = snapshot(rt);
+    const locks = structural(rt.ctx.state.locks), appointments = structural(rt.ctx.state.appointments);
     const run = await engine(rt, label, () => mode === 'semaine' ? rt.range.strictSingleWeek() : rt.range.generateRange());
     if (run.threw) return void c.check(label + ' — opération', false, 'crash ' + run.error.type + ' « ' + run.error.message + ' »', 4);
     const proposal = rt.proposals[rt.proposals.length - 1] || null;
@@ -428,19 +438,20 @@ async function scenario(letter, title, fn) {
       efg(Object.assign({ applicable: true, sentinel: { [proposal.weekDate]: sentinel[proposal.weekDate] || emptyPlan() }, weeks: { [proposal.weekDate]: proposal.plan } }, common)));
     /* Contrôle des données d'entrée : planning affiché, archive et stockage intacts. */
     untouched(c, label + ' — données d’entrée intactes (instantané complet state + stockage)', rt, before, perimeter, sentinel, common);
-    c.check(label + ' — ' + constraint.what + ' inchangé', sameIds(rt.ctx.state.appointments, constraint.o.appointments || []) && sameIds(rt.ctx.state.locks, constraint.o.locks || {}), 'contrainte modifiée', 1);
+    c.check(label + ' — verrous (state.locks) structurellement inchangés', structural(rt.ctx.state.locks) === locks, 'state.locks avant ' + locks + ' · après ' + structural(rt.ctx.state.locks), 1);
+    c.check(label + ' — rendez-vous (state.appointments) structurellement inchangés', structural(rt.ctx.state.appointments) === appointments, 'state.appointments avant ' + appointments + ' · après ' + structural(rt.ctx.state.appointments), 1);
   }
   const outsideW1 = date => weekOf(date) !== W1;
 
   await scenario('E', 'V211 : RDV le mercredi 11/11 férié — ni placé un autre jour, ni perdu, ni mutation partielle', async c => {
-    const constraint = { what: 'rendez-vous (state.appointments)', o: { appointments: [rdv(K, HOLIDAY)] }, allowed: date => outsideW1(date) || date === HOLIDAY };
+    const constraint = { o: { appointments: [rdv(K, HOLIDAY)] }, allowed: date => outsideW1(date) || date === HOLIDAY };
     await v211Blocked(c, 'E1 semaine du 09/11', 'semaine', constraint);
     await v211Blocked(c, 'E2 période 09/11 → 20/11', 'période', constraint);
   });
 
   await scenario('F', 'V211 : verrou sur le mercredi 11/11 férié — aucun contournement vers un autre jour, aucune perte, aucune mutation partielle', async c => {
-    const dated = { what: 'verrou (state.locks)', o: { locks: { [K]: { day: 'Mercredi', week: W1 } } }, allowed: date => outsideW1(date) || date === HOLIDAY };
-    const recurring = { what: 'verrou (state.locks)', recurring: true, o: { locks: { [K]: 'Mercredi' } }, allowed: date => dayOf(date) === 'Mercredi' };
+    const dated = { o: { locks: { [K]: { day: 'Mercredi', week: W1 } } }, allowed: date => outsideW1(date) || date === HOLIDAY };
+    const recurring = { recurring: true, o: { locks: { [K]: 'Mercredi' } }, allowed: date => dayOf(date) === 'Mercredi' };
     await v211Blocked(c, 'F1 verrou daté {Mercredi, 09/11}, semaine', 'semaine', dated);
     await v211Blocked(c, 'F2 verrou daté {Mercredi, 09/11}, période 09/11 → 20/11', 'période', dated);
     await v211Blocked(c, 'F3 verrou récurrent "Mercredi", semaine', 'semaine', recurring);
@@ -579,6 +590,44 @@ async function scenario(letter, title, fn) {
     const applied = await engine(rt, 'J (application)', () => rt.ctx.storeRunnerRecalculateRemainingWeek());
     const stored = archiveOf(rt)[W1];
     c.check('J — après application : archive de la semaine protégée inchangée', !applied.threw && JSON.stringify(stored) === archiveBefore, applied.threw ? 'crash ' + applied.error.type : 'archive réécrite : ' + planDiff(manual, stored && stored.plan), 3);
+  });
+
+  /* K/L — génération standard 3 semaines (cycle 02/11 → 20/11, semaine du 09/11 comprise) sur un
+     planning précédent SENTINELLE non vide sur les trois semaines, aucune semaine protégée.
+     K = s05 est posé mercredi 11/11 dans le sentinelle ; un verrou récurrent le pose aussi les
+     autres mercredis. La contrainte porte sur tout le cycle : K posé un autre jour ou une autre
+     semaine est un déplacement (cause 2). generateThreeWeekSnail applique sa proposition :
+     preuve = résultat calculé ET état/archive réellement écrits (instantané complet). */
+  const terrainSentinel = (stores, recurring) => ({
+    [W0]: planOf(stores, { Lundi: ['s01', 's02'], Mardi: ['s03', 's04'], Mercredi: [recurring ? 's05' : 's06', 's07'], Jeudi: ['s08'], Vendredi: ['s09'] }),
+    [W1]: planOf(stores, { Lundi: ['s10', 's11'], Mardi: ['s12', 's13'], Mercredi: ['s05', 's14'], Jeudi: ['s15'], Vendredi: ['s16'] }),
+    [W2]: planOf(stores, { Lundi: ['s17', 's18'], Mardi: ['s19', 's20'], Mercredi: [recurring ? 's05' : 's21', 's22'], Jeudi: ['s23'], Vendredi: ['s24'] })
+  });
+  async function terrainBlocked(c, label, constraint) {
+    const stores = ring(), sentinel = terrainSentinel(stores, constraint.recurring), perimeter = [W0, W1, W2];
+    const archive = Object.fromEntries(perimeter.map(k => [k, { weekMonday: k, plan: copy(sentinel[k]), manualEdited: false, generatedMode: 'snail-distance-v1' }]));
+    const rt = runtime(Object.assign({ stores, weekDate: W0, plan: copy(sentinel[W0]), target: 8, max: 2, calendarEvents: [HOLIDAY_GOOGLE], archive }, constraint.o));
+    c.check(label + ' — précondition : seul l’Armistice 1918 bloque le 11/11 (vrai dateBlocked terrain)', holidayIsOnlyBlocker(rt));
+    c.check(label + ' — précondition : sentinelle non vide sur les 3 semaines du cycle, aucune semaine protégée',
+      perimeter.every(k => DAYS.some(d => sentinel[k][d].length)) && perimeter.every(k => !archive[k].manualEdited) && !Object.keys(rt.ctx.state.manualWeekEdits).length);
+    const before = snapshot(rt), locks = structural(rt.ctx.state.locks), appointments = structural(rt.ctx.state.appointments);
+    const common = { id: K, allowed: constraint.allowed, constrainedWeeks: new Set(perimeter) };
+    const run = await engine(rt, label, () => rt.terrain.generateThreeWeekSnail({ start: W0 }));
+    verdict(c, label + ' — résultat calculé sur les 3 semaines du cycle', run.threw
+      ? efg(Object.assign({ applicable: false, refusal: run.error, mutated: snapshotDiff(before, snapshot(rt)) }, common))
+      : efg(Object.assign({ applicable: true, sentinel, weeks: Object.fromEntries(run.value.weeks.map(w => [w.weekKey, w.plan])) }, common)));
+    untouched(c, label + ' — état et archive réellement écrits (instantané complet state + stockage)', rt, before, perimeter, sentinel, common);
+    c.check(label + ' — verrous (state.locks) structurellement inchangés', structural(rt.ctx.state.locks) === locks, 'state.locks avant ' + locks + ' · après ' + structural(rt.ctx.state.locks), 1);
+    c.check(label + ' — rendez-vous (state.appointments) structurellement inchangés', structural(rt.ctx.state.appointments) === appointments, 'state.appointments avant ' + appointments + ' · après ' + structural(rt.ctx.state.appointments), 1);
+  }
+
+  await scenario('K', 'Terrain 3 semaines : RDV le mercredi 11/11 férié — K jamais traité comme visite libre (refus atomique ou sentinelle strictement conservé)', async c => {
+    await terrainBlocked(c, 'K RDV 11/11, cycle 02/11 → 20/11', { o: { appointments: [rdv(K, HOLIDAY)] }, allowed: date => date === HOLIDAY });
+  });
+
+  await scenario('L', 'Terrain 3 semaines : verrou sur le mercredi 11/11 férié — verrou jamais oublié, contourné ni perdu (refus atomique ou sentinelle strictement conservé)', async c => {
+    await terrainBlocked(c, 'L1 verrou daté {Mercredi, 09/11}, cycle 02/11 → 20/11', { o: { locks: { [K]: { day: 'Mercredi', week: W1 } } }, allowed: date => date === HOLIDAY });
+    await terrainBlocked(c, 'L2 verrou récurrent "Mercredi", cycle 02/11 → 20/11', { recurring: true, o: { locks: { [K]: 'Mercredi' } }, allowed: date => dayOf(date) === 'Mercredi' });
   });
 
   /* ------------------------------------------------------------------- rapport ---- */
