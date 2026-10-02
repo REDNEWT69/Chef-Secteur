@@ -52,4 +52,7 @@ assert(!source.includes('window.generateWeek='), 'le module terrain ne doit pas 
 assert(!source.includes('root.generateWeek='), 'le module terrain ne doit pas reprendre generateWeek');
 assert(!source.includes('window.generatePlanningRange='), 'le générateur de période stable doit rester propriétaire');
 assert(source.includes('root.StoreRunnerTerrainPlanningV1=api'));
+// Lot 3A : « Générer mes 3 semaines » lit le brief V246 en lot, jamais magasin par magasin.
+assert(source.includes('weeklyBrief:root.StoreRunnerWeeklyBriefV246'), 'le cycle 3 semaines doit transmettre le brief V246 à son moteur');
+assert(source.includes('briefApi.effectivePriorities(week,{state,db:db()})')&&!/briefApi\.effectivePriority\(/.test(source), 'le brief se lit par semaine en lot (effectivePriorities), jamais par effectivePriority magasin par magasin');
 console.log('terrain-planning-runtime: OK');

@@ -347,4 +347,93 @@ function flat(week){
   assert.ok(Math.max(...values)-Math.min(...values) <= 1, 'l’écart de rotation doit rester minime sur plusieurs cycles : '+JSON.stringify(Object.fromEntries(counts)));
 })();
 
+/* Lot 3A — brief hebdomadaire V246 dans « Générer mes 3 semaines » (W40 → W42), vrai module V246.
+   Seule sa contribution `brief` compte, pour la semaine où la visite serait posée : après les
+   contraintes, le besoin réel et la rotation, avant la distance. Par défaut : lundi seul, 1 visite. */
+const B=require('../weekly-brief-v246.js');
+const W40=new Date(2026,8,28,12);
+const isoOf=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+function briefPrepare(stores,o={}){
+  const state=Object.assign({manualWeekEdits:{},stores,included:{}},o.state||{});
+  for(const [week,rule] of (o.rules||[]))B.addRule(state,week,Object.assign({confidence:'confirmed'},rule));
+  const opts={state,firstMonday:W40,days:o.days||['Lundi'],target:o.target||1,maxCreditsPerDay:o.max||1,stores,archive:{},distanceOf:s=>s.distance,priorityOf:()=>0,creditOf:()=>1,lockDayForWeek:o.lockDayForWeek||(()=>''),appointmentDay:o.appointmentDay||(()=>''),dayBlocked:()=>false,dayFits:()=>true,needOf:o.needOf,evaluateDayRoute:o.evaluateDayRoute};
+  if(o.brief!==false)opts.weeklyBrief=o.api||B;
+  return {state,opts};
+}
+function briefSnail(stores,o){const p=briefPrepare(stores,o);return Object.assign(p,{built:terrain.buildThreeWeekSnail(p.opts)})}
+const picks=built=>built.weeks.map(w=>flat(w).map(s=>s.id).join('+')).join(' | ');
+const w41=(extra)=>['2026-W41',Object.assign({type:'boost',label:'Challenge W41',boost:50,scope:{storeIds:['s4']}},extra||{})];
+
+(function lot3aWithoutBriefKeepsHistoricalPlan(){
+  const stores=[1,2,3,4].map(i=>store(i));
+  const none=briefSnail(stores,{brief:false}).built,empty=briefSnail(stores).built;
+  assert.strictEqual(picks(none),'s1 | s2 | s3','sans V246 : escargot historique');
+  assert.strictEqual(JSON.stringify(empty.weeks.map(w=>w.plan)),JSON.stringify(none.weeks.map(w=>w.plan)),'V246 sans règle : plan strictement identique');
+})();
+
+(function lot3aBriefActsOnItsOwnWeekOnly(){
+  const stores=[1,2,3,4].map(i=>store(i));
+  assert.strictEqual(picks(briefSnail(stores,{rules:[w41()]}).built),'s1 | s4 | s2','W41 : à besoin et rotation égaux, le brief passe avant la distance');
+  // Même règle, mais le créneau W41 est pris par un verrou : W40 et W42 gardent l'escargot historique.
+  const locked=briefSnail(stores,{rules:[w41()],lockDayForWeek:(id,wk)=>id==='s3'&&wk==='2026-10-05'?'Lundi':''}).built;
+  assert.strictEqual(picks(locked),'s1 | s3 | s2','aucun effet du brief W41 en W40 ni en W42');
+})();
+
+(function lot3aAmbiguousOrPendingRuleStaysNeutral(){
+  const stores=[1,2,3,4].map(i=>store(i));
+  assert.strictEqual(picks(briefSnail(stores,{rules:[w41({confidence:'ambiguous'})]}).built),'s1 | s2 | s3','règle ambiguë : aucun effet');
+  assert.strictEqual(picks(briefSnail(stores,{rules:[w41({pending:'Confirmation SEF'})]}).built),'s1 | s2 | s3','règle en attente : aucun effet');
+})();
+
+(function lot3aBriefNeverCrossesANeedTier(){
+  const stores=[store(1),store(2),store(4)];
+  const needOf=s=>s.id==='s4'?{tier:1,status:'ok',blocked:false}:{tier:4,status:'late',ratio:1.2,blocked:false};
+  const {built}=briefSnail(stores,{needOf,rules:[['2026-W40',{type:'boost',label:'Coup de pouce',boost:100,scope:{storeIds:['s4']}}]]});
+  assert.strictEqual(flat(built.weeks[0]).map(s=>s.id).join(),'s1','W40 : un « très en retard » passe avant un brief +100 à jour');
+})();
+
+(function lot3aBlockedStoreStaysBlocked(){
+  const stores=[1,2,3,4].map(i=>store(i));
+  const needOf=s=>s.id==='s4'?{tier:0,status:'blocked',blocked:true}:{tier:3,status:'late',blocked:false};
+  const {built}=briefSnail(stores,{needOf,rules:[['2026-W40',{type:'boost',label:'Gros brief',boost:100,scope:{storeIds:['s4']},validTo:'2026-W42'}]]});
+  assert.ok(!built.weeks.some(w=>flat(w).some(s=>s.id==='s4')),'garde anti-sur-visite : un +100 ne reprend jamais un magasin bloqué');
+})();
+
+(function lot3aConstraintsStayFirst(){
+  const stores=[1,2,3,4].map(i=>store(i)),rule=['2026-W40',{type:'boost',label:'W40',boost:100,scope:{storeIds:['s4']}}];
+  const first=o=>flat(briefSnail(stores,Object.assign({rules:[rule]},o)).built.weeks[0]).map(s=>s.id).join('+');
+  assert.strictEqual(first({}),'s4','sans contrainte, le brief W40 l’emporte');
+  assert.strictEqual(first({state:{included:{s1:true}}}),'s1','un magasin imposé passe avant le brief');
+  assert.strictEqual(first({appointmentDay:(id,mon)=>id==='s2'&&isoOf(mon)==='2026-09-28'?'Lundi':''}),'s2','un rendez-vous passe avant le brief');
+  assert.strictEqual(first({lockDayForWeek:(id,wk)=>id==='s3'&&wk==='2026-09-28'?'Lundi':''}),'s3','un verrou passe avant le brief');
+})();
+
+(function lot3aNoBusinessWrite(){
+  const P=require('../performance-data-v190.js'),mem=new Map(),storage={getItem:k=>mem.has(k)?mem.get(k):null,setItem:(k,v)=>mem.set(k,String(v)),removeItem:k=>mem.delete(k)};
+  const previous=global.__chefStorage;global.__chefStorage=storage;
+  try{
+    P.saveSnapshot(storage,{week:'W39',importedAt:'2026-09-25T08:00:00Z',rows:[{key:'k|4',retailer:'Test',site:'Ville 4',prio:'P1'}]});
+    const stores=[1,2,3,4].map(i=>store(i)),p=briefPrepare(stores,{rules:[w41()]});
+    const before=JSON.stringify([stores,p.state.weeklyBriefs,storage.getItem(P.STORE_KEY)]);
+    assert.strictEqual(picks(terrain.buildThreeWeekSnail(p.opts)),'s1 | s4 | s2');
+    assert.strictEqual(JSON.stringify([stores,p.state.weeklyBriefs,storage.getItem(P.STORE_KEY)]),before,'ni fiche magasin, ni weeklyBriefs, ni fichier performance modifiés');
+  }finally{if(previous===undefined)delete global.__chefStorage;else global.__chefStorage=previous}
+})();
+
+(function lot3aBriefSurvivesCrossDayAndIsReadOncePerWeek(){
+  // Vrai V246 + optimiseur V264 actif. W41 : S (+50) est posé avec s3, loin de lui. L'échange
+  // S↔s4 (W42) gagnerait autant de kilomètres que s3↔s5, mais ferait perdre le +50 : seul
+  // l'échange neutre pour le brief est accepté, et S reste en W41.
+  const row=(id,distance,x)=>({id,enseigne:'Test',ville:'Ville '+id,distance,x,active:true});
+  const stores=[row('s1',1,50),row('s2',2,50),row('s3',3,-100),row('s4',4,-100),row('s5',5,100),row('S',6,100)];
+  const calls={lot:[],one:0},api=Object.assign({},B,{effectivePriorities(week,o){calls.lot.push(week);return B.effectivePriorities(week,o)},effectivePriority(){calls.one++;return B.effectivePriority.apply(B,arguments)}});
+  const evaluateDayRoute=route=>{const r=route.slice().sort((a,b)=>a.x-b.x),d=r.length<2?0:r[r.length-1].x-r[0].x;return{route:r,feasible:true,kilometers:d,driveMinutes:d}};
+  const {built}=briefSnail(stores,{api,target:2,max:2,needOf:()=>({tier:1,status:'ok',blocked:false}),evaluateDayRoute,rules:[['2026-W41',{type:'boost',label:'Challenge S',boost:50,scope:{storeIds:['S']}}]]});
+  assert.ok(built.crossDay.applied&&built.crossDay.swaps>=1,'l’optimiseur cross-day a bien tourné : '+JSON.stringify(built.crossDay.swaps));
+  assert.ok(flat(built.weeks[1]).some(s=>s.id==='S'),'S garde sa semaine W41 et son +50 après l’optimisation : '+picks(built));
+  assert.strictEqual(built.weeks.map(w=>flat(w).map(s=>s.id).sort().join('+')).join(' | '),'s1+s2 | S+s5 | s3+s4','la géographie s’optimise (s3↔s5) sans effacer le brief');
+  assert.deepStrictEqual(calls.lot.slice().sort(),['2026-W40','2026-W41','2026-W42'],'une seule lecture V246 en lot par semaine utile');
+  assert.strictEqual(calls.one,0,'aucune lecture V246 magasin par magasin');
+})();
+
 console.log('terrain-planning-v1: OK');
