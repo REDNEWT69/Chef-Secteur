@@ -350,5 +350,48 @@ const FIVE=['Lundi','Mardi','Mercredi','Jeudi','Vendredi'];
     const {res}=await week(g);
     assert.equal(res.error,'1 obligation d’échéance du brief impossible à tenir — « Avant mardi » (échéance le 08/09) : Fnac Ville passe (échéance déjà dépassée). Le planning précédent est conservé.');
   }
+  /* Contrainte explicite après l'échéance, même au-delà de la fin de l'horizon généré : jamais de
+     visite ajoutée avant elle pour la contourner, sauf obligation déjà tenue. */
+  {
+    // 15. Période qui finit le jour de l'échéance ; rendez-vous après l'échéance et après la fin : refus.
+    const g=makeBriefEnv(['a','cible'].map(id=>store(id,{lastVisit:'2026-08-01'})),{},{range:['2026-09-14','2026-09-21'],state:{plan:onDay('Vendredi','a'),appointments:[appt('cible','2026-09-23')]}});
+    dline(g,'2026-W38','cible','2026-09-21',{validTo:'2026-W39'});
+    const before=frozen(g);await g.ctx.generatePlanningRange();
+    assert.equal(g.proposals.length,0,'aucune proposition');
+    assert.equal(g.els.rangePlanStatus.textContent,'Erreur pendant la génération : 1 obligation d’échéance du brief impossible à tenir — « Échéance cible » (échéance le 21/09) : Fnac Ville cible (rendez-vous le 23/09, après l’échéance). Le planning précédent est conservé.');
+    assert.equal(frozen(g),before,'planning, archive, briefs, performance et fiches intacts');
+  }
+  {
+    // 16. Même cas avec un verrou daté sur une semaine hors période (lundi 28/09) : refus.
+    const g=makeBriefEnv(['a','cible'].map(id=>store(id,{lastVisit:'2026-08-01'})),{},{range:['2026-09-14','2026-09-21'],state:{plan:onDay('Vendredi','a'),locks:{cible:{day:'Lundi',week:'2026-09-28'}}}});
+    dline(g,'2026-W38','cible','2026-09-21',{validTo:'2026-W39'});
+    const before=frozen(g);await g.ctx.generatePlanningRange();
+    assert.equal(g.proposals.length,0,'aucune proposition');
+    assert.match(g.els.rangePlanStatus.textContent,/^Erreur pendant la génération : 1 obligation .* Fnac Ville cible \(verrouillé le 28\/09, après l’échéance\)\. Le planning précédent est conservé\.$/);
+    assert.equal(frozen(g),before);
+  }
+  {
+    // 17. Rendez-vous après l'horizon, obligation déjà tenue avant l'échéance : aucun conflit, aucune duplication.
+    const done=makeBriefEnv([store('urgent',{priority:5,lastVisit:'2026-07-01'}),store('cible',{lastVisit:'2026-09-08'})],{},{state:{appointments:[appt('cible','2026-09-30')]}});
+    dline(done,'2026-W37','cible','2026-09-21',{validTo:'2026-W39'});
+    assert.equal(flat((await week(done)).plan),'urgent','tenue par une visite faite (doneDate)');
+    const kept=makeBriefEnv(['tenu','libre'].map(id=>store(id,{lastVisit:'2026-08-01'})),{},{days:FIVE,max:2,target:2,weekDate:'2026-09-07',state:{plan:onDay('Lundi','tenu'),appointments:[appt('tenu','2026-09-17')]}});
+    dline(kept,'2026-W37','tenu','2026-09-09');
+    const k=await week(kept);
+    assert.equal(k.res.cancelled,true,k.res.error);
+    assert.equal(flat(k.plan).split(',').filter(id=>id==='tenu').length,1,'tenue par une journée passée existante : aucune seconde visite');
+    const rdv=makeBriefEnv(['a','cible'].map(id=>store(id,{lastVisit:'2026-08-01'})),{},{state:{appointments:[appt('cible','2026-09-21'),Object.assign(appt('cible','2026-09-30'),{id:'rdv-cible-2'})]}});
+    dline(rdv,'2026-W38','cible','2026-09-23',{validTo:'2026-W39'});
+    await rdv.ctx.generatePlanningRange();
+    assert.equal(weeksOf(rdv.proposals[0]),'a | cible',rdv.els.rangePlanStatus.textContent+' — tenue par un rendez-vous avant l’échéance');
+  }
+  {
+    // 18. Verrou récurrent dont la prochaine occurrence autorisée tombe après l'échéance : refus.
+    const g=makeBriefEnv(['cible','libre'].map(id=>store(id,{lastVisit:'2026-08-01'})),{},{days:FIVE,max:2,target:2,weekDate:'2026-09-07',state:{plan:onDay('Vendredi','libre'),locks:{cible:'Mercredi'}}});
+    dline(g,'2026-W37','cible','2026-09-11');
+    const before=frozen(g),{res}=await week(g);
+    assert.equal(res.error,'1 obligation d’échéance du brief impossible à tenir — « Échéance cible » (échéance le 11/09) : Fnac Ville cible (verrouillé le 16/09, après l’échéance). Le planning précédent est conservé.');
+    assert.equal(g.proposals.length,0);assert.equal(frozen(g),before);
+  }
   console.log('planning pilot v211 ok · mémoire inter-semaines · P1/P2 · retard futur · couverture · cadence · brief V246 · échéances');
 })().catch(e=>{console.error(e);process.exitCode=1});

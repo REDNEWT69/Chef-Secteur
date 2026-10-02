@@ -494,8 +494,10 @@ function deadlinePlanV211(from,to,pool,manualPlans){
   const api=briefApiV211(),today=iso(new Date()),inPool=pool?new Map(pool.map(s=>[storeKey(s),s])):null,list=new Map(),lost=[];
   const dm=d=>d.slice(8,10)+'/'+d.slice(5,7),same=(x,s)=>!!x&&(String(x.id)===String(s.id)||storeKey(x)===storeKey(s));
   const manualAt=d=>!!(manualPlans&&manualPlans[iso(monday(parse(d)))]),fail=(o,why)=>{o.state='lost';lost.push({o,why})};
-  /* Placements explicites du magasin dans l'horizon : semaine retouchée (même passée), rendez-vous et
-     verrou à venir. Une date ≤ échéance tient l'obligation ; uniquement après, c'est un conflit. */
+  /* Placements explicites du magasin : semaine retouchée de l'horizon (même passée), rendez-vous et
+     verrou à venir. Une date ≤ échéance tient l'obligation ; uniquement après, c'est un conflit. Un
+     rendez-vous ou un verrou après l'échéance compte même au-delà de la fin de l'horizon : le verrou
+     daté tel quel, le récurrent par sa première occurrence après cette fin. */
   function fixed(s,lower){
     const out=[];
     for(let m=monday(parse(from));iso(m)<=to;m=addDays(m,7)){
@@ -503,8 +505,10 @@ function deadlinePlanV211(from,to,pool,manualPlans){
       if(manual){for(const d of DAYS)if((manual[d]||[]).some(x=>same(x,s)))out.push({date:iso(addDays(m,DAYS.indexOf(d))),why:'semaine modifiée à la main : posé le '});continue}
       const lock=lockDayForWeek(s.id,wk);if(lock)out.push({date:iso(addDays(m,DAYS.indexOf(lock))),why:'verrouillé le ',ahead:true});
     }
+    const lock=lockEntry(s.id);
+    if(lock){const i=DAYS.indexOf(lock.day),base=lock.week?parse(lock.week):monday(parse(to));let d=iso(addDays(base,i));if(!lock.week&&d<=to)d=iso(addDays(base,i+7));if(d>to)out.push({date:d,why:'verrouillé le ',ahead:true})}
     for(const a of state.appointments||[]){const d=String((a&&a.date)||'').slice(0,10);if(a&&String(a.storeId)===String(s.id)&&parse(d)&&!manualAt(d))out.push({date:d,why:'rendez-vous le ',ahead:true})}
-    return out.filter(f=>f.date>=lower&&f.date<=to&&(!f.ahead||f.date>=today)).sort((a,b)=>a.date.localeCompare(b.date));
+    return out.filter(f=>f.date>=lower&&(f.ahead?f.date>=today:f.date<=to)).sort((a,b)=>a.date.localeCompare(b.date));
   }
   /* Obligations annoncées par le lot V246 de la semaine, échéance dans l'horizon. */
   function learn(weekKey){
@@ -520,14 +524,17 @@ function deadlinePlanV211(from,to,pool,manualPlans){
       const f=fixed(o.store,o.lower);
       if(f.some(x=>!x.ahead&&x.date<=due)){o.state='done';continue}
       if(inPool&&!inPool.has(key)){fail(o,'exclu du planning ou hors des enseignes sélectionnées');continue}
-      if(f.some(x=>x.date<=due))o.state='done';else if(f.length)fail(o,f[0].why+dm(f[0].date)+', après l’échéance');
+      /* Contrainte après l'échéance : l'obligation n'est jamais posée (pas de visite de contournement)
+         et devient un conflit à son échéance, sauf si une journée existante la tient d'ici là. */
+      if(f.some(x=>x.date<=due))o.state='done';else if(f.length)o.after=f[0];
     }
   }
-  /* Journées existantes (future=false) ou générées (future=true) qui posent déjà le magasin à temps. */
+  /* Journées existantes (future=false) ou générées (future=true) qui posent déjà le magasin à temps.
+     Une obligation bloquée par une contrainte après l'échéance n'est tenue que par l'existant. */
   function satisfy(plan,mon,future){
     for(const day of DAYS){
       const date=iso(addDays(mon,DAYS.indexOf(day)));if(future&&date<today)continue;
-      for(const s of (plan&&plan[day])||[])for(const o of list.values())if(o.state==='open'&&same(s,o.store)&&date>=o.lower&&date<=o.dueDate)o.state='done';
+      for(const s of (plan&&plan[day])||[])for(const o of list.values())if(o.state==='open'&&!(future&&o.after)&&same(s,o.store)&&date>=o.lower&&date<=o.dueDate)o.state='done';
     }
   }
   /* Obligations à poser cette semaine : un jour utilisable ≤ échéance, jamais passé, magasin ouvert ;
@@ -535,7 +542,7 @@ function deadlinePlanV211(from,to,pool,manualPlans){
   function select(weekKey,mon,usable,open){
     const openBy=new Map((open||[]).map(s=>[storeKey(s),s])),out=[];
     for(const o of list.values()){
-      if(o.state!=='open')continue;
+      if(o.state!=='open'||o.after)continue;
       if(!usable.some(d=>{const dt=iso(addDays(mon,DAYS.indexOf(d)));return dt>=o.lower&&dt>=today&&dt<=o.dueDate&&!closedOn(o.store,d)}))continue;
       o.sawDay=true;
       const s=openBy.get(o.key);if(!s){o.notOpen=true;continue}
@@ -547,7 +554,7 @@ function deadlinePlanV211(from,to,pool,manualPlans){
   }
   /* Échéance passée sans visite posée : obligation perdue, avec sa raison. */
   function expire(next,manual){
-    for(const o of list.values())if(o.state==='open'&&o.dueDate<next)fail(o,o.dueDate<today||o.dueDate<o.lower?'échéance déjà dépassée':o.notOpen?'rendez-vous ou verrou sur une journée déjà passée':o.sawDay?'plus de créneau avant l’échéance : capacité ou horaires':manual?'semaine modifiée à la main sans ce magasin avant l’échéance':'aucune journée disponible avant l’échéance : jours non travaillés, bloqués ou magasin fermé');
+    for(const o of list.values())if(o.state==='open'&&o.dueDate<next)fail(o,o.after?o.after.why+dm(o.after.date)+', après l’échéance':o.dueDate<today||o.dueDate<o.lower?'échéance déjà dépassée':o.notOpen?'rendez-vous ou verrou sur une journée déjà passée':o.sawDay?'plus de créneau avant l’échéance : capacité ou horaires':manual?'semaine modifiée à la main sans ce magasin avant l’échéance':'aucune journée disponible avant l’échéance : jours non travaillés, bloqués ou magasin fermé');
   }
   /* Refus unique : levé avant toute proposition, rien n'a été écrit. */
   function assert(){
