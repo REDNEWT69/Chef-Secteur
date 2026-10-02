@@ -387,7 +387,7 @@ function optimizeThreeWeekCrossDay(weeks,options){
   const days=(options.days||[]).filter(day=>DAYS.includes(day)),max=Math.max(1,Number(options.maxCreditsPerDay)||4),target=Math.max(1,Number(options.target)||20),credit=options.creditOf||(()=>1),blocked=options.dayBlocked||(()=>false),lockFor=options.lockDayForWeek||(()=>''),apptFor=options.appointmentDay||(()=>''),completedOn=options.completedOn||(()=>false),imposed=state.included||{},memory=options.memory||{usedKeys:new Set(),useCount:new Map()},ranked=(options.ranked||[]).filter(Boolean),reservations=options.overnightReservations||state.hotelReservations||{};
   const first=parseISO(weeks[0].weekKey),horizonEnd=iso(addDays(first,20)),overnightDates=new Set();
   for(const row of Object.values(reservations||{})){if(row&&row.fromDate)overnightDates.add(String(row.fromDate));if(row&&row.toDate)overnightDates.add(String(row.toDate))}
-  const refusal={manualWeeks:0,pastDays:0,unavailableDays:0,overnightDays:0,appointments:0,locks:0,imposed:0,completed:0},slots=[],weekSlots=new Map();let slotIndex=0;
+  const refusal={manualWeeks:0,pastDays:0,unavailableDays:0,overnightDays:0,appointments:0,locks:0,imposed:0,completed:0,deadlines:0},slots=[],weekSlots=new Map();let slotIndex=0;
   for(const week of weeks){
     const frozen=new Set(week.frozenDays||[]),rows=[];
     if(week.manual)refusal.manualWeeks++;
@@ -400,11 +400,14 @@ function optimizeThreeWeekCrossDay(weeks,options){
   }
   const missedPastIds=new Set();
   for(const slot of slots)if(slot.hardReason==='past')for(const store of slot.route)if(!completedOn(store.id,slot.date))missedPastIds.add(storeKey(store));
+  /* Lot 3B : une visite posée pour une échéance du brief (deadlineFixed, clé « magasin|date ») est
+     figée dans son créneau le temps de la génération : ni déplacée, ni échangée, ni remplacée. */
+  const deadlineFixed=options.deadlineFixed instanceof Map?options.deadlineFixed:null;
   const fixedReason=(slot,store)=>{
     if(slot.hardReason)return slot.hardReason;const id=storeKey(store);
-    if(imposed[id])return'imposed';if(apptFor(store.id,parseISO(slot.weekKey)))return'appointment';if(lockFor(store.id,slot.weekKey))return'lock';if(completedOn(store.id,slot.date))return'completed';if(missedPastIds.has(id))return'missed-past';return''
+    if(imposed[id])return'imposed';if(apptFor(store.id,parseISO(slot.weekKey)))return'appointment';if(lockFor(store.id,slot.weekKey))return'lock';if(deadlineFixed&&deadlineFixed.has(id+'|'+slot.date))return'deadline';if(completedOn(store.id,slot.date))return'completed';if(missedPastIds.has(id))return'missed-past';return''
   };
-  for(const slot of slots)for(const store of slot.route){const reason=fixedReason(slot,store);if(reason==='appointment')refusal.appointments++;else if(reason==='lock')refusal.locks++;else if(reason==='imposed')refusal.imposed++;else if(reason==='completed')refusal.completed++}
+  for(const slot of slots)for(const store of slot.route){const reason=fixedReason(slot,store);if(reason==='appointment')refusal.appointments++;else if(reason==='lock')refusal.locks++;else if(reason==='imposed')refusal.imposed++;else if(reason==='deadline')refusal.deadlines++;else if(reason==='completed')refusal.completed++}
   let evaluations=0;
   const evaluationCache=new Map(),metric=(route,slot)=>{
     const key=slot.date+'|'+(route||[]).map(storeKey).sort().join(',');
@@ -687,17 +690,19 @@ function buildThreeWeekSnail(options){
      temps de cette génération, sans appel magasin par magasin ni persistance. Elle s'ajoute au
      score métier existant (performance) pour la semaine où la visite serait posée : à besoin et
      rotation égaux elle passe avant la distance, sans changer un palier de besoin, lever la garde
-     anti-sur-visite ni toucher aux contraintes. Sans module, elle vaut 0 et rien ne change. */
-  const briefApi=options.weeklyBrief&&typeof options.weeklyBrief.effectivePriorities==='function'&&typeof options.weeklyBrief.isoWeek==='function'?options.weeklyBrief:null,briefLots=new Map();
+     anti-sur-visite ni toucher aux contraintes. Sans module, elle vaut 0 et rien ne change.
+     Lot 3B : le même lot garde les lignes V246 complètes (rows) ; l'échéance (deadline) s'y lit
+     sans second calcul ni second cache. */
+  const briefApi=options.weeklyBrief&&typeof options.weeklyBrief.effectivePriorities==='function'&&typeof options.weeklyBrief.isoWeek==='function'?options.weeklyBrief:null,briefLots=new Map(),noLot={rows:new Map(),brief:new Map()};
   const briefLot=date=>{
     let week='';try{week=briefApi?String(briefApi.isoWeek(String(date||'').slice(0,10))||''):''}catch(e){week=''}
-    if(!week)return new Map();
-    if(!briefLots.has(week)){const lot=new Map();try{const all=briefApi.effectivePriorities(week,{state,db:db()});if(all&&all.week===week)for(const r of all.rows||[]){const v=Number(r&&r.contributions&&r.contributions.brief)||0;if(v)lot.set(String(r.storeId),v)}}catch(e){}briefLots.set(week,lot)}
+    if(!week)return noLot;
+    if(!briefLots.has(week)){const lot={rows:new Map(),brief:new Map()};try{const all=briefApi.effectivePriorities(week,{state,db:db()});if(all&&all.week===week)for(const r of all.rows||[]){if(!r||r.storeId==null)continue;const id=String(r.storeId),v=Number(r.contributions&&r.contributions.brief)||0;lot.rows.set(id,r);if(v)lot.brief.set(id,v)}}catch(e){}briefLots.set(week,lot)}
     return briefLots.get(week);
   };
-  const briefAt=(s,date)=>(s&&briefLot(date).get(String(s.id)))||0;
+  const briefAt=(s,date)=>(s&&briefLot(date).brief.get(String(s.id)))||0;
   const priorityMemo=new Map(),priorityOnce=s=>{const k=storeKey(s);if(!priorityMemo.has(k))priorityMemo.set(k,Number(priority(s))||0);return priorityMemo.get(k)};
-  const rankedFor=weekKey=>{const lot=briefLot(weekKey);return lot.size?rankStoresForSnail(ranked,distance,s=>priorityOnce(s)+(lot.get(String(s.id))||0)):ranked};
+  const rankedFor=weekKey=>{const lot=briefLot(weekKey).brief;return lot.size?rankStoresForSnail(ranked,distance,s=>priorityOnce(s)+(lot.get(String(s.id))||0)):ranked};
   const refOf=mon=>{const key=iso(mon);return today&&today>key?today:key};
   const needMemo=new Map(),needAt=(s,ref)=>{
     if(!needOf)return{tier:3,blocked:false,ratio:null,status:''};
@@ -712,6 +717,63 @@ function buildThreeWeekSnail(options){
   const reservedUntil=new Map();
   for(let wi=0;wi<3;wi++){const key=iso(addDays(first,wi*7)),manual=protectedPlanFor(key,state,archive);if(manual)for(const s of flattenPlan(manual)){const k=s&&storeKey(s);if(k&&!(reservedUntil.get(k)>key))reservedUntil.set(k,key)}}
   const reservedLater=(k,weekKey)=>{const until=reservedUntil.get(k);return !!until&&until>weekKey};
+  /* Lot 3B — échéances confirmées du brief (règles deadline V246), lues dans le même lot que le
+     brief : V246 reste seul juge (confirmée, sans attente, validité, P1/P2, famille, enseigne,
+     magasins) et donne l'échéance et la visite faite qui la tient (doneDate). Une échéance dont la
+     date tombe dans l'horizon (premier lundi → +20 jours) devient une obligation : le magasin est posé
+     une seule fois, à la première journée compatible ≤ échéance et jamais passée, avant les candidats
+     libres et malgré la garde anti-sur-visite, l'échéance la plus proche d'abord. Elle est déjà tenue
+     par une visite faite, une journée passée conservée, la visite du jour, une semaine retouchée, un
+     rendez-vous ou un verrou à venir avant l'échéance. Elle ne passe jamais outre un rendez-vous, un
+     verrou, une semaine retouchée, un jour passé, non travaillé ou bloqué, une fermeture, la capacité
+     ni les horaires : toute obligation impossible rejoint un refus unique, levé avant toute
+     proposition. Elle n'entre dans used qu'une fois posée ; d'ici là, la sélection libre ne prend pas
+     son magasin. Une échéance au-delà de l'horizon ne reste qu'un apport de score (Lot 3A). */
+  const horizonStart=iso(first),horizonEnd=iso(addDays(first,20)),cycleKeys=[0,1,2].map(wi=>iso(addDays(first,wi*7))),afterKey=iso(addDays(first,21));
+  const isDay=v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||'')),dm=d=>d.slice(8,10)+'/'+d.slice(5,7),dateIn=(wk,day)=>iso(addDays(parseISO(wk),DAYS.indexOf(day)));
+  const manualPlans=new Map(cycleKeys.map(k=>[k,protectedPlanFor(k,state,archive)]));
+  /* Placements explicites du magasin à partir de `lower` : semaine retouchée du cycle (même passée),
+     rendez-vous ou verrou à venir — y compris après l'horizon : rendez-vous enregistré, verrou daté
+     tel quel, récurrent par sa première occurrence après l'horizon. */
+  const explicitPlacements=(s,lower)=>{
+    const id=String(s.id),out=[];
+    for(const wk of cycleKeys){
+      const manual=manualPlans.get(wk);
+      if(manual){for(const d of DAYS)if((manual[d]||[]).some(x=>String(x&&x.id)===id))out.push({date:dateIn(wk,d),why:'semaine modifiée à la main : posé le '});continue}
+      const ad=apptFor(s.id,parseISO(wk)),day=ad||lockFor(s.id,wk);
+      if(DAYS.includes(day))out.push({date:dateIn(wk,day),why:ad?'rendez-vous le ':'verrouillé le ',ahead:true});
+    }
+    for(const a of (state&&state.appointments)||[]){const d=String((a&&a.date)||'').slice(0,10);if(a&&String(a.storeId)===id&&isDay(d)&&d>horizonEnd)out.push({date:d,why:'rendez-vous le ',ahead:true})}
+    const next=lockFor(s.id,afterKey);if(DAYS.includes(next))out.push({date:dateIn(afterKey,next),why:'verrouillé le ',ahead:true});
+    const raw=state&&state.locks&&state.locks[id],dated=raw&&typeof raw==='object'&&!Array.isArray(raw)?String(raw.week||''):'';
+    if(isDay(dated)&&dated>afterKey){const day=lockFor(s.id,dated);if(DAYS.includes(day))out.push({date:dateIn(dated,day),why:'verrouillé le ',ahead:true})}
+    return out.filter(f=>f.date>=lower&&(!f.ahead||!today||f.date>=today)).sort((a,b)=>a.date.localeCompare(b.date));
+  };
+  const obligations=new Map(),lostDues=[],deadlinePins=new Map(),loseDue=(o,why)=>{o.state='lost';lostDues.push({o,why})};
+  for(const wk of cycleKeys)for(const r of briefLot(wk).rows.values()){
+    const d=r.deadline,due=d&&String(d.dueDate||'');
+    if(!isDay(due)||due<horizonStart||due>horizonEnd)continue;
+    const inPool=byId.get(String(r.storeId)),s=inPool||r.store,key=s&&storeKey(s);
+    if(!key||obligations.has(key+'|'+due))continue;
+    const o={key,store:s,dueDate:due,label:String(d.label||''),ruleId:String(d.ruleId||''),lower:wk,state:'open'};obligations.set(key+'|'+due,o);
+    if(isDay(d.doneDate)&&String(d.doneDate)<=due){o.state='done';o.by='doneDate';continue}
+    const fixed=explicitPlacements(s,o.lower);
+    if(fixed.some(f=>!f.ahead&&f.date<=due)){o.state='done';o.by='manual';continue}
+    if(!inPool){loseDue(o,'exclu du planning ou hors des enseignes sélectionnées');continue}
+    /* Rendez-vous ou verrou ≤ échéance : il la tient. Seulement après : conflit, jamais de visite de
+       contournement ; seule une journée existante peut encore la tenir. */
+    if(fixed.some(f=>f.date<=due)){o.state='done';o.by='explicit';continue}
+    if(fixed.length)o.after=fixed[0];
+  }
+  /* Échéance passée sans visite posée : obligation perdue, avec sa raison. */
+  const expireDues=next=>{for(const o of obligations.values())if(o.state==='open'&&o.dueDate<next)loseDue(o,o.after?o.after.why+dm(o.after.date)+', après l’échéance':o.dueDate<o.lower||(today&&o.dueDate<today)?'échéance déjà dépassée':o.sawDay?'plus de créneau avant l’échéance : capacité ou horaires':o.sawManual?'semaine modifiée à la main sans ce magasin avant l’échéance':'aucune journée disponible avant l’échéance : jours non travaillés, bloqués ou magasin fermé')};
+  /* Refus unique, levé avant toute proposition : rien n'a été écrit. */
+  const assertDues=()=>{
+    if(!lostDues.length)return;
+    const groups=new Map();for(const x of lostDues){const g=x.o.label+'|'+x.o.dueDate;if(!groups.has(g))groups.set(g,[]);groups.get(g).push(x)}
+    const parts=[...groups.values()].map(xs=>'« '+(xs[0].o.label||'Échéance')+' » (échéance le '+dm(xs[0].o.dueDate)+') : '+xs.slice(0,6).map(x=>(((x.o.store&&x.o.store.enseigne)||'Magasin')+' '+((x.o.store&&x.o.store.ville)||'')).trim()+' ('+x.why+')').join(', ')+(xs.length>6?' et '+(xs.length-6)+' autre'+(xs.length>7?'s':''):''));
+    throw new Error(lostDues.length+' obligation'+(lostDues.length>1?'s':'')+' d’échéance du brief impossible'+(lostDues.length>1?'s':'')+' à tenir — '+parts.join(' ; ')+'. Le planning précédent est conservé.');
+  };
   for(let wi=0;wi<3;wi++){
     const mon=addDays(first,wi*7),weekKey=iso(mon),protectedPlan=protectedPlanFor(weekKey,state,archive),ref=refOf(mon);
     const dateOf=day=>iso(addDays(mon,DAYS.indexOf(day)));
@@ -732,6 +794,10 @@ function buildThreeWeekSnail(options){
       for(const s of flattenPlan(protectedPlan))used.add(storeKey(s));
       const diagnostics=weekDistributionDiagnostics({mon,days,activeDays:days,plan:protectedPlan,target,max,ranked,used,weekPlaced:new Set(flattenPlan(protectedPlan).map(storeKey)),credit,fits,manual:true,frozenDays});
       weeks.push({weekKey,plan:protectedPlan,manual:true,unplaced:[],diagnostics,frozenDays});
+      /* Lot 3B : une semaine retouchée ne reçoit aucune obligation ; celle qui n'y figure pas attend
+         une journée générée encore ≤ échéance, sinon elle est perdue. */
+      const sunday=iso(addDays(mon,6));for(const o of obligations.values())if(o.state==='open'&&o.lower<=sunday&&o.dueDate>=weekKey&&(!today||o.dueDate>=today))o.sawManual=true;
+      expireDues(iso(addDays(mon,7)));
       continue
     }
     /* P0.3 — un rendez-vous (prioritaire) ou un verrou daté ou récurrent posé sur un jour
@@ -764,6 +830,8 @@ function buildThreeWeekSnail(options){
         plan[todayName].push(s);weekPlaced.add(k);used.add(k);if(!days.includes(todayName)||blocked(today))frozenCount++;
       }
     }
+    /* Lot 3B : une journée passée conservée ou la visite du jour tient déjà l'obligation. */
+    for(const day of DAYS)for(const s of plan[day]){const date=dateOf(day),k=storeKey(s);for(const o of obligations.values())if(o.state==='open'&&o.key===k&&date>=o.lower&&date<=o.dueDate){o.state='done';o.by='kept'}}
     const activeDays=days.filter(day=>!frozenSet.has(day)&&!blocked(dateOf(day))),weekTarget=Math.max(0,target-frozenCount),quotas=dayQuotas(activeDays,weekTarget);
     const count=()=>flattenPlan(plan,activeDays).length+frozenCount;
     /* V263.1 : un magasin est candidat s'il n'est plus bloqué au dernier jour actif de la
@@ -776,9 +844,10 @@ function buildThreeWeekSnail(options){
     const freeOn=s=>activeDays.filter(day=>!needAt(s,refAt(day)).blocked);
     const rankNeed=s=>{const n=needAt(s,ref);if(!n.blocked)return n;const day=freeOn(s)[0];return day?needAt(s,refAt(day)):n};
     /* Lot 3A : l'ordre de départ (score métier puis distance) est celui de CETTE semaine. */
-    const candidates=rankedFor(weekKey).filter(s=>{if(!needAt(s,lastRef).blocked)return true;const k=storeKey(s);if(!used.has(k)&&!weekPlaced.has(k))recentlySkipped.add(k);return false});
+    const weekRanked=rankedFor(weekKey);
+    const candidates=weekRanked.filter(s=>{if(!needAt(s,lastRef).blocked)return true;const k=storeKey(s);if(!used.has(k)&&!weekPlaced.has(k))recentlySkipped.add(k);return false});
     const skippedThisWeek=ranked.length-candidates.length;
-    if(!activeDays.length){const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked:candidates,used,weekPlaced,credit,fits,frozenDays,recentlyVisited:skippedThisWeek});weeks.push({weekKey,plan,manual:false,unplaced,diagnostics,frozenDays});continue}
+    if(!activeDays.length){const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked:candidates,used,weekPlaced,credit,fits,frozenDays,recentlyVisited:skippedThisWeek});weeks.push({weekKey,plan,manual:false,unplaced,diagnostics,frozenDays});expireDues(iso(addDays(mon,7)));continue}
     const place=s=>{
       const open=new Set(freeOn(s));
       for(const day of orderedPlacementDays(activeDays,plan,quotas,credit)){
@@ -795,17 +864,47 @@ function buildThreeWeekSnail(options){
       if(day&&activeDays.includes(day))forced.push({store:s,day});
       else if(!day&&imposed[s.id])forced.push({store:s,day:''});
     }
-    for(const item of forced){
-      const s=item.store,k=storeKey(s);if(weekPlaced.has(k))continue;
+    const placeForced=item=>{
+      const s=item.store,k=storeKey(s);if(weekPlaced.has(k))return;
       const candidateDays=item.day?[item.day]:orderedPlacementDays(activeDays,plan,quotas,credit);
-      let placed=false;
       for(const day of candidateDays){
         const trial=plan[day].concat([s]),cost=trial.reduce((n,x)=>n+Math.max(1,Number(credit(x))||1),0);
         if(cost>max||!fits(trial,day,mon))continue;
-        plan[day]=trial;weekPlaced.add(k);used.add(k);placed=true;break;
+        plan[day]=trial;weekPlaced.add(k);used.add(k);return;
       }
-      if(!placed)throw new Error((s.enseigne||'Magasin')+' '+(s.ville||'')+' ne tient pas dans la semaine malgré sa contrainte. Le planning précédent est conservé.');
+      throw new Error((s.enseigne||'Magasin')+' '+(s.ville||'')+' ne tient pas dans la semaine malgré sa contrainte. Le planning précédent est conservé.');
+    };
+    /* Lot 3B — obligations à poser cette semaine (fenêtre ouverte, échéance pas encore passée) :
+       échéance la plus proche d'abord, puis le départage existant (palier de besoin, puis ordre de la
+       semaine), puis l'identifiant. Chacune prend la première journée compatible : active, jamais
+       passée, ≤ échéance, magasin ouvert (dayFits), capacité et horaires. La garde anti-sur-visite ne
+       la retient pas. */
+    const dueRows=[...obligations.values()].filter(o=>o.state==='open'&&!o.after&&o.lower<=weekKey&&o.dueDate>=weekKey);
+    if(dueRows.length){
+      const pos=new Map(weekRanked.map((s,i)=>[storeKey(s),i])),need=o=>needAt(o.store,ref)||{},tier=o=>{const t=need(o).tier;return Number.isFinite(t)?t:3},at=o=>pos.has(o.key)?pos.get(o.key):Infinity;
+      dueRows.sort((a,b)=>a.dueDate.localeCompare(b.dueDate)||tier(b)-tier(a)||(tier(a)>=4?(Number(need(b).ratio)||0)-(Number(need(a).ratio)||0):0)||at(a)-at(b)||a.key.localeCompare(b.key));
     }
+    const placeDue=o=>{
+      const s=o.store,k=o.key;if(weekPlaced.has(k))return;
+      for(const day of DAYS){
+        if(!activeDays.includes(day))continue;
+        const date=dateOf(day);if(date>o.dueDate||(today&&date<today)||!fits([s],day,mon))continue;
+        o.sawDay=true;
+        const trial=plan[day].concat([s]);if(routeCreditCost(trial,credit)>max||!fits(trial,day,mon))continue;
+        plan[day]=trial;weekPlaced.add(k);used.add(k);const pin={key:k,weekKey,day,date};deadlinePins.set(k+'|'+date,pin);
+        /* La visite posée tient toute obligation du magasin dont la fenêtre la contient : jamais de doublon. */
+        for(const x of obligations.values())if(x.state==='open'&&x.key===k&&!x.after&&date>=x.lower&&date<=x.dueDate){x.state='done';x.by='placed';x.placed=pin}
+        return;
+      }
+    };
+    /* Rendez-vous et verrous d'abord ; une obligation choisit ensuite sa journée avant un magasin
+       imposé sans jour, qui peut aller ailleurs. Sans obligation, l'ordre historique est intact. */
+    const deferred=dueRows.length?forced.filter(item=>!item.day):[];
+    for(const item of forced)if(!deferred.includes(item))placeForced(item);
+    for(const o of dueRows)placeDue(o);
+    for(const item of deferred)placeForced(item);
+    /* Le magasin d'une obligation pas encore posée n'est pas repris par la sélection libre. */
+    const held=new Set();for(const o of obligations.values())if(o.state!=='done')held.add(o.key);
     /* V263 : un palier de besoin après l'autre. Sans besoin connu, un seul palier : on
        retrouve exactement les deux passes V243 ci-dessous. V263.3 : les paliers sont ceux
        que la couverture donne (jamais visité 3,5 entre retard 3 et très en retard 4, P1 en
@@ -821,13 +920,13 @@ function buildThreeWeekSnail(options){
          déjà utilisé récemment n'est plus reproposé tant qu'il reste un magasin frais. */
       for(const s of group){
         if(count()>=target)break;
-        const k=storeKey(s);if(used.has(k)||weekPlaced.has(k)||memory.usedKeys.has(k)||reservedLater(k,weekKey))continue;
+        const k=storeKey(s);if(used.has(k)||weekPlaced.has(k)||memory.usedKeys.has(k)||reservedLater(k,weekKey)||held.has(k))continue;
         if(!place(s))unplaced.push(s);
       }
       /* V243 — palier 2 « rotation » : on reprend ceux déjà utilisés, du moins récemment
          vu au plus récemment vu, pour qu'aucun magasin ne reste durablement hors rotation. */
       if(count()<target){
-        const due=sortByLeastRecentlyUsed(group.filter(s=>{const k=storeKey(s);return !used.has(k)&&!weekPlaced.has(k)&&!reservedLater(k,weekKey)}),memory);
+        const due=sortByLeastRecentlyUsed(group.filter(s=>{const k=storeKey(s);return !used.has(k)&&!weekPlaced.has(k)&&!reservedLater(k,weekKey)&&!held.has(k)}),memory);
         for(const s of due){
           if(count()>=target)break;
           if(!place(s))unplaced.push(s);
@@ -835,11 +934,29 @@ function buildThreeWeekSnail(options){
       }
     }
     const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked:candidates,used,weekPlaced,credit,fits,frozenDays,recentlyVisited:skippedThisWeek});weeks.push({weekKey,plan,manual:false,unplaced,diagnostics,frozenDays});
+    expireDues(iso(addDays(mon,7)));
   }
+  assertDues();
   const projectedNeedAt=needOf&&typeof needOf.projectedAfterVisit==='function'?(store,visitDate,ref)=>needOf.projectedAfterVisit(store,visitDate,ref):null;
   const reservations=options.overnightReservations||state&&state.hotelReservations||{};
-  let preparation=null;if(options.crossDayEnabled!==false){const prepare=typeof options.prepareCrossDayWeeks==='function'?options.prepareCrossDayWeeks:(rows=>prepareCrossDayAllocationV264(rows,state,days,reservations));try{preparation=prepare(weeks)||null}catch(e){preparation=null}}
-  const crossDay=optimizeThreeWeekCrossDay(weeks,Object.assign({},options,{state,days,target,maxCreditsPerDay:max,ranked,memory,needAt,projectedNeedAt,businessBaselineWeeks:preparation&&preparation.businessBaselineWeeks||null,completedOn,creditOf:credit,lockDayForWeek:lockFor,appointmentDay:apptFor,dayFits:fits,dayBlocked:blocked,overnightReservations:reservations,briefAt}));
+  let preparation=null;if(options.crossDayEnabled!==false){
+    const pinned=deadlinePins.size?weeks.map(w=>Object.fromEntries(DAYS.map(d=>[d,(w.plan[d]||[]).slice()]))):null;
+    const prepare=typeof options.prepareCrossDayWeeks==='function'?options.prepareCrossDayWeeks:(rows=>prepareCrossDayAllocationV264(rows,state,days,reservations));try{preparation=prepare(weeks)||null}catch(e){preparation=null}
+    /* Lot 3B : la géographie vient après une consigne explicite. Une préparation qui déplace une
+       visite d'échéance est annulée pour sa semaine, plan et référence métier. */
+    if(pinned)weeks.forEach((w,i)=>{
+      if(w.manual||![...deadlinePins.values()].some(pin=>pin.weekKey===w.weekKey&&!(w.plan[pin.day]||[]).some(s=>storeKey(s)===pin.key)))return;
+      w.plan=pinned[i];const ref=preparation&&preparation.businessBaselineWeeks&&preparation.businessBaselineWeeks[i];if(ref)ref.plan=Object.fromEntries(DAYS.map(d=>[d,pinned[i][d].slice()]));
+    });
+  }
+  const crossDay=optimizeThreeWeekCrossDay(weeks,Object.assign({},options,{state,days,target,maxCreditsPerDay:max,ranked,memory,needAt,projectedNeedAt,businessBaselineWeeks:preparation&&preparation.businessBaselineWeeks||null,completedOn,creditOf:credit,lockDayForWeek:lockFor,appointmentDay:apptFor,dayFits:fits,dayBlocked:blocked,overnightReservations:reservations,briefAt,deadlineFixed:deadlinePins}));
+  /* Lot 3B — contrôle final : chaque obligation tenue par le planning l'est encore après
+     l'optimisation, à une date de sa fenêtre. Une visite faite (doneDate) la tient hors planning. */
+  if(obligations.size){
+    const visitsOf=new Map();for(const week of weeks)for(const day of DAYS)for(const s of (week.plan[day]||[])){const k=storeKey(s);if(!visitsOf.has(k))visitsOf.set(k,[]);visitsOf.get(k).push(dateIn(week.weekKey,day))}
+    for(const o of obligations.values())if(o.state==='done'&&o.by!=='doneDate'&&!(visitsOf.get(o.key)||[]).some(date=>date>=o.lower&&date<=o.dueDate))loseDue(o,'visite d’échéance absente du planning final');
+    assertDues();
+  }
   const finalUsed=new Set(weeks.flatMap(w=>flattenPlan(w.plan).map(storeKey)));
   for(const week of weeks){
     const mon=parseISO(week.weekKey),frozenDays=week.frozenDays||[],frozenSet=new Set(frozenDays),activeDays=days.filter(day=>!frozenSet.has(day)&&!blocked(iso(addDays(mon,DAYS.indexOf(day))))),weekPlaced=new Set(flattenPlan(week.plan).map(storeKey));
@@ -847,6 +964,9 @@ function buildThreeWeekSnail(options){
   }
   const dayRows=weeks.flatMap(w=>(w.diagnostics||[]).filter(d=>d.status==='planned'||d.status==='empty')),emptyWorkDays=dayRows.filter(d=>d.status==='empty');
   const out={weeks,uniqueStores:finalUsed.size,totalVisits:weeks.reduce((n,w)=>n+flattenPlan(w.plan).length,0),unknownGps:unknownGps.size,dayCoverage:{planned:dayRows.filter(d=>d.status==='planned').length,active:dayRows.length,empty:emptyWorkDays.length},emptyWorkDays,crossDay};
+  /* Lot 3B : obligations d'échéance de l'horizon et ce qui les tient (posée, visite faite, journée
+     conservée, semaine retouchée, rendez-vous ou verrou). */
+  if(obligations.size)out.deadlines=[...obligations.values()].map(o=>({storeId:String(o.store.id),label:o.label,ruleId:o.ruleId,dueDate:o.dueDate,by:o.by,date:o.placed?o.placed.date:null}));
   /* V263 — ce que le cycle n'a pas pu couvrir, dit clairement : magasins en retard ou jamais
      visités restés hors des 3 semaines faute de capacité, et magasins écartés parce qu'ils
      viennent d'être visités. */

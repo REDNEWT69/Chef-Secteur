@@ -983,7 +983,8 @@ function runBriefCase(weeks, ranked, briefAt, extra = {}) {
     needAt: extra.needAt || (() => ({ status: 'ok', tier: 1, priority: '', blocked: false })), projectedNeedAt: extra.projectedNeedAt, creditOf: extra.creditOf || (() => 1),
     lockDayForWeek: () => '', appointmentDay: () => '', completedOn: () => false,
     dayBlocked: () => false, dayFits: () => true, evaluateDayRoute: rangeEvaluator,
-    distanceBetween: (a, b) => Math.abs(Number(a.x) - Number(b.x)), overnightReservations: {}
+    distanceBetween: (a, b) => Math.abs(Number(a.x) - Number(b.x)), overnightReservations: {},
+    deadlineFixed: extra.deadlineFixed
   }, briefAt ? { briefAt } : {}));
 }
 const briefOn = (id, weekKey, value) => (store, date) => store.id === id && weekKeyOf(date) === weekKey ? value : 0;
@@ -1202,6 +1203,61 @@ if (!PRIORITY_CASE) (function preselectionCutIgnoresInputOrder() {
   };
   assert.equal(run(false), 'c000+w40-anchor');
   assert.equal(run(true), 'c000+w40-anchor', 'présélection : départage déterministe par identifiant avant la coupe à 160');
+})();
+
+/* Lot 3B — une visite posée pour une échéance du brief (deadlineFixed, clé « magasin|date ») est figée
+   dans son créneau : ni déplacée, ni échangée, ni remplacée. Les autres visites restent optimisables. */
+const pinOn = (id, date) => new Map([[id + '|' + date, { key: id, date }]]);
+
+if (!PRIORITY_CASE) (function deadlineVisitIsNeverMoved() {
+  // A (x=-100) est posé mardi avec l'ancre droite ; lundi, l'ancre gauche l'attend. C, libre, suit la géographie.
+  const run = pins => {
+    const left = { id: 'left-anchor', x: -100 }, right = { id: 'right-anchor', x: 100 }, A = { id: 'A', x: -100 }, C = { id: 'C', x: -100 };
+    const weeks = [
+      { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [left], Mardi: [right, A, C] }), manual: false, frozenDays: [] },
+      { weekKey: '2026-10-05', plan: emptyPlan(), manual: true, frozenDays: [] },
+      { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+    ];
+    const report = runBriefCase(weeks, [left, right, A, C], null, { days: ['Lundi', 'Mardi'], target: 4, included: { 'left-anchor': true, 'right-anchor': true }, deadlineFixed: pins });
+    return { report, lundi: idsIn(weeks[0], 'Lundi'), mardi: idsIn(weeks[0], 'Mardi') };
+  };
+  const free = run(undefined);
+  assert.equal(free.lundi, 'A+C+left-anchor', 'sans échéance, A et C rejoignent la tournée de gauche');
+  const pinned = run(pinOn('A', '2026-09-29'));
+  assert.equal(pinned.mardi, 'A+right-anchor', 'échéance : A reste exactement sur son créneau du mardi');
+  assert.equal(pinned.lundi, 'C+left-anchor', 'les autres visites restent optimisables');
+  assert.equal(pinned.report.moves, 1);
+  assert.equal(pinned.report.refused.deadlines, 1);
+})();
+
+if (!PRIORITY_CASE) (function deadlineVisitIsNeverSwapped() {
+  // Échange géographique B (W40) ↔ A (W41) accepté sans échéance ; refusé si l'un des deux est une visite d'échéance.
+  for (const [label, pins, swaps] of [['sans échéance', undefined, 1], ['A figé', pinOn('A', '2026-10-05'), 0], ['B figé', pinOn('B', '2026-09-28'), 0]]) {
+    const w1 = { id: 'w1-anchor', x: 100 }, B = { id: 'B', x: -100 }, w2 = { id: 'w2-anchor', x: -100 }, A = { id: 'A', x: 100 };
+    const weeks = [
+      { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [w1, B] }), manual: false, frozenDays: [] },
+      { weekKey: '2026-10-05', plan: Object.assign(emptyPlan(), { Lundi: [w2, A] }), manual: false, frozenDays: [] },
+      { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+    ];
+    const report = runBriefCase(weeks, [w1, B, w2, A], null, { included: { 'w1-anchor': true, 'w2-anchor': true }, deadlineFixed: pins });
+    assert.equal(report.swaps, swaps, label);
+    if (!swaps) assert.equal(idsIn(weeks[0], 'Lundi') + ' | ' + idsIn(weeks[1], 'Lundi'), 'B+w1-anchor | A+w2-anchor', label + ' : aucune visite d’échéance décalée');
+  }
+})();
+
+if (!PRIORITY_CASE) (function deadlineVisitIsNeverReplaced() {
+  // Remplacement strictement équivalent current → candidate, accepté sans échéance ; jamais pour une visite d'échéance.
+  for (const [label, pins, replaced] of [['sans échéance', undefined, 1], ['current figé', pinOn('current', '2026-09-28'), 0]]) {
+    const anchor = { id: 'anchor', x: 100 }, current = { id: 'current', x: -100 }, candidate = { id: 'candidate', x: 100 };
+    const weeks = [
+      { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [anchor, current] }), manual: false, frozenDays: [] },
+      { weekKey: '2026-10-05', plan: emptyPlan(), manual: true, frozenDays: [] },
+      { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+    ];
+    const report = runBriefCase(weeks, [anchor, current, candidate], null, { included: { anchor: true }, deadlineFixed: pins });
+    assert.equal(report.replacements, replaced, label);
+    assert.equal(idsIn(weeks[0], 'Lundi'), replaced ? 'anchor+candidate' : 'anchor+current', label);
+  }
 })();
 
 console.log('=== V264 benchmark allocation cross-day ===');

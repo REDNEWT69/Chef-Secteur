@@ -55,4 +55,8 @@ assert(source.includes('root.StoreRunnerTerrainPlanningV1=api'));
 // Lot 3A : « Générer mes 3 semaines » lit le brief V246 en lot, jamais magasin par magasin.
 assert(source.includes('weeklyBrief:root.StoreRunnerWeeklyBriefV246'), 'le cycle 3 semaines doit transmettre le brief V246 à son moteur');
 assert(source.includes('briefApi.effectivePriorities(week,{state,db:db()})')&&!/briefApi\.effectivePriority\(/.test(source), 'le brief se lit par semaine en lot (effectivePriorities), jamais par effectivePriority magasin par magasin');
+// Lot 3B : les échéances viennent du même lot V246 (un seul site de lecture) et sont figées pour V264.
+assert.strictEqual((source.match(/effectivePriorities\(/g)||[]).length, 1, 'une seule lecture V246 en lot, partagée par le brief et les échéances');
+assert(source.includes('briefLot(wk).rows.values()'), 'les échéances se lisent dans les lignes du lot brief, sans second cache');
+assert(source.includes('deadlineFixed:deadlinePins'), 'les visites d’échéance posées sont transmises figées à l’optimiseur cross-day');
 console.log('terrain-planning-runtime: OK');
