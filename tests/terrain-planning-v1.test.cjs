@@ -201,13 +201,15 @@ function flat(week){
   const distance=(x,y)=>({
     'a-base':100,'base-a':100,'base-b':100,'b-base':100,'a-b':20,'b-a':20
   })[(x.id||'base')+'-'+(y.id||'base')] ?? 0;
-  const weeks=[0,1,2].map(i=>({weekKey:['2026-09-14','2026-09-21','2026-09-28'][i],plan:{Lundi:[a],Mardi:[b]}}));
+  // H1 : une nuit déjà passée n'est jamais retenue ; ces semaines sont donc futures.
+  const weeks=[0,1,2].map(i=>({weekKey:['2099-01-05','2099-01-12','2099-01-19'][i],plan:{Lundi:[a],Mardi:[b]}}));
   const report=terrain.analyzeOvernightWeeks(weeks,state,distance);
   assert.strictEqual(report.length,3);
   assert.strictEqual(report[0].best.saving,180);
   assert.strictEqual(report[0].selected,true);
   assert.strictEqual(report[0].best.fromDay,'Lundi');
   assert.strictEqual(report[0].best.toDay,'Mardi');
+  assert.deepStrictEqual(report.map(r=>r.best.fromDate),['2099-01-05','2099-01-12','2099-01-19'],'chaque semaine est analysée avec sa propre weekKey');
   state.profile.overnightMinSaving=200;
   assert.strictEqual(terrain.analyzeOvernightWeeks(weeks,state,distance)[0].selected,false,'sous le seuil, le rapport doit expliquer le retour domicile');
   state.profile.overnightMode='never';
@@ -680,3 +682,6 @@ async function lot3bRefusalKeepsThePreviousPlanning(){
 }
 
 lot3bRefusalKeepsThePreviousPlanning().then(()=>console.log('terrain-planning-v1: OK'),e=>{console.error(e);process.exitCode=1});
+
+// H1 : contrat découché du rapport 3 semaines, exécuté par Reliability à travers ce fichier.
+require('./terrain-overnight-contract.test.cjs');

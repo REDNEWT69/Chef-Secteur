@@ -634,24 +634,67 @@ function prepareCrossDayAllocationV264(weeks,state,days,reservations){
   }
   return{prepared,businessBaselineWeeks:reference}
 }
-function overnightForPlan(plan,state=root.state,distanceFn){
-  const profile=state&&state.profile||{},mode=profile.overnightMode||'auto',threshold=Math.max(0,Number(profile.overnightMinSaving)||80),days=((state&&state.settings&&state.settings.days)||DAYS.slice(0,5)).filter(d=>DAYS.includes(d));
-  const base=validBase(state)?{lat:Number(profile.baseLat),lon:Number(profile.baseLon),adresse:profile.baseAddress||'',ville:profile.baseName||'Base'}:null;
-  let best=null;
-  if(base){
-    for(let i=0;i<days.length-1;i++){
-      const a=(plan&&plan[days[i]])||[],b=(plan&&plan[days[i+1]])||[];if(!a.length||!b.length)continue;
-      const last=a[a.length-1],first=b[0],home1=safeDistance(last,base,distanceFn),home2=safeDistance(base,first,distanceFn),direct=safeDistance(last,first,distanceFn);
-      if(!Number.isFinite(home1)||!Number.isFinite(home2)||!Number.isFinite(direct))continue;
-      const saving=Math.max(0,home1+home2-direct),row={night:'Nuit '+days[i]+' → '+days[i+1],fromDay:days[i],toDay:days[i+1],saving,lastId:last.id,firstId:first.id};
-      if(!best||row.saving>best.saving)best=row;
-    }
+/* Découché — un seul contrat, celui de futureOvernightAnalysis (V189, auto-planning-fix.js), que
+   V189 expose comme StoreRunnerOvernightV182.analyze(plan, weekKey) et que V251 lit déjà :
+   - Jamais : aucune nuit (disabled) ; les réservations déjà saisies ne sont pas touchées.
+   - Automatique : meilleure paire éloignée (fin et reprise à ≥ 55 km du domicile), retenue si
+     l'économie atteint profile.overnightMinSaving (80 km par défaut, un 0 explicite reste 0).
+   - Obligatoire : passe outre les 55 km, jamais les 20 km de gain utile ; meilleure paire utile.
+   Une nuit relie deux dates réellement consécutives (mardi → jeudi n'en est pas une quand
+   mercredi est off) et n'est jamais déjà passée (fromDate < aujourd'hui). Lecture seule : ni
+   planning, ni state, ni réservation d'hôtel ne sont écrits. */
+const OVERNIGHT_REMOTE_MIN_KM=55,OVERNIGHT_MIN_USEFUL_KM=20,OVERNIGHT_DEFAULT_SAVING_KM=80;
+/* Même lecture de date que V189 (parse). */
+function overnightDate(v){if(v instanceof Date)return new Date(v.getTime());const s=String(v||'').trim();if(!s)return null;const d=/^\d{4}-\d{2}-\d{2}$/.test(s)?new Date(s+'T12:00:00'):new Date(s);return isNaN(d)?null:d}
+/* Repli terrain du contrat, dans le vocabulaire de futureOvernightAnalysis (candidate, disabled,
+   no-future-pair, too-close, threshold, mandatory-no-useful). Sans domicile localisé, aucune
+   paire : le cycle 3 semaines refuse déjà de générer sans point de départ. */
+function overnightContractAnalysis(plan,state,distanceFn,weekKey,today){
+  const profile=state&&state.profile||{},settings=state&&state.settings||{},mode=profile.overnightMode||'auto',raw=Number(profile.overnightMinSaving),threshold=Number.isFinite(raw)&&raw>=0?raw:OVERNIGHT_DEFAULT_SAVING_KM;
+  if(mode==='never')return{mode,threshold,candidate:null,reason:'disabled',best:null,bestRemote:null};
+  const days=(Array.isArray(settings.days)&&settings.days.length?settings.days:DAYS.slice(0,5)).filter(d=>DAYS.includes(d)),source=plan||{};
+  const mon=monday(overnightDate(weekKey)||overnightDate(settings.weekDate)||new Date()),now=parseISO(today)?String(today):iso(new Date());
+  const base=validBase(state)?{lat:Number(profile.baseLat),lon:Number(profile.baseLon),adresse:profile.baseAddress||'',ville:profile.baseName||'Base'}:null,km=(a,b)=>Math.max(0,safeDistance(a,b,distanceFn));
+  let best=null,bestRemote=null,bestUseful=null;
+  if(base)for(let i=0;i<days.length-1;i++){
+    const fromDay=days[i],toDay=days[i+1],fromDate=iso(addDays(mon,DAYS.indexOf(fromDay))),toDate=iso(addDays(mon,DAYS.indexOf(toDay)));
+    if(fromDate<now||Math.round((overnightDate(toDate)-overnightDate(fromDate))/86400000)!==1)continue;
+    const a=source[fromDay]||[],b=source[toDay]||[];if(!a.length||!b.length)continue;
+    const last=a[a.length-1],first=b[0],fromHome=km(last,base),toHome=km(first,base),saving=fromHome+toHome-km(last,first);if(!Number.isFinite(saving))continue;
+    const row={night:'Nuit '+fromDay+' → '+toDay,fromDay,toDay,fromDate,toDate,last,first,saving,fromHome,toHome,remoteKm:Math.min(fromHome,toHome)};
+    if(!best||row.saving>best.saving)best=row;
+    if(row.remoteKm>=OVERNIGHT_REMOTE_MIN_KM&&(!bestRemote||row.saving>bestRemote.saving))bestRemote=row;
+    if(row.saving>=OVERNIGHT_MIN_USEFUL_KM&&(!bestUseful||row.saving>bestUseful.saving))bestUseful=row;
   }
-  const selected=!!best&&(mode==='mandatory'||(mode==='auto'&&best.saving>=threshold));
-  const reason=mode==='never'?'disabled':!best?'no-candidate':selected?'selected':'below-threshold';
-  return{mode,threshold,selected,reason,best};
+  if(!best)return{mode,threshold,candidate:null,reason:'no-future-pair',best:null,bestRemote:null};
+  if(mode==='mandatory')return{mode,threshold,candidate:bestUseful,reason:bestUseful?'candidate':'mandatory-no-useful',best,bestRemote};
+  if(!bestRemote)return{mode,threshold,candidate:null,reason:'too-close',best,bestRemote:null};
+  if(bestRemote.saving<threshold)return{mode,threshold,candidate:null,reason:'threshold',best,bestRemote};
+  return{mode,threshold,candidate:bestRemote,reason:'candidate',best,bestRemote};
 }
-function analyzeOvernightWeeks(weeks,state=root.state,distanceFn){return (weeks||[]).map(w=>({weekKey:w.weekKey,...overnightForPlan(w.plan,state,distanceFn)}))}
+/* Ligne du rapport 3 semaines, lue comme V251 (overnightRowV185) : `reason` garde le vocabulaire
+   du rapport (selected, below-threshold, disabled, no-candidate), `analysisReason` le motif exact
+   du contrat. `best` est la nuit retenue, sinon la meilleure paire éloignée restée sous le seuil
+   Automatique ; aucune autre paire refusée n'y figure. */
+function overnightReportRow(a){
+  const shown=a.candidate||(a.reason==='threshold'?a.bestRemote:(a.mode==='never'?a.bestRemote||a.best:null))||null;
+  return{mode:a.mode,threshold:a.threshold,selected:!!a.candidate,reason:a.candidate?'selected':a.reason==='threshold'?'below-threshold':a.reason==='disabled'?'disabled':'no-candidate',analysisReason:a.reason,best:shown&&{night:shown.night,fromDay:shown.fromDay,toDay:shown.toDay,fromDate:shown.fromDate,toDate:shown.toDate,saving:shown.saving,remoteKm:shown.remoteKm,lastId:shown.last&&shown.last.id,firstId:shown.first&&shown.first.id}};
+}
+function overnightForPlan(plan,state=root.state,distanceFn,weekKey,today){return overnightReportRow(overnightContractAnalysis(plan,state,distanceFn,weekKey,today))}
+/* Le rapport 3 semaines prend la décision du propriétaire, StoreRunnerOvernightV182.analyze(plan,
+   weekKey) : relue à chaque analyse, car ce module est chargé avant v182-fixes.js et
+   auto-planning-fix.js, et V189 ne la pose qu'à son démarrage. Chaque semaine transmet sa propre
+   weekKey : sans elle, S2 et S3 seraient analysées comme la semaine affichée. Le propriétaire lit
+   l'état et les distances de l'application ; un état ou une distance injectés, une API absente ou
+   en échec passent par overnightForPlan, même contrat. Une semaine sans plan n'a pas de nuit. */
+function analyzeOvernightWeeks(weeks,state=root.state,distanceFn){
+  const owner=state===root.state&&typeof distanceFn!=='function'?root.StoreRunnerOvernightV182:null;
+  return (weeks||[]).map(w=>{
+    const weekKey=w&&w.weekKey,plan=w&&w.plan||{};
+    if(owner&&typeof owner.analyze==='function'){try{const a=owner.analyze(plan,weekKey);if(a&&typeof a.reason==='string')return{weekKey,...overnightReportRow(a)}}catch(e){}}
+    return{weekKey,...overnightForPlan(plan,state,distanceFn,weekKey)};
+  });
+}
 function summarizeOpeningHours(weeks,state=root.state,hoursApi=root.StoreOpeningHoursV1){
   const out={available:!!(hoursApi&&typeof hoursApi.intervalsFor==='function'),known:0,unknown:0,closed:0,uniqueUnknown:0};
   if(!out.available)return out;
