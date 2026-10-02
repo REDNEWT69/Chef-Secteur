@@ -1107,7 +1107,7 @@ function renderTerrainInsights(range){
   const rows=range&&Array.isArray(range.overnightReport)?range.overnightReport:[],hours=range&&range.hoursReport,distribution=range&&Array.isArray(range.planningDiagnostics)?range.planningDiagnostics:[];
   const coverageText=coverageSummaryText(range&&range.coverage,'');
   if(!rows.length&&!hours&&!distribution.length&&!coverageText){box.hidden=true;box.innerHTML='';return false}
-  const mode=rows[0]&&rows[0].mode||'auto',threshold=rows[0]&&Number(rows[0].threshold)||80,modeLabel=mode==='never'?'Jamais':mode==='mandatory'?'Obligatoire':'Automatique';
+  const mode=rows[0]&&rows[0].mode||'auto',shownThreshold=Number(rows[0]&&rows[0].threshold),threshold=Number.isFinite(shownThreshold)&&shownThreshold>=0?shownThreshold:80,modeLabel=mode==='never'?'Jamais':mode==='mandatory'?'Obligatoire':'Automatique';
   let html='<div style="font-weight:850;color:#1d2939;font-size:12.5px">🌙 Découchés sur 3 semaines</div><div style="margin-top:2px;color:#667085">Mode '+modeLabel+(mode==='auto'?' · seuil '+Math.round(threshold)+' km':'')+'</div>';
   for(const row of rows){
     const d=String(row.weekKey||'').split('-'),label=d.length===3?d[2]+'/'+d[1]:row.weekKey,b=row.best,saving=b?Math.max(0,Math.round(Number(b.saving)||0)):0;

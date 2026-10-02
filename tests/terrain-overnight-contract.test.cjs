@@ -8,6 +8,10 @@
       même mode, même seuil, mêmes nuits futures — cas par cas, puis contre V189 sur des semaines
       pseudo-aléatoires (géométrie plane, puis vraies distances du noyau).
    3. L'analyse n'écrit rien : planning, state et réservations d'hôtel restent identiques.
+   4. H1.1 — après le cycle, l'enveloppe V185 (patchThreeWeekGeography → persistSnailGeography →
+      terrainOvernightRow) garde cette décision dans result.overnightReport et dans le
+      range.overnightReport persisté puis affiché ; sa copie locale ne sert que sans moteur terrain.
+      Un seuil explicite à 0 s'affiche 0 km (voir aussi overnight-range-weekdate-v267 pour V251).
    Géométrie plane injectée (km) : le domicile est l'origine (x = 0, y = 0) des deux moteurs ;
    baseLat/baseLon ne servent qu'à déclarer le domicile localisé. Horloge figée dans chaque contexte.
    Les objets créés dans une VM n'ont pas les prototypes de ce fichier : on compare donc des
@@ -42,10 +46,16 @@ function load(files,options){
     settings:{days:FIVE.slice(),weekDate:W40},
     plan:emptyPlan(),stores:[],excluded:{},included:{},locks:{},visits:{},appointments:[],manualWeekEdits:{},calendarEvents:[],hotelReservations:{}
   };
-  const elements={overnightBox:{innerHTML:''}},memory=new Map();
-  const document={readyState:'loading',hidden:false,head:{appendChild(){}},addEventListener(){},removeEventListener(){},dispatchEvent(){},
-    getElementById:id=>elements[id]||null,querySelector:()=>null,querySelectorAll:()=>[],
-    createElement:tag=>({tagName:String(tag).toUpperCase(),dataset:{},style:{},classList:{add(){},remove(){}},setAttribute(){},remove(){},appendChild(){}})};
+  /* DOM minimal : un élément ajouté au document se retrouve par son id (bandeau V189, compte rendu
+     du cycle dans « Planifier plusieurs semaines »). */
+  const byId=new Map(),memory=new Map();
+  const element=tag=>{const el={tagName:String(tag).toUpperCase(),id:'',className:'',textContent:'',innerHTML:'',hidden:false,dataset:{},style:{},parentNode:null,
+    classList:{add(){},remove(){}},setAttribute(){},remove(){},addEventListener(){},
+    appendChild(child){child.parentNode=el;if(child.id)byId.set(child.id,child);return child},
+    insertAdjacentElement(where,child){child.parentNode=el.parentNode;if(child.id)byId.set(child.id,child);return child}};return el};
+  const reportHost=element('div');byId.set('overnightBox',element('div'));
+  const document={readyState:'loading',hidden:false,head:element('head'),addEventListener(){},removeEventListener(){},dispatchEvent(){},
+    getElementById:id=>byId.get(id)||null,querySelector:selector=>selector==='#rangePlannerCard .planningChoiceBody'?reportHost:null,querySelectorAll:()=>[],createElement:element};
   const ctx={console,Date:FixedDate,state,document,
     localStorage:{getItem:k=>memory.has(k)?memory.get(k):null,setItem:(k,v)=>memory.set(k,String(v)),removeItem:k=>memory.delete(k)},
     CustomEvent:function(type,init){this.type=type;this.detail=init&&init.detail},
@@ -55,8 +65,10 @@ function load(files,options){
   if(options&&options.coreDistances)vm.runInNewContext(CORE_DISTANCES,ctx,{filename:'src/chef-secteur.html'});
   else{ctx.hav=flat;ctx.baseObj=()=>({x:0,y:0})}
   for(const file of files)vm.runInNewContext(read(file),ctx,{filename:file});
-  return{ctx,get state(){return ctx.state},terrain:ctx.StoreRunnerTerrainPlanningV1,v189:ctx.StoreRunnerStoreControlsV189,
-    today(day){clock.now=Date.parse(day+'T09:00:00')}};
+  return{ctx,get state(){return ctx.state},terrain:ctx.StoreRunnerTerrainPlanningV1,v189:ctx.StoreRunnerStoreControlsV189,storage:memory,
+    today(day){clock.now=Date.parse(day+'T09:00:00')},
+    /* Compte rendu « Découchés sur 3 semaines » rendu par terrain depuis la période stockée. */
+    insights(){ctx.StoreRunnerTerrainPlanningV1.install();const box=byId.get('terrainSnailInsights');return box&&!box.hidden?box.innerHTML:''}};
 }
 function configure(env,o){
   const s=env.state;
@@ -313,7 +325,7 @@ function oracle(envs,count,seed,storeAt){
 }
 
 /* ── 10 bis. Point d'entrée réel : generateThreeWeekSnail({start: W40}) ───────────────── */
-(async()=>{
+async function threeWeekEntryPoint(){
   const G=load(RUNTIME);G.v189.repair();
   const persisted=[];
   G.ctx.ChefReliability={checkpoint(){},capture:st=>({state:JSON.parse(JSON.stringify(st)),archive:{},range:null}),persist:bundle=>persisted.push(bundle)};
@@ -346,5 +358,132 @@ function oracle(envs,count,seed,storeAt){
   }
   assert.equal(JSON.stringify(original.hotelReservations),reservations,'réservation existante intacte');
   assert.equal(JSON.stringify(persisted[0].state.hotelReservations),reservations,'aucune réservation créée, supprimée ni modifiée');
-  console.log('terrain overnight contract H1 : parité V189 (auto, obligatoire, jamais), W40/W41/W42 et lecture seule OK');
+}
+
+/* ══ H1.1 — le rapport persisté et affiché garde la décision du propriétaire ═══════════════ */
+const RANGE_KEY='chef_sector_range_v1';
+/* Chaîne de production autour d'un cycle imposé : le générateur intérieur rend des semaines fixes,
+   déjà optimisées cross-day (donc sans rééquilibrage V185), après avoir écrit sa période ; la vraie
+   enveloppe V185 (patchThreeWeekGeography → persistSnailGeography → terrainOvernightRow) suit. */
+function v185Chain(files,weeks,options){
+  const env=load(files),legacy=env.ctx.StoreRunnerOvernightV182.analyze;   // copie locale V185, avant le démarrage de V189
+  if(env.v189)env.v189.repair();
+  configure(env,Object.assign({mode:'auto',threshold:80,days:['Lundi','Mardi','Jeudi','Vendredi']},options));
+  env.terrain.generateThreeWeekSnail=async()=>{env.storage.set(RANGE_KEY,JSON.stringify({start:W40,weeks:3,overnightReport:'rapport du moteur terrain'}));return{weeks,crossDay:{applied:true}}};
+  assert.equal(env.ctx.StoreRunnerGeographyV185.patchThreeWeeks(),true,'enveloppe V185 posée sur le cycle');
+  return Object.assign(env,{legacy});
+}
+/* Mercredi off sur les trois semaines ; aujourd'hui mercredi 30/09. */
+const H11_WEEKS=()=>[
+  {weekKey:W40,manual:false,frozenDays:['Lundi','Mardi'],plan:plan({Lundi:[at('w40-a',90)],Mardi:[at('w40-b',100)]})},  // nuit du lundi 28/09, passée
+  {weekKey:W41,manual:false,frozenDays:[],plan:plan({Mardi:[at('w41-a',90)],Jeudi:[at('w41-b',100)]})},               // Mardi → Jeudi n'est pas une nuit
+  {weekKey:W42,manual:false,frozenDays:[],plan:plan({Lundi:[at('w42-a',90)],Mardi:[at('w42-b',100)]})}                // nuit valide
+];
+/* Lecture historique V185 d'une semaine (son repli) et vue comparable d'une ligne de rapport. */
+function legacyView(analyze,week){
+  const a=analyze(week.plan),best=a.candidate||(a.reason==='threshold'?a.bestRemote:(a.mode==='never'?a.bestRemote||a.best:null))||null;
+  return{weekKey:week.weekKey,mode:a.mode,threshold:a.threshold,selected:!!a.candidate,reason:REPORT_REASON(a.reason),night:best?best.night:null};
+}
+const rowView=r=>({weekKey:r.weekKey,mode:r.mode,threshold:r.threshold,selected:r.selected,reason:r.reason,night:r.best?r.best.night:null});
+
+/* ── A. Vraie enveloppe V185 : W40 passée, W41 mercredi off, W42 valide ──────────────────── */
+async function v185KeepsTheOwnerDecision(){
+  const weeks=H11_WEEKS(),env=v185Chain(RUNTIME,weeks),owner=env.ctx.StoreRunnerOvernightV182.analyze;
+  assert.equal(owner,env.v189.futureOvernightAnalysis,'V189 possède la décision');
+  env.state.hotelReservations={[W42]:{fromDate:W42,toDate:'2026-10-13',hotelName:'Hôtel Test',reference:'R-3',address:'',lat:null,lon:null,zone:'Ville-Test w42-a'}};
+  const reservations=JSON.stringify(env.state.hotelReservations),plans=JSON.stringify(weeks.map(week=>week.plan));
+  const result=await env.terrain.generateThreeWeekSnail({start:W40});
+  const persisted=JSON.parse(env.storage.get(RANGE_KEY)).overnightReport,[w40,w41,w42]=Array.from(result.overnightReport);
+  const problems=[];
+  if(w40.selected||(w40.best&&w40.best.night==='Nuit Lundi → Mardi'))problems.push('W40 : V185 ressuscite la nuit passée Lundi → Mardi');
+  if(w41.selected||(w41.best&&w41.best.night==='Nuit Mardi → Jeudi'))problems.push('W41 : V185 prend Mardi → Jeudi alors que mercredi est off');
+  if(!w42.selected)problems.push('W42 : la nuit valide doit rester retenue');
+  assert.deepEqual(problems,[],problems.join(' ; '));
+  assert.deepEqual([w42.best.night,w42.best.fromDate,w42.best.toDate,w42.best.saving],['Nuit Lundi → Mardi',W42,'2026-10-13',180]);
+  // Trois endroits, une décision : result.overnightReport, range.overnightReport persisté, propriétaire.
+  assert.equal(JSON.stringify(persisted),JSON.stringify(result.overnightReport),'le rapport persisté est celui du résultat');
+  weeks.forEach((week,i)=>{
+    const want=decisionOf(owner(week.plan,week.weekKey));
+    for(const [where,row] of [['result.overnightReport',result.overnightReport[i]],['range.overnightReport',persisted[i]]]){
+      assert.equal(row.weekKey,week.weekKey,where+' : weekKey');
+      assert.deepEqual(decisionOfRow(row),want,week.weekKey+' / '+where+' : décision du propriétaire');
+      assert.equal(row.reason,REPORT_REASON(want.reason),week.weekKey+' / '+where+' : motif du rapport');
+    }
+  });
+  // Affiché : le compte rendu est rendu depuis la période persistée (section découchés seule).
+  const blocks=env.insights().split(/🕘 Horaires|📅 Répartition|🎯 Couverture/)[0].split('Semaine du ').slice(1);
+  assert.equal(blocks.length,3);
+  assert(blocks[0].startsWith('28/09')&&blocks[0].includes('Retour domicile'),'W40 affichée sans nuit');
+  assert(blocks[1].startsWith('05/10')&&blocks[1].includes('Retour domicile')&&!blocks[1].includes('Mardi → Jeudi'),'W41 affichée sans Mardi → Jeudi');
+  assert(blocks[2].startsWith('12/10')&&blocks[2].includes('🌙 Lundi → Mardi · ~180 km'),'W42 affichée avec sa nuit');
+  assert.equal(JSON.stringify(weeks.map(week=>week.plan)),plans,'aucun magasin déplacé');
+  assert.equal(JSON.stringify(env.state.hotelReservations),reservations,'aucune réservation créée, supprimée ni modifiée');
+}
+
+/* ── B. Repli V185 : moteur terrain absent ou inutilisable → chemin historique, sans exception ── */
+async function v185FallbackWithoutTerrain(){
+  for(const [label,breakApi] of [
+    ['API absente',api=>{delete api.analyzeOvernightWeeks}],
+    ['API en échec',api=>{api.analyzeOvernightWeeks=()=>{throw new Error('panne')}}],
+    ['aucune ligne',api=>{api.analyzeOvernightWeeks=()=>[]}],
+    ['ligne inexploitable',api=>{api.analyzeOvernightWeeks=()=>[{weekKey:W40}]}]
+  ]){
+    const weeks=H11_WEEKS(),env=v185Chain(RUNTIME,weeks);breakApi(env.terrain);
+    const result=await env.terrain.generateThreeWeekSnail({start:W40}),want=weeks.map(week=>legacyView(env.legacy,week));
+    assert.deepEqual(Array.from(result.overnightReport,rowView),want,label+' : repli historique V185');
+    assert.deepEqual(Array.from(JSON.parse(env.storage.get(RANGE_KEY)).overnightReport,rowView),want,label+' : repli historique persisté');
+  }
+  /* Sans V189, le propriétaire exposé est la copie V185 elle-même : la délégation passe par lui une
+     fois par semaine, avec sa weekKey, et s'arrête là (aucune récursion). */
+  const weeks=H11_WEEKS(),env=v185Chain(['terrain-planning-v1.js','v182-fixes.js'],weeks),api=env.ctx.StoreRunnerOvernightV182,own=api.analyze,calls=[];
+  assert.equal(env.v189,undefined);
+  api.analyze=function(p,weekKey){calls.push(weekKey);return own.apply(this,arguments)};
+  const result=await env.terrain.generateThreeWeekSnail({start:W40});
+  assert.deepEqual(calls,[W40,W41,W42],'une analyse par semaine, avec sa weekKey');
+  assert.deepEqual(Array.from(result.overnightReport,rowView),weeks.map(week=>legacyView(own,week)),'décision de la copie V185 mise en forme par le rapport terrain');
+  assert(Array.from(result.overnightReport).every(row=>typeof row.analysisReason==='string'),'ligne du rapport terrain');
+}
+
+/* ── A bis. Cycle réel : moteur terrain puis enveloppe V185 de production ─────────────────── */
+async function realCycleThroughV185(){
+  /* Rééquilibrage V185 compris (aucun historique de visite). La semaine affichée W40 est entamée :
+     lundi et mardi, passés, gardent une paire très éloignée que l'ancienne copie V185 reprenait. */
+  const G=load(RUNTIME);G.v189.repair();
+  G.ctx.ChefReliability={checkpoint(){},capture:(st,s)=>({state:JSON.parse(JSON.stringify(st)),archive:JSON.parse(s.getItem('chef_sector_plan_archive_v1')||'{}'),range:null}),
+    persist:(bundle,s)=>{s.setItem('chef_sector_plan_archive_v1',JSON.stringify(bundle.archive||{}));s.setItem(RANGE_KEY,JSON.stringify(bundle.range))}};
+  G.ctx.havBase=s=>flat({x:0,y:0},s);
+  configure(G,{mode:'auto',threshold:0});
+  Object.assign(G.state.settings,{target:5,maxVisitsPerDay:2,startTime:'08:30',endTime:'23:00',visitMinutes:30});
+  G.state.stores=Array.from({length:18},(_,i)=>Object.assign(at('far-'+pad(i+1),100+i*2,(i%3)*4),{lat:45+i/100,lon:5,active:true}));
+  G.state.plan=plan({Lundi:[at('past-a',200)],Mardi:[at('past-b',210)]});
+  assert.equal(G.ctx.StoreRunnerGeographyV185.patchThreeWeeks(),true,'enveloppe V185 posée sur le cycle');
+  const owner=G.ctx.StoreRunnerOvernightV182.analyze,built=await G.terrain.generateThreeWeekSnail({start:W40});
+  const report=JSON.parse(G.storage.get(RANGE_KEY)).overnightReport;
+  assert.deepEqual(Array.from(built.weeks,w=>w.weekKey),[W40,W41,W42]);
+  assert.deepEqual(Array.from(built.weeks[0].plan.Lundi,s=>s.id),['past-a'],'W40 : la journée passée est conservée');
+  assert.equal(JSON.stringify(report),JSON.stringify(built.overnightReport),'rapport persisté = rapport du résultat');
+  assert.notEqual(report[0].best&&report[0].best.night,'Nuit Lundi → Mardi','W40 : jamais la nuit passée');
+  assert(report[0].selected&&report[0].best.fromDate>=TODAY,'W40 : une nuit future');
+  built.weeks.forEach((week,i)=>assert.deepEqual(decisionOfRow(report[i]),decisionOf(owner(week.plan,week.weekKey)),week.weekKey+' : rapport persisté = décision du propriétaire'));
+  assert.match(G.insights(),/Mode Automatique · seuil 0 km</,'seuil 0 affiché tel quel');
+}
+
+/* ── D. En-tête du compte rendu terrain : le seuil réel ──────────────────────────────────── */
+function terrainHeaderShowsTheRealThreshold(){
+  const U=load(['terrain-planning-v1.js']);
+  const header=(mode,threshold)=>{U.storage.set(RANGE_KEY,JSON.stringify({overnightReport:[{weekKey:FUTURE,mode,threshold,selected:false,reason:'no-candidate',analysisReason:'too-close',best:null}]}));return (U.insights().match(/Mode [^<]*/)||[''])[0]};
+  assert.equal(header('auto',0),'Mode Automatique · seuil 0 km','un seuil explicite à 0 s’affiche 0 km, jamais 80');
+  assert.equal(header('auto',40),'Mode Automatique · seuil 40 km');
+  for(const invalid of [undefined,-5,'abc'])assert.equal(header('auto',invalid),'Mode Automatique · seuil 80 km','seuil illisible : 80 km par défaut');
+  assert.equal(header('mandatory',0),'Mode Obligatoire');
+  assert.equal(header('never',0),'Mode Jamais');
+}
+
+(async()=>{
+  const failures=[];
+  for(const test of [threeWeekEntryPoint,v185KeepsTheOwnerDecision,v185FallbackWithoutTerrain,realCycleThroughV185,terrainHeaderShowsTheRealThreshold]){
+    try{await test()}catch(e){failures.push(test.name+' — '+(e&&e.message||e))}
+  }
+  if(failures.length){console.error(failures.join('\n'));process.exit(1)}
+  console.log('terrain overnight contract H1 + H1.1 : parité V189 (auto, obligatoire, jamais), W40/W41/W42, lecture seule, rapport V185 persisté et affiché, seuil 0 OK');
 })().catch(e=>{console.error(e);process.exit(1)});
