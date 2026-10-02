@@ -479,24 +479,33 @@ function optimizeThreeWeekCrossDay(weeks,options){
   let insertions=0,moves=0,swaps=0,replacements=0;
 
   /* Construction complémentaire : le meilleur palier métier plaçable gagne toujours ; la
-     géographie et la charge ne départagent qu'ensuite. */
+     géographie et la charge ne départagent qu'ensuite. Un couple magasin/créneau est classé par
+     [palier V264 du magasin sur les créneaux ouverts, rotation, brief]. Le brief d'un créneau ne
+     promeut le couple que si le palier réel du magasin à cette date est ce palier : jamais le palier
+     d'une semaine avec le bonus d'une autre. Ailleurs il ne peut que pénaliser. Sans brief, 0 partout :
+     tuple et géographie V264 inchangés. */
+  const slotTuple=(row,slot)=>{const brief=briefOf(row.store,slot.date);return[row.bestRank,row.fresh,-row.useCount,businessAt(row.store,slot.date)===row.bestRank?brief:Math.min(0,brief)]};
   for(let guard=0;guard<Math.min(60,ranked.length);guard++){
     const planned=countPlanned(),openWeeks=new Set();
     for(const week of weeks){if(week.manual)continue;const count=(weekSlots.get(week.weekKey)||[]).reduce((n,slot)=>n+slot.route.length,0);if(count<target)openWeeks.add(week.weekKey)}
     if(!openWeeks.size)break;
+    /* Présélection sur le meilleur tuple réellement atteignable par chaque magasin sur un même créneau. */
     const candidates=ranked.filter(store=>!planned.has(storeKey(store))).map(store=>{
-      let bestRank=0,brief=-Infinity;for(const slot of slots)if(openWeeks.has(slot.weekKey)&&canUse(store,slot)){bestRank=Math.max(bestRank,businessAt(store,slot.date));brief=Math.max(brief,briefOf(store,slot.date))}
-      return{store,bestRank,brief,fresh:memory.usedKeys&&memory.usedKeys.has(storeKey(store))?0:1,useCount:memory.useCount&&memory.useCount.get(storeKey(store))||0}
-    }).filter(row=>row.bestRank>0).sort((a,b)=>b.bestRank-a.bestRank||b.fresh-a.fresh||a.useCount-b.useCount||b.brief-a.brief||String(storeKey(a.store)).localeCompare(String(storeKey(b.store)))).slice(0,CROSS_DAY_CANDIDATE_LIMIT);
+      const row={store,fresh:memory.usedKeys&&memory.usedKeys.has(storeKey(store))?0:1,useCount:memory.useCount&&memory.useCount.get(storeKey(store))||0,bestRank:0,bestTuple:null},usable=slots.filter(slot=>openWeeks.has(slot.weekKey)&&canUse(store,slot));
+      for(const slot of usable)row.bestRank=Math.max(row.bestRank,businessAt(store,slot.date));
+      for(const slot of usable){const tuple=slotTuple(row,slot);if(!row.bestTuple||compareTupleV264(tuple,row.bestTuple)>0)row.bestTuple=tuple}
+      return row
+    }).filter(row=>row.bestRank>0).sort((a,b)=>compareTupleV264(b.bestTuple,a.bestTuple)||String(storeKey(a.store)).localeCompare(String(storeKey(b.store)))).slice(0,CROSS_DAY_CANDIDATE_LIMIT);
     let best=null,bestTuple=null;
     for(const candidate of candidates){
-      /* Palier métier puis rotation, puis le brief du créneau visé, puis la géographie. */
-      const rank=[candidate.bestRank,candidate.fresh,-candidate.useCount];if(bestTuple&&compareTupleV264(rank,bestTuple.slice(0,3))<0)break;
+      /* Tri décroissant : aucun créneau d'un candidat ne dépasse son meilleur tuple, donc aucun candidat
+         suivant ne peut plus égaler le meilleur couple trouvé. L'égalité reste évaluée (géographie). */
+      if(bestTuple&&compareTupleV264(candidate.bestTuple,bestTuple)<0)break;
       for(const slot of slots){
         if(!openWeeks.has(slot.weekKey)||!canUse(candidate.store,slot))continue;
         const before=metric(slot.route,slot),trial=slot.route.concat([candidate.store]);if(routeCreditCost(trial,credit)>max)continue;
         const after=metric(trial,slot);if(!after.feasible)continue;
-        const tuple=rank.concat([briefOf(candidate.store,slot.date)]),score=(after.driveMinutes-before.driveMinutes)+4*(Math.pow(after.credits,2)-Math.pow(before.credits,2)),signature=slot.date+'|'+storeKey(candidate.store)+'|'+after.signature,row={candidate,slot,after,score,kmDelta:after.kilometers-before.kilometers,signature};
+        const tuple=slotTuple(candidate,slot),score=(after.driveMinutes-before.driveMinutes)+4*(Math.pow(after.credits,2)-Math.pow(before.credits,2)),signature=slot.date+'|'+storeKey(candidate.store)+'|'+after.signature,row={candidate,slot,after,score,kmDelta:after.kilometers-before.kilometers,signature};
         if(!best||compareTupleV264(tuple,bestTuple)>0||compareTupleV264(tuple,bestTuple)===0&&(row.score<best.score-CROSS_DAY_EPSILON||Math.abs(row.score-best.score)<=CROSS_DAY_EPSILON&&(row.kmDelta<best.kmDelta-CROSS_DAY_EPSILON||Math.abs(row.kmDelta-best.kmDelta)<=CROSS_DAY_EPSILON&&row.signature<best.signature))){best=row;bestTuple=tuple}
       }
     }

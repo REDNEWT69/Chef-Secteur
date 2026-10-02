@@ -980,7 +980,7 @@ function runBriefCase(weeks, ranked, briefAt, extra = {}) {
     state: { included: extra.included || {}, hotelReservations: {} },
     days: extra.days || ['Lundi'], target: extra.target || 2, maxCreditsPerDay: 4,
     ranked, memory: { usedKeys: new Set(), useCount: new Map() },
-    needAt: extra.needAt || (() => ({ status: 'ok', tier: 1, priority: '', blocked: false })), projectedNeedAt: extra.projectedNeedAt, creditOf: () => 1,
+    needAt: extra.needAt || (() => ({ status: 'ok', tier: 1, priority: '', blocked: false })), projectedNeedAt: extra.projectedNeedAt, creditOf: extra.creditOf || (() => 1),
     lockDayForWeek: () => '', appointmentDay: () => '', completedOn: () => false,
     dayBlocked: () => false, dayFits: () => true, evaluateDayRoute: rangeEvaluator,
     distanceBetween: (a, b) => Math.abs(Number(a.x) - Number(b.x)), overnightReservations: {}
@@ -1102,6 +1102,106 @@ if (!PRIORITY_CASE) (function briefProjectionSwapNeverLowersTheTotal() {
   const kept = run(briefOn('A', '2026-10-05', 50));
   assert.equal(kept.w2, 'A', 'brief : la projection ne fait pas perdre le +50 de A en W41');
   assert.equal(kept.report.swaps, 0);
+})();
+
+/* Insertion : un brief ne promeut un couple magasin/créneau qu'à la date où le magasin atteint
+   réellement son palier, jamais le palier d'une semaine avec le bonus d'une autre. Sans brief, le
+   classement V264 (figé par r20) est inchangé. Paliers : 5 très en retard, 4 jamais visité, 3 en
+   retard, 2 bientôt dû. */
+const NEED_BY_RANK = { 5: { status: 'late', tier: 4 }, 4: { status: 'never', tier: 3.5 }, 3: { status: 'late', tier: 3 }, 2: { status: 'soon', tier: 2 }, 1: { status: 'ok', tier: 1 } };
+const needByWeek = table => (store, date) => Object.assign({ priority: '', blocked: false }, NEED_BY_RANK[(table[store.id] || {})[weekKeyOf(date)] || 1]);
+const briefByWeek = table => (store, date) => (table[store.id] || {})[weekKeyOf(date)] || 0;
+function twoOpenWeeks(w40, w41) {
+  return [
+    { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [w40] }), manual: false, frozenDays: [] },
+    { weekKey: '2026-10-05', plan: Object.assign(emptyPlan(), { Lundi: [w41] }), manual: false, frozenDays: [] },
+    { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+  ];
+}
+
+if (!PRIORITY_CASE) (function briefInsertionReadsRankAndBriefOnTheSameSlot() {
+  // Cas A — une place par semaine. A : en retard en W40 (0), bientôt dû en W41 (+100). B : en retard
+  // en W40 (+50), bientôt dû en W41. C : en retard les deux semaines, sans brief. A est le plus proche.
+  const run = briefAt => {
+    const w40 = { id: 'w40-anchor', x: 100 }, w41 = { id: 'w41-anchor', x: 100 };
+    const A = { id: 'A', x: 100 }, B = { id: 'B', x: -100 }, C = { id: 'C', x: -100 }, weeks = twoOpenWeeks(w40, w41);
+    runBriefCase(weeks, [w40, w41, A, B, C], briefAt, {
+      included: { 'w40-anchor': true, 'w41-anchor': true },
+      needAt: needByWeek({ A: { '2026-09-28': 3, '2026-10-05': 2 }, B: { '2026-09-28': 3, '2026-10-05': 2 }, C: { '2026-09-28': 3, '2026-10-05': 3 } })
+    });
+    return { w40: idsIn(weeks[0], 'Lundi'), w41: idsIn(weeks[1], 'Lundi') };
+  };
+  const control = run(null);
+  assert.equal(control.w40, 'A+w40-anchor', 'sans brief, à palier égal en W40, la géographie donne la place à A');
+  assert.equal(control.w41, 'C+w41-anchor', 'sans brief, W41 revient au magasin réellement en retard ce jour-là');
+  const boosted = run(briefByWeek({ A: { '2026-10-05': 100 }, B: { '2026-09-28': 50 } }));
+  assert.equal(boosted.w40, 'B+w40-anchor', 'brief : sur le créneau W40, B (+50) bat A (0) à palier égal');
+  assert.equal(boosted.w41, 'C+w41-anchor', 'brief : A n’est jamais classé en W41 avec son rang W40 et son brief W41');
+})();
+
+if (!PRIORITY_CASE) (function briefNeverCrossesABusinessTierAcrossWeeks() {
+  // Cas B — X : très en retard en W40 sans brief, jamais visité en W41 avec un très gros brief.
+  // Y : jamais visité en W40, très en retard en W41. Une place par semaine.
+  const run = (briefAt, xAt, yAt) => {
+    const w40 = { id: 'w40-anchor', x: 100 }, w41 = { id: 'w41-anchor', x: -100 };
+    const X = { id: 'X', x: xAt }, Y = { id: 'Y', x: yAt }, weeks = twoOpenWeeks(w40, w41);
+    runBriefCase(weeks, [w40, w41, X, Y], briefAt, {
+      included: { 'w40-anchor': true, 'w41-anchor': true },
+      needAt: needByWeek({ X: { '2026-09-28': 5, '2026-10-05': 4 }, Y: { '2026-09-28': 4, '2026-10-05': 5 } })
+    });
+    return idsIn(weeks[0], 'Lundi') + ' / ' + idsIn(weeks[1], 'Lundi');
+  };
+  const boost = briefByWeek({ X: { '2026-10-05': 1000 } });
+  assert.equal(run(null, 100, -100), 'X+w40-anchor / Y+w41-anchor', 'sans brief : chacun à son palier réel');
+  assert.equal(run(boost, 100, -100), 'X+w40-anchor / Y+w41-anchor', 'brief : en W41, Y réellement très en retard n’est pas battu par X jamais visité, même à +1000');
+  // Géographie inverse : le palier V264 (figé par r20) laisse la géographie choisir ; le bonus n'y change rien.
+  assert.equal(run(boost, -100, 100), run(null, -100, 100), 'brief : un bonus hors palier réel ne change jamais l’affectation');
+})();
+
+if (!PRIORITY_CASE) (function negativeBriefOutsideItsTierStillPenalizes() {
+  // S : bientôt dû en W40, en retard en W41, plus proche de W40. Hors palier réel, un brief ne promeut
+  // pas mais une pénalité s'applique : -100 en W40 envoie S en W41.
+  const run = briefAt => {
+    const w40 = { id: 'w40-anchor', x: 100 }, w41 = { id: 'w41-anchor', x: -100 }, S = { id: 'S', x: 100 }, weeks = twoOpenWeeks(w40, w41);
+    runBriefCase(weeks, [w40, w41, S], briefAt, { included: { 'w40-anchor': true, 'w41-anchor': true }, needAt: needByWeek({ S: { '2026-09-28': 2, '2026-10-05': 3 } }) });
+    return idsIn(weeks[0], 'Lundi') + ' / ' + idsIn(weeks[1], 'Lundi');
+  };
+  assert.equal(run(null), 'S+w40-anchor / w41-anchor', 'sans brief, palier V264 : la géographie place S en W40');
+  assert.equal(run(briefByWeek({ S: { '2026-09-28': -100 } })), 'w40-anchor / S+w41-anchor', 'brief : une pénalité W40 s’applique même hors palier réel');
+})();
+
+if (!PRIORITY_CASE) (function briefPreselectionKeepsTheBestRealSlotTuple() {
+  // Cas C — W41 reste ouverte au compte mais sa journée est pleine en crédits. 170 magasins en retard
+  // en W40 sans brief, bientôt dus en W41 à +100 ; G en retard en W40 à +50, loin et dernier par
+  // identifiant. Le meilleur tuple réel de chacun est en W40 : G y bat la foule et reste dans les 160.
+  const w40 = { id: 'w40-anchor', x: 100 }, heavy = { id: 'w41-heavy', x: 100 }, G = { id: 'zz-good', x: -100 };
+  const crowd = Array.from({ length: 170 }, (_, i) => ({ id: 'c' + String(i).padStart(3, '0'), x: 101 })), weeks = twoOpenWeeks(w40, heavy);
+  const ranks = { 'zz-good': { '2026-09-28': 3, '2026-10-05': 2 } }, briefs = { 'zz-good': { '2026-09-28': 50 } };
+  for (const store of crowd) { ranks[store.id] = { '2026-09-28': 3, '2026-10-05': 2 }; briefs[store.id] = { '2026-10-05': 100 }; }
+  const report = runBriefCase(weeks, [w40, heavy].concat(crowd, [G]), briefByWeek(briefs), {
+    included: { 'w40-anchor': true, 'w41-heavy': true }, needAt: needByWeek(ranks),
+    creditOf: store => store.id === 'w41-heavy' ? 4 : 1
+  });
+  assert.equal(idsIn(weeks[0], 'Lundi'), 'w40-anchor+zz-good', 'brief : au-delà de 160 candidats, la présélection garde le meilleur tuple réel d’un même créneau');
+  assert.equal(idsIn(weeks[1], 'Lundi'), 'w41-heavy', 'W41 reste pleine en crédits');
+  // L'arrêt anticipé coupe la boucle dès que G est trouvé : la foule n'est pas évaluée en W40.
+  assert.ok(report.evaluations < 60, 'présélection : arrêt anticipé effectif (' + report.evaluations + ' évaluations)');
+})();
+
+if (!PRIORITY_CASE) (function preselectionCutIgnoresInputOrder() {
+  // 170 candidats à tuple égal : la coupe à 160 suit l'identifiant, jamais l'ordre d'entrée.
+  const run = reversed => {
+    const w40 = { id: 'w40-anchor', x: 100 }, crowd = Array.from({ length: 170 }, (_, i) => ({ id: 'c' + String(i).padStart(3, '0'), x: i ? -100 : 100 }));
+    const weeks = [
+      { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [w40] }), manual: false, frozenDays: [] },
+      { weekKey: '2026-10-05', plan: emptyPlan(), manual: true, frozenDays: [] },
+      { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+    ];
+    runBriefCase(weeks, [w40].concat(reversed ? crowd.slice().reverse() : crowd), null, { included: { 'w40-anchor': true }, needAt: needByWeek({}) });
+    return idsIn(weeks[0], 'Lundi');
+  };
+  assert.equal(run(false), 'c000+w40-anchor');
+  assert.equal(run(true), 'c000+w40-anchor', 'présélection : départage déterministe par identifiant avant la coupe à 160');
 })();
 
 console.log('=== V264 benchmark allocation cross-day ===');
