@@ -185,7 +185,9 @@ function overnightRowV185(week){
     const api=root.StoreRunnerOvernightV182;
     if(!api||typeof api.analyze!=='function')return null;
     const a=api.analyze(week&&week.plan,week&&week.weekKey),best=a&&a.candidate?a.candidate:(a&&a.reason==='threshold'?a.bestRemote||null:(a&&a.mode==='never'?a.bestRemote||a.best||null:null));
-    return{weekKey:String(week&&week.weekKey||''),mode:a&&a.mode||'auto',threshold:Number(a&&a.threshold)||80,selected:!!(a&&a.candidate),reason:a&&a.candidate?'selected':a&&a.reason==='threshold'?'below-threshold':a&&a.reason==='disabled'?'disabled':'no-candidate',best}
+    /* Un seuil explicite à 0 reste 0 ; seul un seuil illisible ou négatif revient à 80 km. */
+    const threshold=Number(a&&a.threshold);
+    return{weekKey:String(week&&week.weekKey||''),mode:a&&a.mode||'auto',threshold:Number.isFinite(threshold)&&threshold>=0?threshold:80,selected:!!(a&&a.candidate),reason:a&&a.candidate?'selected':a&&a.reason==='threshold'?'below-threshold':a&&a.reason==='disabled'?'disabled':'no-candidate',best}
   }catch(e){return null}
 }
 function recomputeRangeReports(range,weekRows,state){

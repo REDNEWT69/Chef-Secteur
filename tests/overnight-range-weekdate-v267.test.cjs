@@ -65,6 +65,7 @@ global.renderAll=()=>{};
 
 /* Signature volontairement V182 (un seul paramètre). JavaScript ignore sans danger
    l'argument weekKey ajouté par V251, tandis que V189 peut le lire via arguments[1]. */
+let stubThreshold=20;
 function analyze(plan){
   const weekKey=arguments[1],effectiveWeek=weekKey||appState.settings.weekDate;
   calls.push({plan,weekKey,argCount:arguments.length,firstId:String(plan&&plan.Lundi&&plan.Lundi[0]&&plan.Lundi[0].id||'')});
@@ -72,15 +73,17 @@ function analyze(plan){
   const candidate=fromDate>=TODAY&&plan&&plan.Lundi&&plan.Lundi.length&&plan.Mardi&&plan.Mardi.length
     ?{night:'Nuit Lundi → Mardi',fromDay:'Lundi',toDay:'Mardi',fromDate,toDate,saving:200,remoteKm:200}
     :null;
-  return{mode:'auto',threshold:20,candidate,reason:candidate?'candidate':'no-future-pair',best:candidate,bestRemote:candidate};
+  return{mode:'auto',threshold:stubThreshold,candidate,reason:candidate?'candidate':'no-future-pair',best:candidate,bestRemote:candidate};
 }
 assert.equal(analyze.length,1,'la compatibilité avec la signature V182 à un paramètre est exercée');
 global.StoreRunnerOvernightV182={analyze};
 
-memory.set('chef_sector_plan_archive_v1',JSON.stringify(Object.fromEntries(WEEK_KEYS.map(key=>[key,{
+const ARCHIVE_SEED=JSON.stringify(Object.fromEntries(WEEK_KEYS.map(key=>[key,{
   weekMonday:key,plan:plans[key],manualEdited:false
-}]))));
-memory.set('chef_sector_range_v1',JSON.stringify({start:WEEK_KEYS[0],weeks:3,workDays:['Lundi','Mardi']}));
+}])));
+const RANGE_SEED=JSON.stringify({start:WEEK_KEYS[0],weeks:3,workDays:['Lundi','Mardi']});
+memory.set('chef_sector_plan_archive_v1',ARCHIVE_SEED);
+memory.set('chef_sector_range_v1',RANGE_SEED);
 
 const optimizer=require('../planning-route-optimizer-v251.js');
 
@@ -111,6 +114,20 @@ const optimizer=require('../planning-route-optimizer-v251.js');
   assert.equal(s3.selected,true);
   assert.equal(s3.best.fromDate,'2026-10-12');
   assert.equal(s3.best.toDate,'2026-10-13');
+
+  /* H1.1 — un seuil explicite à 0 reste 0 dans la ligne V251 (et non 80) ; selected, reason et
+     best ne changent pas. Même fixture rejouée, seul le seuil rendu par le propriétaire varie. */
+  const reportWith=async threshold=>{
+    stubThreshold=threshold;
+    memory.set('chef_sector_plan_archive_v1',ARCHIVE_SEED);memory.set('chef_sector_range_v1',RANGE_SEED);
+    assert.equal((await optimizer.finalizeRange(appState)).changed,true,'la fixture recalcule bien le rapport V251');
+    return JSON.parse(memory.get('chef_sector_range_v1')).overnightReport;
+  };
+  const twenty=await reportWith(20),zero=await reportWith(0),withoutThreshold=rows=>rows.map(({threshold,...row})=>row);
+  assert.deepEqual(twenty.map(row=>row.threshold),[20,20,20]);
+  assert.deepEqual(zero.map(row=>row.threshold),[0,0,0],'ROUGE r33 : un seuil explicite à 0 doit rester 0, jamais 80');
+  assert.deepEqual(withoutThreshold(zero),withoutThreshold(twenty),'seuil 0 : selected, reason et best identiques');
+  for(const invalid of [-5,'abc',undefined])assert.deepEqual((await reportWith(invalid)).map(row=>row.threshold),[80,80,80],'seuil illisible ('+invalid+') : 80 km');
 
   console.log('overnight range weekDate : S2 2026-10-05 → 2026-10-06 ; S3 2026-10-12 → 2026-10-13 : OK');
 })().catch(error=>{console.error(error);process.exitCode=1});

@@ -200,7 +200,13 @@ function patchSingleWeekGeography(){
   const wrapped=async function(){const previous=window.__storeRunnerPlanningGenerationActive;window.__storeRunnerPlanningGenerationActive=true;try{const out=await original.apply(this,arguments);if(out&&out.ok===true&&state&&state.plan){if(out.preservedManual===true||manualWeekV185(currentWeekKey())){out.geographyOptimized=false;return out}const wk=currentWeekKey(),today=iso(new Date()),frozenDays=wk===iso(monday(new Date()))?DAYS.filter(d=>iso(addDays(parse(wk),DAYS.indexOf(d)))<today):[];const geo=rebalancePlanByGeography(state.plan,{weekKey:wk,frozenDays});if(geo.ok&&geo.changed)await persistGeoWeek(geo,currentWeekKey(),'single-week-geo-v185');out.geographyOptimized=!!(geo&&geo.ok&&geo.changed)}return out}finally{window.__storeRunnerPlanningGenerationActive=previous}};
   wrapped.__v185Geo=true;wrapped.__v185Original=original;window.storeRunnerGenerateSingleWeek=wrapped;return true
 }
+/* H1.1 : la ligne du rapport 3 semaines est celle du moteur terrain, lu au moment du rapport, qui
+   prend la décision au propriétaire V189 (StoreRunnerOvernightV182.analyze(plan, weekKey)) avec la
+   semaine de chaque ligne. V185 ne recalcule plus sa propre décision : sa copie locale ne sert que
+   si le moteur terrain est absent, en échec ou sans ligne exploitable. Aucune récursion :
+   analyzeOvernightWeeks ne rappelle jamais terrainOvernightRow. */
 function terrainOvernightRow(week){
+  try{const terrain=window.StoreRunnerTerrainPlanningV1,rows=terrain&&typeof terrain.analyzeOvernightWeeks==='function'?terrain.analyzeOvernightWeeks([week],state):null,row=rows&&rows[0];if(row&&typeof row.selected==='boolean'&&typeof row.reason==='string')return row}catch(e){}
   const a=overnightAnalysis(week&&week.plan);let best=null;if(a.candidate)best=a.candidate;else if(a.reason==='threshold')best=a.bestRemote||null;else if(a.mode==='never')best=a.bestRemote||a.best||null;
   return{weekKey:String(week&&week.weekKey||''),mode:a.mode,threshold:a.threshold,selected:!!a.candidate,reason:a.candidate?'selected':a.reason==='threshold'?'below-threshold':a.reason==='disabled'?'disabled':'no-candidate',best}
 }
