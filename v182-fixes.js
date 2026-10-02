@@ -117,6 +117,10 @@ function candidateScoreV185(plan,day,store,trial,workDays){
 function rebalancePlanByGeography(plan,options){
   options=options||{};if(!window.state||!plan)return{ok:false,plan:plan||{},changed:false,reason:'no-state'};
   const preserveImposed=options.preserveImposed!==false;
+  /* Lot 3B : `fixedVisits` ({id magasin: jour}, facultatif) fige une visite posée par la génération
+     pour une échéance du brief, comme un verrou : elle reste exactement sur son jour, réordonnable
+     dans sa journée, jamais déplacée, retirée ni dupliquée. Sans l'option, rien ne change. */
+  const fixedVisits=options.fixedVisits&&typeof options.fixedVisits==='object'?options.fixedVisits:null,fixedVisitDay=id=>fixedVisits&&DAYS.includes(fixedVisits[id])?fixedVisits[id]:'';
   const workDays=(options.days||selectedWorkDays()).filter(d=>DAYS.includes(d)),weekKey=String(options.weekKey||currentWeekKey()),mon=parse(weekKey)||monday(parse((state.settings&&state.settings.weekDate)||'')||new Date()),max=Math.max(1,Math.min(8,Number(state.settings&&state.settings.maxVisitsPerDay)||4));
   if(!workDays.length||!homePoint())return{ok:false,plan,changed:false,reason:'no-days-or-base'};
   /* V263 : `frozenDays` (journées déjà passées d'une semaine entamée, posées par le cycle
@@ -131,7 +135,7 @@ function rebalancePlanByGeography(plan,options){
   const openDays=new Map(),mayGo=(store,day)=>{const id=String(store&&store.id||'');if(!openDays.has(id)){const open=movableDays.filter(d=>!blockedOnDay(store,d));openDays.set(id,open.length?new Set(open):null)}const open=openDays.get(id);return !open||open.has(day)};
   const out=Object.fromEntries(DAYS.map(d=>[d,movableDays.includes(d)?[]:clone((plan&&plan[d])||[])])),free=[],seen=new Set(),origin={},fixedIds=new Set();
   for(const day of workDays)if(frozen.has(day))for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(id){seen.add(id);fixedIds.add(id)}}
-  for(const day of movableDays)for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(!id||seen.has(id))continue;seen.add(id);origin[id]=day;let fixed=lockDayV185(id,weekKey)||appointmentDayV185(id,mon)||((preserveImposed&&state.included&&state.included[id])?day:'')||(visitedOnV185(id,iso(addDays(mon,DAYS.indexOf(day))))?day:'');if(fixed&&frozen.has(fixed))fixed=day;if(fixed){if(!workDays.includes(fixed))return{ok:false,plan,changed:false,reason:'fixed-outside'};out[fixed].push(store);fixedIds.add(id)}else free.push(store)}
+  for(const day of movableDays)for(const store of ((plan&&plan[day])||[])){const id=String(store&&store.id||'');if(!id||seen.has(id))continue;seen.add(id);origin[id]=day;let fixed=lockDayV185(id,weekKey)||appointmentDayV185(id,mon)||fixedVisitDay(id)||((preserveImposed&&state.included&&state.included[id])?day:'')||(visitedOnV185(id,iso(addDays(mon,DAYS.indexOf(day))))?day:'');if(fixed&&frozen.has(fixed))fixed=day;if(fixed){if(!workDays.includes(fixed))return{ok:false,plan,changed:false,reason:'fixed-outside'};out[fixed].push(store);fixedIds.add(id)}else free.push(store)}
   for(const day of movableDays){out[day]=optimizeRouteV185(out[day]);if(routeCreditsV185(out[day])>max||!dayFitsV185(out[day],day,mon))return{ok:false,plan,changed:false,reason:'fixed-capacity'}}
   const sortDirection=options.preferNearFirst?1:-1;
   free.sort((a,b)=>sortDirection*(homeDistance(a)-homeDistance(b))||DAYS.indexOf(origin[String(a.id)])-DAYS.indexOf(origin[String(b.id)]));
@@ -205,8 +209,12 @@ async function persistSnailGeography(result){
   const archive=loadArchive(),crossDay=!!(result.crossDay&&result.crossDay.applied);let changed=false;
   /* V264 : terrain-planning-v1.js possède désormais l'affectation entre journées sur les
      trois semaines. Repasser V185 semaine par semaine pourrait défaire un échange entre
-     semaines ; V185 reste le repli des anciens appels sans couverture/évaluateur. */
-  for(const week of result.weeks){if(!week||week.manual||crossDay)continue;const geo=rebalancePlanByGeography(week.plan,{weekKey:week.weekKey,preferNearFirst:true,frozenDays:week.frozenDays});if(!geo.ok)continue;if(geo.changed){week.plan=geo.plan;changed=true;const prev=archive[week.weekKey]||{weekMonday:week.weekKey};archive[week.weekKey]=Object.assign({},prev,{weekMonday:week.weekKey,plan:clone(geo.plan),manualEdited:false,generatedMode:'snail-distance-geo-v185',geographyOptimized:'v185',updatedAt:new Date().toISOString()})}}
+     semaines ; V185 reste le repli des anciens appels sans couverture/évaluateur.
+     Lot 3B : une visite posée pour une échéance du brief (result.deadlines, date du créneau posé)
+     reste figée sur son jour dans sa semaine ; les autres magasins restent optimisés. Une
+     obligation tenue sans visite générée (visite faite, contrainte existante) n'a pas de date. */
+  const deadlineVisits=weekKey=>{const out={};let n=0;for(const d of (Array.isArray(result.deadlines)?result.deadlines:[])){const date=parse(String((d&&d.date)||''));if(!date||d.storeId==null||iso(monday(date))!==String(weekKey))continue;const day=DAYS[(date.getDay()||7)-1];if(day){out[String(d.storeId)]=day;n++}}return n?out:null};
+  for(const week of result.weeks){if(!week||week.manual||crossDay)continue;const fixedVisits=deadlineVisits(week.weekKey),geo=rebalancePlanByGeography(week.plan,Object.assign({weekKey:week.weekKey,preferNearFirst:true,frozenDays:week.frozenDays},fixedVisits?{fixedVisits}:{}));if(!geo.ok)continue;if(geo.changed){week.plan=geo.plan;changed=true;const prev=archive[week.weekKey]||{weekMonday:week.weekKey};archive[week.weekKey]=Object.assign({},prev,{weekMonday:week.weekKey,plan:clone(geo.plan),manualEdited:false,generatedMode:'snail-distance-geo-v185',geographyOptimized:'v185',updatedAt:new Date().toISOString()})}}
   if(changed){saveArchive(archive);const first=result.weeks[0];if(first&&String(state.settings&&state.settings.weekDate||'')===String(first.weekKey||''))state.plan=Object.fromEntries(DAYS.map(d=>[d,((first.plan&&first.plan[d])||[]).map(resolveStore)]));try{if(typeof window.save==='function')window.save();else if(typeof save==='function')save()}catch(e){}}
   let finalDiagnostics=null,finalHours=null;
   try{const terrain=window.StoreRunnerTerrainPlanningV1;if(terrain&&typeof terrain.refreshThreeWeekDiagnostics==='function'){finalDiagnostics=terrain.refreshThreeWeekDiagnostics(result.weeks,state);result.dayCoverage=finalDiagnostics.dayCoverage;result.emptyWorkDays=finalDiagnostics.emptyWorkDays}if(terrain&&typeof terrain.summarizeOpeningHours==='function'){finalHours=terrain.summarizeOpeningHours(result.weeks,state);result.hoursReport=finalHours}}catch(e){console.warn('Diagnostic final escargot non recalculé',e)}
