@@ -103,17 +103,20 @@ const perfSource=fs.readFileSync(__dirname+'/../performance-data-v190.js','utf8'
 const briefSource=fs.readFileSync(__dirname+'/../weekly-brief-v246.js','utf8');
 const NOW=new Date('2026-09-10T08:00:00');
 class FixedDate extends Date{constructor(...a){super(...(a.length?a:[NOW.getTime()]))}static now(){return NOW.getTime()}}
-function makeBriefEnv(stores,perf={}){
+/* Par défaut : lundi seul, 1 visite, objectif 1, semaine W39, période W38 → W39. */
+function makeBriefEnv(stores,perf={},o={}){
   const mem=new Map(),db={getItem:k=>mem.has(k)?mem.get(k):null,setItem:(k,v)=>mem.set(k,String(v)),removeItem:k=>mem.delete(k)};
-  const visits={},proposals=[],els={rangeStart:{value:'2026-09-14'},rangeEnd:{value:'2026-09-27'},rangePlanStatus:{style:{},textContent:''}};
+  if(o.archive)mem.set('chef_sector_plan_archive_v1',JSON.stringify(o.archive));
+  const workDays=o.days||['Lundi'],range=o.range||['2026-09-14','2026-09-27'];
+  const visits={},proposals=[],els={rangeStart:{value:range[0]},rangeEnd:{value:range[1]},rangePlanStatus:{style:{},textContent:''}};
   for(const s of stores)if(s.lastVisit)visits[s.id]={lastVisit:s.lastVisit,history:[s.lastVisit]};
-  const state={
-    settings:{days:['Lundi'],target:1,weekDate:'2026-09-21',startTime:'08:30',endTime:'18:00',visitMinutes:60,maxVisitsPerDay:1,strategy:'balanced'},
+  const state=Object.assign({
+    settings:{days:workDays.slice(),target:o.target||1,weekDate:o.weekDate||'2026-09-21',startTime:'08:30',endTime:'18:00',visitMinutes:60,maxVisitsPerDay:o.max||1,strategy:'balanced'},
     profile:{baseLat:45,baseLon:4},stores,visits,plan:{},included:{},excluded:{},locks:{},appointments:[],calendarEvents:[]
-  };
+  },o.state);
   const ctx=vm.createContext({
     state,console,Date:FixedDate,Map,Set,JSON,Object,Array,String,Number,Math,RegExp,localStorage:db,__chefStorage:db,
-    document:{readyState:'loading',addEventListener(){},querySelectorAll:q=>q==='[data-day]'?[{value:'Lundi',checked:true}]:[],getElementById:id=>els[id]||null,querySelector(){return null}},
+    document:{readyState:'loading',addEventListener(){},querySelectorAll:q=>q==='[data-day]'?workDays.map(value=>({value,checked:true})):[],getElementById:id=>els[id]||null,querySelector(){return null}},
     addEventListener(){},removeEventListener(){},dispatchEvent(){},setTimeout,clearTimeout,confirm:()=>true,
     havBase:()=>10,hav:()=>10,baseObj:()=>({lat:45,lon:4}),nearestRoute:r=>r.slice(),twoOpt:r=>r.slice(),
     includedByFilters:()=>true,storeVisitCredit:()=>1,readPlanningControls(){},save(){},renderAll(){},
@@ -129,6 +132,15 @@ function makeBriefEnv(stores,perf={}){
   return {ctx,state,db,P,B,proposals,els,calls};
 }
 const gap=(a,b)=>Math.round((a.score-b.score)*10)/10;
+/* Échéances (P1.2) : règle deadline confirmée par défaut, lecture des semaines proposées. */
+const dline=(g,week,ids,dueDate,extra)=>g.B.addRule(g.state,week,Object.assign({type:'deadline',label:'Échéance '+[].concat(ids).join('+'),dueDate,scope:{storeIds:[].concat(ids)},confidence:'confirmed'},extra||{}));
+const dayOf=(plan,id)=>DAYS.find(d=>Array.from((plan||{})[d]||[]).some(s=>s.id===id))||'';
+const flat=plan=>plan?DAYS.flatMap(d=>Array.from(plan[d]||[],s=>s.id)).join(','):'(aucune proposition)';
+const weeksOf=p=>p?['2026-09-14','2026-09-21'].map(k=>flat(p.archive[k].plan)).join(' | '):'(aucune proposition)';
+const frozen=g=>JSON.stringify([g.state.plan,g.state.stores,g.state.weeklyBriefs,g.db.getItem('chef_sector_plan_archive_v1'),g.db.getItem(g.P.STORE_KEY)]);
+const onDay=(day,...ids)=>Object.assign(Object.fromEntries(DAYS.map(d=>[d,[]])),{[day]:ids.map(id=>({id,enseigne:'Fnac',ville:'Ville '+id,adresse:'Adresse '+id}))});
+const appt=(storeId,date)=>({id:'rdv-'+storeId,storeId,date,time:'10:00',duration:60,type:'visite',note:''});
+const FIVE=['Lundi','Mardi','Mercredi','Jeudi','Vendredi'];
 
 {
   // Règle confirmée et active : seul l'apport brief s'ajoute au score, rien n'est écrit.
@@ -216,5 +228,127 @@ const gap=(a,b)=>Math.round((a.score-b.score)*10)/10;
     B.confirmRule(state,'2026-W39','r1');
     assert.equal(ctx.testPilotV211.planningNeedV211(stores[1],'2026-09-21').briefContribution,50,'hors génération, une confirmation compte aussitôt');
   }
-  console.log('planning pilot v211 ok · mémoire inter-semaines · P1/P2 · retard futur · couverture · cadence · brief V246');
+
+  /* P1.2 — échéances confirmées (deadline V246) : obligations réelles dans l'horizon généré. */
+  const week=async g=>{const res=await g.ctx.testPilotV211.strictSingleWeek();return {res,plan:g.proposals[0]&&g.proposals[0].plan}};
+  {
+    // 1. Échéance confirmée : posé à une date ≤ échéance (sans elle, la journée la moins chargée est jeudi).
+    const run=async confirmed=>{
+      const g=makeBriefEnv(['l1','l2','l3','cible','o1','o2'].map(id=>store(id,{lastVisit:'2026-08-01'})),{},{days:FIVE,max:2,target:6,state:{locks:{l1:'Lundi',l2:'Mardi',l3:'Mercredi'}}});
+      dline(g,'2026-W39','cible','2026-09-23',confirmed?{}:{confidence:'ambiguous'});
+      const {res,plan}=await week(g);assert.equal(res.cancelled,true,g.els.rangePlanStatus.textContent);return dayOf(plan,'cible');
+    };
+    assert.equal(await run(false),'Jeudi');
+    assert.equal(await run(true),'Lundi','obligation : posé au plus tard le mercredi 23/09');
+  }
+  {
+    // 1b. L'obligation choisit sa journée avant un magasin imposé sans jour : les deux tiennent.
+    const g=makeBriefEnv(['imp','cible'].map(id=>store(id,{lastVisit:'2026-08-01'})),{},{days:['Lundi','Mardi'],target:2,state:{included:{imp:true}}});
+    dline(g,'2026-W39','cible','2026-09-21');
+    const {plan}=await week(g);
+    assert.equal(dayOf(plan,'cible')+','+dayOf(plan,'imp'),'Lundi,Mardi');
+  }
+  {
+    // 2. Moins prioritaire et bloqué par la garde anti-sur-visite : l'obligation gagne quand même.
+    const g=makeBriefEnv([store('urgent',{priority:5,lastVisit:'2026-07-01'}),store('cible',{lastVisit:'2026-09-08'})]),t=g.ctx.testPilotV211;
+    g.ctx.StoreRunnerVisitCoverage={needOf:()=>s=>({blocked:String(s.id)==='cible'})};
+    assert(t.planningNeedV211(g.state.stores[0],'2026-09-21').tier>t.planningNeedV211(g.state.stores[1],'2026-09-21').tier);
+    dline(g,'2026-W39','cible','2026-09-21');
+    assert.equal(flat((await week(g)).plan),'cible','l’obligation passe devant un magasin très en retard, malgré la garde');
+  }
+  {
+    // 3. + 13. Règle P1 jugée par V246 : tous les P1 avant l'échéance ; aucune écriture.
+    const p1=['p1a','p1b','p1c'].map(id=>store(id,{lastVisit:'2026-09-01'})),late=['r1','r2','r3'].map(id=>store(id,{lastVisit:'2026-07-01'}));
+    const g=makeBriefEnv(p1.concat(late),{p1a:'P1',p1b:'P1',p1c:'P1'},{days:['Lundi','Mardi','Mercredi'],max:2,target:2});
+    g.B.addRule(g.state,'2026-W39',{type:'deadline',label:'Tous les P1 avant mercredi',dueDate:'2026-09-22',scope:{basePrio:'P1'},confidence:'confirmed'});
+    assert.equal(g.B.effectivePriority(late[0],'2026-W39',{state:g.state,db:g.db}).deadline,null,'le périmètre P1 reste jugé par V246');
+    const before=frozen(g),{plan}=await week(g);
+    assert.equal(p1.map(s=>dayOf(plan,s.id)).join(','),'Lundi,Mardi,Lundi','les trois P1 au plus tard le mardi 22/09');
+    assert.equal(late.filter(s=>dayOf(plan,s.id)).length,0,'avant les candidats libres très en retard');
+    assert.equal(frozen(g),before,'ni weeklyBriefs, ni performance, ni fiches, ni planning, ni archive modifiés');
+  }
+  {
+    // 4. Visite faite (doneDate V246) : aucune nouvelle visite.
+    const g=makeBriefEnv([store('urgent',{priority:5,lastVisit:'2026-07-01'}),store('cible',{lastVisit:'2026-09-08'})]);
+    dline(g,'2026-W37','cible','2026-09-21',{validTo:'2026-W39'});
+    assert.equal(g.B.effectivePriority(g.state.stores[1],'2026-W39',{state:g.state,db:g.db}).deadline.doneDate,'2026-09-08');
+    assert.equal(flat((await week(g)).plan),'urgent');
+  }
+  {
+    // 5. Déjà posé avant l'échéance dans une semaine retouchée : tenue, aucune duplication.
+    const g=makeBriefEnv(['a','cible'].map(id=>store(id,{lastVisit:'2026-08-01'})),{},{archive:{'2026-09-14':{weekMonday:'2026-09-14',plan:onDay('Lundi','cible'),manualEdited:true}}});
+    dline(g,'2026-W38','cible','2026-09-21',{validTo:'2026-W39'});
+    await g.ctx.generatePlanningRange();
+    assert.equal(weeksOf(g.proposals[0]),'cible | a',g.els.rangePlanStatus.textContent);
+  }
+  {
+    // 6. Semaine retouchée qui place le magasin après l'échéance : refus atomique (période et semaine).
+    const archive={'2026-09-21':{weekMonday:'2026-09-21',plan:onDay('Mardi','cible'),manualEdited:true}};
+    const g=makeBriefEnv(['a','cible'].map(id=>store(id,{lastVisit:'2026-08-01'})),{},{archive,state:{plan:onDay('Vendredi','a')}});
+    dline(g,'2026-W38','cible','2026-09-18',{validTo:'2026-W39'});
+    const before=frozen(g);await g.ctx.generatePlanningRange();
+    assert.equal(g.proposals.length,0,'aucune proposition');
+    assert.equal(g.els.rangePlanStatus.textContent,'Erreur pendant la génération : 1 obligation d’échéance du brief impossible à tenir — « Échéance cible » (échéance le 18/09) : Fnac Ville cible (semaine modifiée à la main : posé le 22/09, après l’échéance). Le planning précédent est conservé.');
+    assert.equal(frozen(g),before,'planning, archive, briefs, performance et fiches intacts');
+    const h=makeBriefEnv(['a','cible'].map(id=>store(id,{lastVisit:'2026-08-01'})),{},{archive,state:{plan:onDay('Mardi','cible')}});
+    dline(h,'2026-W39','cible','2026-09-21');
+    const {res}=await week(h);
+    assert(res.ok===false&&/Fnac Ville cible \(semaine modifiée à la main : posé le 22\/09, après l’échéance\)/.test(res.error),res.error);
+    assert.equal(h.proposals.length,0);
+  }
+  {
+    // 7. Rendez-vous après l'échéance : refus atomique, sans visite de contournement.
+    const g=makeBriefEnv(['a','cible'].map(id=>store(id,{lastVisit:'2026-08-01'})),{},{days:FIVE,max:2,target:2,state:{plan:onDay('Vendredi','a'),appointments:[appt('cible','2026-09-24')]}});
+    dline(g,'2026-W39','cible','2026-09-22');
+    const before=frozen(g),{res}=await week(g);
+    assert.equal(res.error,'1 obligation d’échéance du brief impossible à tenir — « Échéance cible » (échéance le 22/09) : Fnac Ville cible (rendez-vous le 24/09, après l’échéance). Le planning précédent est conservé.');
+    assert.equal(g.proposals.length,0);assert.equal(frozen(g),before);
+  }
+  {
+    // 8. Rendez-vous avant l'échéance : obligation tenue par le rendez-vous, aucune visite en plus.
+    const g=makeBriefEnv(['a','cible'].map(id=>store(id,{lastVisit:'2026-08-01'})),{},{state:{appointments:[appt('cible','2026-09-21')]}});
+    dline(g,'2026-W38','cible','2026-09-23',{validTo:'2026-W39'});
+    await g.ctx.generatePlanningRange();
+    assert.equal(weeksOf(g.proposals[0]),'a | cible',g.els.rangePlanStatus.textContent);
+  }
+  {
+    // 9. Capacité insuffisante : refus atomique, planning précédent inchangé.
+    const g=makeBriefEnv(['c1','c2'].map(id=>store(id,{lastVisit:'2026-08-01'})),{},{state:{plan:onDay('Vendredi','c1')}});
+    dline(g,'2026-W39',['c1','c2'],'2026-09-21',{label:'Les deux lundi'});
+    const before=frozen(g),{res}=await week(g);
+    assert.equal(res.error,'1 obligation d’échéance du brief impossible à tenir — « Les deux lundi » (échéance le 21/09) : Fnac Ville c2 (plus de créneau avant l’échéance : capacité ou horaires). Le planning précédent est conservé.');
+    assert.equal(g.proposals.length,0);assert.equal(frozen(g),before);
+  }
+  {
+    // 10. Ambiguë ou en attente : aucune obligation.
+    const g=makeBriefEnv([store('urgent',{priority:5,lastVisit:'2026-07-01'}),store('cible',{lastVisit:'2026-09-08'})]);
+    dline(g,'2026-W39','cible','2026-09-21',{confidence:'ambiguous'});
+    dline(g,'2026-W39','cible','2026-09-21',{pending:'Confirmation SEF'});
+    assert.equal(flat((await week(g)).plan),'urgent');
+  }
+  {
+    // 11. Échéance après la fin de la période : aucun forçage, aucun refus anticipé.
+    const g=makeBriefEnv([store('u1',{priority:5,lastVisit:'2026-07-01'}),store('u2',{priority:5,lastVisit:'2026-07-01'}),store('cible',{lastVisit:'2026-09-08'})]);
+    dline(g,'2026-W38','cible','2026-10-02',{validTo:'2026-W40'});
+    await g.ctx.generatePlanningRange();
+    assert.equal(weeksOf(g.proposals[0]),'u1 | u2',g.els.rangePlanStatus.textContent);
+  }
+  {
+    // 12. Période à plusieurs échéances : la plus proche d'abord, dans le lot V246 déjà mémorisé.
+    const g=makeBriefEnv([store('a-tardif',{lastVisit:'2026-08-20'}),store('b-proche',{lastVisit:'2026-08-20'}),store('urgent',{priority:5,lastVisit:'2026-07-01'})]);
+    dline(g,'2026-W38','a-tardif','2026-09-21',{validTo:'2026-W39',label:'Tardive'});
+    dline(g,'2026-W38','b-proche','2026-09-14',{validTo:'2026-W39',label:'Proche'});
+    await g.ctx.generatePlanningRange();
+    assert.equal(weeksOf(g.proposals[0]),'b-proche | a-tardif',g.els.rangePlanStatus.textContent);
+    assert.deepEqual([g.calls.lot,g.calls.one],[2,0],'une évaluation en lot par semaine, aucune magasin par magasin');
+  }
+  {
+    // 14. Échéance déjà passée dans la semaine entamée : jamais rétroactif ; une journée passée qui
+    //     contient le magasin la tient.
+    const g=makeBriefEnv(['passe','tenu','libre'].map(id=>store(id,{lastVisit:'2026-08-01'})),{},{days:FIVE,max:2,target:2,weekDate:'2026-09-07',state:{plan:onDay('Lundi','tenu')}});
+    dline(g,'2026-W37',['passe','tenu'],'2026-09-08',{label:'Avant mardi'});
+    const {res}=await week(g);
+    assert.equal(res.error,'1 obligation d’échéance du brief impossible à tenir — « Avant mardi » (échéance le 08/09) : Fnac Ville passe (échéance déjà dépassée). Le planning précédent est conservé.');
+  }
+  console.log('planning pilot v211 ok · mémoire inter-semaines · P1/P2 · retard futur · couverture · cadence · brief V246 · échéances');
 })().catch(e=>{console.error(e);process.exitCode=1});
