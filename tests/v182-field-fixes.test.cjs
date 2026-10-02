@@ -179,4 +179,61 @@ assert(source.includes("outsideIds.forEach(id=>"),'les magasins hors plage doive
 assert(source.includes('patchSingleWeekGeography')&&source.includes('patchThreeWeekGeography'),'V185 doit optimiser la semaine normale et les 3 semaines escargot');
 assert(source.includes('V185_REMOTE_MIN_KM=55'),'un découché local doit être bloqué par un seuil de distance au domicile');
 
-console.log('V185 guard: OK · zones éloignées regroupées, découché local refusé, Boulanger protégé');
+/* Lot 3B — une visite posée pour une échéance du brief (result.deadlines, date du créneau) reste
+   sur son jour pendant le rééquilibrage V185 ; les autres magasins de la semaine restent
+   optimisés. L0 est verrouillé le lundi, J1 le jeudi ; D, dû le mardi 15/09, rejoindrait
+   naturellement J1 le jeudi. */
+const dl=(id,x)=>({id,x,enseigne:'Test',ville:'Zone '+id});
+const deadlineWeek=()=>({Lundi:[dl('L0',10)],Mardi:[dl('D',50),dl('M1',10)],Mercredi:[],Jeudi:[dl('J1',50)],Vendredi:[],Samedi:[]});
+const daysOf=plan=>Object.fromEntries(workDays.map(d=>[d,((plan&&plan[d])||[]).map(s=>s.id).sort().join('+')]));
+const idsOf=plan=>workDays.flatMap(d=>((plan&&plan[d])||[]).map(s=>s.id)).sort();
+const HISTORICAL={Lundi:'L0',Mardi:'M1',Mercredi:'',Jeudi:'D+J1',Vendredi:''},PINNED={Lundi:'L0+M1',Mardi:'D',Mercredi:'',Jeudi:'J1',Vendredi:''};
+state.settings.maxVisitsPerDay=3;state.locks={L0:'Lundi',J1:'Jeudi'};
+
+// Cas 1 — rebalance direct : sans fixedVisits, comportement historique ; avec, D reste mardi.
+const historical=ctx.StoreRunnerGeographyV185.rebalance(deadlineWeek(),{weekKey:'2026-09-14',preferNearFirst:true});
+assert.deepEqual(daysOf(historical.plan),HISTORICAL,'sans fixedVisits : V185 regroupe D avec J1 le jeudi (comportement historique)');
+const pinned=ctx.StoreRunnerGeographyV185.rebalance(deadlineWeek(),{weekKey:'2026-09-14',preferNearFirst:true,fixedVisits:{D:'Mardi'}});
+assert.equal(pinned.ok,true);
+assert.deepEqual(daysOf(pinned.plan),PINNED,'fixedVisits : D reste mardi, M1 reste optimisé et rejoint L0 le lundi');
+assert.deepEqual(idsOf(pinned.plan),['D','J1','L0','M1'],'aucune perte, aucun doublon');
+// Cas 1b — réparation de couverture (V220) : Y, verrouillé jeudi, quitte le mercredi. Sans fixedVisits,
+// D est pris comme donneur ; figé (fixedIds), jamais : comme pour un verrou, V185 renonce plutôt.
+state.locks={L0:'Lundi',K:'Mardi',Y:'Jeudi',J1:'Jeudi'};
+const coverageWeek=()=>({Lundi:[dl('L0',10)],Mardi:[dl('K',10),dl('D',50)],Mercredi:[dl('Y',50)],Jeudi:[dl('J1',50)],Vendredi:[],Samedi:[]});
+assert.equal(daysOf(ctx.StoreRunnerGeographyV185.rebalance(coverageWeek(),{weekKey:'2026-09-14',preferNearFirst:true}).plan).Mercredi,'D','sans fixedVisits : D comble le mercredi');
+const repair=ctx.StoreRunnerGeographyV185.rebalance(coverageWeek(),{weekKey:'2026-09-14',preferNearFirst:true,fixedVisits:{D:'Mardi'}});
+assert.deepEqual([repair.ok,daysOf(repair.plan).Mardi],[false,'D+K'],'une visite figée n’est jamais donneuse de la réparation de couverture');
+state.locks={L0:'Lundi',J1:'Jeudi'};
+
+// Vrai wrapper 3 semaines (patchThreeWeekGeography) autour d'un faux générateur sans cross-day.
+async function wrapped(result){
+  const mem=new Map();
+  ctx.__chefStorage={getItem:k=>mem.has(k)?mem.get(k):null,setItem:(k,v)=>mem.set(k,String(v)),removeItem:k=>mem.delete(k)};
+  state.plan={Lundi:[],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
+  ctx.StoreRunnerTerrainPlanningV1={generateThreeWeekSnail:async()=>result};
+  assert.equal(ctx.StoreRunnerGeographyV185.patchThreeWeeks(),true,'V185 enveloppe le moteur 3 semaines');
+  const out=await ctx.StoreRunnerTerrainPlanningV1.generateThreeWeekSnail();
+  return{out,archive:JSON.parse(mem.get('chef_sector_plan_archive_v1')||'{}')};
+}
+const generatedWeeks=(keys,deadlines)=>Object.assign({weeks:keys.map(weekKey=>({weekKey,plan:deadlineWeek(),manual:false,frozenDays:[]})),crossDay:{applied:false}},deadlines?{deadlines}:{});
+
+(async function deadlinesSurviveTheThreeWeekGeography(){
+  // Cas 2 — D posé pour son échéance le mardi 15/09 : il y reste, dans le résultat, state.plan et l'archive.
+  const run=await wrapped(generatedWeeks(['2026-09-14'],[{storeId:'D',label:'Échéance D',dueDate:'2026-09-15',by:'placed',date:'2026-09-15'}]));
+  assert.deepEqual(daysOf(run.out.weeks[0].plan),PINNED,'wrapper : D reste sur sa date d’échéance, M1 est optimisé');
+  assert.deepEqual(daysOf(state.plan),PINNED,'state.plan cohérent avec le placement d’échéance');
+  assert.deepEqual(daysOf(run.archive['2026-09-14'].plan),PINNED,'archive persistée cohérente avec le placement d’échéance');
+  // Cas 3 — sans échéance, ou obligation tenue sans visite générée (pas de date) : strictement historique.
+  for(const [label,deadlines] of [['sans échéance',null],['tenue par une visite faite',[{storeId:'D',label:'Échéance D',dueDate:'2026-09-15',by:'doneDate',date:null}]]]){
+    const plain=await wrapped(generatedWeeks(['2026-09-14'],deadlines));
+    assert.deepEqual(daysOf(plain.out.weeks[0].plan),HISTORICAL,label+' : V185 continue son optimisation normale');
+    assert.deepEqual(daysOf(plain.archive['2026-09-14'].plan),HISTORICAL,label+' : archive historique');
+  }
+  // Cas 4 — échéance datée de la semaine suivante (mardi 22/09) : la semaine du 14/09 n'est pas figée.
+  const other=await wrapped(generatedWeeks(['2026-09-14','2026-09-21'],[{storeId:'D',label:'Échéance D',dueDate:'2026-09-22',by:'placed',date:'2026-09-22'}]));
+  assert.deepEqual(daysOf(other.out.weeks[0].plan),HISTORICAL,'semaine du 14/09 : D reste libre, comme avant');
+  assert.deepEqual(daysOf(other.out.weeks[1].plan),PINNED,'semaine du 22/09 : D figé sur sa date d’échéance');
+  state.locks={};delete ctx.__chefStorage;delete ctx.StoreRunnerTerrainPlanningV1;
+  console.log('V185 guard: OK · zones éloignées regroupées, découché local refusé, Boulanger protégé, visites d’échéance figées');
+})().catch(e=>{console.error(e);process.exitCode=1});

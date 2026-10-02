@@ -972,6 +972,294 @@ if (!PRIORITY_CASE) (function holidayWordMustBeExact() {
   assert.equal(legacy.eventBlocksPlanning({ title: 'Rendez-vous avec Fériel', allDay: true }), false, 'V185 ne doit pas bloquer le faux positif Fériel');
 })();
 
+/* Lot 3A — brief hebdomadaire V246 (option briefAt : contribution d'un magasin à une date, celle
+   de sa semaine). L'optimiseur ne peut pas l'effacer : aucune modification acceptée ne fait baisser
+   le total brief des visites touchées, et l'insertion le fait passer avant la géographie. */
+function runBriefCase(weeks, ranked, briefAt, extra = {}) {
+  return terrain.optimizeThreeWeekCrossDay(weeks, Object.assign({
+    state: { included: extra.included || {}, hotelReservations: {} },
+    days: extra.days || ['Lundi'], target: extra.target || 2, maxCreditsPerDay: 4,
+    ranked, memory: { usedKeys: new Set(), useCount: new Map() },
+    needAt: extra.needAt || (() => ({ status: 'ok', tier: 1, priority: '', blocked: false })), projectedNeedAt: extra.projectedNeedAt, creditOf: extra.creditOf || (() => 1),
+    lockDayForWeek: () => '', appointmentDay: () => '', completedOn: () => false,
+    dayBlocked: () => false, dayFits: () => true, evaluateDayRoute: rangeEvaluator,
+    distanceBetween: (a, b) => Math.abs(Number(a.x) - Number(b.x)), overnightReservations: {},
+    deadlineFixed: extra.deadlineFixed
+  }, briefAt ? { briefAt } : {}));
+}
+const briefOn = (id, weekKey, value) => (store, date) => store.id === id && weekKeyOf(date) === weekKey ? value : 0;
+const idsIn = (week, day) => week.plan[day].map(store => store.id).sort().join('+');
+
+if (!PRIORITY_CASE) (function briefMoveNeverLeavesItsWeek() {
+  // A (+50 en W41 seulement) serait mieux placé en W40, qui a de la place. Les déplacements V264
+  // restent dans leur semaine, et la garde brief tient l'invariant si cela change un jour.
+  const w1 = { id: 'w1-anchor', x: 100 }, w2 = { id: 'w2-anchor', x: -100 }, A = { id: 'A', x: 100 };
+  const weeks = [
+    { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [w1] }), manual: false, frozenDays: [] },
+    { weekKey: '2026-10-05', plan: Object.assign(emptyPlan(), { Lundi: [w2, A] }), manual: false, frozenDays: [] },
+    { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+  ];
+  const report = runBriefCase(weeks, [w1, w2, A], briefOn('A', '2026-10-05', 50), { included: { 'w1-anchor': true, 'w2-anchor': true } });
+  assert.equal(idsIn(weeks[1], 'Lundi'), 'A+w2-anchor', 'brief : A ne quitte pas la semaine où il vaut +50');
+  assert.equal(report.moves + report.swaps, 0, 'brief : aucun déplacement ni échange ne fait perdre le bonus');
+})();
+
+if (!PRIORITY_CASE) (function briefMoveInsideItsWeekStaysPossible() {
+  const left = { id: 'left-anchor', x: -100 }, right = { id: 'right-anchor', x: 100 }, A = { id: 'A', x: -100 };
+  const weeks = [
+    { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [left], Mardi: [right, A] }), manual: false, frozenDays: [] },
+    { weekKey: '2026-10-05', plan: emptyPlan(), manual: true, frozenDays: [] },
+    { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+  ];
+  const report = runBriefCase(weeks, [left, right, A], briefOn('A', '2026-09-28', 50), { days: ['Lundi', 'Mardi'], target: 3, included: { 'left-anchor': true, 'right-anchor': true } });
+  assert.equal(idsIn(weeks[0], 'Lundi'), 'A+left-anchor', 'brief : même semaine, même contribution, le déplacement géographique reste permis');
+  assert.ok(report.moves >= 1, 'brief : le voisinage move reste exercé');
+})();
+
+function briefSwapCase(briefAt) {
+  const w1 = { id: 'w1-anchor', x: 100 }, B = { id: 'B', x: -100 }, w2 = { id: 'w2-anchor', x: -100 }, A = { id: 'A', x: 100 };
+  const weeks = [
+    { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [w1, B] }), manual: false, frozenDays: [] },
+    { weekKey: '2026-10-05', plan: Object.assign(emptyPlan(), { Lundi: [w2, A] }), manual: false, frozenDays: [] },
+    { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+  ];
+  const report = runBriefCase(weeks, [w1, B, w2, A], briefAt, { included: { 'w1-anchor': true, 'w2-anchor': true } });
+  return { report, w1: idsIn(weeks[0], 'Lundi'), w2: idsIn(weeks[1], 'Lundi') };
+}
+if (!PRIORITY_CASE) (function briefSwapNeverLowersTheTotal() {
+  const lost = briefSwapCase(briefOn('A', '2026-10-05', 50));
+  assert.equal(lost.w2, 'A+w2-anchor', 'brief : un échange qui ferait perdre le +50 de A est refusé, même 400 km plus court');
+  assert.equal(lost.report.swaps, 0, 'brief : swap refusé');
+  for (const [label, briefAt] of [['sans brief', null], ['brief neutre', store => store.id === 'A' ? 50 : 0], ['brief meilleur', briefOn('A', '2026-09-28', 50)]]) {
+    const kept = briefSwapCase(briefAt);
+    assert.equal(kept.w1, 'A+w1-anchor', label + ' : l’échange géographique reste permis');
+    assert.equal(kept.report.swaps, 1, label + ' : swap accepté');
+  }
+})();
+
+function briefReplacementCase(briefAt) {
+  const anchor = { id: 'anchor', x: 100 }, current = { id: 'current', x: -100 }, candidate = { id: 'candidate', x: 100 };
+  const weeks = [
+    { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [anchor, current] }), manual: false, frozenDays: [] },
+    { weekKey: '2026-10-05', plan: emptyPlan(), manual: true, frozenDays: [] },
+    { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+  ];
+  const report = runBriefCase(weeks, [anchor, current, candidate], briefAt, { included: { anchor: true } });
+  return { report, ids: idsIn(weeks[0], 'Lundi') };
+}
+if (!PRIORITY_CASE) (function briefReplacementNeverDropsABoostedStore() {
+  const kept = briefReplacementCase(briefOn('current', '2026-09-28', 50));
+  assert.equal(kept.ids, 'anchor+current', 'brief : un magasin +50 n’est pas remplacé par un magasin à 0');
+  assert.equal(kept.report.replacements, 0, 'brief : remplacement refusé');
+  const better = briefReplacementCase(briefOn('candidate', '2026-09-28', 50));
+  assert.equal(better.ids, 'anchor+candidate', 'brief : 0 → +50 reste admissible quand métier, rotation et géographie le permettent');
+  assert.equal(better.report.replacements, 1, 'brief : remplacement accepté');
+})();
+
+if (!PRIORITY_CASE) (function briefWinsInsertionBeforeGeography() {
+  const run = briefAt => {
+    const anchor = { id: 'anchor', x: 100 }, near = { id: 'a-near', x: 101 }, far = { id: 'z-far', x: -100 };
+    const weeks = [
+      { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [anchor] }), manual: false, frozenDays: [] },
+      { weekKey: '2026-10-05', plan: emptyPlan(), manual: true, frozenDays: [] },
+      { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+    ];
+    const report = runBriefCase(weeks, [anchor, near, far], briefAt, { included: { anchor: true }, needAt: () => ({ status: 'never', tier: 3.5, priority: '', blocked: false }) });
+    return { report, ids: idsIn(weeks[0], 'Lundi') };
+  };
+  assert.equal(run(null).ids, 'a-near+anchor', 'sans brief, à besoin et rotation égaux, la géographie choisit');
+  const boosted = run(briefOn('z-far', '2026-09-28', 50));
+  assert.equal(boosted.ids, 'anchor+z-far', 'brief : à palier et rotation identiques, le brief gagne avant la distance');
+  assert.equal(boosted.report.insertions, 1, 'brief : une seule insertion');
+  // Au-delà de la limite de 160 candidats, le magasin poussé n'est pas coupé par le tri par identifiant.
+  const anchor = { id: 'anchor', x: 100 }, crowd = Array.from({ length: 170 }, (_, i) => ({ id: 'c' + String(i).padStart(3, '0'), x: 101 })), late = { id: 'zz-brief', x: -100 };
+  const weeks = [
+    { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [anchor] }), manual: false, frozenDays: [] },
+    { weekKey: '2026-10-05', plan: emptyPlan(), manual: true, frozenDays: [] },
+    { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+  ];
+  runBriefCase(weeks, [anchor].concat(crowd, [late]), briefOn('zz-brief', '2026-09-28', 50), { included: { anchor: true }, needAt: () => ({ status: 'never', tier: 3.5, priority: '', blocked: false }) });
+  assert.equal(idsIn(weeks[0], 'Lundi'), 'anchor+zz-brief', 'brief : un magasin poussé reste candidat au-delà de 160 candidats équivalents');
+})();
+
+if (!PRIORITY_CASE) (function briefProjectionSwapNeverLowersTheTotal() {
+  // L'échange guidé par la projection de couverture (sans gain de route) suit la même garde.
+  const run = briefAt => {
+    const A = { id: 'A', x: 0 }, B = { id: 'B', x: 0 };
+    const weeks = [
+      { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [B] }), manual: false, frozenDays: [] },
+      { weekKey: '2026-10-05', plan: Object.assign(emptyPlan(), { Lundi: [A] }), manual: false, frozenDays: [] },
+      { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+    ];
+    const report = runBriefCase(weeks, [A, B], briefAt, {
+      target: 1,
+      projectedNeedAt: (store, visitDate) => store.id === 'A' && visitDate >= '2026-10-05' ? { status: 'soon', tier: 2, priority: '', blocked: false } : { status: 'ok', tier: 1, priority: '', blocked: false }
+    });
+    return { report, w2: idsIn(weeks[1], 'Lundi') };
+  };
+  const control = run(null);
+  assert.equal(control.w2, 'B', 'sans brief, la projection avance A en W40');
+  assert.equal(control.report.swaps, 1);
+  const kept = run(briefOn('A', '2026-10-05', 50));
+  assert.equal(kept.w2, 'A', 'brief : la projection ne fait pas perdre le +50 de A en W41');
+  assert.equal(kept.report.swaps, 0);
+})();
+
+/* Insertion : un brief ne promeut un couple magasin/créneau qu'à la date où le magasin atteint
+   réellement son palier, jamais le palier d'une semaine avec le bonus d'une autre. Sans brief, le
+   classement V264 (figé par r20) est inchangé. Paliers : 5 très en retard, 4 jamais visité, 3 en
+   retard, 2 bientôt dû. */
+const NEED_BY_RANK = { 5: { status: 'late', tier: 4 }, 4: { status: 'never', tier: 3.5 }, 3: { status: 'late', tier: 3 }, 2: { status: 'soon', tier: 2 }, 1: { status: 'ok', tier: 1 } };
+const needByWeek = table => (store, date) => Object.assign({ priority: '', blocked: false }, NEED_BY_RANK[(table[store.id] || {})[weekKeyOf(date)] || 1]);
+const briefByWeek = table => (store, date) => (table[store.id] || {})[weekKeyOf(date)] || 0;
+function twoOpenWeeks(w40, w41) {
+  return [
+    { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [w40] }), manual: false, frozenDays: [] },
+    { weekKey: '2026-10-05', plan: Object.assign(emptyPlan(), { Lundi: [w41] }), manual: false, frozenDays: [] },
+    { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+  ];
+}
+
+if (!PRIORITY_CASE) (function briefInsertionReadsRankAndBriefOnTheSameSlot() {
+  // Cas A — une place par semaine. A : en retard en W40 (0), bientôt dû en W41 (+100). B : en retard
+  // en W40 (+50), bientôt dû en W41. C : en retard les deux semaines, sans brief. A est le plus proche.
+  const run = briefAt => {
+    const w40 = { id: 'w40-anchor', x: 100 }, w41 = { id: 'w41-anchor', x: 100 };
+    const A = { id: 'A', x: 100 }, B = { id: 'B', x: -100 }, C = { id: 'C', x: -100 }, weeks = twoOpenWeeks(w40, w41);
+    runBriefCase(weeks, [w40, w41, A, B, C], briefAt, {
+      included: { 'w40-anchor': true, 'w41-anchor': true },
+      needAt: needByWeek({ A: { '2026-09-28': 3, '2026-10-05': 2 }, B: { '2026-09-28': 3, '2026-10-05': 2 }, C: { '2026-09-28': 3, '2026-10-05': 3 } })
+    });
+    return { w40: idsIn(weeks[0], 'Lundi'), w41: idsIn(weeks[1], 'Lundi') };
+  };
+  const control = run(null);
+  assert.equal(control.w40, 'A+w40-anchor', 'sans brief, à palier égal en W40, la géographie donne la place à A');
+  assert.equal(control.w41, 'C+w41-anchor', 'sans brief, W41 revient au magasin réellement en retard ce jour-là');
+  const boosted = run(briefByWeek({ A: { '2026-10-05': 100 }, B: { '2026-09-28': 50 } }));
+  assert.equal(boosted.w40, 'B+w40-anchor', 'brief : sur le créneau W40, B (+50) bat A (0) à palier égal');
+  assert.equal(boosted.w41, 'C+w41-anchor', 'brief : A n’est jamais classé en W41 avec son rang W40 et son brief W41');
+})();
+
+if (!PRIORITY_CASE) (function briefNeverCrossesABusinessTierAcrossWeeks() {
+  // Cas B — X : très en retard en W40 sans brief, jamais visité en W41 avec un très gros brief.
+  // Y : jamais visité en W40, très en retard en W41. Une place par semaine.
+  const run = (briefAt, xAt, yAt) => {
+    const w40 = { id: 'w40-anchor', x: 100 }, w41 = { id: 'w41-anchor', x: -100 };
+    const X = { id: 'X', x: xAt }, Y = { id: 'Y', x: yAt }, weeks = twoOpenWeeks(w40, w41);
+    runBriefCase(weeks, [w40, w41, X, Y], briefAt, {
+      included: { 'w40-anchor': true, 'w41-anchor': true },
+      needAt: needByWeek({ X: { '2026-09-28': 5, '2026-10-05': 4 }, Y: { '2026-09-28': 4, '2026-10-05': 5 } })
+    });
+    return idsIn(weeks[0], 'Lundi') + ' / ' + idsIn(weeks[1], 'Lundi');
+  };
+  const boost = briefByWeek({ X: { '2026-10-05': 1000 } });
+  assert.equal(run(null, 100, -100), 'X+w40-anchor / Y+w41-anchor', 'sans brief : chacun à son palier réel');
+  assert.equal(run(boost, 100, -100), 'X+w40-anchor / Y+w41-anchor', 'brief : en W41, Y réellement très en retard n’est pas battu par X jamais visité, même à +1000');
+  // Géographie inverse : le palier V264 (figé par r20) laisse la géographie choisir ; le bonus n'y change rien.
+  assert.equal(run(boost, -100, 100), run(null, -100, 100), 'brief : un bonus hors palier réel ne change jamais l’affectation');
+})();
+
+if (!PRIORITY_CASE) (function negativeBriefOutsideItsTierStillPenalizes() {
+  // S : bientôt dû en W40, en retard en W41, plus proche de W40. Hors palier réel, un brief ne promeut
+  // pas mais une pénalité s'applique : -100 en W40 envoie S en W41.
+  const run = briefAt => {
+    const w40 = { id: 'w40-anchor', x: 100 }, w41 = { id: 'w41-anchor', x: -100 }, S = { id: 'S', x: 100 }, weeks = twoOpenWeeks(w40, w41);
+    runBriefCase(weeks, [w40, w41, S], briefAt, { included: { 'w40-anchor': true, 'w41-anchor': true }, needAt: needByWeek({ S: { '2026-09-28': 2, '2026-10-05': 3 } }) });
+    return idsIn(weeks[0], 'Lundi') + ' / ' + idsIn(weeks[1], 'Lundi');
+  };
+  assert.equal(run(null), 'S+w40-anchor / w41-anchor', 'sans brief, palier V264 : la géographie place S en W40');
+  assert.equal(run(briefByWeek({ S: { '2026-09-28': -100 } })), 'w40-anchor / S+w41-anchor', 'brief : une pénalité W40 s’applique même hors palier réel');
+})();
+
+if (!PRIORITY_CASE) (function briefPreselectionKeepsTheBestRealSlotTuple() {
+  // Cas C — W41 reste ouverte au compte mais sa journée est pleine en crédits. 170 magasins en retard
+  // en W40 sans brief, bientôt dus en W41 à +100 ; G en retard en W40 à +50, loin et dernier par
+  // identifiant. Le meilleur tuple réel de chacun est en W40 : G y bat la foule et reste dans les 160.
+  const w40 = { id: 'w40-anchor', x: 100 }, heavy = { id: 'w41-heavy', x: 100 }, G = { id: 'zz-good', x: -100 };
+  const crowd = Array.from({ length: 170 }, (_, i) => ({ id: 'c' + String(i).padStart(3, '0'), x: 101 })), weeks = twoOpenWeeks(w40, heavy);
+  const ranks = { 'zz-good': { '2026-09-28': 3, '2026-10-05': 2 } }, briefs = { 'zz-good': { '2026-09-28': 50 } };
+  for (const store of crowd) { ranks[store.id] = { '2026-09-28': 3, '2026-10-05': 2 }; briefs[store.id] = { '2026-10-05': 100 }; }
+  const report = runBriefCase(weeks, [w40, heavy].concat(crowd, [G]), briefByWeek(briefs), {
+    included: { 'w40-anchor': true, 'w41-heavy': true }, needAt: needByWeek(ranks),
+    creditOf: store => store.id === 'w41-heavy' ? 4 : 1
+  });
+  assert.equal(idsIn(weeks[0], 'Lundi'), 'w40-anchor+zz-good', 'brief : au-delà de 160 candidats, la présélection garde le meilleur tuple réel d’un même créneau');
+  assert.equal(idsIn(weeks[1], 'Lundi'), 'w41-heavy', 'W41 reste pleine en crédits');
+  // L'arrêt anticipé coupe la boucle dès que G est trouvé : la foule n'est pas évaluée en W40.
+  assert.ok(report.evaluations < 60, 'présélection : arrêt anticipé effectif (' + report.evaluations + ' évaluations)');
+})();
+
+if (!PRIORITY_CASE) (function preselectionCutIgnoresInputOrder() {
+  // 170 candidats à tuple égal : la coupe à 160 suit l'identifiant, jamais l'ordre d'entrée.
+  const run = reversed => {
+    const w40 = { id: 'w40-anchor', x: 100 }, crowd = Array.from({ length: 170 }, (_, i) => ({ id: 'c' + String(i).padStart(3, '0'), x: i ? -100 : 100 }));
+    const weeks = [
+      { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [w40] }), manual: false, frozenDays: [] },
+      { weekKey: '2026-10-05', plan: emptyPlan(), manual: true, frozenDays: [] },
+      { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+    ];
+    runBriefCase(weeks, [w40].concat(reversed ? crowd.slice().reverse() : crowd), null, { included: { 'w40-anchor': true }, needAt: needByWeek({}) });
+    return idsIn(weeks[0], 'Lundi');
+  };
+  assert.equal(run(false), 'c000+w40-anchor');
+  assert.equal(run(true), 'c000+w40-anchor', 'présélection : départage déterministe par identifiant avant la coupe à 160');
+})();
+
+/* Lot 3B — une visite posée pour une échéance du brief (deadlineFixed, clé « magasin|date ») est figée
+   dans son créneau : ni déplacée, ni échangée, ni remplacée. Les autres visites restent optimisables. */
+const pinOn = (id, date) => new Map([[id + '|' + date, { key: id, date }]]);
+
+if (!PRIORITY_CASE) (function deadlineVisitIsNeverMoved() {
+  // A (x=-100) est posé mardi avec l'ancre droite ; lundi, l'ancre gauche l'attend. C, libre, suit la géographie.
+  const run = pins => {
+    const left = { id: 'left-anchor', x: -100 }, right = { id: 'right-anchor', x: 100 }, A = { id: 'A', x: -100 }, C = { id: 'C', x: -100 };
+    const weeks = [
+      { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [left], Mardi: [right, A, C] }), manual: false, frozenDays: [] },
+      { weekKey: '2026-10-05', plan: emptyPlan(), manual: true, frozenDays: [] },
+      { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+    ];
+    const report = runBriefCase(weeks, [left, right, A, C], null, { days: ['Lundi', 'Mardi'], target: 4, included: { 'left-anchor': true, 'right-anchor': true }, deadlineFixed: pins });
+    return { report, lundi: idsIn(weeks[0], 'Lundi'), mardi: idsIn(weeks[0], 'Mardi') };
+  };
+  const free = run(undefined);
+  assert.equal(free.lundi, 'A+C+left-anchor', 'sans échéance, A et C rejoignent la tournée de gauche');
+  const pinned = run(pinOn('A', '2026-09-29'));
+  assert.equal(pinned.mardi, 'A+right-anchor', 'échéance : A reste exactement sur son créneau du mardi');
+  assert.equal(pinned.lundi, 'C+left-anchor', 'les autres visites restent optimisables');
+  assert.equal(pinned.report.moves, 1);
+  assert.equal(pinned.report.refused.deadlines, 1);
+})();
+
+if (!PRIORITY_CASE) (function deadlineVisitIsNeverSwapped() {
+  // Échange géographique B (W40) ↔ A (W41) accepté sans échéance ; refusé si l'un des deux est une visite d'échéance.
+  for (const [label, pins, swaps] of [['sans échéance', undefined, 1], ['A figé', pinOn('A', '2026-10-05'), 0], ['B figé', pinOn('B', '2026-09-28'), 0]]) {
+    const w1 = { id: 'w1-anchor', x: 100 }, B = { id: 'B', x: -100 }, w2 = { id: 'w2-anchor', x: -100 }, A = { id: 'A', x: 100 };
+    const weeks = [
+      { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [w1, B] }), manual: false, frozenDays: [] },
+      { weekKey: '2026-10-05', plan: Object.assign(emptyPlan(), { Lundi: [w2, A] }), manual: false, frozenDays: [] },
+      { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+    ];
+    const report = runBriefCase(weeks, [w1, B, w2, A], null, { included: { 'w1-anchor': true, 'w2-anchor': true }, deadlineFixed: pins });
+    assert.equal(report.swaps, swaps, label);
+    if (!swaps) assert.equal(idsIn(weeks[0], 'Lundi') + ' | ' + idsIn(weeks[1], 'Lundi'), 'B+w1-anchor | A+w2-anchor', label + ' : aucune visite d’échéance décalée');
+  }
+})();
+
+if (!PRIORITY_CASE) (function deadlineVisitIsNeverReplaced() {
+  // Remplacement strictement équivalent current → candidate, accepté sans échéance ; jamais pour une visite d'échéance.
+  for (const [label, pins, replaced] of [['sans échéance', undefined, 1], ['current figé', pinOn('current', '2026-09-28'), 0]]) {
+    const anchor = { id: 'anchor', x: 100 }, current = { id: 'current', x: -100 }, candidate = { id: 'candidate', x: 100 };
+    const weeks = [
+      { weekKey: '2026-09-28', plan: Object.assign(emptyPlan(), { Lundi: [anchor, current] }), manual: false, frozenDays: [] },
+      { weekKey: '2026-10-05', plan: emptyPlan(), manual: true, frozenDays: [] },
+      { weekKey: '2026-10-12', plan: emptyPlan(), manual: true, frozenDays: [] }
+    ];
+    const report = runBriefCase(weeks, [anchor, current, candidate], null, { included: { anchor: true }, deadlineFixed: pins });
+    assert.equal(report.replacements, replaced, label);
+    assert.equal(idsIn(weeks[0], 'Lundi'), replaced ? 'anchor+candidate' : 'anchor+current', label);
+  }
+})();
+
 console.log('=== V264 benchmark allocation cross-day ===');
 console.table(results.map(result => {
   const baseline = result.fixture.config.baseline;
