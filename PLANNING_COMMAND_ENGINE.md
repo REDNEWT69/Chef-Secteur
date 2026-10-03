@@ -1,7 +1,8 @@
 # Planning Command Engine — Lot B, V1
 
-Statut : **PR Draft, non fusionnée.** Base `main` `70aa593` (#494, r38). `BUILD_REV` volontairement
-**non** modifié tant que le lot n'est pas validé (`20261003-r38-temporal-geographic-coherence-264`).
+Statut : **PR Draft, non fusionnée.** Base `main` `70aa593` (#494, r38). Build proposé :
+`20261004-r39-planning-command-engine-264` (`displayVersion` 264 inchangée), monté après une CI
+Reliability entièrement verte sur le code du lot.
 
 L'utilisateur pilote le planning par une phrase. Le moteur de commandes **interprète** la phrase,
 mais **n'écrit jamais lui-même le planning** : il traduit l'intention en contraintes pour les
@@ -166,8 +167,9 @@ jeudi », « ajoute un magasin »…) ne sont pas captées.
   en ligne.
 - `index.html`, `sw.js` : un module ajouté au chargement et au cache hors ligne. Moteur et feuille
   d'aperçu partagent ce fichier : le démarrage charge 75 scripts, exactement le budget figé par
-  `tests/fixtures/cleanup-baseline-r20.json` (vérifié par `boot-v234-browser`). `BUILD_REV`
-  inchangé : à monter dans la PR au moment de la validation.
+  `tests/fixtures/cleanup-baseline-r20.json` (vérifié par `boot-v234-browser` et
+  `priority-campaign-removal-browser`, qui lit ce budget comme plafond). Build `r39` : version.json,
+  `index.html` (constante et liens `?rev=`), `manifest.webmanifest`, `sw.js`.
 
 ## Tests
 
@@ -175,7 +177,7 @@ jeudi », « ajoute un magasin »…) ne sont pas captées.
 | --- | --- |
 | `tests/planning-command-engine.test.cjs` | A, B, C, G, H, I : 8 exemples, variantes, frontière assistant, refus, dates ISO, schéma strict, JSON de modèle, résolution et ambiguïtés |
 | `tests/planning-command-simulation.test.cjs` | A–N avec les vrais propriétaires : P1, placement, évitement, RDV, verrou, visite réalisée, passé, semaine manuelle, M1, répartition, zone, recalcul, retours arrière, aperçu altéré/périmé, r38, parité génération, V189/V251, déterminisme |
-| `tests/planning-command-owners.test.cjs` | contrats des extensions terrain/profil/V181, point d'entrée assistant, absence d'`innerHTML`/`eval`, cache PWA, `BUILD_REV` |
+| `tests/planning-command-owners.test.cjs` | contrats des extensions terrain/profil/V181, point d'entrée assistant, absence d'`innerHTML`/`eval`, cache PWA, révision publiée cohérente |
 | `tests/planning-command-benchmark.test.cjs` | 150 magasins, 60 visites réelles, cross-day actif : coût par commande, déterminisme |
 | `tests/planning-command-browser.spec.cjs` | O : vraie application en 390 px Android, mode IA en ligne jamais sollicité |
 
@@ -197,5 +199,5 @@ jeudi », « ajoute un magasin »…) ne sont pas captées.
 - Adaptateur LLM : mode passerelle `planning_intent` (worker) renvoyant **uniquement** le JSON
   brut ci-dessus, consommé par `acceptModelIntent` puis `resolve` ; non branché en V1 (déploiement
   du worker requis).
-- Montée `BUILD_REV` dans cette PR au moment de la validation (version.json, index.html, sw.js,
-  tests qui figent la révision).
+- Décider si le lot justifie une nouvelle version visible (`displayVersion` 265) au moment de la
+  publication ; le build `r39` garde 264.

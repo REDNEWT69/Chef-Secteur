@@ -115,8 +115,11 @@ let passed = 0; const ok = name => { passed++; console.log('✓ ' + name); };
     assert(!require('node:fs').existsSync(path.join(ROOT, 'planning-command-ui.js')), 'pas de second module au démarrage');
     for (const f of ['planning-command-engine.js']) { assert(sw.includes('"./' + f + '"'), f + ' en cache hors ligne'); assert(index.includes("'./" + f + "'"), f + ' chargé par index.html'); }
     const rev = /const BUILD_REV = "([^"]+)"/.exec(sw)[1];
-    assert.equal(rev, '20261003-r38-temporal-geographic-coherence-264', 'BUILD_REV non modifié tant que le lot n’est pas validé');
-    ok('noyau, interface et cache : point d’entrée unique, texte jamais interprété, BUILD_REV r38 conservé');
+    /* Le module voyage avec une révision publiée : même BUILD_REV pour le cache et version.json
+       (aucun littéral figé ici, pour ne pas ajouter un emplacement à chaque montée). */
+    assert.equal(rev, JSON.parse(read('version.json')).latestBuild, 'le cache publie la révision annoncée par version.json');
+    assert.notEqual(rev, '20261003-r38-temporal-geographic-coherence-264', 'le lot B ne peut pas être servi sous la révision r38');
+    ok('noyau, interface et cache : point d’entrée unique, texte jamais interprété, révision publiée cohérente');
   }
 
   console.log('planning-command-owners: ' + passed + ' groupes OK');
