@@ -15,7 +15,7 @@ function env(options={}){
   const archive=JSON.parse(JSON.stringify(options.archive||{}));
   let persisted=null;
   const proposals=[];
-  const state={settings:{days:['Lundi'],target:1,weekDate,startTime:'08:30',endTime:'18:00',visitMinutes:60,maxVisitsPerDay:4},profile:{},stores,plan:options.plan||Object.assign(emptyPlan(),{Lundi:[stores[0]]}),included:{},excluded:{},locks:{},appointments:[],calendarEvents:[]};
+  const state={settings:{days:['Lundi'],target:1,weekDate,startTime:'08:30',endTime:'18:00',visitMinutes:60,maxVisitsPerDay:4},profile:{},stores,plan:options.plan||Object.assign(emptyPlan(),{Lundi:[stores[0]]}),included:{},excluded:{},locks:JSON.parse(JSON.stringify(options.locks||{})),manualWeekEdits:JSON.parse(JSON.stringify(options.manualWeekEdits||{})),appointments:[],calendarEvents:[]};
   const els={weekDate:{value:weekDate},rangeStart:{value:weekDate},rangeEnd:{value:rangeEnd},endTime:{value:'18:00'},maxVisitsPerDay:{value:'4'},generateRangeBtn:{disabled:false},rangePlanStatus:{style:{}},statusText:{textContent:''}};
   const localStorage={getItem:key=>key===ARCHIVE_KEY?JSON.stringify(archive):null,setItem(){},removeItem(){}};
   const ctx={state,console,Date,Map,Set,JSON,Object,Array,String,Number,Math,RegExp,localStorage,
@@ -62,6 +62,16 @@ function env(options={}){
   assert.equal(JSON.stringify(t.state.plan),stateBefore,'le garde-fou d’état doit conserver la semaine');
   assert.equal(t.proposals.length,0,'le garde-fou d’état doit bloquer toute proposition automatique');
   assert.equal(stateGuard&&stateGuard.preservedManual,true,'le moteur doit signaler la conservation manuelle via le garde-fou d’état');
+
+
+  // M1 : un ajout/déplacement manuel porte un verrou daté individuel. La semaine reste
+  // générable autour de cette ancre au lieu d'être traitée comme un bloc intouchable.
+  const adaptivePlan=emptyPlan();adaptivePlan.Lundi=[store('a')];
+  t=env({plan:adaptivePlan,locks:{a:{day:'Lundi',week:'2026-09-07'}},manualWeekEdits:{'2026-09-07':{at:'2026-09-07T12:00:00Z',plan:adaptivePlan}},archive:{'2026-09-07':{weekMonday:'2026-09-07',manualEdited:true,plan:JSON.parse(JSON.stringify(adaptivePlan))}}});
+  const adaptive=await t.ctx.testManualWeek.strictSingleWeek();
+  assert.equal(adaptive&&adaptive.preservedManual,undefined,'une semaine avec ancre datée ne doit plus prendre le chemin « semaine figée »');
+  assert.equal(t.proposals.length,1,'le moteur doit proposer une nouvelle semaine autour de l’ancre manuelle');
+  assert.ok(t.proposals[0].plan.Lundi.some(s=>s.id==='a'),'l’ancre manuelle reste sur son jour pendant la régénération');
 
   const protectedPlan=emptyPlan();protectedPlan.Lundi=[store('protected')];
   t=env({archive:{'2026-09-07':{weekMonday:'2026-09-07',manualEdited:true,plan:JSON.parse(JSON.stringify(protectedPlan))}},rangeEnd:'2026-09-18'});

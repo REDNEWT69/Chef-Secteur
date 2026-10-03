@@ -24,8 +24,10 @@ assert.match(source,/glisse une visite à gauche ou à droite/i,'le geste doit �
 assert.match(source,/Math\.abs\(dx\)<68/,'un swipe court ne doit rien supprimer');
 assert.match(source,/confirm\('Retirer /,'la suppression doit demander confirmation');
 assert.match(source,/\.timelineRow:not\(\.calendarEvent\)/,'les événements Agenda ne doivent jamais recevoir le geste de suppression');
-assert.match(source,/manualWeekEdits/,'une modification manuelle doit protéger la semaine contre une régénération');
+assert.match(source,/manualWeekEdits/,'une modification manuelle garde son instantané durable');
 assert.match(source,/manualEdited:true/,'l’archive de période doit porter la modification manuelle');
+assert.match(source,/manualAdaptive:true/,'une modification magasin doit marquer la semaine comme adaptative plutôt que totalement figée');
+assert.match(source,/manualRemovedIds/,'un retrait manuel doit rester exclu de sa semaine lors de la prochaine génération');
 assert.match(source,/＋ Ajouter/,'le planning doit exposer un bouton d’ajout explicite');
 assert.match(source,/Déplacer de /,'un magasin déjà prévu ailleurs doit être présenté comme déplaçable');
 assert.match(source,/e\.stopPropagation\(\)/,'le swipe de ligne doit empêcher le swipe global de changer de jour en même temps');
