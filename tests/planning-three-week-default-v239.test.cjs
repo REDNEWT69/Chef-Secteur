@@ -3,9 +3,9 @@
 // Ce que ce test protège :
 //   * le bouton principal s'appelle « Générer mes 3 semaines » et déclenche le moteur
 //     3 semaines déjà existant, pas une génération d'une seule semaine ;
-//   * une date de début explicitement choisie est la première semaine du cycle ; sinon
-//     le prochain lundi travaillé gagne, même si une autre semaine est affichée ;
-//   * le cycle couvre exactement trois semaines consécutives ;
+//   * une date de début explicitement choisie gagne sur la semaine affichée ; sinon la
+//     semaine affichée reste la première semaine du cycle ; le cycle couvre exactement
+//     trois semaines consécutives ;
 //   * l'ancienne action séparée « Générer 3 semaines · escargot » a disparu du menu
 //     « Planifier plusieurs semaines », sans laisser de séparateur ni de vide ;
 //   * les autres actions de ce menu restent en place ;
@@ -43,8 +43,8 @@ assert.equal((CONTROLLER.match(/window\.generateWeek\s*=(?!=)/g) || []).length, 
   'la génération d’une seule semaine garde un propriétaire unique et inchangé');
 assert.match(CONTROLLER, /window\.storeRunnerGenerateThreeWeeks\s*=/,
   'l’action 3 semaines doit être publique pour que le planning puisse la rappeler');
-assert.match(CONTROLLER, /const previousThreeWeekPlanningFlag=window\.__storeRunnerPlanningGenerationActive;[\s\S]*window\.__storeRunnerPlanningGenerationActive=true;[\s\S]*try\{built=await api\.generateThreeWeekSnail\(\{\}\)\}[\s\S]*finally\{window\.__storeRunnerPlanningGenerationActive=previousThreeWeekPlanningFlag\}/,
-  'le contrôleur doit posséder le drapeau Agenda pendant toute la vraie génération 3 semaines et laisser le moteur choisir le départ');
+assert.match(CONTROLLER, /const previousThreeWeekPlanningFlag=window\.__storeRunnerPlanningGenerationActive;[\s\S]*window\.__storeRunnerPlanningGenerationActive=true;[\s\S]*try\{built=await api\.generateThreeWeekSnail\(\{start:start\}\)\}[\s\S]*finally\{window\.__storeRunnerPlanningGenerationActive=previousThreeWeekPlanningFlag\}/,
+  'le contrôleur doit posséder le drapeau Agenda pendant toute la vraie génération 3 semaines');
 
 // --- 3. L'action séparée a disparu du menu, les autres actions restent ---------------
 assert.doesNotMatch(TERRAIN_SOURCE, /Générer 3 semaines · escargot/,
@@ -94,7 +94,8 @@ function boot(options) {
   shellButton.matchesList = ['[data-planning-generate="three-weeks"]'];
   shellButton.ancestors = { '#planPanel': panel };
   const weekInput = { value: opts.weekDate || '2026-10-08' };
-  const byId = { weekDate: weekInput };
+  const rangeStartInput = { value: opts.rangeStart || '', dataset: { snailUserEdited: opts.rangeStartEdited ? '1' : '' } };
+  const byId = { weekDate: weekInput, rangeStart: rangeStartInput };
   const created = [];
   const docListeners = {};
   const document = {
@@ -151,12 +152,26 @@ async function mainButtonRunsTheExistingThreeWeekEngine() {
   assert.equal(t.calls.three.length, 1, 'un clic doit lancer exactement une génération 3 semaines');
   assert.equal(t.calls.single, 0, 'le bouton principal ne doit plus générer une seule semaine');
   // Pas de popup : aucune confirmation ni question semaine/3 semaines avant de lancer.
-  assert.equal(Object.prototype.hasOwnProperty.call(t.calls.three[0] || {}, 'start'), false,
-    'le contrôleur ne doit plus forcer la semaine affichée comme départ du cycle');
+  assert.equal(t.calls.three[0].start, '2026-10-05',
+    'la semaine sélectionnée (lundi de la semaine affichée) doit être le départ du cycle');
   assert.equal(t.calls.disabledDuringRun, true, 'le bouton doit être désactivé pendant la génération');
   assert.equal(t.main.disabled, false, 'le bouton doit être rendu à l’utilisateur après la génération');
   assert.equal(t.shellButton.disabled, false, 'tous les boutons de l’action doivent être libérés');
   assert.match(t.status(), /^Planning généré sur 3 semaines\./, 'le succès doit être annoncé en une phrase courte');
+}
+
+async function explicitRangeStartWinsOverAutoDisplayedWeek() {
+  const chosen = boot({ weekDate: '2026-10-12', rangeStart: '2026-10-05', rangeStartEdited: true });
+  chosen.document.click(chosen.main);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(chosen.calls.three[0].start, '2026-10-05',
+    'une date de début explicitement choisie au 05/10 doit gagner sur une semaine affichée au 12/10');
+
+  const inherited = boot({ weekDate: '2026-10-12', rangeStart: '2026-10-05', rangeStartEdited: false });
+  inherited.document.click(inherited.main);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(inherited.calls.three[0].start, '2026-10-12',
+    'une date de période seulement héritée ne doit pas remplacer la semaine affichée');
 }
 
 async function aFailureKeepsTheExistingErrorMechanism() {
@@ -189,21 +204,17 @@ function deadControllerRecalculationDoesNotReturn() {
     'generateWeek reste disponible pour ses autres appelants (assistant, régénération d’une journée)');
 }
 
-// --- 5. Le moteur : date explicite sinon prochain lundi, jamais semaine héritée ----------
-(function theTerrainOwnsTheCycleStart() {
-  const explicitFields = { rangeStart: { value: '2026-10-12', dataset: { snailUserEdited: '1' } }, weekDate: { value: '2026-10-26' } };
-  const explicitDoc = { getElementById: id => explicitFields[id] || null };
-  const explicit = terrain.resolveSnailStart({ settings: { weekDate: '2026-10-26' } }, explicitDoc, new Date(2026, 9, 3, 12));
-  assert.equal(explicit.getFullYear(), 2026);
-  assert.equal(explicit.getMonth(), 9);
-  assert.equal(explicit.getDate(), 12, 'une date de début explicitement choisie doit gagner');
-
-  const inheritedFields = { rangeStart: { value: '2026-10-12', dataset: {} }, weekDate: { value: '2026-10-12' } };
-  const inheritedDoc = { getElementById: id => inheritedFields[id] || null };
-  const automatic = terrain.resolveSnailStart({ settings: { weekDate: '2026-10-12' } }, inheritedDoc, new Date(2026, 9, 3, 12));
-  assert.equal(automatic.getFullYear(), 2026);
-  assert.equal(automatic.getMonth(), 9);
-  assert.equal(automatic.getDate(), 5, 'le 03/10/2026, une semaine affichée au 12/10 ne doit pas empêcher un départ automatique au lundi 05/10');
+// --- 5. Le moteur : la semaine demandée gagne, et le cycle fait 3 semaines pleines ----
+(function theRequestedWeekWinsOverEveryLegacyRule() {
+  const fields = { rangeStart: { value: '2026-09-21', dataset: { snailUserEdited: '1' } }, weekDate: { value: '2026-09-21' } };
+  const doc = { getElementById: id => fields[id] || null };
+  const chosen = terrain.resolveSnailStart({ settings: { weekDate: '2026-09-21' } }, doc, new Date(2026, 8, 13, 12), { start: '2026-10-08' });
+  assert.equal(chosen.getFullYear(), 2026);
+  assert.equal(chosen.getMonth(), 9);
+  assert.equal(chosen.getDate(), 5, 'la semaine transmise par le bouton doit ramener au lundi de cette semaine');
+  // Sans semaine imposée, les deux règles historiques restent celles de V1.
+  const legacy = terrain.resolveSnailStart({ settings: { weekDate: '2026-09-21' } }, doc, new Date(2026, 8, 13, 12));
+  assert.equal(legacy.getDate(), 21, 'une date de début saisie à la main reste prioritaire sans semaine imposée');
 })();
 
 function store(i, extra) {
@@ -275,6 +286,7 @@ function build(options) {
 
 (async function run() {
   await mainButtonRunsTheExistingThreeWeekEngine();
+  await explicitRangeStartWinsOverAutoDisplayedWeek();
   await aFailureKeepsTheExistingErrorMechanism();
   await anIncompleteBaseStopsBeforeTheEngine();
   deadControllerRecalculationDoesNotReturn();

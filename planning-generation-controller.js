@@ -46,6 +46,20 @@
   }
 
   function isoDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+  function parseDate(value){const d=new Date(String(value||'')+'T12:00:00');return isNaN(d)?null:d}
+  function mondayOf(d){const x=new Date(d),w=x.getDay()||7;x.setDate(x.getDate()-w+1);return x}
+  function currentWeekMonday(){
+    const input=document.getElementById('weekDate');
+    const raw=(input&&input.value)||(window.state&&state.settings&&state.settings.weekDate)||isoDate(new Date());
+    return mondayOf(parseDate(raw)||new Date());
+  }
+  function explicitRangeStartMonday(){
+    const input=document.getElementById('rangeStart');
+    if(!input||!input.dataset||input.dataset.snailUserEdited!=='1')return null;
+    const chosen=parseDate(input.value);
+    return chosen?mondayOf(chosen):null;
+  }
+
   function ensureUnifiedGenerationUi(){
     const generate=mainGenerateAnchor();
     if(!generate||!generate.parentNode)return false;
@@ -67,7 +81,7 @@
     }
     /* Texte réécrit seulement s'il doit changer : cette fonction repasse à chaque
        événement planning, et une écriture DOM inutile relance les observateurs. */
-    const hintText='La génération prépare 3 semaines d’affilée à partir de la date de début choisie dans « Planifier plusieurs semaines », sinon du prochain lundi travaillé. Optimisation géographique et découché sont calculés automatiquement.';
+    const hintText='La génération prépare 3 semaines d’affilée à partir de la date de début choisie dans « Planifier plusieurs semaines », sinon de la semaine affichée. Optimisation géographique et découché sont calculés automatiquement.';
     if(hint.textContent!==hintText)hint.textContent=hintText;
 
     /* Le recalcul reste utile quand la semaine est déjà entamée, mais ce n'est pas un
@@ -126,10 +140,9 @@
    * Le cycle escargot 3 semaines existait déjà (StoreRunnerTerrainPlanningV1), mais il
    * était rangé derrière une action séparée dans « Planifier plusieurs semaines » alors
    * que c'est l'usage réel du terrain. Cette fonction ne replanifie rien elle-même :
-   * elle délègue aussi la date de départ au moteur terrain : une date de début explicitement
-   * choisie gagne, sinon le moteur part du prochain lundi travaillé. La semaine affichée
-   * n'est jamais réutilisée silencieusement comme départ. Le moteur est lu au moment de
-   * l'appel pour conserver les enveloppes V185
+   * elle prend d’abord une date de début explicitement choisie dans « Planifier plusieurs
+   * semaines » ; sinon la semaine affichée reste la première semaine du cycle. Elle délègue
+   * ensuite au moteur existant, lu au moment de l'appel pour conserver les enveloppes V185
    * (optimisation géographique) et V248 (matrice routière) posées par-dessus.
    *
    * La génération d'une seule semaine (`generateWeek`) reste intacte pour ses autres
@@ -147,13 +160,14 @@
       generationStatus(message,'bad');
       return{ok:false,__storeRunnerRejectedEmpty:true,error:message};
     }
+    const start=isoDate(explicitRangeStartMonday()||currentWeekMonday());
     setGenerateBusy(true);
     generationStatus('Génération de 3 semaines · rotation géographique…','busy');
     try{
       const previousThreeWeekPlanningFlag=window.__storeRunnerPlanningGenerationActive;
       window.__storeRunnerPlanningGenerationActive=true;
       let built;
-      try{built=await api.generateThreeWeekSnail({})}
+      try{built=await api.generateThreeWeekSnail({start:start})}
       finally{window.__storeRunnerPlanningGenerationActive=previousThreeWeekPlanningFlag}
       const visits=Number(built&&built.totalVisits)||0,stores=Number(built&&built.uniqueStores)||0;
       /* V263 : le bilan de couverture (magasins écartés car visités trop récemment, magasins
@@ -161,8 +175,7 @@
       let coverage='';try{if(typeof api.coverageSummaryText==='function')coverage=api.coverageSummaryText(built&&built.coverage,' · ')}catch(e){}
       generationStatus('Planning généré sur 3 semaines. '+visits+' visite'+(visits>1?'s':'')+' · '+stores+' magasin'+(stores>1?'s':'')+coverage+'.','ok');
       ensureUnifiedGenerationUi();
-      const actualStart=built&&built.weeks&&built.weeks[0]&&built.weeks[0].weekKey||null;
-      return{ok:true,start:actualStart,weeks:3,result:built};
+      return{ok:true,start:start,weeks:3,result:built};
     }catch(e){
       const message=e&&e.message?e.message:String(e);
       generationStatus(message,'bad');
