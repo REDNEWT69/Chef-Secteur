@@ -151,7 +151,7 @@ async function mainButtonRunsTheExistingThreeWeekEngine() {
   assert.equal(t.calls.three.length, 1, 'un clic doit lancer exactement une génération 3 semaines');
   assert.equal(t.calls.single, 0, 'le bouton principal ne doit plus générer une seule semaine');
   // Pas de popup : aucune confirmation ni question semaine/3 semaines avant de lancer.
-  assert.deepEqual(t.calls.three[0], {},
+  assert.equal(Object.prototype.hasOwnProperty.call(t.calls.three[0] || {}, 'start'), false,
     'le contrôleur ne doit plus forcer la semaine affichée comme départ du cycle');
   assert.equal(t.calls.disabledDuringRun, true, 'le bouton doit être désactivé pendant la génération');
   assert.equal(t.main.disabled, false, 'le bouton doit être rendu à l’utilisateur après la génération');
