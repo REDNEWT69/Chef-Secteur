@@ -64,6 +64,14 @@ function env(options={}){
   assert.equal(stateGuard&&stateGuard.preservedManual,true,'le moteur doit signaler la conservation manuelle via le garde-fou d’état');
 
 
+  // Un verrou daté normal ne doit pas transformer à lui seul une semaine automatique
+  // en semaine manuelle adaptative lors de sa première génération.
+  t=env({locks:{a:{day:'Lundi',week:'2026-09-07'}},archive:{}});
+  await t.ctx.testManualWeek.strictSingleWeek();
+  assert.equal(t.proposals.length,1);
+  assert.equal(t.proposals[0].archive['2026-09-07'].manualEdited,undefined,'un verrou métier normal ne crée pas une retouche manuelle');
+  assert.equal(t.proposals[0].archive['2026-09-07'].manualAdaptive,undefined,'un verrou métier normal ne crée pas manualAdaptive');
+
   const legacyPlanWithOtherLock=emptyPlan();legacyPlanWithOtherLock.Lundi=[store('a')];
   t=env({plan:legacyPlanWithOtherLock,locks:{b:{day:'Lundi',week:'2026-09-07'}},manualWeekEdits:{'2026-09-07':{at:'2026-09-07T12:00:00Z',plan:legacyPlanWithOtherLock}},archive:{'2026-09-07':{weekMonday:'2026-09-07',manualEdited:true,plan:JSON.parse(JSON.stringify(legacyPlanWithOtherLock))}}});
   const unrelated=await t.ctx.testManualWeek.strictSingleWeek();

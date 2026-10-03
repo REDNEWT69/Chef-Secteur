@@ -243,8 +243,9 @@ function hasDatedPinForWeek(weekKey,plan){
   return false
 }
 function adaptiveManualWeek(weekKey,snap,manualEntry){
+  const marked=!!((snap&&snap.manualEdited)||manualEntry);if(!marked)return false;
   const removed=Array.isArray(snap&&snap.manualRemovedIds)&&snap.manualRemovedIds.length,plan=(snap&&snap.plan)||(manualEntry&&manualEntry.plan)||{};
-  return !!(snap&&snap.manualEdited&&(snap.manualAdaptive||removed))||hasDatedPinForWeek(weekKey,plan)
+  return !!(snap&&snap.manualAdaptive)||!!removed||hasDatedPinForWeek(weekKey,plan)
 }
 function wholeWeekManual(weekKey,snap,manualEntry){return !!((snap&&snap.manualEdited)||manualEntry)&&!adaptiveManualWeek(weekKey,snap,manualEntry)}
 function removedIdsForWeek(snap){return new Set(((snap&&snap.manualRemovedIds)||[]).map(String))}
