@@ -82,6 +82,44 @@ function flat(week){
   assert.strictEqual(new Set(all).size, all.length, 'le magasin de la semaine manuelle n’est pas repris par une autre semaine du cycle');
 })();
 
+
+(function unrelatedDatedLockDoesNotUnlockLegacyManualWeek(){
+  const stores=[store(1),store(2)],manual={Lundi:[stores[0]],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]},week='2026-09-14';
+  const state={manualWeekEdits:{[week]:{at:'2026-09-13T00:00:00Z',plan:manual}},locks:{s2:{day:'Mardi',week}},included:{}};
+  const info=terrain.manualWeekInfo(week,state,{});
+  assert.strictEqual(info.adaptive,false,'un verrou daté extérieur à la retouche ne doit pas défiger une ancienne semaine manuelle');
+  const built=terrain.buildThreeWeekSnail({state,firstMonday:monday(),days:['Lundi','Mardi'],target:2,maxCreditsPerDay:2,stores,archive:{},distanceOf:s=>s.distance,creditOf:()=>1,lockDayForWeek:(id,wk)=>state.locks[id]&&state.locks[id].week===wk?state.locks[id].day:'',appointmentDay:()=>'',dayBlocked:()=>false,dayFits:()=>true,crossDayEnabled:false});
+  assert.strictEqual(built.weeks[0].manual,true);
+  assert.deepStrictEqual(flat(built.weeks[0]).map(s=>s.id),['s1']);
+})();
+
+(function adaptiveManualPinBecomesADayAnchor(){
+  const anchor={id:'anchor',enseigne:'Test',ville:'Zone Est',distance:100,x:100,active:true},near={id:'near',enseigne:'Test',ville:'Zone Est proche',distance:101,x:101,active:true},west={id:'west',enseigne:'Test',ville:'Ouest',distance:1,x:0,active:true},west2={id:'west2',enseigne:'Test',ville:'Ouest 2',distance:2,x:-1,active:true},stores=[anchor,near,west,west2];
+  const plan={Lundi:[west],Mardi:[anchor],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]},week='2026-09-14',state={manualWeekEdits:{[week]:{at:'2026-09-13T12:00:00Z',plan}},locks:{anchor:{day:'Mardi',week}},included:{}};
+  const built=terrain.buildThreeWeekSnail({state,firstMonday:monday(),days:['Lundi','Mardi'],target:4,maxCreditsPerDay:4,stores,archive:{[week]:{weekMonday:week,manualEdited:true,plan}},distanceOf:s=>s.distance,distanceBetween:(a,b)=>Math.abs(a.x-b.x),priorityOf:s=>s.id==='near'?100:0,creditOf:()=>1,lockDayForWeek:(id,wk)=>state.locks[id]&&state.locks[id].week===wk?state.locks[id].day:'',appointmentDay:()=>'',dayBlocked:()=>false,dayFits:()=>true,crossDayEnabled:false});
+  const first=built.weeks[0];
+  assert.strictEqual(first.manual,false,'un verrou daté transforme la retouche en semaine adaptative, pas en bloc figé');
+  assert.ok(first.plan.Mardi.some(s=>s.id==='anchor'),'le magasin posé manuellement reste sur son mardi');
+  assert.ok(first.plan.Mardi.some(s=>s.id==='near'),'le magasin libre le plus cohérent rejoint l’ancre manuelle tant que le quota le permet');
+  assert.strictEqual(first.plan.Mardi.length,2,'la journée ancrée respecte sa part de charge au lieu d’absorber toute la semaine');
+})();
+
+(function adaptiveManualWeekStillRunsCrossDay(){
+  const anchor={id:'anchor-x',enseigne:'Test',ville:'Est',distance:10,x:10,active:true},other={id:'other-x',enseigne:'Test',ville:'Est 2',distance:11,x:11,active:true},stores=[anchor,other],week='2026-09-14',plan={Lundi:[anchor],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]},state={manualWeekEdits:{[week]:{at:'2026-09-13T12:00:00Z',plan}},locks:{'anchor-x':{day:'Lundi',week}},included:{},profile:{overnightMode:'never'},settings:{days:['Lundi','Mardi']}};
+  const built=terrain.buildThreeWeekSnail({state,firstMonday:monday(),days:['Lundi','Mardi'],target:2,maxCreditsPerDay:2,stores,archive:{[week]:{weekMonday:week,manualEdited:true,plan}},distanceOf:s=>s.distance,distanceBetween:(a,b)=>Math.abs(a.x-b.x),creditOf:()=>1,lockDayForWeek:(id,wk)=>state.locks[id]&&state.locks[id].week===wk?state.locks[id].day:'',appointmentDay:()=>'',dayBlocked:()=>false,dayFits:()=>true,needOf:()=>({tier:1,status:'ok',blocked:false}),evaluateDayRoute:route=>({route:route.slice(),feasible:true,kilometers:0,driveMinutes:0})});
+  assert.ok(built.crossDay&&built.crossDay.applied,'la semaine ancrée reste dans le moteur cross-day/H2');
+  assert.strictEqual(built.crossDay.refused.manualWeeks,0,'H2 ne doit plus refuser toute la semaine parce qu’un magasin a été posé manuellement');
+})();
+
+(function adaptiveManualRemovalStaysOutOfItsWeek(){
+  const anchor=store(1),removed=store(2),other=store(3),week='2026-09-14',plan={Lundi:[anchor],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]},state={manualWeekEdits:{[week]:{at:'2026-09-13T12:00:00Z',plan}},locks:{s1:{day:'Lundi',week}},included:{}};
+  removed.distance=0;other.distance=10;
+  const archive={[week]:{weekMonday:week,manualEdited:true,manualAdaptive:true,manualRemovedIds:['s2'],plan}};
+  const built=terrain.buildThreeWeekSnail({state,firstMonday:monday(),days:['Lundi','Mardi'],target:2,maxCreditsPerDay:2,stores:[anchor,removed,other],archive,distanceOf:s=>s.distance,priorityOf:s=>s.id==='s2'?100:0,creditOf:()=>1,lockDayForWeek:(id,wk)=>state.locks[id]&&state.locks[id].week===wk?state.locks[id].day:'',appointmentDay:()=>'',dayBlocked:()=>false,dayFits:()=>true,crossDayEnabled:false});
+  assert.ok(!flat(built.weeks[0]).some(s=>s.id==='s2'),'un magasin retiré manuellement ne doit pas être rajouté automatiquement dans la même semaine');
+  assert.ok(flat(built.weeks[0]).some(s=>s.id==='s3'),'le moteur complète avec un autre magasin disponible');
+})();
+
 (function fullyLoadedProtectedWeekIsUntouched(){
   // Cas de non-régression : si la semaine protégée est déjà pleine, le complètement ne
   // doit rien changer — comportement identique à avant V242.

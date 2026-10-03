@@ -237,6 +237,24 @@ function lockDayForWeek(id,weekKey,source){
   if(!entry.week)return entry.day;               // verrou récurrent : toutes les semaines
   return entry.week===String(weekKey||'')?entry.day:'';
 }
+function hasDatedPinForWeek(weekKey,plan){
+  const source=plan||{};
+  for(const [id,raw] of Object.entries(state&&state.locks||{}))if(raw&&typeof raw==='object'&&!Array.isArray(raw)&&String(raw.week||'')===String(weekKey)&&DAYS.includes(String(raw.day||''))&&((source[String(raw.day)]||[]).some(s=>String(s&&s.id)===String(id))))return true;
+  return false
+}
+function adaptiveManualWeek(weekKey,snap,manualEntry){
+  const marked=!!((snap&&snap.manualEdited)||manualEntry);if(!marked)return false;
+  const removed=Array.isArray(snap&&snap.manualRemovedIds)&&snap.manualRemovedIds.length,plan=(snap&&snap.plan)||(manualEntry&&manualEntry.plan)||{};
+  return !!(snap&&snap.manualAdaptive)||!!removed||hasDatedPinForWeek(weekKey,plan)
+}
+function wholeWeekManual(weekKey,snap,manualEntry){return !!((snap&&snap.manualEdited)||manualEntry)&&!adaptiveManualWeek(weekKey,snap,manualEntry)}
+function removedIdsForWeek(snap){return new Set(((snap&&snap.manualRemovedIds)||[]).map(String))}
+function keepAdaptiveMeta(next,weekKey,snap){
+  if(!adaptiveManualWeek(weekKey,snap,null))return next;
+  next.manualEdited=true;next.manualAdaptive=true;next.manualEditedAt=snap&&snap.manualEditedAt||new Date().toISOString();
+  const removed=[...removedIdsForWeek(snap)].sort();if(removed.length)next.manualRemovedIds=removed;
+  return next
+}
 function pinnedDay(id){return lockDayForWeek(id,currentWeekKey())}
 function isPinnedOn(id,day){return pinnedDay(id)===day}
 function pinStore(id,day){
@@ -652,8 +670,8 @@ async function strictSingleWeek(){
   generationBusy=true;briefWeeksV211=new Map();weekDuesV211=new Map();
   try{
     const days=readControls(),raw=parse((state.settings&&state.settings.weekDate)||iso(new Date())),mon=monday(raw||new Date());
-    const weekKey=iso(mon),archived=loadArchive()[weekKey],manualState=!!(state.manualWeekEdits&&state.manualWeekEdits[weekKey]);
-    if((archived&&archived.manualEdited)||manualState){
+    const weekKey=iso(mon),archived=loadArchive()[weekKey],manualEntry=state.manualWeekEdits&&state.manualWeekEdits[weekKey];
+    if(wholeWeekManual(weekKey,archived,manualEntry)){
       /* P1.2 — une semaine retouchée n'est jamais modifiée : une échéance de la semaine qu'elle ne
          tient pas est refusée, au lieu d'un « rien changé » silencieux. */
       const deadlines=deadlinePlanV211(weekKey,iso(addDays(mon,6)),null,{[weekKey]:(archived&&archived.plan)||((state.manualWeekEdits||{})[weekKey]||{}).plan||state.plan||{}});
@@ -673,7 +691,7 @@ async function strictSingleWeek(){
     const pool=eligible();if(!pool.length)throw new Error('Aucun magasin actif ne correspond aux filtres. Ouvre « Enseignes » et vérifie la sélection.');
     ensureExplicitConstraintsUsable(pool,mon,weekKey,usable,from,addDays(mon,6));
     const max=Math.max(1,Math.min(8,Number(state.settings.maxVisitsPerDay)||4));
-    const open=started?pool.filter(s=>openInStartedWeek(started,s,weekKey)):pool,done=doneToday(started,usable),kept=keptDays(started,usable);
+    const removed=removedIdsForWeek(archived),open=(started?pool.filter(s=>openInStartedWeek(started,s,weekKey)):pool).filter(s=>!removed.has(String(s&&s.id||''))),done=doneToday(started,usable),kept=keptDays(started,usable);
     /* P1.2 — échéances du brief dont la date tombe dans la semaine générée (voir deadlinePlanV211). */
     const deadlines=deadlinePlanV211(weekKey,iso(addDays(mon,6)),pool,{});deadlines.learn(weekKey);deadlines.satisfy(kept,mon);if(done)deadlines.satisfy(done,mon);
     deadlines.select(weekKey,mon,usable,open);
@@ -682,7 +700,7 @@ async function strictSingleWeek(){
     const credits=usable.reduce((n,d)=>n+routeCredits(built.plan[d]),0);
     if(!visits)throw new Error('0 visite possible avec les réglages actuels. Vérifie l’heure de fin, la durée par magasin et ton point de départ. Le planning précédent est conservé.');
     Object.assign(built.plan,kept);
-    const nextArchive=loadArchive();nextArchive[weekKey]=keepInSnapshot(snapshot(mon,mon,addDays(mon,6),built.plan,days),kept);
+    const nextArchive=loadArchive();nextArchive[weekKey]=keepAdaptiveMeta(keepInSnapshot(snapshot(mon,mon,addDays(mon,6),built.plan,days),kept),weekKey,archived);
     if(!await ChefReliability.propose({plan:built.plan,weekDate:iso(mon),archive:nextArchive})){showStatus('Planning précédent conservé.');return{ok:false,cancelled:true}}
     showStatus('Semaine générée : '+visits+' visites · '+credits+' crédit'+(credits>1?'s':'')+' de visite'+(built.unplaced.length?' · '+built.unplaced.length+' non placée'+(built.unplaced.length>1?'s':'')+' faute de créneau':'')+'.');
     return{ok:true,visits,credits,unplaced:built.unplaced.length};
@@ -713,7 +731,7 @@ async function generateRange(){
     const reservedUntil=new Map(),manualPlans={};
     for(let m=new Date(first);m<=last;m=addDays(m,7)){
       const key=iso(m),snap=archive[key],entry=state.manualWeekEdits&&state.manualWeekEdits[key];
-      if(!((snap&&snap.manualEdited)||entry))continue;
+      if(!wholeWeekManual(key,snap,entry))continue;
       const manual=(snap&&snap.plan)||(entry&&entry.plan)||{};manualPlans[key]=manual;
       for(const d of DAYS)for(const s of ((manual&&manual[d])||[])){const k=s&&storeKey(s);if(k&&!(reservedUntil.get(k)>key))reservedUntil.set(k,key)}
     }
@@ -723,9 +741,9 @@ async function generateRange(){
     const deadlines=deadlinePlanV211(iso(start),iso(end),pool,manualPlans);
     let mon=new Date(first),weekIndex=0,weeks=0,totalVisits=0,totalCredits=0,totalUnplaced=0;
     while(mon<=last){
-      const weekKey=iso(mon),archived=archive[weekKey],manualEntry=state.manualWeekEdits&&state.manualWeekEdits[weekKey],manualState=!!manualEntry;
+      const weekKey=iso(mon),archived=archive[weekKey],manualEntry=state.manualWeekEdits&&state.manualWeekEdits[weekKey];
       deadlines.learn(weekKey);
-      if((archived&&archived.manualEdited)||manualState){
+      if(wholeWeekManual(weekKey,archived,manualEntry)){
         const protectedPlan=(archived&&archived.plan)||(manualEntry&&manualEntry.plan)||{};
         /* P0.4-B2 — la retouche et le rendez-vous sont deux intentions explicites. Si le magasin
            est déjà posé le jour exact de son rendez-vous, la semaine reste telle quelle ; posé
@@ -751,10 +769,10 @@ async function generateRange(){
       const usable=activeDays(mon,days,from,end),kept=keptDays(started,usable);
       ensureExplicitConstraintsUsable(pool,mon,weekKey,usable,from,end);
       deadlines.satisfy(kept,mon);
-      if(!usable.length&&!Object.keys(kept).length){archive[iso(mon)]=snapshot(mon,start,end,Object.fromEntries(DAYS.map(d=>[d,[]])),days);deadlines.expire(iso(addDays(mon,7)));mon=addDays(mon,7);weekIndex++;weeks++;continue}
+      if(!usable.length&&!Object.keys(kept).length){archive[iso(mon)]=keepAdaptiveMeta(snapshot(mon,start,end,Object.fromEntries(DAYS.map(d=>[d,[]])),days),weekKey,archived);deadlines.expire(iso(addDays(mon,7)));mon=addDays(mon,7);weekIndex++;weeks++;continue}
       let built={plan:Object.fromEntries(DAYS.map(d=>[d,[]])),unplaced:[]};
       if(usable.length){
-        const open=started||reservedUntil.size?pool.filter(s=>(!started||openInStartedWeek(started,s,weekKey))&&!reservedLater(s,weekKey,usable)):pool,done=doneToday(started,usable);if(done)deadlines.satisfy(done,mon);
+        const removed=removedIdsForWeek(archived),open=(started||reservedUntil.size?pool.filter(s=>(!started||openInStartedWeek(started,s,weekKey))&&!reservedLater(s,weekKey,usable)):pool).filter(s=>!removed.has(String(s&&s.id||''))),done=doneToday(started,usable);if(done)deadlines.satisfy(done,mon);
         deadlines.select(weekKey,mon,usable,open);
         const limits=selectionNeed(open,usable,target-(started?started.count:0),max,weekKey);
         const chosen=chooseStores(open,usedKeys,useCount,lastUsedWeek,limits.targetCount,limits.capacityCredits-(done?routeCredits(done[started.todayName]):0),weekKey,weekIndex,usable);built=buildWeekUnique(chosen,usable,weekKey,done);ensureForcedPlaced(built,weekKey);
@@ -763,7 +781,7 @@ async function generateRange(){
       deadlines.satisfy(plan,mon,true);deadlines.expire(iso(addDays(mon,7)));
       totalUnplaced+=built.unplaced.length;
       for(const d of usable.concat(Object.keys(kept)))for(const s of (plan[d]||[])){const k=storeKey(s);if(!k||weekSeen.has(k))continue;weekSeen.add(k);unique.add(k);usedKeys.add(k);useCount.set(k,(useCount.get(k)||0)+1);lastUsedWeek.set(k,weekIndex);totalVisits++;totalCredits+=visitCredit(s)}
-      archive[iso(mon)]=keepInSnapshot(snapshot(mon,start,end,plan,days),kept);mon=addDays(mon,7);weekIndex++;weeks++;await new Promise(r=>setTimeout(r,10));
+      archive[iso(mon)]=keepAdaptiveMeta(keepInSnapshot(snapshot(mon,start,end,plan,days),kept),weekKey,archived);mon=addDays(mon,7);weekIndex++;weeks++;await new Promise(r=>setTimeout(r,10));
     }
     deadlines.assert();
     if(!totalVisits)throw new Error('La période donnerait 0 visite. Rien n’a été remplacé : vérifie les jours, les horaires et les indisponibilités Agenda.');
