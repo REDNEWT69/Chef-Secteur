@@ -104,6 +104,19 @@ function flat(week){
   assert.strictEqual(first.plan.Mardi.length,2,'la journée ancrée respecte sa part de charge au lieu d’absorber toute la semaine');
 })();
 
+
+(function distantCandidateDoesNotFollowManualAnchorAcrossTheSector(){
+  const anchor={id:'anchor-north',enseigne:'Gitem',ville:'Zone nord',distance:85,x:100,active:true};
+  const far={id:'far-south',enseigne:'Darty',ville:'Zone sud',distance:70,x:-100,active:true};
+  const week='2026-09-14',manual={Lundi:[],Mardi:[anchor],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};
+  const state={manualWeekEdits:{[week]:{at:'2026-09-13T12:00:00Z',plan:manual}},locks:{'anchor-north':{day:'Mardi',week}},included:{}};
+  const built=terrain.buildThreeWeekSnail({state,firstMonday:monday(),days:['Lundi','Mardi'],target:4,maxCreditsPerDay:4,stores:[anchor,far],archive:{[week]:{weekMonday:week,manualEdited:true,plan:manual}},distanceOf:s=>s.distance,distanceBetween:(a,b)=>Math.abs(a.x-b.x),priorityOf:s=>s.id==='far-south'?100:0,creditOf:()=>1,lockDayForWeek:(id,wk)=>state.locks[id]&&state.locks[id].week===wk?state.locks[id].day:'',appointmentDay:()=>'',dayBlocked:()=>false,dayFits:()=>true,crossDayEnabled:false});
+  const first=built.weeks[0];
+  assert.ok(first.plan.Mardi.some(s=>s.id==='anchor-north'),'l’ancre manuelle reste sur son jour');
+  assert.ok(first.plan.Lundi.some(s=>s.id==='far-south'),'un candidat à 200 km de l’ancre mais à 70 km de la base doit ouvrir une autre journée');
+  assert.ok(!first.plan.Mardi.some(s=>s.id==='far-south'),'une journée ancrée ne doit plus attirer un magasin seulement parce que la distance est finie');
+})();
+
 (function adaptiveManualWeekStillRunsCrossDay(){
   const anchor={id:'anchor-x',enseigne:'Test',ville:'Est',distance:10,x:10,active:true},other={id:'other-x',enseigne:'Test',ville:'Est 2',distance:11,x:11,active:true},stores=[anchor,other],week='2026-09-14',plan={Lundi:[anchor],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]},state={manualWeekEdits:{[week]:{at:'2026-09-13T12:00:00Z',plan}},locks:{'anchor-x':{day:'Lundi',week}},included:{},profile:{overnightMode:'never'},settings:{days:['Lundi','Mardi']}};
   const built=terrain.buildThreeWeekSnail({state,firstMonday:monday(),days:['Lundi','Mardi'],target:2,maxCreditsPerDay:2,stores,archive:{[week]:{weekMonday:week,manualEdited:true,plan}},distanceOf:s=>s.distance,distanceBetween:(a,b)=>Math.abs(a.x-b.x),creditOf:()=>1,lockDayForWeek:(id,wk)=>state.locks[id]&&state.locks[id].week===wk?state.locks[id].day:'',appointmentDay:()=>'',dayBlocked:()=>false,dayFits:()=>true,needOf:()=>({tier:1,status:'ok',blocked:false}),evaluateDayRoute:route=>({route:route.slice(),feasible:true,kilometers:0,driveMinutes:0})});

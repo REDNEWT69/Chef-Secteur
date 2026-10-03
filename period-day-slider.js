@@ -39,9 +39,10 @@
   function syncPlanningHero(){
     const active=document.querySelector('#dayTabs .periodDayTab.active[data-date]');if(!active)return false;
     const date=parse(active.dataset.date);if(!date)return false;
-    const dayLabel=document.getElementById('planningHeroDay'),fullLabel=document.getElementById('planningHeroFull');
+    const dayLabel=document.getElementById('planningHeroDay'),fullLabel=document.getElementById('planningHeroFull'),weekLabel=document.getElementById('planningHeroWeek');
     if(dayLabel){const day=new Intl.DateTimeFormat('fr-FR',{weekday:'long'}).format(date);dayLabel.textContent=day.charAt(0).toUpperCase()+day.slice(1)+' '+date.getDate()}
     if(fullLabel)fullLabel.textContent=new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'long',year:'numeric'}).format(date);
+    if(weekLabel){const mon=monday(date),end=addDays(mon,5),fmt=d=>new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'long'}).format(d);weekLabel.textContent='Semaine du '+fmt(mon)+' au '+new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'long',year:'numeric'}).format(end)}
     return true;
   }
   function humanDate(d){try{return new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'long'}).format(d)}catch(e){return iso(d)}}
@@ -70,9 +71,10 @@
     el.textContent=message||'';el.hidden=!message;
     return true;
   }
-  function loadDate(date){
-    const a=load(ARCHIVE_KEY),mon=monday(date),key=iso(mon),snap=a[key],name=dayName(date),r=range();
-    if(!dayShown(date,r,()=>a))return false;
+  function loadDate(raw,options){
+    const date=raw instanceof Date?new Date(raw):parse(raw);if(!date)return false;
+    const a=load(ARCHIVE_KEY),mon=monday(date),key=iso(mon),snap=a[key],name=dayName(date),r=range(),allowOutside=!!(options&&options.allowOutsideRange);
+    if(!allowOutside&&!dayShown(date,r,()=>a))return false;
     let currentWeek='';try{currentWeek=String((state.settings&&state.settings.weekDate)||'').slice(0,10)}catch(e){}
     const missing=(!snap||!snap.plan)&&key!==currentWeek;
     if(missing){archiveCurrentWeek();state.plan=emptyPlan()}
@@ -86,6 +88,7 @@
       else if(typeof window.renderWeek==='function')window.renderWeek();
       else if(typeof renderAll==='function')renderAll();
     }catch(e){}
+    try{document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{reason:'period-date-loaded',weekDate:key,date:activeDate}}))}catch(e){}
     try{notice(missing?'Semaine du '+humanDate(mon)+' non générée. Utilise « Générer mes 3 semaines » pour la remplir.':'')}catch(e){}
     scheduleRender();
     return true;
@@ -135,6 +138,14 @@
   function buildEntries(r){
     const entries=[],archive=archiveReader();let d=new Date(r.start),count=0;
     while(d<=r.end&&count<100){if(dayShown(d,r,archive))entries.push(new Date(d));d=addDays(d,1);count++}
+    /* Une date ouverte depuis l'accueil ou la vue mensuelle doit rester navigable même si
+       elle est hors de la dernière période générée. On ajoute seulement sa semaine à la
+       bande, sans modifier la période sauvegardée. */
+    const selected=parse(activeDate);if(selected){
+      const mon=monday(selected),known=new Set(entries.map(iso));
+      for(let i=0;i<6;i++){const x=addDays(mon,i),name=dayName(x);if(known.has(iso(x)))continue;if(currentWorkDays().includes(name)||dayHasVisits(x,archive)){entries.push(x);known.add(iso(x))}}
+      entries.sort((a,b)=>a-b)
+    }
     return entries;
   }
   function focusTodayIfVisible(now){
@@ -294,6 +305,6 @@
   document.addEventListener('store-runner:planning-updated',scheduleRender);
   document.addEventListener('store-runner:data-restored',function(){activeDate='';scheduleRender()});
   document.addEventListener('store-runner:planning-user-opened',function(){overnightCuePulseRequested=true;focusTodayIfVisible();scheduleRender()});
-  window.StoreRunnerPeriodDaySlider={focusToday:focusTodayIfVisible,syncOvernight:syncOvernightVisibility};
+  window.StoreRunnerPeriodDaySlider={focusToday:focusTodayIfVisible,syncOvernight:syncOvernightVisibility,openDate:function(raw){return loadDate(raw,{allowOutsideRange:true})}};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
