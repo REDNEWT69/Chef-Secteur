@@ -17,7 +17,7 @@ test.use({
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
 
-test('V239 : « Générer mes 3 semaines » lance le cycle escargot depuis la semaine affichée à 390 px', async ({ page }) => {
+test('V239 : « Générer mes 3 semaines » respecte un départ futur explicite à 390 px', async ({ page }) => {
   const pageErrors = [];
   const dialogs = [];
   page.on('pageerror', e => pageErrors.push(String(e && e.message || e)));
@@ -69,6 +69,7 @@ test('V239 : « Générer mes 3 semaines » lance le cycle escargot depuis la se
     try { if (typeof goTab === 'function') goTab('planPanel') } catch (_) {}
     document.dispatchEvent(new CustomEvent('store-runner:planning-updated'));
   });
+  await page.evaluate(() => {const start=document.getElementById('rangeStart');start.value='2026-09-21';start.dataset.snailUserEdited='1'});
 
   // --- Le bouton principal : un seul, lisible, tactile, sans débordement --------------
   const generate = page.locator('#planningToolsV2 [data-planning-generate="three-weeks"]');
@@ -117,7 +118,7 @@ test('V239 : « Générer mes 3 semaines » lance le cycle escargot depuis la se
     const el = document.getElementById('planningGenerateStatus');
     return el ? String(el.textContent || '') : '';
   });
-  expect(status).toContain('Planning généré sur 3 semaines.');
+  expect(status).toContain('Planning généré sur 3 semaines du 21/09/2026 au 09/10/2026.');
 
   // --- Trois semaines consécutives à partir de la semaine affichée -------------------
   const result = await page.evaluate(days => {

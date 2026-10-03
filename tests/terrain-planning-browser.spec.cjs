@@ -47,12 +47,12 @@ test('V1 terrain : 3 semaines escargot puis Commencer par ici restent sûrs à 3
     document.dispatchEvent(new CustomEvent('store-runner:planning-updated'));
   });
 
-  // V239 : la semaine affichée est le départ du cycle, et l'action séparée escargot
+  // r38 : une date de début explicitement choisie peut repousser le départ réel ; l'action séparée escargot
   // n'existe plus. Le cycle part donc du bouton principal du planning.
   await page.evaluate(() => {
     const week=document.getElementById('weekDate'),start=document.getElementById('rangeStart');
     if(week)week.value='2026-09-21';
-    if(start){start.value='2026-09-21';delete start.dataset.snailUserEdited}
+    if(start){start.value='2026-09-21';start.dataset.snailUserEdited='1'}
   });
   const settings=page.locator('#planningSettings');
   await expect(page.locator('#terrainSnailBtn')).toHaveCount(0);

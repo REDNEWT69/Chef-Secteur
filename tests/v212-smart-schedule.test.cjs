@@ -1,12 +1,14 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 const terrain=require('../terrain-planning-v1.js');
 
-(function snailStartsNextMondayFromFriday(){
+(function snailKeepsRemainingFridayBeforeNextMonday(){
   const fields={rangeStart:{value:'2026-09-14',dataset:{}},weekDate:{value:'2026-09-14'}};
   const doc={getElementById:id=>fields[id]||null};
   const start=terrain.resolveSnailStart({settings:{weekDate:'2026-09-14'}},doc,new Date(2026,8,18,12));
-  assert.equal(start.getFullYear(),2026);assert.equal(start.getMonth(),8);assert.equal(start.getDate(),21,
-    'vendredi 18/09, l’escargot doit préparer la semaine du lundi 21/09');
+  assert.equal(start.getFullYear(),2026);assert.equal(start.getMonth(),8);assert.equal(start.getDate(),14,
+    'vendredi 18/09 travaillé, l’escargot conserve les jours restants de la semaine du 14/09');
+  assert.equal(terrain.resolveSnailStart({settings:{days:['Lundi','Mardi','Mercredi','Jeudi']}},doc,new Date(2026,8,18,12)).getDate(),21,
+    'vendredi OFF, la première semaine exploitable commence lundi 21/09');
   fields.rangeStart.value='2026-10-05';fields.rangeStart.dataset.snailUserEdited='1';
   assert.equal(terrain.resolveSnailStart({},doc,new Date(2026,8,18,12)).getDate(),5,
     'une date choisie manuellement doit rester prioritaire');
@@ -46,4 +48,4 @@ assert(files.hotel.includes('N° / référence de réservation'),'la référence
 assert(files.hotel.includes('hotelReservations()[key]'),'la réservation doit être rattachée à la date de nuit');
 assert(files.period.includes('StoreRunnerNavigation.openPlanningSettings')&&files.period.includes('StoreRunnerStoreControlsV189.renderOvernight'),'le bouton Hôtel conseillé doit ouvrir la feuille et rendre la réservation V212');
 
-console.log('v212 smart schedule ok · prochain lundi · durée magasin · hôtel réservé');
+console.log('v212 smart schedule ok · jours restants puis prochain lundi · durée magasin · hôtel réservé');

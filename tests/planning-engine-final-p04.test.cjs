@@ -242,6 +242,7 @@ function runtime(o) {
     ctx.storeRunnerGenerateSingleWeek = range.strictSingleWeek;
     ctx.generateWeek = async () => { throw new Error('générateur historique du noyau appelé à la place de V211'); };
     ctx.storeRunnerHasValidBase = () => true;
+    ctx.storeRunnerPreparePlanningOrigin = async () => ({ok:true,source:'saved_base',base:BASE});
     for (const [name, source] of CHAIN) vm.runInNewContext(source, ctx, { filename: name });
     if (!ctx.storeRunnerGenerateSingleWeek.__v185Geo || !terrain.generateThreeWeekSnail.__v185Geo) throw new Error('enveloppes V185 non posées');
     if (typeof ctx.storeRunnerGenerateThreeWeeks !== 'function' || !ctx.generateWeek.__storeRunnerPlanningGenerateOwner) throw new Error('contrôleur de génération non installé');
@@ -324,6 +325,7 @@ async function runEngine(engine, o, mode) {
     let run, built = null;
     if (rt.chain) {
       rt.els.weekDate.value = start;
+      rt.els.rangeStart.value = start;rt.els.rangeStart.dataset.snailUserEdited = '1';
       run = await guarded(rt, () => rt.ctx.storeRunnerGenerateThreeWeeks());
       if (!run.threw && run.value && run.value.ok === false) out.refused = ownRefusal(rt, String(run.value.error));
       else if (!run.threw) built = run.value && run.value.result;
@@ -1048,7 +1050,7 @@ const flatIds = plan => DAYS.flatMap(d => ids(plan && plan[d]));
       c.ran.add(ENGINES[engine].label);
       const rt = runtime(Object.assign({}, o, { chain: mode === 'chaîne' })), start = o.start || W0, keys = engine === 'V211s' ? [weekOf(o.weekDate)] : engine === 'V211p' ? weeksBetween(o.rangeStart, o.rangeEnd) : [start, addWeeks(start, 1), addWeeks(start, 2)];
       const go = async () => {
-        if (engine === 'terrain') { if (rt.chain) { rt.els.weekDate.value = start; await rt.ctx.storeRunnerGenerateThreeWeeks(); } else await rt.terrain.generateThreeWeekSnail({ start }); }
+        if (engine === 'terrain') { if (rt.chain) { rt.els.weekDate.value = start;rt.els.rangeStart.value = start;rt.els.rangeStart.dataset.snailUserEdited = '1'; await rt.ctx.storeRunnerGenerateThreeWeeks(); } else await rt.terrain.generateThreeWeekSnail({ start }); }
         else if (engine === 'V211s') { await (rt.chain ? rt.ctx.generateWeek() : rt.range.strictSingleWeek()); }
         else await (rt.chain ? rt.els.generateRangeBtn.onclick() : rt.range.generateRange());
         await rt.settle(); return JSON.stringify(Object.fromEntries(Object.entries(writtenWeeks(rt, keys)).map(([k, p]) => [k, planIds(p)])));

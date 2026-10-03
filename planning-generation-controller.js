@@ -26,7 +26,7 @@
     return document.querySelector('#planPanel button.primary.full'+MAIN_GENERATE_SELECTOR)||mainGenerateButtons()[0]||null;
   }
 
-  function generationStatus(message,type){
+  function generationStatus(message,type,weekKey){
     let box=document.getElementById('planningGenerateStatus');
     if(!box){
       const button=mainGenerateAnchor();
@@ -35,7 +35,7 @@
         box.style.margin='9px 2px 0';box.style.fontSize='12px';box.style.lineHeight='1.4';button.insertAdjacentElement('afterend',box);
       }
     }
-    if(box){box.textContent=message||'';box.style.color=type==='bad'?'#b42318':type==='ok'?'#137333':'#667085';box.style.fontWeight=type==='bad'||type==='ok'?'700':'500'}
+    if(box){box.textContent=message||'';if(box.dataset)box.dataset.weekDate=weekKey||'';box.style.color=type==='bad'?'#b42318':type==='ok'?'#137333':'#667085';box.style.fontWeight=type==='bad'||type==='ok'?'700':'500'}
     if(type==='bad'){
       if(typeof window.showError==='function')try{window.showError(message)}catch(e){}
       if(typeof window.storeRunnerToast==='function')try{window.storeRunnerToast(message)}catch(e){}
@@ -46,19 +46,7 @@
   }
 
   function isoDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-  function parseDate(value){const d=new Date(String(value||'')+'T12:00:00');return isNaN(d)?null:d}
-  function mondayOf(d){const x=new Date(d),w=x.getDay()||7;x.setDate(x.getDate()-w+1);return x}
-  function currentWeekMonday(){
-    const input=document.getElementById('weekDate');
-    const raw=(input&&input.value)||(window.state&&state.settings&&state.settings.weekDate)||isoDate(new Date());
-    return mondayOf(parseDate(raw)||new Date());
-  }
-  function explicitRangeStartMonday(){
-    const input=document.getElementById('rangeStart');
-    if(!input||!input.dataset||input.dataset.snailUserEdited!=='1')return null;
-    const chosen=parseDate(input.value);
-    return chosen?mondayOf(chosen):null;
-  }
+  function humanDate(value){const p=String(value||'').split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:String(value||'')}
 
   function ensureUnifiedGenerationUi(){
     const generate=mainGenerateAnchor();
@@ -81,7 +69,7 @@
     }
     /* Texte réécrit seulement s'il doit changer : cette fonction repasse à chaque
        événement planning, et une écriture DOM inutile relance les observateurs. */
-    const hintText='La génération prépare 3 semaines d’affilée à partir de la date de début choisie dans « Planifier plusieurs semaines », sinon de la semaine affichée. Optimisation géographique et découché sont calculés automatiquement.';
+    const hintText='La génération prépare les jours travaillés restants à partir d’aujourd’hui, puis les semaines suivantes. Une date de début explicitement choisie peut repousser le départ. Le point de départ est actualisé avant les calculs géographiques et le découché.';
     if(hint.textContent!==hintText)hint.textContent=hintText;
 
     /* Le recalcul reste utile quand la semaine est déjà entamée, mais ce n'est pas un
@@ -140,9 +128,9 @@
    * Le cycle escargot 3 semaines existait déjà (StoreRunnerTerrainPlanningV1), mais il
    * était rangé derrière une action séparée dans « Planifier plusieurs semaines » alors
    * que c'est l'usage réel du terrain. Cette fonction ne replanifie rien elle-même :
-   * elle prend d’abord une date de début explicitement choisie dans « Planifier plusieurs
-   * semaines » ; sinon la semaine affichée reste la première semaine du cycle. Elle délègue
-   * ensuite au moteur existant, lu au moment de l'appel pour conserver les enveloppes V185
+   * elle capture la date locale réelle du clic et fait résoudre le départ par le propriétaire
+   * terrain. Puis elle attend la localisation du propriétaire profil avant le moindre calcul.
+   * Elle délègue ensuite au moteur existant, lu au moment de l'appel pour conserver les enveloppes V185
    * (optimisation géographique) et V248 (matrice routière) posées par-dessus.
    *
    * La génération d'une seule semaine (`generateWeek`) reste intacte pour ses autres
@@ -150,36 +138,41 @@
    * le bouton principal.
    */
   async function generateThreeWeeks(){
+    const now=new Date(),today=isoDate(now),previousWeek=String(window.state&&state.settings&&state.settings.weekDate||'').slice(0,10);
     const api=window.StoreRunnerTerrainPlanningV1;
-    if(!api||typeof api.generateThreeWeekSnail!=='function'){
+    if(!api||typeof api.generateThreeWeekSnail!=='function'||typeof api.resolveSnailStart!=='function'){
       const message='Le moteur 3 semaines n’est pas encore chargé. Réessaie dans un instant.';
       generationStatus(message,'bad');return{ok:false,error:message};
     }
-    if(!hasValidBase()){
-      const message='Point de départ incomplet. Dans Mon activité, saisis une ville ou une adresse (ex. Francheville), puis enregistre les réglages.';
-      generationStatus(message,'bad');
-      return{ok:false,__storeRunnerRejectedEmpty:true,error:message};
-    }
-    const start=isoDate(explicitRangeStartMonday()||currentWeekMonday());
     setGenerateBusy(true);
-    generationStatus('Génération de 3 semaines · rotation géographique…','busy');
+    let engineStarted=false,start='';
     try{
+      start=isoDate(api.resolveSnailStart(window.state,document,now));
+      generationStatus('Départ du cycle : semaine du '+humanDate(start)+' · acquisition de ta position actuelle…','busy',previousWeek);
+      if(typeof window.storeRunnerPreparePlanningOrigin!=='function')throw new Error('La localisation n’est pas encore chargée. Réessaie dans un instant.');
+      const origin=await window.storeRunnerPreparePlanningOrigin();
+      if(!origin||origin.ok!==true)throw new Error(origin&&origin.error||'Localisation indisponible. Enregistre un point de départ dans Mon activité.');
+      if(!hasValidBase())throw new Error('Point de départ incomplet. Enregistre une base dans Mon activité ou autorise la localisation.');
+      const originMessage=origin.source==='saved_base'?(origin.message||'Localisation indisponible : utilisation de ta base enregistrée.')+' ':'';
+      generationStatus(originMessage+'Génération de 3 semaines à partir du '+humanDate(start<today?today:start)+' · rotation géographique…','busy',previousWeek);
       const previousThreeWeekPlanningFlag=window.__storeRunnerPlanningGenerationActive;
       window.__storeRunnerPlanningGenerationActive=true;
       let built;
-      try{built=await api.generateThreeWeekSnail({start:start})}
+      engineStarted=true;
+      try{built=await api.generateThreeWeekSnail({start:start,today:today})}
       finally{window.__storeRunnerPlanningGenerationActive=previousThreeWeekPlanningFlag}
       const visits=Number(built&&built.totalVisits)||0,stores=Number(built&&built.uniqueStores)||0;
       /* V263 : le bilan de couverture (magasins écartés car visités trop récemment, magasins
          en retard restés hors du cycle) appartient au moteur 3 semaines ; on le relaie. */
       let coverage='';try{if(typeof api.coverageSummaryText==='function')coverage=api.coverageSummaryText(built&&built.coverage,' · ')}catch(e){}
-      generationStatus('Planning généré sur 3 semaines. '+visits+' visite'+(visits>1?'s':'')+' · '+stores+' magasin'+(stores>1?'s':'')+coverage+'.','ok');
+      const last=new Date(start+'T12:00:00'),dayNames=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'],workDays=(window.state&&state.settings&&state.settings.days)||dayNames.slice(0,5),lastDay=Math.max(0,...workDays.map(d=>dayNames.indexOf(d)));last.setDate(last.getDate()+14+lastDay);
+      generationStatus(originMessage+'Planning généré sur 3 semaines du '+humanDate(start<today?today:start)+' au '+humanDate(isoDate(last))+'. '+visits+' visite'+(visits>1?'s':'')+' · '+stores+' magasin'+(stores>1?'s':'')+coverage+'.','ok',start);
       ensureUnifiedGenerationUi();
-      return{ok:true,start:start,weeks:3,result:built};
+      return{ok:true,start:start,today:today,weeks:3,origin:origin.source,result:built};
     }catch(e){
-      const message=e&&e.message?e.message:String(e);
-      generationStatus(message,'bad');
-      return{ok:false,error:message};
+      const raw=e&&e.message?e.message:String(e),message=raw+(engineStarted&&previousWeek?' Semaine conservée : '+humanDate(previousWeek)+'.':'');
+      generationStatus(message,'bad',previousWeek);
+      return{ok:false,error:raw,weekDate:previousWeek,attemptedStart:start};
     }finally{
       setGenerateBusy(false);
     }
@@ -261,7 +254,11 @@
   window.storeRunnerRefreshOvernightDecision=refreshOvernightDecision;
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
   window.addEventListener('load',ensureUnifiedGenerationUi,{once:true});
-  document.addEventListener('store-runner:planning-updated',ensureUnifiedGenerationUi);
+  document.addEventListener('store-runner:planning-updated',function(event){
+    const detail=event&&event.detail||{},box=document.getElementById('planningGenerateStatus');
+    if(detail.reason==='period-date-loaded'&&box&&box.dataset&&box.dataset.weekDate!==String(detail.weekDate||''))generationStatus('','info');
+    ensureUnifiedGenerationUi();
+  });
   document.addEventListener('store-runner:data-restored',ensureUnifiedGenerationUi);
   document.addEventListener('store-runner:home-rendered',ensureUnifiedGenerationUi);
 })();
