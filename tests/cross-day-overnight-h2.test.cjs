@@ -2,12 +2,18 @@
    Trois visites utiles et de besoin strictement identique, chacune à 100 km de la base :
    A = lundi est / mardi ouest / jeudi est ; B = lundi est / mardi est / jeudi ouest.
    A et B font exactement les mêmes kilomètres/minutes bruts (600 km / 360 min), la même
-   charge et le même délai global de service. V251 ordonne chaque journée. V189 refuse A
+   charge et le même délai individuel de service (0). V251 ordonne chaque journée. V189 refuse A
    (saving 0 sous le seuil 80), retient B (saving 200, remote 100). r34 refuse l'échange
    mardi ↔ jeudi parce que raw km, raw minutes et charge sont égaux : l'assertion H2 rouge
    attend B. Aucun hôtel hypothétique n'entre dans les endpoints des métriques brutes.
    La géométrie plane injectée en kilomètres utilise lat/lon, préservés par DayOrigin.
-   CROSS_DAY_ENGINE_PATH permet de rejouer cette preuve contre un snapshot du moteur. */
+   CROSS_DAY_ENGINE_PATH permet de rejouer cette preuve contre un snapshot du moteur.
+   H2.1 : projection +1/-1, délai +1/-1 et brief -10/+10 sont tous rouges sur
+   b2b9882 (échange accepté à raw identique et saving 0 → 200), puis verts lorsque
+   chaque magasin doit rester individuellement équivalent. Rejeu : --case suivi des
+   trois fonctions *CompensationIsNotEquivalent. Le stress 60 visites compare aussi
+   le vrai HEAD de revue via H2_REVIEW_BASELINE_PATH : même planning/diagnostic métier,
+   4509 → 3152 analyses V189 ; les temps sont informatifs, les compteurs bornés. */
 const assert = require('assert/strict');
 const fs = require('fs');
 const path = require('path');
@@ -71,6 +77,9 @@ function load(options = {}) {
 function fixture(options = {}) {
   const env = load(options), radius = options.radius === undefined ? 100 : options.radius;
   const a = at('a-east', radius), b = at('b-west', -radius), c = at('c-east', radius);
+  // Chaque date du cas positif précède la prochaine échéance : délai individuel nul.
+  // La compensation de délai ci-dessous garde volontairement la fréquence de 30 jours.
+  if (!options.serviceCompensation) for (const store of [a, b, c]) store.intervalDays = 365;
   env.state.stores = [a, b, c];
   for (const store of env.state.stores) env.state.visits[store.id] = { lastVisit: '2026-04-01', history: ['2026-04-01'] };
   const weeks = [
@@ -137,7 +146,7 @@ function autoTooClose() { staysUnchanged({ radius: 40 }, f => { assert.equal(ana
 function autoBelowProfileThreshold() { staysUnchanged({ threshold: 250 }, f => { assert.equal(analyze(f, f.desired).analysisReason, 'threshold'); }, 'AUTO sous seuil profil : aucun bonus'); }
 function autoExplicitZero() {
   const f = fixture({ radius: 60, threshold: 0 });
-  Object.assign(f.c, at(f.c.id, -30, Math.sqrt(2700)));
+  Object.assign(f.c, at(f.c.id, -30, Math.sqrt(2700)), { intervalDays: 365 });
   f.desired[0].plan.Mardi = [clone(f.c)];
   f.settings.businessBaselineWeeks = clone(f.weeks);
   const candidate = analyze(f, f.desired);
@@ -347,7 +356,7 @@ function boundedPerformance80And150() {
     const stateBefore = JSON.stringify(f.state), start = performance.now(), report = optimize(f), cpuMs = performance.now() - start;
     assert(report.overnight.enabled && report.overnight.evaluations > 0, count + ' : H2 réellement évalué');
     assert(report.iterations <= report.bounds.maxPasses && report.bounds.maxPasses === 6 && report.bounds.candidateLimit === 160, count + ' : mêmes bornes V264');
-    assert(cpuMs < 5000, count + ' : sous borne CPU existante 5 s, mesuré ' + cpuMs.toFixed(1) + ' ms');
+    assert(report.evaluations <= 600 && report.overnight.evaluations <= 250, count + ' : évaluations bornées, temps seulement informatif');
     assert(report.after.kilometers <= report.before.kilometers + 0.0001 && report.after.driveMinutes <= report.before.driveMinutes + 0.0001, count + ' : géographie brute non dégradée');
     assert.equal(JSON.stringify(f.state), stateBefore, count + ' : state lecture seule');
     for (const week of f.weeks) for (const day of DAYS) assert(week.plan[day].length <= 1, count + ' : capacité');
@@ -362,7 +371,109 @@ function fallbackMatchesOwner() {
   assert.equal(signature(fallback.weeks), signature(owner.weeks), 'repli H1 unique : même résultat H2 que propriétaire V189');
 }
 
-const tests = [autoValidRedOnR34, autoTooClose, autoBelowProfileThreshold, autoExplicitZero, mandatoryCloseUseful, mandatoryUnder20, neverIsV264, nonConsecutiveDays, pastNightIgnored, appointmentFixed, confirmedDeadlineFixed, confirmedV246DeadlineThroughFullBuild, lockedAndImposed, manualWeekFixed, unavailableAndHolidayFixed, capacityNeverExceeded, existingReservationAndEndpoints, analysisAndStateReadOnly, rawSafetyGuardsBothMetrics, noOvernightKeepsLegacyEpsilonChoice, briefImprovementBeatsOvernightEquivalent, retainedOvernightIsObservable, reservationNeverDiscountedTwice, repeatedDeterminism, boundedPerformance80And150, fallbackMatchesOwner];
+function individualCompensationFixture(kind) {
+  const f = fixture({ serviceCompensation: kind === 'delay', days: ['Lundi', 'Mardi', 'Mercredi'] });
+  f.weeks[0].plan = plan({ Lundi: [f.a], Mardi: [f.b], Mercredi: [f.c] });
+  f.desired = clone(f.weeks); f.desired[0].plan.Mardi = [clone(f.c)]; f.desired[0].plan.Mercredi = [clone(f.b)];
+  f.settings.lockDayForWeek = id => id === f.a.id ? 'Lundi' : '';
+  // La référence métier autorise le compromis au niveau V264. C'est seulement le
+  // bonus H2 qui doit le refuser : aucune amélioration brute ne motive l'échange.
+  f.settings.businessBaselineWeeks = clone(f.desired);
+  if (kind === 'projection') f.settings.projectedNeedAt = (store, date) => ({ tier: 2, status: 'soon', priority: (store.id === f.b.id && date === '2026-10-07' || store.id === f.c.id && date !== '2026-10-06') ? 'P1' : '' });
+  if (kind === 'brief') f.settings.briefAt = (store, date) => store.id === f.b.id && date === '2026-10-06' || store.id === f.c.id && date === '2026-10-06' ? 10 : 0;
+  const before = metrics(f, f.weeks), after = metrics(f, f.desired);
+  close(before.kilometers, after.kilometers, kind + ' : mêmes km bruts');
+  close(before.driveMinutes, after.driveMinutes, kind + ' : mêmes minutes brutes');
+  assert.equal(analyze(f).selected, false); assert.equal(analyze(f, f.desired).selected, true, kind + ' : bonus overnight tentant');
+  return f;
+}
+function projectionCompensationIsNotEquivalent() {
+  const f = individualCompensationFixture('projection'), projection = f.settings.projectedNeedAt;
+  const rank = (store, date) => 200 + (projection(store, date).priority === 'P1' ? 1 : 0);
+  assert.equal(rank(f.b, '2026-10-07') - rank(f.b, '2026-10-06'), 1, 'A : projection +1');
+  assert.equal(rank(f.c, '2026-10-06') - rank(f.c, '2026-10-07'), -1, 'B : projection -1');
+  const initial = signature(f.weeks), report = optimize(f);
+  assert.equal(signature(f.weeks), initial, 'H2.1 ROUGE : projection +1/-1 ne rend pas chaque magasin équivalent');
+  assert.equal(report.overnight.influenced, false);
+  assert.equal(report.overnight.candidates.businessEquivalent, 0, 'projection : aucun candidat équivalent H2');
+}
+function serviceDelayCompensationIsNotEquivalent() {
+  const f = individualCompensationFixture('delay'), need = f.settings.needAt;
+  const delay = (store, date) => Math.max(0, (Date.parse(date) - Date.parse(need(store, TODAY).nextDue)) / 86400000);
+  assert.equal(delay(f.b, '2026-10-07') - delay(f.b, '2026-10-06'), 1, 'A : délai +1');
+  assert.equal(delay(f.c, '2026-10-06') - delay(f.c, '2026-10-07'), -1, 'B : délai -1');
+  const initial = signature(f.weeks), report = optimize(f);
+  assert.equal(signature(f.weeks), initial, 'H2.1 ROUGE : délai +1/-1 ne rend pas chaque magasin équivalent');
+  assert.equal(report.overnight.influenced, false);
+  assert.equal(report.overnight.candidates.businessEquivalent, 0, 'délai : aucun candidat équivalent H2');
+}
+function briefCompensationIsNotEquivalent() {
+  const f = individualCompensationFixture('brief'), brief = f.settings.briefAt;
+  assert.equal(brief(f.b, '2026-10-07') - brief(f.b, '2026-10-06'), -10, 'A : brief -10');
+  assert.equal(brief(f.c, '2026-10-06') - brief(f.c, '2026-10-07'), 10, 'B : brief +10');
+  const initial = signature(f.weeks), report = optimize(f);
+  assert.equal(signature(f.weeks), initial, 'H2.1 ROUGE : brief -10/+10 ne rend pas chaque magasin équivalent');
+  assert.equal(report.overnight.influenced, false);
+  assert.equal(report.overnight.candidates.businessEquivalent, 0, 'brief : aucun candidat équivalent H2');
+}
+
+function stressFixture60(options = {}) {
+  const f = fixture({ days: DAYS.slice(0, 5), fastHours: true, ...options });
+  // Même charge de 60 visites que le stress de revue : 80 magasins, 3 zones,
+  // 3 semaines × 5 jours × 4 visites. La fréquence longue rend chaque changement
+  // de date individuellement équivalent (délai 0), afin d'exercer réellement H2.1.
+  f.state.stores = Array.from({ length: 80 }, (_, index) => ({ ...at('perf-' + String(index).padStart(3, '0'), index % 3 === 1 ? -100 : index % 3 === 2 ? 0 : 100, index % 3 === 2 ? 100 : 0), intervalDays: options.intervalDays || 365 }));
+  f.state.visits = Object.fromEntries(f.state.stores.map(store => [store.id, { lastVisit: '2026-04-01', history: ['2026-04-01'] }]));
+  Object.assign(f.state.settings, { days: DAYS.slice(0, 5), target: 20, maxVisitsPerDay: 4 });
+  let index = 0;
+  for (const week of f.weeks) { week.manual = false; week.plan = emptyPlan(); for (const day of DAYS.slice(0, 5)) week.plan[day] = f.state.stores.slice(index, index += 4); }
+  const needOf = f.ctx.StoreRunnerVisitCoverage.needOf(f.state, { today: TODAY });
+  Object.assign(f.settings, { days: DAYS.slice(0, 5), target: 20, maxCreditsPerDay: 4, ranked: f.state.stores, needAt: (store, date) => needOf(store, date), businessBaselineWeeks: clone(f.weeks) });
+  return f;
+}
+function essentialReport(report) {
+  const result = clone(report);
+  // Seuls les compteurs de coût d'évaluation changent avec le cache H2.1.
+  for (const key of ['evaluations', 'cache', 'candidates']) delete result.overnight[key];
+  return result;
+}
+function realistic60VisitsAndDeterminism() {
+  const results = [], timings = [];
+  for (let pass = 0; pass < 2; pass++) {
+    const f = stressFixture60(), stateBefore = JSON.stringify(f.state), start = performance.now(), report = optimize(f), cpuMs = performance.now() - start;
+    assert.equal(JSON.stringify(f.state), stateBefore, '60 visites : state / hotelReservations jamais mutés');
+    assert.equal(report.bounds.maxPasses, 6); assert.equal(report.bounds.candidateLimit, 160); assert.equal(report.iterations, 6);
+    assert(report.evaluations <= 8000, '60 visites : voisinage V251 borné');
+    assert(report.overnight.evaluations <= 3300, '60 visites : cache overnight <= 3300 analyses (4509 avant H2.1)');
+    assert.equal(report.overnight.cache.misses, report.overnight.evaluations);
+    assert(report.overnight.cache.currentHits > 0 && report.overnight.cache.hits > report.overnight.cache.misses, 'cache réellement réutilisé');
+    const candidates = report.overnight.candidates;
+    assert(candidates.businessEquivalent <= 20000 && candidates.businessEquivalent >= candidates.rawSafe && candidates.rawSafe > candidates.endpointsChanged, 'candidats inchangés aux endpoints non réanalysés');
+    assert(report.overnight.influenced && report.overnight.pairs.length === 3, 'H2 actif à 60 visites');
+    assert.equal(report.businessFinalDelay, report.businessBaselineDelay, 'délai métier conservé');
+    assert(report.after.kilometers <= report.before.kilometers && report.after.driveMinutes <= report.before.driveMinutes, 'raw km/min strictement non dégradés');
+    for (const week of f.weeks) {
+      assert.equal(DAYS.reduce((sum, day) => sum + week.plan[day].length, 0), 20, '20 visites par semaine conservées');
+      for (const day of DAYS) assert(week.plan[day].length <= 4, 'capacité de 4 crédits conservée');
+      const owner = f.ctx.StoreRunnerOvernightV182.analyze(week.plan, week.weekKey), pair = report.overnight.pairs.find(row => row.weekKey === week.weekKey);
+      assert.equal(pair.lastId, owner.candidate.last.id); assert.equal(pair.firstId, owner.candidate.first.id); close(pair.savingKm, owner.candidate.saving, 'décision cache = propriétaire V189 réel');
+    }
+    results.push(JSON.stringify({ signature: signature(f.weeks), report }));
+    timings.push({ cpuMs: Math.round(cpuMs), evaluations: report.evaluations, overnightEvaluations: report.overnight.evaluations, cache: report.overnight.cache, candidates });
+    // Oracle local optionnel : le vrai HEAD de revue, sans snapshot runtime en CI.
+    if (pass === 0 && process.env.H2_REVIEW_BASELINE_PATH) {
+      const baseline = stressFixture60({ enginePath: process.env.H2_REVIEW_BASELINE_PATH }), oldReport = optimize(baseline);
+      assert.equal(signature(f.weeks), signature(baseline.weeks), '60 visites : planning H2 bit-à-bit identique au HEAD de revue');
+      assert.deepEqual(essentialReport(report), essentialReport(oldReport), '60 visites : mêmes diagnostics métier et décisions overnight');
+    }
+  }
+  assert.equal(results[1], results[0], '60 visites : planning ET diagnostics déterministes');
+  console.log('H2.1 stress 60 visites / 80 magasins (temps informatif) : ' + JSON.stringify(timings));
+}
+
+const allTests = [autoValidRedOnR34, autoTooClose, autoBelowProfileThreshold, autoExplicitZero, mandatoryCloseUseful, mandatoryUnder20, neverIsV264, nonConsecutiveDays, pastNightIgnored, appointmentFixed, confirmedDeadlineFixed, confirmedV246DeadlineThroughFullBuild, lockedAndImposed, manualWeekFixed, unavailableAndHolidayFixed, capacityNeverExceeded, existingReservationAndEndpoints, analysisAndStateReadOnly, rawSafetyGuardsBothMetrics, noOvernightKeepsLegacyEpsilonChoice, briefImprovementBeatsOvernightEquivalent, retainedOvernightIsObservable, reservationNeverDiscountedTwice, repeatedDeterminism, boundedPerformance80And150, fallbackMatchesOwner, projectionCompensationIsNotEquivalent, serviceDelayCompensationIsNotEquivalent, briefCompensationIsNotEquivalent, realistic60VisitsAndDeterminism];
+const filter = (process.argv.find(value => value.startsWith('--case=')) || '').slice(7).split(',');
+const tests = filter[0] ? allTests.filter(test => filter.includes(test.name)) : allTests;
 const failures = [];
 for (const test of tests) { try { test(); } catch (error) { failures.push(test.name + ' — ' + error.stack); } }
 if (failures.length) { console.error(failures.join('\n')); process.exit(1); }
