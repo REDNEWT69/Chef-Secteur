@@ -304,7 +304,8 @@ function safeDistance(a,b,distanceFn){
    5. six passes maximum, avec départage stable par date puis identifiant.
 
    Une amélioration locale n'est acceptée que si minutes ET kilomètres n'augmentent pas.
-   À égalité géographique, la charge en crédits départage. */
+   H2 : parmi les candidats métier équivalents, le gain découché admissible V189
+   départage le coût net, après la garde brute. Aucun hôtel n'est créé. */
 const CROSS_DAY_MAX_PASSES=6;
 const CROSS_DAY_CANDIDATE_LIMIT=160;
 const CROSS_DAY_EPSILON=.05;
@@ -479,6 +480,111 @@ function optimizeThreeWeekCrossDay(weeks,options){
   const briefOf=typeof options.briefAt==='function'?(store,date)=>{try{return Number(options.briefAt(store,date))||0}catch(e){return 0}}:(()=>0);
   const briefKeptMove=(store,fromDate,toDate)=>briefOf(store,toDate)>=briefOf(store,fromDate);
   const briefKeptSwap=(one,a,two,b)=>briefOf(one,b.date)+briefOf(two,a.date)>=briefOf(one,a.date)+briefOf(two,b.date);
+  /* H2 ne classe que le voisinage déjà sécurisé par V264. Un changement du besoin,
+     de sa projection, du délai ou du brief garde le classement historique ; le bonus
+     n'a donc aucun droit de départager deux qualités métier différentes. */
+  const equalProjection=(store,from,to)=>!projection||projectedBusiness(store,from)===projectedBusiness(store,to);
+  const equivalentMove=(store,a,b)=>businessAt(store,a.date)===businessAt(store,b.date)&&equalProjection(store,a.date,b.date)&&serviceDelay(store,a.date)===serviceDelay(store,b.date)&&briefOf(store,a.date)===briefOf(store,b.date);
+  /* Chaque magasin garde individuellement sa qualité métier : une compensation
+     entre les deux visites ne donne jamais droit au bonus overnight. */
+  const equivalentSwap=(one,a,two,b)=>businessAt(one,a.date)===businessAt(two,a.date)&&businessAt(one,b.date)===businessAt(two,b.date)&&equivalentMove(one,a,b)&&equivalentMove(two,b,a);
+  const equivalentReplacement=(one,two,slot)=>serviceDelay(one,slot.date)===serviceDelay(two,slot.date)&&(!projection||projectedBusiness(one,slot.date)===projectedBusiness(two,slot.date))&&briefOf(one,slot.date)===briefOf(two,slot.date)&&(memory.useCount&&memory.useCount.get(storeKey(one))||0)===(memory.useCount&&memory.useCount.get(storeKey(two))||0);
+  const overnightEnabled=(state.profile&&state.profile.overnightMode||'auto')!=='never',overnightCache=new Map(),overnightCurrent=new Map(),overnightEndpoints=new WeakMap(),overnightDecisions=[];
+  const overnightCacheStats={hits:0,misses:0,currentHits:0},overnightCandidates={businessEquivalent:0,rawSafe:0,endpointsChanged:0};
+  let overnightEvaluations=0,admissibleOvernightSeen=false,overnightRawRefusals=0;
+  /* Dépendances du propriétaire, sans ses règles d'admissibilité : dans chaque paire
+     de jours configurés, V189 ne lit que le dernier arrêt du départ et le premier de
+     la reprise. On inclut même les paires non consécutives/passées, laissées à V189.
+     Le premier arrêt du premier jour, le dernier du dernier jour et les jours non
+     sélectionnés n'influencent donc ni sa décision ni les IDs de son rapport. */
+  const overnightDays=(Array.isArray(state.settings&&state.settings.days)&&state.settings.days.length?state.settings.days:DAYS.slice(0,5)).filter(day=>DAYS.includes(day)),overnightRoles=new Map();
+  for(let i=0;i<overnightDays.length-1;i++){overnightRoles.set(overnightDays[i],(overnightRoles.get(overnightDays[i])||0)|1);overnightRoles.set(overnightDays[i+1],(overnightRoles.get(overnightDays[i+1])||0)|2)}
+  const overnightEndpointKey=(route,role)=>{
+    if(!overnightEndpoints.has(route))overnightEndpoints.set(route,[]);
+    const keys=overnightEndpoints.get(route);
+    if(!keys[role])keys[role]=JSON.stringify([!!route.length,role&1&&route.length?storeKey(route[route.length-1]):null,role&2&&route.length?storeKey(route[0]):null]);
+    return keys[role]
+  };
+  /* Caches locaux à la génération ; les routes V251 sont remplacées, jamais mutées
+     pendant la recherche. Le plan complet n'est construit que pour un cache miss.
+     analyzeOvernightWeeks conserve l'appel V189 et le seul repli H1. */
+  const overnightWeek=(weekKey,changes)=>{
+    const rows=weekSlots.get(weekKey)||[];
+    if(!overnightEnabled)return{weekKey,savingKm:0,pair:null,reason:'disabled'};
+    const current=overnightCurrent.get(weekKey);
+    if(!changes&&current&&rows.every((slot,index)=>slot.route===current.routes[index])){overnightCacheStats.hits++;overnightCacheStats.currentHits++;return current.row}
+    const routeFor=slot=>changes&&changes.has(slot.index)?changes.get(slot.index).route:slot.route;
+    const key=weekKey+'|'+JSON.stringify(rows.filter(slot=>overnightRoles.has(slot.day)).map(slot=>[slot.day,overnightEndpointKey(routeFor(slot),overnightRoles.get(slot.day))]));
+    if(!overnightCache.has(key)){
+      const plan=Object.fromEntries(rows.map(slot=>[slot.day,routeFor(slot)]));
+      const row=analyzeOvernightWeeks([{weekKey,plan}],state)[0],pair=row&&row.selected&&row.best;
+      /* Une réservation a déjà ses endpoints hôtel dans le coût brut : son gain
+         domicile n'est jamais soustrait une seconde fois. Les dates restent figées. */
+      const reserved=pair&&(overnightDates.has(pair.fromDate)||overnightDates.has(pair.toDate)),savingKm=pair&&!reserved&&Number.isFinite(pair.saving)?Math.max(0,pair.saving):0;
+      if(savingKm>0)admissibleOvernightSeen=true;
+      overnightCache.set(key,{weekKey,savingKm,pair:savingKm>0?{weekKey,...pair,savingKm}:null,reason:reserved?'existing-reservation':row.analysisReason,threshold:row.threshold});overnightEvaluations++;overnightCacheStats.misses++;
+    }else overnightCacheStats.hits++;
+    const row=overnightCache.get(key);
+    if(!changes)overnightCurrent.set(weekKey,{routes:rows.map(slot=>slot.route),row});
+    return row
+  };
+  const overnightTotals=()=>{const rows=weeks.map(week=>overnightWeek(week.weekKey));return{savingKm:rows.reduce((sum,row)=>sum+row.savingKm,0),pairs:rows.filter(row=>row.pair).map(row=>row.pair),weeks:rows.map(row=>({weekKey:row.weekKey,reason:row.reason,threshold:row.threshold,savingKm:row.savingKm}))}};
+  const overnightBefore=overnightTotals();
+  const netMetrics=(raw,night)=>({...raw,savingKm:night.savingKm,effectiveKm:raw.kilometers-night.savingKm});
+  function localGain(changedSlots,after,equivalent){
+    const before=changedSlots.map(slot=>metric(slot.route,slot)),beforeLoad=loadPenalty(changedSlots),afterLoad=after.reduce((sum,row)=>sum+Math.pow(row.credits,2),0),legacy=localImprovementV264(before,after,beforeLoad,afterLoad);
+    const beforeDrive=before.reduce((sum,row)=>sum+row.driveMinutes,0),afterDrive=after.reduce((sum,row)=>sum+row.driveMinutes,0),beforeKm=before.reduce((sum,row)=>sum+row.kilometers,0),afterKm=after.reduce((sum,row)=>sum+row.kilometers,0);
+    const row={legacyGain:legacy,gain:legacy,businessEquivalent:equivalent,rawSafe:afterDrive<=beforeDrive&&afterKm<=beforeKm,netChanged:false};
+    if(overnightEnabled&&equivalent)overnightCandidates.businessEquivalent++;
+    if(!overnightEnabled||!equivalent||!after.every(metric=>metric.feasible))return row;
+    /* Le bonus n'est même pas analysé pour un candidat qui augmente une métrique
+       brute. La tolérance V264 reste inchangée pour son classement historique. */
+    if(!row.rawSafe){overnightRawRefusals++;return row}
+    overnightCandidates.rawSafe++;
+    const touchedWeeks=new Set();
+    changedSlots.forEach((slot,index)=>{const role=overnightRoles.get(slot.day);if(role&&overnightEndpointKey(slot.route,role)!==overnightEndpointKey(after[index].route,role))touchedWeeks.add(slot.weekKey)});
+    if(!touchedWeeks.size)return row;
+    overnightCandidates.endpointsChanged++;
+    const changes=new Map(changedSlots.map((slot,index)=>[slot.index,after[index]])),keys=[...touchedWeeks];
+    const savingBefore=keys.reduce((sum,key)=>sum+overnightWeek(key).savingKm,0),savingAfter=keys.reduce((sum,key)=>sum+overnightWeek(key,changes).savingKm,0),overnightDelta=savingAfter-savingBefore;
+    if(Math.abs(overnightDelta)<=CROSS_DAY_EPSILON)return row;
+    row.netChanged=true;row.overnightDelta=overnightDelta;
+    const effectiveKmSaving=beforeKm-afterKm+overnightDelta;
+    row.gain=effectiveKmSaving>CROSS_DAY_EPSILON?{driveSaving:beforeDrive-afterDrive,kmSaving:beforeKm-afterKm,loadSaving:beforeLoad-afterLoad,overnightDelta,effectiveKmSaving}:null;
+    return row
+  }
+  function considerLocal(selection,row,assessment){
+    if(assessment.legacyGain){const legacy={...row,...assessment.legacyGain,businessEquivalent:assessment.businessEquivalent,rawSafe:assessment.rawSafe,overnightDelta:assessment.overnightDelta||0};if(betterLocalV264(legacy,selection.legacy))selection.legacy=legacy}
+    selection.netChanged=selection.netChanged||assessment.netChanged;
+    if(!assessment.gain||!assessment.rawSafe)return;
+    const candidate={...row,...assessment.gain,businessEquivalent:assessment.businessEquivalent},best=selection.best;
+    const gain=candidate.effectiveKmSaving??candidate.kmSaving,bestGain=best&&(best.effectiveKmSaving??best.kmSaving);
+    if(!best||gain>bestGain+CROSS_DAY_EPSILON||Math.abs(gain-bestGain)<=CROSS_DAY_EPSILON&&betterLocalV264(candidate,best))selection.best=candidate
+  }
+  /* Aucune variation découché admissible : le résultat V264, y compris sa tolérance
+     historique, est identique. Une préférence H2 utilise uniquement la sélection
+     strictement non dégradante sur les DEUX métriques brutes. */
+  const selectedLocal=selection=>{
+    const legacy=selection.legacy;
+    /* Une amélioration métier choisie par V264 ne cède jamais sa place à une
+       simple égalité métier rendue attractive par le découché. */
+    const useNet=selection.netChanged&&(!legacy||legacy.businessEquivalent);
+    const best=useNet?(selection.best&&!selection.best.businessEquivalent?legacy:selection.best):legacy;
+    if(useNet&&!best&&legacy){
+      const night=overnightTotals(),raw=totals(),before=netMetrics(raw,night),alternative=netMetrics({kilometers:raw.kilometers-legacy.kmSaving,driveMinutes:raw.driveMinutes-legacy.driveSaving},{savingKm:night.savingKm+legacy.overnightDelta});
+      /* Conserver la nuit peut aussi être une décision H2 : V264 aurait accepté
+         l'alternative, mais H2 refuse son coût net ou une hausse brute tolérée par
+         V264. Un candidat brut refusé n'a pas de gain découché évalué. */
+      if(!legacy.rawSafe){alternative.savingKm=null;alternative.effectiveKm=null}
+      if(!overnightDecisions.some(row=>row.kind==='retained'&&row.signature===legacy.signature&&row.before.effectiveKm===before.effectiveKm))overnightDecisions.push({kind:'retained',reason:legacy.rawSafe?'effective-cost':'raw-increase',signature:legacy.signature,overnightDelta:legacy.rawSafe?legacy.overnightDelta:null,before,after:{...before},alternative,pairs:night.pairs})
+    }
+    return best&&{...best,overnightInfluenced:best.signature!==(legacy&&legacy.signature)}
+  };
+  function applyLocal(row,apply){
+    if(!row)return;
+    const before=row.overnightInfluenced?netMetrics(totals(),overnightTotals()):null;apply();
+    if(before){const night=overnightTotals();overnightDecisions.push({kind:'applied',signature:row.signature,overnightDelta:row.overnightDelta||0,before,after:netMetrics(totals(),night),pairs:night.pairs})}
+  }
   let insertions=0,moves=0,swaps=0,replacements=0;
 
   /* Construction complémentaire : le meilleur palier métier plaçable gagne toujours ; la
@@ -516,20 +622,20 @@ function optimizeThreeWeekCrossDay(weeks,options){
   }
 
   function findBestMove(){
-    let best=null;
+    const selection={best:null,legacy:null};
     for(const source of slots){if(!source.mutable||source.route.length<= (source.initialNonEmpty?1:0))continue;
       for(let index=0;index<source.route.length;index++){
         const store=source.route[index];if(fixedReason(source,store))continue;
         for(const destination of slots){if(destination===source||destination.weekKey!==source.weekKey||!canUse(store,destination))continue;
           if(!moveBusinessSafe(store,source,destination)||!delaySafeMove(store,source.date,destination.date)||!briefKeptMove(store,source.date,destination.date))continue;
           const sourceRoute=source.route.filter((_,i)=>i!==index),destinationRoute=destination.route.concat([store]);if(routeCreditCost(destinationRoute,credit)>max)continue;
-          const before=[metric(source.route,source),metric(destination.route,destination)],after=[metric(sourceRoute,source),metric(destinationRoute,destination)];
-          const gain=localImprovementV264(before,after,loadPenalty([source,destination]),Math.pow(after[0].credits,2)+Math.pow(after[1].credits,2));if(!gain)continue;
-          const row={source,destination,sourceRoute:after[0].route,destinationRoute:after[1].route,...gain,signature:'move|'+source.date+'|'+destination.date+'|'+storeKey(store)};if(betterLocalV264(row,best))best=row
+          const after=[metric(sourceRoute,source),metric(destinationRoute,destination)];
+          const gain=localGain([source,destination],after,overnightEnabled&&equivalentMove(store,source,destination));
+          const row={source,destination,sourceRoute:after[0].route,destinationRoute:after[1].route,signature:'move|'+source.date+'|'+destination.date+'|'+storeKey(store)};considerLocal(selection,row,gain)
         }
       }
     }
-    return best
+    return selectedLocal(selection)
   }
   function findBestDelayMove(){
     const currentDelay=currentScheduleDelay();if(!Number.isFinite(baselineDelayLimit)||currentDelay<=baselineDelayLimit)return null;let best=null;
@@ -579,50 +685,51 @@ function optimizeThreeWeekCrossDay(weeks,options){
     return best
   }
   function findBestSwap(){
-    let best=null;
+    const selection={best:null,legacy:null};
     for(let ai=0;ai<slots.length;ai++){const a=slots[ai];if(!a.mutable)continue;
       for(let bi=ai+1;bi<slots.length;bi++){const b=slots[bi];if(!b.mutable)continue;
         for(let i=0;i<a.route.length;i++){const one=a.route[i];if(fixedReason(a,one)||!canUse(one,b))continue;
           for(let j=0;j<b.route.length;j++){const two=b.route[j];if(fixedReason(b,two)||!canUse(two,a)||storeKey(one)===storeKey(two))continue;
             if(!swapBusinessSafe(one,a,two,b)||!delaySafeSwap(one,a.date,b.date,two,b.date,a.date)||!briefKeptSwap(one,a,two,b))continue;
             const ar=a.route.slice(),br=b.route.slice();ar[i]=two;br[j]=one;if(routeCreditCost(ar,credit)>max||routeCreditCost(br,credit)>max)continue;
-            const before=[metric(a.route,a),metric(b.route,b)],after=[metric(ar,a),metric(br,b)];
-            const gain=localImprovementV264(before,after,loadPenalty([a,b]),Math.pow(after[0].credits,2)+Math.pow(after[1].credits,2));if(!gain)continue;
-            const row={a,b,ar:after[0].route,br:after[1].route,...gain,signature:'swap|'+a.date+'|'+b.date+'|'+storeKey(one)+'|'+storeKey(two)};if(betterLocalV264(row,best))best=row
+            const after=[metric(ar,a),metric(br,b)];
+            const gain=localGain([a,b],after,overnightEnabled&&equivalentSwap(one,a,two,b));
+            const row={a,b,ar:after[0].route,br:after[1].route,signature:'swap|'+a.date+'|'+b.date+'|'+storeKey(one)+'|'+storeKey(two)};considerLocal(selection,row,gain)
           }
         }
       }
     }
-    return best
+    return selectedLocal(selection)
   }
   function findBestReplacement(){
-    const planned=countPlanned(),available=ranked.filter(store=>!planned.has(storeKey(store))),fresh=store=>memory.usedKeys&&memory.usedKeys.has(storeKey(store))?0:1;let best=null;
+    const planned=countPlanned(),available=ranked.filter(store=>!planned.has(storeKey(store))),fresh=store=>memory.usedKeys&&memory.usedKeys.has(storeKey(store))?0:1,selection={best:null,legacy:null};
     for(const slot of slots){if(!slot.mutable)continue;
       for(let index=0;index<slot.route.length;index++){
         const current=slot.route[index];if(fixedReason(slot,current))continue;
         const pool=available.filter(store=>fresh(store)===fresh(current)&&canUse(store,slot)&&replacementBusinessSafe(current,store,slot)&&briefOf(store,slot.date)>=briefOf(current,slot.date)).slice(0,CROSS_DAY_CANDIDATE_LIMIT);
         for(const replacement of pool){const trial=slot.route.slice();trial[index]=replacement;if(routeCreditCost(trial,credit)>max)continue;
-          const before=[metric(slot.route,slot)],after=[metric(trial,slot)];
-          const gain=localImprovementV264(before,after,Math.pow(before[0].credits,2),Math.pow(after[0].credits,2));if(!gain)continue;
-          const row={slot,route:after[0].route,current,replacement,...gain,signature:'replace|'+slot.date+'|'+storeKey(current)+'|'+storeKey(replacement)};if(betterLocalV264(row,best))best=row
+          const after=[metric(trial,slot)];
+          const gain=localGain([slot],after,overnightEnabled&&equivalentReplacement(current,replacement,slot));
+          const row={slot,route:after[0].route,current,replacement,signature:'replace|'+slot.date+'|'+storeKey(current)+'|'+storeKey(replacement)};considerLocal(selection,row,gain)
         }
       }
     }
-    return best
+    return selectedLocal(selection)
   }
   let iterations=0;
   for(;iterations<CROSS_DAY_MAX_PASSES;iterations++){
     let changed=false,delayMove=findBestDelayMove();if(delayMove){delayMove.source.route=delayMove.sourceRoute;delayMove.destination.route=delayMove.destinationRoute;moves++;changed=true}
     const projectionMove=findBestProjectionMove();if(projectionMove){projectionMove.source.route=projectionMove.sourceRoute;projectionMove.destination.route=projectionMove.destinationRoute;moves++;changed=true}
     const projectionSwap=findBestProjectionSwap();if(projectionSwap){projectionSwap.a.route=projectionSwap.ar;projectionSwap.b.route=projectionSwap.br;swaps++;changed=true}
-    const move=findBestMove();if(move){move.source.route=move.sourceRoute;move.destination.route=move.destinationRoute;moves++;changed=true}
-    const swap=findBestSwap();if(swap){swap.a.route=swap.ar;swap.b.route=swap.br;swaps++;changed=true}
-    const replacement=findBestReplacement();if(replacement){replacement.slot.route=replacement.route;replacements++;changed=true}
+    const move=findBestMove();if(move){applyLocal(move,()=>{move.source.route=move.sourceRoute;move.destination.route=move.destinationRoute});moves++;changed=true}
+    const swap=findBestSwap();if(swap){applyLocal(swap,()=>{swap.a.route=swap.ar;swap.b.route=swap.br});swaps++;changed=true}
+    const replacement=findBestReplacement();if(replacement){applyLocal(replacement,()=>{replacement.slot.route=replacement.route});replacements++;changed=true}
     if(!changed){iterations++;break}
   }
   for(const slot of slots)slot.week.plan[slot.day]=slot.route.slice();
   const afterMetrics=totals(),afterSignature=slots.map(slot=>slot.weekKey+'|'+slot.day+':'+slot.route.map(storeKey).join(',')).join(';');
-  return{applied:true,owner:'terrain-planning-v1.js',algorithm:'bounded-greedy-local-search',changed:beforeSignature!==afterSignature,insertions,moves,swaps,replacements,iterations,evaluations,needEvaluations,businessBaselineDelay:Number.isFinite(baselineDelayLimit)?baselineDelayLimit:null,businessFinalDelay:currentScheduleDelay(),fixedDays:slots.filter(slot=>!!slot.hardReason).length,fixedVisits:slots.reduce((n,slot)=>n+slot.route.filter(store=>!!fixedReason(slot,store)).length,0),refused:refusal,bounds:{maxPasses:CROSS_DAY_MAX_PASSES,candidateLimit:CROSS_DAY_CANDIDATE_LIMIT},before:{driveMinutes:beforeMetrics.driveMinutes,kilometers:beforeMetrics.kilometers},after:{driveMinutes:afterMetrics.driveMinutes,kilometers:afterMetrics.kilometers}}
+  const overnightAfter=overnightTotals(),overnight={enabled:overnightEnabled,influenced:overnightDecisions.length>0,reason:overnightDecisions.length?'overnight-preference':!overnightEnabled?'disabled':!admissibleOvernightSeen?'no-admissible-overnight':'no-safe-equivalent-improvement',before:netMetrics(beforeMetrics,overnightBefore),after:netMetrics(afterMetrics,overnightAfter),pairs:overnightAfter.pairs,weeks:overnightAfter.weeks,decisions:overnightDecisions,evaluations:overnightEvaluations,rawRefusals:overnightRawRefusals,cache:overnightCacheStats,candidates:overnightCandidates};
+  return{applied:true,owner:'terrain-planning-v1.js',algorithm:'bounded-greedy-local-search',changed:beforeSignature!==afterSignature,insertions,moves,swaps,replacements,iterations,evaluations,needEvaluations,businessBaselineDelay:Number.isFinite(baselineDelayLimit)?baselineDelayLimit:null,businessFinalDelay:currentScheduleDelay(),fixedDays:slots.filter(slot=>!!slot.hardReason).length,fixedVisits:slots.reduce((n,slot)=>n+slot.route.filter(store=>!!fixedReason(slot,store)).length,0),refused:refusal,bounds:{maxPasses:CROSS_DAY_MAX_PASSES,candidateLimit:CROSS_DAY_CANDIDATE_LIMIT},before:{driveMinutes:beforeMetrics.driveMinutes,kilometers:beforeMetrics.kilometers},after:{driveMinutes:afterMetrics.driveMinutes,kilometers:afterMetrics.kilometers},overnight}
 }
 function prepareCrossDayAllocationV264(weeks,state,days,reservations){
   const geography=root.StoreRunnerGeographyV185;if(!geography||typeof geography.rebalance!=='function')return false;

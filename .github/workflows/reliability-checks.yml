@@ -66,6 +66,7 @@ jobs:
       - run: node tests/planning-engine-benchmark-v241.test.cjs
       - run: node tests/planning-engine-benchmark-v253.test.cjs
       - run: node tests/cross-day-planning-v264.test.cjs
+      - run: node tests/cross-day-overnight-h2.test.cjs
       - run: node tests/cross-day-planning-v264.test.cjs --store-order=reverse
       - run: node tests/cross-day-planning-v264.test.cjs --store-order=rotate
       - run: node tests/cross-day-planning-v264.test.cjs --store-order=stable-hash
