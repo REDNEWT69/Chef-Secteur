@@ -1,6 +1,11 @@
 const {test,expect}=require('@playwright/test');
+const cleanupBaseline=require('./fixtures/cleanup-baseline-r20.json');
 
 const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
+/* Total officiel des ressources script au démarrage : 74 après la suppression A4 de la
+   campagne V187, 75 depuis le Planning Command Engine (Lot B, planning-command-engine.js).
+   Il reste plafonné par le budget figé de cleanup-baseline-r20, qui n'augmente pas. */
+const OFFICIAL_SCRIPT_RESOURCES=75;
 
 test.use({
   viewport:{width:390,height:844},
@@ -21,8 +26,8 @@ test('A4 — la campagne V187 supprimée ne laisse aucun runtime navigateur',asy
   await expect.poll(()=>page.evaluate(()=>performance.getEntriesByType('resource')
     .filter(entry=>entry.initiatorType==='script').length),{
       timeout:30000,
-      message:'les 74 ressources script officielles doivent finir de charger'
-    }).toBe(74);
+      message:'les '+OFFICIAL_SCRIPT_RESOURCES+' ressources script officielles doivent finir de charger'
+    }).toBe(OFFICIAL_SCRIPT_RESOURCES);
 
   const scripts=await page.evaluate(()=>performance.getEntriesByType('resource')
     .filter(entry=>entry.initiatorType==='script')
@@ -33,7 +38,10 @@ test('A4 — la campagne V187 supprimée ne laisse aucun runtime navigateur',asy
     element:!!document.getElementById('priorityCampaignV187')
   }));
 
-  expect(scripts.length,'ressources script officielles après suppression').toBe(74);
+  expect(OFFICIAL_SCRIPT_RESOURCES,'le total officiel respecte le budget de démarrage r20').toBeLessThanOrEqual(cleanupBaseline.runtimeInventory.startupScriptResources);
+  expect(scripts.length,'ressources script officielles après suppression').toBe(OFFICIAL_SCRIPT_RESOURCES);
+  expect(new Set(scripts).size,'aucun script runtime chargé deux fois').toBe(scripts.length);
+  expect(scripts.filter(name=>name==='planning-command-engine.js'),'module Lot B chargé une seule fois').toEqual(['planning-command-engine.js']);
   expect(scripts.filter(name=>name==='priority-campaign-v187.js')).toEqual([]);
   expect(demandes.filter(path=>path.endsWith('/priority-campaign-v187.js'))).toEqual([]);
   expect(garde).toEqual({api:'undefined',element:false});
