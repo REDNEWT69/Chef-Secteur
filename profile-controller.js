@@ -132,14 +132,21 @@
     return isFinite(a)&&a>0?a:Infinity;
   }
 
+  function validCoordinates(lat,lon){
+    if(lat==null||lon==null||String(lat).trim()===''||String(lon).trim()==='')return false;
+    lat=Number(lat);lon=Number(lon);
+    return isFinite(lat)&&isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180&&!(lat===0&&lon===0);
+  }
+
+  function freshPosition(pos,startedAt){
+    return !!(pos&&pos.coords&&validCoordinates(pos.coords.latitude,pos.coords.longitude)
+      &&Number.isFinite(Number(pos.timestamp))&&Number(pos.timestamp)>=startedAt);
+  }
+
   function acquireBestPosition(onSample){
     return new Promise(function(resolve,reject){
-      const geo=navigator.geolocation,opts={enableHighAccuracy:true,timeout:7000,maximumAge:0};
+      const geo=navigator.geolocation,opts={enableHighAccuracy:true,timeout:7000,maximumAge:0},startedAt=Date.now();
       if(!geo){reject({code:2,message:'Localisation indisponible'});return}
-      if(typeof geo.watchPosition!=='function'){
-        geo.getCurrentPosition(resolve,reject,opts);
-        return;
-      }
       let best=null,watchId=null,done=false;
       const finish=function(err){
         if(done)return;done=true;clearTimeout(timer);
@@ -147,27 +154,85 @@
         if(best)resolve(best);else reject(err||{code:3,message:'La localisation a pris trop de temps.'});
       };
       const timer=setTimeout(function(){finish({code:3,message:'La localisation a pris trop de temps.'})},4500);
+      const sample=function(pos,single){
+        if(done)return;
+        if(!freshPosition(pos,startedAt)){
+          if(single)finish({code:2,message:'Aucune position fraîche valide reçue.'});
+          return;
+        }
+        if(!best||positionAccuracy(pos)<positionAccuracy(best))best=pos;
+        if(typeof onSample==='function')try{onSample(best)}catch(e){}
+        if(single||positionAccuracy(best)<=10)finish();
+      };
+      const oneFix=function(){
+        try{geo.getCurrentPosition(function(pos){sample(pos,true)},finish,opts)}catch(err){finish(err)}
+      };
+      if(typeof geo.watchPosition!=='function'){oneFix();return}
       try{
         watchId=geo.watchPosition(function(pos){
-          if(!pos||!pos.coords||!isFinite(Number(pos.coords.latitude))||!isFinite(Number(pos.coords.longitude)))return;
-          if(!best||positionAccuracy(pos)<positionAccuracy(best))best=pos;
-          if(typeof onSample==='function')try{onSample(best)}catch(e){}
-          if(positionAccuracy(best)<=10)finish();
+          sample(pos,false);
         },function(err){
           if(err&&err.code===1)finish(err);
           else if(!best&&err&&err.code===2)finish(err);
         },opts);
+        // Some embedded implementations deliver a fix before returning the watch id.
+        if(done&&watchId!==null&&typeof geo.clearWatch==='function')try{geo.clearWatch(watchId)}catch(e){}
       }catch(e){
-        clearTimeout(timer);done=true;
-        try{geo.getCurrentPosition(resolve,reject,opts)}catch(err){reject(err)}
+        oneFix();
       }
     });
   }
 
   function validBase(){
     if(!window.state||!state.profile)return false;
-    const lat=Number(state.profile.baseLat),lon=Number(state.profile.baseLon);
-    return isFinite(lat)&&isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180&&!(lat===0&&lon===0);
+    return validCoordinates(state.profile.baseLat,state.profile.baseLon);
+  }
+
+  function explicitUserBase(){
+    if(!validBase())return false;
+    const p=state.profile,name=String(p.baseName||'').trim(),address=String(p.baseAddress||'').trim();
+    // Historical GPS fixes share the profile shape with saved user addresses.
+    // Without provenance, never infer that a generic/current-position value is a domicile.
+    if(/^(ma position\b|position(?: actuelle| gps)?(?:\s|$)|gps\b)/i.test(name)||/^position gps\b/i.test(address))return false;
+    // Saving explicit coordinates with a user name (e.g. Domicile) is an existing,
+    // supported profile flow; an address is not mandatory in that flow.
+    return !!address||!!(name&&!/^(départ|depart|base)$/i.test(name));
+  }
+
+  function locationFailure(err){
+    if(err&&err.code===1)return 'Localisation refusée.';
+    if(err&&err.code===3)return 'La localisation a pris trop de temps.';
+    return err&&err.message?String(err.message):'Localisation indisponible.';
+  }
+
+  async function preparePlanningOrigin(){
+    feedback('Recherche d’une position fraîche avant la génération…','busy');
+    try{
+      // Requesting a fix performs the browser/Android permission check and prompts
+      // at the user's generation click when permission has not been granted yet.
+      const pos=await acquireBestPosition();
+      const accuracy=Math.round(positionAccuracy(pos));
+      if(accuracy>250)throw {code:2,message:'Position trop imprécise (±'+accuracy+' m).'};
+      if(!window.state||!state.profile)throw {code:2,message:'Point de départ indisponible.'};
+      const lat=Number(pos.coords.latitude),lon=Number(pos.coords.longitude);
+      state.profile.baseLat=lat;state.profile.baseLon=lon;
+      state.profile.baseName='Ma position actuelle';
+      state.profile.baseAddress='Position GPS · '+lat.toFixed(5)+', '+lon.toFixed(5);
+      installPersistedBase();
+      const message='Position fraîche retenue à ±'+accuracy+' m.';
+      feedback(message,'ok');
+      return {ok:true,source:'gps',base:window.baseObj(),message:message};
+    }catch(err){
+      if(explicitUserBase()){
+        installPersistedBase();
+        const message=locationFailure(err)+' Utilisation de la base enregistrée « '+(state.profile.baseName||state.profile.baseAddress)+' ».';
+        feedback(message,'ok');
+        return {ok:true,source:'saved_base',base:window.baseObj(),message:message};
+      }
+      const message=locationFailure(err)+' Une localisation fraîche est requise : autorise la localisation ou enregistre une adresse de base fiable dans Mon secteur.';
+      feedback(message,'bad');
+      throw new Error(message);
+    }
   }
 
   function installPersistedBase(){
@@ -211,6 +276,8 @@
   window.storeRunnerToast=toast;
   window.StoreRunnerGeocode={forward:forwardGeocode,reverse:reverseGeocode};
   window.storeRunnerHasValidBase=validBase;
+  window.StoreRunnerProfile={preparePlanningOrigin:preparePlanningOrigin};
+  window.storeRunnerPreparePlanningOrigin=preparePlanningOrigin;
   window.lookupDepartureAddress=async function(){
     const btn=document.getElementById('departureLookupBtn');
     if(btn){btn.disabled=true;btn.dataset.oldText=btn.textContent;btn.textContent='⌕ Recherche…'}

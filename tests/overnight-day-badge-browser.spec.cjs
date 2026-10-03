@@ -163,9 +163,9 @@ test('V207 : depuis le 17, le découché du 21 est déjà signalé sans charger 
   expect(futureMoon.label).toBe('Découché Lundi → Mardi · 21/09 → 22/09');
 
   const cue=page.locator('#planningOvernightCueV206');
-  await expect(cue).toBeVisible();
-  await expect(cue).toContainText('Découché Lundi → Mardi · 21/09 → 22/09');
-  expect(await cue.getAttribute('data-date')).toBe('2026-09-21');
+  /* r38 : la période conserve son indicateur sur le 21, mais le héros de la semaine
+     du 14 n'affiche pas le bandeau d'une autre semaine. */
+  await expect(cue).toHaveCount(0);
 
   const ring=await page.evaluate(()=>{
     const tab=document.querySelector('#dayTabs .dayTab[data-date="2026-09-21"]');if(!tab)return null;
@@ -177,6 +177,10 @@ test('V207 : depuis le 17, le découché du 21 est déjà signalé sans charger 
   expect(ring.animationName).toContain('srOvernightRingV207');
   expect(ring.animationDuration).not.toBe('0s');
 
+  await page.locator('#dayTabs .dayTab[data-date="2026-09-21"]').click();
+  await expect(cue).toBeVisible();
+  await expect(cue).toContainText('Découché Lundi → Mardi · 21/09 → 22/09');
+  expect(await cue.getAttribute('data-date')).toBe('2026-09-21');
   await cue.click();
   await page.waitForTimeout(260);
   expect(await page.locator('#dayTabs .dayTab.active').getAttribute('data-date')).toBe('2026-09-21');

@@ -51,7 +51,7 @@
   function archiveCurrentWeek(){
     try{
       const db=storage();if(!db)return false;
-      const key=String((state.settings&&state.settings.weekDate)||'').slice(0,10);
+      const key=weekKeyOf(state.settings&&state.settings.weekDate);
       if(!key||!planHasVisits(state.plan))return false;
       const a=load(ARCHIVE_KEY);
       a[key]=Object.assign({},a[key],{weekMonday:key,plan:state.plan});
@@ -75,11 +75,17 @@
     const date=raw&&typeof raw.getTime==='function'?new Date(raw.getTime()):parse(raw);if(!date)return false;
     const a=load(ARCHIVE_KEY),mon=monday(date),key=iso(mon),snap=a[key],name=dayName(date),r=range(),allowOutside=!!(options&&options.allowOutsideRange),shown=dayShown(date,r,()=>a);
     if(!allowOutside&&!shown)return false;
-    outsideRangeDate=allowOutside&&!shown?iso(date):'';
+    outsideRangeDate=allowOutside&&(!shown||date<r.start||date>r.end)?iso(date):'';
     let currentWeek='';try{currentWeek=String((state.settings&&state.settings.weekDate)||'').slice(0,10)}catch(e){}
-    const missing=(!snap||!snap.plan)&&key!==currentWeek;
-    if(missing){archiveCurrentWeek();state.plan=emptyPlan()}
-    if(snap&&snap.plan){state.plan={};for(const d of DAYS)state.plan[d]=(snap.plan[d]||[]).map(resolveStore)}
+    const changingWeek=key!==weekKeyOf(currentWeek),missing=(!snap||!snap.plan)&&changingWeek;
+    /* Le plan actif est la source la plus récente de sa semaine. Changer de jour ne
+       recharge pas une archive antérieure ; quitter la semaine la sauvegarde avant
+       de charger la suivante, même lorsque celle-ci possède déjà une archive. */
+    if(changingWeek){
+      archiveCurrentWeek();
+      state.plan=emptyPlan();
+      if(snap&&snap.plan)for(const d of DAYS)state.plan[d]=(snap.plan[d]||[]).map(resolveStore);
+    }
     try{if(!state.settings)state.settings={};state.settings.weekDate=key;const week=document.getElementById('weekDate');if(week)week.value=key}catch(e){}
     activeDate=iso(date);
     window.selectedPlanningDay=name;
@@ -166,7 +172,7 @@
   function periodOvernightCandidate(){
     const r=range(),today=iso(new Date()),start=iso(r.start),end=iso(r.end),currentWeek=String(window.state&&state.settings&&state.settings.weekDate||'').slice(0,10),out=[];
     const current=currentOvernightCandidate();
-    if(current&&current.fromDate>=today&&current.fromDate>=start&&current.fromDate<=end)out.push(current);
+    if(current&&current.fromDate>=today&&((current.fromDate>=start&&current.fromDate<=end)||weekKeyOf(current.fromDate)===weekKeyOf(currentWeek)))out.push(current);
     const archive=load(ARCHIVE_KEY);
     for(const [key,snap] of Object.entries(archive||{})){
       const weekDate=String(snap&&snap.weekMonday||key||'').slice(0,10);
@@ -181,6 +187,10 @@
     return out[0]||null
   }
   function overnightCandidateSafe(){try{return periodOvernightCandidate()}catch(e){return currentOvernightCandidate()}}
+  function shownOvernightCandidate(){
+    const candidate=currentOvernightCandidate(),shown=weekKeyOf(window.state&&state.settings&&state.settings.weekDate);
+    return candidate&&weekKeyOf(candidate.fromDate)===shown?candidate:null;
+  }
   function overnightLabel(candidate){
     if(!candidate)return'';
     const from=parse(candidate.fromDate),to=parse(candidate.toDate),fromDay=candidate.fromDay||(from?dayName(from):''),toDay=candidate.toDay||(to?dayName(to):'');
@@ -243,18 +253,22 @@
         }
       }
     }
+    /* La bande couvre la période entière et peut signaler une nuit future sur son
+       onglet daté. Le bandeau du héros appartient uniquement à la semaine active :
+       une nuit archivée du 06/10 ne décrit jamais la semaine affichée du 28/09. */
+    const cueCandidate=shownOvernightCandidate();
     let cue=document.getElementById('planningOvernightCueV206');
-    if(!candidate){if(cue)cue.remove();overnightCuePulseRequested=false;return true}
+    if(!cueCandidate){if(cue)cue.remove();overnightCuePulseRequested=false;return true}
     const host=cueHost();if(!host)return false;
     if(!cue){
       cue=document.createElement('button');cue.id='planningOvernightCueV206';cue.type='button';cue.className='planningOvernightCueV206';
       cue.innerHTML='<span class="planningOvernightCueIcon">🌙</span><span class="planningOvernightCueCopy"><b data-overnight-title></b><small>Hôtel conseillé · toucher pour afficher</small></span><span class="planningOvernightCueArrow" aria-hidden="true">›</span>';
-      cue.addEventListener('click',function(){focusHotel(overnightCandidateSafe()||candidate)});
+      cue.addEventListener('click',function(){const current=shownOvernightCandidate();if(current)focusHotel(current)});
     }
     if(cue.parentNode!==host)host.appendChild(cue);
-    const title=cue.querySelector('[data-overnight-title]');if(title)title.textContent='Découché '+overnightLabel(candidate);
-    cue.dataset.date=candidateDate;
-    cue.setAttribute('aria-label','Découché '+overnightLabel(candidate)+'. Afficher l’hôtel conseillé.');
+    const title=cue.querySelector('[data-overnight-title]');if(title)title.textContent='Découché '+overnightLabel(cueCandidate);
+    cue.dataset.date=String(cueCandidate.fromDate||'');
+    cue.setAttribute('aria-label','Découché '+overnightLabel(cueCandidate)+'. Afficher l’hôtel conseillé.');
     if(animate){cue.classList.remove('is-pulsing');void cue.offsetWidth;cue.classList.add('is-pulsing');cue.addEventListener('animationend',()=>cue.classList.remove('is-pulsing'),{once:true})}
     overnightCuePulseRequested=false;
     return true;
@@ -279,8 +293,23 @@
     const visible=tabRect.left>=boxRect.left-0.5&&tabRect.right<=boxRect.right+0.5;
     if(!visible&&typeof active.scrollIntoView==='function')active.scrollIntoView({block:'nearest',inline:'center'});
   }
+  function syncActiveDate(){
+    const shown=weekKeyOf(window.state&&state.settings&&state.settings.weekDate),mon=parse(shown);if(!mon)return;
+    const selected=String(window.selectedPlanningDay||''),active=parse(activeDate),activeWeek=weekKeyOf(activeDate);
+    /* weekDate possède la semaine chargée. activeDate n'est qu'une sélection de jour
+       dérivée : après restauration/génération elle ne peut garder l'ancienne semaine,
+       ni se rabattre sur le premier onglet d'une période contenant d'autres semaines. */
+    if(!active||activeWeek!==shown||(DAYS.includes(selected)&&dayName(active)!==selected)){
+      const work=currentWorkDays(),index=DAYS.indexOf(selected),date=index>=0?addDays(mon,index):null;
+      const use=date&&(work.includes(selected)||dayHasVisits(date,archiveReader()));
+      activeDate=iso(use?date:addDays(mon,Math.max(0,DAYS.indexOf(work[0]||DAYS[0]))));
+    }
+    const r=range(),outsideWeek=shown<weekKeyOf(iso(r.start))||shown>weekKeyOf(iso(r.end));
+    outsideRangeDate=outsideWeek?activeDate:(outsideRangeDate===activeDate?outsideRangeDate:'');
+  }
   function renderTabs(){
     const box=document.getElementById('dayTabs');if(!box)return false;
+    syncActiveDate();
     const r=range(),entries=buildEntries(r),signature=tabsSignature(entries);
     box.classList.add('periodDayTabs');
     if(signature!==lastTabsSignature||!box.firstElementChild||!boxMatchesEntries(box,entries)){
@@ -304,6 +333,9 @@
   function boot(){css();observeTabs();renderTabs();bindListSwipe(document.getElementById('planPanel'))}
   window.addEventListener('chef-range-generated',function(){activeDate='';outsideRangeDate='';scheduleRender()});
   document.addEventListener('store-runner:planning-updated',scheduleRender);
+  /* Le sélecteur de semaine navigue comme Accueil et la vue mensuelle : il charge
+     le plan correspondant avant de changer la semaine canonique, sans réétiquetage. */
+  document.addEventListener('change',function(event){if(event.target&&event.target.id==='weekDate')loadDate(event.target.value,{allowOutsideRange:true})});
   document.addEventListener('store-runner:data-restored',function(){activeDate='';outsideRangeDate='';scheduleRender()});
   document.addEventListener('store-runner:planning-user-opened',function(){overnightCuePulseRequested=true;focusTodayIfVisible();scheduleRender()});
   window.StoreRunnerPeriodDaySlider={focusToday:focusTodayIfVisible,syncOvernight:syncOvernightVisibility,openDate:function(raw){return loadDate(raw,{allowOutsideRange:true})}};

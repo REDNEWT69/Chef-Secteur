@@ -6,6 +6,8 @@ Ce document décrit la **V1 de production**. `/v2/` est un chantier parallèle i
 
 ## Propriétaires actuels
 
+Hotfix r38 proposé (`20261003-r38-temporal-geographic-coherence-264`) : la semaine chargée reste `state.settings.weekDate`, naviguée par `StoreRunnerPeriodDaySlider.openDate`. Le départ de génération est résolu par terrain depuis la date locale réelle capturée au clic, indépendamment de la semaine consultée. Le contrôleur attend `StoreRunnerProfile.preparePlanningOrigin` avant le moteur et le préchauffage routier ; cette API publie une position fraîche dans les champs de départ existants, ou annonce explicitement une base utilisateur fiable en repli. Le bandeau découché du héros concerne la semaine active ; les badges de période gardent leurs dates réelles. Aucun changement de décision V189/H2, d'ordre V251, de M1 ou du schéma state. Voir `HOTFIX_R38_REVIEW.md` pour les causes, preuves et limites.
+
 - `profile-controller.js` : profil, point de départ, GPS, `baseObj`/`havBase`, sauvegarde profil.
 - `navigation-controller.js` : navigation hors noyau historique.
 - `calendar-oauth.js` : propriétaire de `syncGoogleCalendar`, OAuth et synchronisation Google Agenda.

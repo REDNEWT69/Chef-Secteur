@@ -1190,16 +1190,15 @@ function refreshThreeWeekDiagnostics(weeks,state=root.state){
 }
 async function syncCalendar(first,state=root.state){
   if(typeof root.syncGoogleCalendar!=='function')return false;
-  const original=state.settings&&state.settings.weekDate,merged=new Map((state.calendarEvents||[]).map(e=>[String(e.id||'')+'|'+String(e.date||'')+'|'+String(e.start||''),e]));let ok=true;
+  /* La génération lit le cache Agenda existant. Son propriétaire installe les plages
+     sémantiques sans changer la semaine affichée ni déclencher d'OAuth/réseau. Il n'y a
+     aucun besoin de faire passer successivement state.settings.weekDate par S1/S2/S3. */
+  const previous=root.__storeRunnerPlanningGenerationActive;
+  root.__storeRunnerPlanningGenerationActive=true;
   try{
-    for(let wi=0;wi<3;wi++){
-      const mon=addDays(first,wi*7),start=iso(mon),end=iso(addDays(mon,7));state.settings.weekDate=start;
-      const r=await root.syncGoogleCalendar(true);if(!r||!r.ok){ok=false;break}
-      for(const [key,e] of merged){const date=String(e.date||String(e.start||'').slice(0,10));if(date>=start&&date<end)merged.delete(key)}
-      for(const e of state.calendarEvents||[])merged.set(String(e.id||'')+'|'+String(e.date||'')+'|'+String(e.start||''),e);
-    }
-  }finally{state.calendarEvents=Array.from(merged.values());state.settings.weekDate=original||iso(first);const w=root.document&&root.document.getElementById('weekDate');if(w)w.value=state.settings.weekDate;try{if(typeof root.save==='function')root.save()}catch(e){}}
-  return ok;
+    if(typeof root.chefSecteurPrepareCalendarForPlanning==='function')await root.chefSecteurPrepareCalendarForPlanning();
+    const r=await root.syncGoogleCalendar(true);return !!(r&&r.ok);
+  }finally{root.__storeRunnerPlanningGenerationActive=previous}
 }
 function performancePlanningBoost(store,state=root.state){try{const P=root.StoreRunnerPerformanceV190,storage=db();if(P&&typeof P.planningBoost==='function')return Math.max(0,Number(P.planningBoost(storage,store&&store.id,(state&&state.stores)||[]))||0)}catch(e){}return 0}
 function roadDistanceV264(a,b){
@@ -1217,35 +1216,25 @@ function evaluateDayRouteV264(route,day,weekKey,state=root.state){
   return{route:ordered,feasible:!!feasible,driveMinutes,kilometers,estimatedEnd:result&&result.after&&result.after.estimatedEnd,waitMinutes:result&&result.after&&result.after.waitMinutes}
 }
 function currentDays(state=root.state){return ((state.settings&&state.settings.days)||DAYS.slice(0,5)).filter(d=>DAYS.includes(d))}
-function upcomingWorkMonday(now=new Date()){
-  const d=new Date(now),base=monday(d),day=d.getDay();
-  /* Le mode escargot prépare les semaines à venir. Le lundi courant n'est retenu que
-     si on lance la génération le lundi ; du mardi au dimanche, on part au lundi suivant. */
-  return day===1?base:addDays(base,7);
-}
-/* V239 : la génération principale du planning est le cycle 3 semaines. Le bouton
-   « Générer mes 3 semaines » transmet explicitement la semaine sélectionnée dans le
-   planning ; c'est elle qui devient la première semaine du cycle.
-   Les deux règles historiques restent derrière, pour tout appel sans semaine imposée :
-   une date de début saisie à la main dans « Planifier plusieurs semaines » gagne, sinon
-   on part du prochain lundi travaillé. Une semaine simplement héritée de l'état ne suffit
-   toujours pas à faire sauter ce lundi. */
+/* r38 : la semaine consultée est un historique, jamais l'horloge du moteur. Une date
+   de début explicite peut repousser le départ ; elle ne peut pas revenir avant le
+   premier jour réellement exploitable. Les jours passés de S1 restent ensuite protégés
+   par le contrat V263 existant (today + existingPlanFor). */
 function resolveSnailStart(state=root.state,doc=root.document,now=new Date(),requestedStart){
+  const realDay=parseISO(iso(now)),days=currentDays(state||{});
+  if(!days.length)throw new Error('Choisis au moins un jour travaillé.');
+  let next=null;
+  for(let offset=0;offset<366;offset++){
+    const date=addDays(realDay,offset),day=DAYS[(date.getDay()||7)-1];
+    if(days.includes(day)&&!dateBlocked(iso(date),state||{})){next=monday(date);break}
+  }
+  if(!next)throw new Error('Aucun jour travaillé disponible dans les 12 prochains mois.');
   const asked=parseISO(String((requestedStart&&requestedStart.start)||requestedStart||'').trim());
-  if(asked)return monday(asked);
   const get=id=>doc&&typeof doc.getElementById==='function'?doc.getElementById(id):null;
   const rangeStart=get('rangeStart');
   const explicitlyChosen=!!(rangeStart&&rangeStart.dataset&&rangeStart.dataset.snailUserEdited==='1');
-  if(explicitlyChosen){const chosen=parseISO(String(rangeStart.value||'').trim());if(chosen)return monday(chosen)}
-  return upcomingWorkMonday(now);
-}
-function syncPlanningControlsForSnail(state=root.state,requestedStart){
-  const first=resolveSnailStart(state,root.document,new Date(),requestedStart),start=iso(first),end=iso(addDays(first,20));
-  if(!state.settings)state.settings={};state.settings.weekDate=start;
-  const week=root.document&&root.document.getElementById('weekDate'),rangeStart=root.document&&root.document.getElementById('rangeStart'),rangeEnd=root.document&&root.document.getElementById('rangeEnd');
-  if(week)week.value=start;if(rangeStart)rangeStart.value=start;if(rangeEnd)rangeEnd.value=end;
-  try{if(typeof root.save==='function')root.save()}catch(e){}
-  return first;
+  const chosen=asked||(explicitlyChosen?parseISO(String(rangeStart.value||'').trim()):null),future=chosen&&monday(chosen);
+  return future&&future>next?future:next;
 }
 function ensureInsightsBox(){
   if(!root.document)return null;let box=root.document.getElementById('terrainSnailInsights');if(box)return box;
@@ -1259,6 +1248,8 @@ function renderTerrainInsights(range){
   if(!rows.length&&!hours&&!distribution.length&&!coverageText){box.hidden=true;box.innerHTML='';return false}
   const mode=rows[0]&&rows[0].mode||'auto',shownThreshold=Number(rows[0]&&rows[0].threshold),threshold=Number.isFinite(shownThreshold)&&shownThreshold>=0?shownThreshold:80,modeLabel=mode==='never'?'Jamais':mode==='mandatory'?'Obligatoire':'Automatique';
   let html='<div style="font-weight:850;color:#1d2939;font-size:12.5px">🌙 Découchés sur 3 semaines</div><div style="margin-top:2px;color:#667085">Mode '+modeLabel+(mode==='auto'?' · seuil '+Math.round(threshold)+' km':'')+'</div>';
+  const start=parseISO(range&&range.start),end=parseISO(range&&range.end),label=d=>pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear();
+  if(start&&end)html+='<div style="margin-top:3px;color:#667085">Période du '+label(start)+' au '+label(end)+' · bilan du cycle complet</div>';
   for(const row of rows){
     const d=String(row.weekKey||'').split('-'),label=d.length===3?d[2]+'/'+d[1]:row.weekKey,b=row.best,saving=b?Math.max(0,Math.round(Number(b.saving)||0)):0;
     let text='🏠 Retour domicile · aucun enchaînement exploitable';
@@ -1303,10 +1294,11 @@ function coverageSummaryText(coverage,prefix){
 async function generateThreeWeekSnail(options){
   const state=root.state,R=root.ChefReliability,storage=db();
   if(!state||!R||typeof R.capture!=='function'||typeof R.persist!=='function')throw new Error('Protection des données indisponible.');
+  const now=parseISO(options&&options.today)||new Date(),today=iso(now);
   /* V263 : la semaine affichée avant génération sert de référence pour les journées déjà
      passées ; elle est lue avant que la date de départ du cycle ne soit réécrite. */
-  const shownWeekKey=iso(monday(parseISO(String((state.settings&&state.settings.weekDate)||'').slice(0,10))||new Date())),shownPlan=copy(state.plan||{});
-  const first=syncPlanningControlsForSnail(state,options);
+  const shownWeekKey=iso(monday(parseISO(String((state.settings&&state.settings.weekDate)||'').slice(0,10))||now)),shownPlan=copy(state.plan||{});
+  const first=resolveSnailStart(state,root.document,now,options);
   if(!validBase(state))throw new Error('Définis d’abord le GPS de ton point de départ dans Mon secteur.');
   const days=currentDays(state),report=summarizeTerrainPool(state.stores||[],state),pool=(state.stores||[]).filter(s=>included(s,state));
   if(!pool.length)throw new Error('Aucun magasin actif ne correspond aux filtres.');
@@ -1315,12 +1307,12 @@ async function generateThreeWeekSnail(options){
   const status=root.document&&root.document.getElementById('terrainSnailStatus');if(status)status.textContent='Vivier : '+report.planifiable+' planifiables · '+report.withoutGps+' GPS à vérifier · '+report.imposed+' imposés. Agenda puis génération…';
   const calendarSynced=await syncCalendar(first,state);
   const archive=JSON.parse(storage.getItem(ARCHIVE_KEY)||'{}')||{};
-  const coverageApi=root.StoreRunnerVisitCoverage,needOf=coverageApi&&typeof coverageApi.needOf==='function'?coverageApi.needOf(state):null;
+  const coverageApi=root.StoreRunnerVisitCoverage,needOf=coverageApi&&typeof coverageApi.needOf==='function'?coverageApi.needOf(state,{today}):null;
   const visitDays=coverageApi&&typeof coverageApi.visitDays==='function'?coverageApi.visitDays(state):null;
   const completedOn=(id,date)=>visitDays?(visitDays.get(String(id))||[]).includes(date):visitedOnLegacy(state,id,date);
   const existingPlanFor=key=>key===shownWeekKey?shownPlan:((archive[key]&&archive[key].plan)||null);
   const hasRealVisitHistory=!!(visitDays&&Array.from(visitDays.values()).some(rows=>Array.isArray(rows)&&rows.length));
-  const built=buildThreeWeekSnail({needOf,today:iso(new Date()),existingPlanFor,completedOn,crossDayEnabled:hasRealVisitHistory,state,firstMonday:first,days,target:Number(state.settings.target)||20,maxCreditsPerDay:Number(state.settings.maxVisitsPerDay)||4,stores:pool,archive,distanceOf,distanceBetween:roadDistanceV264,evaluateDayRoute:(route,day,weekKey)=>evaluateDayRouteV264(route,day,weekKey,state),overnightReservations:state.hotelReservations||{},priorityOf:(store)=>performancePlanningBoost(store,state),weeklyBrief:root.StoreRunnerWeeklyBriefV246,creditOf:visitCredit,lockDayForWeek:lockDay,appointmentDay,dayBlocked:(date)=>dateBlocked(date,state),dayFits:(route,day,mon)=>dayFits(route,day,state,mon)});
+  const built=buildThreeWeekSnail({needOf,today,existingPlanFor,completedOn,crossDayEnabled:hasRealVisitHistory,state,firstMonday:first,days,target:Number(state.settings.target)||20,maxCreditsPerDay:Number(state.settings.maxVisitsPerDay)||4,stores:pool,archive,distanceOf,distanceBetween:roadDistanceV264,evaluateDayRoute:(route,day,weekKey)=>evaluateDayRouteV264(route,day,weekKey,state),overnightReservations:state.hotelReservations||{},priorityOf:(store)=>performancePlanningBoost(store,state),weeklyBrief:root.StoreRunnerWeeklyBriefV246,creditOf:visitCredit,lockDayForWeek:lockDay,appointmentDay,dayBlocked:(date)=>dateBlocked(date,state),dayFits:(route,day,mon)=>dayFits(route,day,state,mon)});
   if(!built.totalVisits)throw new Error(built.coverage&&built.coverage.recentlyVisited.length?'Aucune visite à proposer : les magasins éligibles viennent tous d’être visités ('+built.coverage.recentlyVisited.length+'). Le planning précédent est conservé.':'Aucune visite ne tient dans les 3 semaines avec les réglages actuels.');
   const overnightReport=analyzeOvernightWeeks(built.weeks,state),hoursReport=summarizeOpeningHours(built.weeks,state);
   R.checkpoint('Avant génération 3 semaines escargot',storage);
@@ -1337,6 +1329,8 @@ async function generateThreeWeekSnail(options){
   const firstWeek=built.weeks[0];bundle.state.settings.weekDate=firstWeek.weekKey;bundle.state.plan=Object.fromEntries(DAYS.map(d=>[d,(firstWeek.plan[d]||[]).map(s=>canonicalStore(s.id,bundle.state)||s)]));
   bundle.range={start:firstWeek.weekKey,end:iso(addDays(first,20)),weeks:3,workDays:days,uniqueStores:built.uniqueStores,totalVisits:built.totalVisits,rotation:built.crossDay&&built.crossDay.applied?'cross-day-v264':'snail-distance-v1',calendarSynced,poolReport:report,overnightReport,hoursReport,planningDiagnostics:built.weeks.map(w=>({weekKey:w.weekKey,days:w.diagnostics||[]})),dayCoverage:built.dayCoverage,coverage:built.coverage||null,crossDayReport:built.crossDay&&built.crossDay.applied?built.crossDay:null,updatedAt:new Date().toISOString()};
   R.persist(bundle,storage);if(storage&&typeof storage.flush==='function')await storage.flush();root.state=bundle.state;
+  const controls=root.document&&root.document.getElementById.bind(root.document),week=controls&&controls('weekDate'),rangeStart=controls&&controls('rangeStart'),rangeEnd=controls&&controls('rangeEnd');
+  if(week)week.value=firstWeek.weekKey;if(rangeStart)rangeStart.value=firstWeek.weekKey;if(rangeEnd)rangeEnd.value=bundle.range.end;
   try{if(typeof root.initControls==='function')root.initControls();if(typeof root.renderAll==='function')root.renderAll()}catch(e){}
   root.dispatchEvent(new CustomEvent('chef-range-generated',{detail:{start:firstWeek.weekKey,end:bundle.range.end,weeks:3,workDays:days,uniqueStores:built.uniqueStores,mode:built.crossDay&&built.crossDay.applied?'cross-day-v264':'snail-distance-v1'}}));
   root.document&&root.document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{reason:'three-week-snail',weekDate:firstWeek.weekKey}}));

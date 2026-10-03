@@ -18,7 +18,7 @@ test('V212 : escargot futur, durée magasin et hôtel réservé à 390 px',async
     const field=document.getElementById('rangeStart');if(field){field.value='2026-09-14';delete field.dataset.snailUserEdited}
     return StoreRunnerTerrainPlanningV1.resolveSnailStart(state,document,new Date()).toISOString().slice(0,10);
   });
-  expect(start).toBe('2026-09-21');
+  expect(start).toBe('2026-09-14');
 
   await page.evaluate(()=>{
     const mk=(id,brand,visitMinutes,lat,lon)=>({id,enseigne:brand,ville:'Ville '+id,adresse:'1 rue Test',dept:'99',lat,lon,active:true,priority:3,intervalDays:30,freq:'Mensuel',products:['Blanc'],visitMinutes});
