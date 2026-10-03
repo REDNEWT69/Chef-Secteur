@@ -3,8 +3,9 @@
 // Ce que ce test protège :
 //   * le bouton principal s'appelle « Générer mes 3 semaines » et déclenche le moteur
 //     3 semaines déjà existant, pas une génération d'une seule semaine ;
-//   * la semaine sélectionnée est la première semaine du cycle, et le cycle couvre
-//     exactement trois semaines consécutives ;
+//   * une date de début explicitement choisie gagne sur la semaine affichée ; sinon la
+//     semaine affichée reste la première semaine du cycle ; le cycle couvre exactement
+//     trois semaines consécutives ;
 //   * l'ancienne action séparée « Générer 3 semaines · escargot » a disparu du menu
 //     « Planifier plusieurs semaines », sans laisser de séparateur ni de vide ;
 //   * les autres actions de ce menu restent en place ;
@@ -93,7 +94,8 @@ function boot(options) {
   shellButton.matchesList = ['[data-planning-generate="three-weeks"]'];
   shellButton.ancestors = { '#planPanel': panel };
   const weekInput = { value: opts.weekDate || '2026-10-08' };
-  const byId = { weekDate: weekInput };
+  const rangeStartInput = { value: opts.rangeStart || '', dataset: { snailUserEdited: opts.rangeStartEdited ? '1' : '' } };
+  const byId = { weekDate: weekInput, rangeStart: rangeStartInput };
   const created = [];
   const docListeners = {};
   const document = {
@@ -156,6 +158,20 @@ async function mainButtonRunsTheExistingThreeWeekEngine() {
   assert.equal(t.main.disabled, false, 'le bouton doit être rendu à l’utilisateur après la génération');
   assert.equal(t.shellButton.disabled, false, 'tous les boutons de l’action doivent être libérés');
   assert.match(t.status(), /^Planning généré sur 3 semaines\./, 'le succès doit être annoncé en une phrase courte');
+}
+
+async function explicitRangeStartWinsOverAutoDisplayedWeek() {
+  const chosen = boot({ weekDate: '2026-10-12', rangeStart: '2026-10-05', rangeStartEdited: true });
+  chosen.document.click(chosen.main);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(chosen.calls.three[0].start, '2026-10-05',
+    'une date de début explicitement choisie au 05/10 doit gagner sur une semaine affichée au 12/10');
+
+  const inherited = boot({ weekDate: '2026-10-12', rangeStart: '2026-10-05', rangeStartEdited: false });
+  inherited.document.click(inherited.main);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(inherited.calls.three[0].start, '2026-10-12',
+    'une date de période seulement héritée ne doit pas remplacer la semaine affichée');
 }
 
 async function aFailureKeepsTheExistingErrorMechanism() {
@@ -270,6 +286,7 @@ function build(options) {
 
 (async function run() {
   await mainButtonRunsTheExistingThreeWeekEngine();
+  await explicitRangeStartWinsOverAutoDisplayedWeek();
   await aFailureKeepsTheExistingErrorMechanism();
   await anIncompleteBaseStopsBeforeTheEngine();
   deadControllerRecalculationDoesNotReturn();
