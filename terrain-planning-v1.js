@@ -194,10 +194,13 @@ function emptyPlan(){return Object.fromEntries(DAYS.map(d=>[d,[]]))}
 function manualWeekInfo(weekKey,state,archive){
   const manual=state&&state.manualWeekEdits&&state.manualWeekEdits[weekKey],snap=archive&&archive[weekKey];
   if(!((snap&&snap.manualEdited)||manual))return null;
-  const removedIds=new Set(((snap&&snap.manualRemovedIds)||[]).map(String)),datedIds=new Set();
-  for(const [id,raw] of Object.entries(state&&state.locks||{}))if(raw&&typeof raw==='object'&&!Array.isArray(raw)&&String(raw.week||'')===String(weekKey)&&DAYS.includes(String(raw.day||'')))datedIds.add(String(id));
+  const removedIds=new Set(((snap&&snap.manualRemovedIds)||[]).map(String)),datedIds=new Set(),plan=copy((snap&&snap.plan)||(manual&&manual.plan)||emptyPlan());
+  /* Une semaine ancienne peut contenir un verrou daté sans rapport avec sa retouche.
+     Il ne devient ancre adaptative que si le magasin verrouillé figure réellement dans
+     l'instantané manuel, au même jour. Les nouvelles retouches portent manualAdaptive. */
+  for(const [id,raw] of Object.entries(state&&state.locks||{}))if(raw&&typeof raw==='object'&&!Array.isArray(raw)&&String(raw.week||'')===String(weekKey)&&DAYS.includes(String(raw.day||''))&&((plan[String(raw.day)]||[]).some(s=>String(s&&s.id)===String(id))))datedIds.add(String(id));
   const adaptive=!!(snap&&snap.manualAdaptive)||removedIds.size>0||datedIds.size>0;
-  return{plan:copy((snap&&snap.plan)||(manual&&manual.plan)||emptyPlan()),adaptive,removedIds,datedIds}
+  return{plan,adaptive,removedIds,datedIds}
 }
 function protectedPlanFor(weekKey,state,archive){const info=manualWeekInfo(weekKey,state,archive);return info&&!info.adaptive?info.plan:null}
 function adaptiveManualFor(weekKey,state,archive){const info=manualWeekInfo(weekKey,state,archive);return info&&info.adaptive?info:null}
@@ -1032,7 +1035,7 @@ function buildThreeWeekSnail(options){
     const manuallyRemoved=s=>{if(!adaptiveManual)return false;const id=String(s&&s.id||''),k=storeKey(s);return adaptiveManual.removedIds.has(id)||adaptiveManual.removedIds.has(k)};
     const weekRanked=rankedFor(weekKey).filter(s=>!manuallyRemoved(s));
     const candidates=weekRanked.filter(s=>{if(!needAt(s,lastRef).blocked)return true;const k=storeKey(s);if(!used.has(k)&&!weekPlaced.has(k))recentlySkipped.add(k);return false});
-    const skippedThisWeek=ranked.length-candidates.length;
+    const skippedThisWeek=weekRanked.length-candidates.length;
     if(!activeDays.length){const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked:candidates,used,weekPlaced,credit,fits,frozenDays,recentlyVisited:skippedThisWeek});weeks.push({weekKey,plan,manual:false,unplaced,diagnostics,frozenDays});expireDues(iso(addDays(mon,7)));continue}
     const place=s=>{
       const open=new Set(freeOn(s)),placementDays=adaptiveManual?orderedAdaptivePlacementDays(activeDays,plan,quotas,credit,s,between):orderedPlacementDays(activeDays,plan,quotas,credit);

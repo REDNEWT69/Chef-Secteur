@@ -64,6 +64,12 @@ function env(options={}){
   assert.equal(stateGuard&&stateGuard.preservedManual,true,'le moteur doit signaler la conservation manuelle via le garde-fou d’état');
 
 
+  const legacyPlanWithOtherLock=emptyPlan();legacyPlanWithOtherLock.Lundi=[store('a')];
+  t=env({plan:legacyPlanWithOtherLock,locks:{b:{day:'Lundi',week:'2026-09-07'}},manualWeekEdits:{'2026-09-07':{at:'2026-09-07T12:00:00Z',plan:legacyPlanWithOtherLock}},archive:{'2026-09-07':{weekMonday:'2026-09-07',manualEdited:true,plan:JSON.parse(JSON.stringify(legacyPlanWithOtherLock))}}});
+  const unrelated=await t.ctx.testManualWeek.strictSingleWeek();
+  assert.equal(unrelated&&unrelated.preservedManual,true,'un verrou daté qui ne figure pas dans la retouche ne doit pas défiger la semaine');
+  assert.equal(t.proposals.length,0);
+
   // M1 : un ajout/déplacement manuel porte un verrou daté individuel. La semaine reste
   // générable autour de cette ancre au lieu d'être traitée comme un bloc intouchable.
   const adaptivePlan=emptyPlan();adaptivePlan.Lundi=[store('a')];

@@ -83,6 +83,16 @@ function flat(week){
 })();
 
 
+(function unrelatedDatedLockDoesNotUnlockLegacyManualWeek(){
+  const stores=[store(1),store(2)],manual={Lundi:[stores[0]],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]},week='2026-09-14';
+  const state={manualWeekEdits:{[week]:{at:'2026-09-13T00:00:00Z',plan:manual}},locks:{s2:{day:'Mardi',week}},included:{}};
+  const info=terrain.manualWeekInfo(week,state,{});
+  assert.strictEqual(info.adaptive,false,'un verrou daté extérieur à la retouche ne doit pas défiger une ancienne semaine manuelle');
+  const built=terrain.buildThreeWeekSnail({state,firstMonday:monday(),days:['Lundi','Mardi'],target:2,maxCreditsPerDay:2,stores,archive:{},distanceOf:s=>s.distance,creditOf:()=>1,lockDayForWeek:(id,wk)=>state.locks[id]&&state.locks[id].week===wk?state.locks[id].day:'',appointmentDay:()=>'',dayBlocked:()=>false,dayFits:()=>true,crossDayEnabled:false});
+  assert.strictEqual(built.weeks[0].manual,true);
+  assert.deepStrictEqual(flat(built.weeks[0]).map(s=>s.id),['s1']);
+})();
+
 (function adaptiveManualPinBecomesADayAnchor(){
   const anchor={id:'anchor',enseigne:'Test',ville:'Zone Est',distance:100,x:100,active:true},near={id:'near',enseigne:'Test',ville:'Zone Est proche',distance:101,x:101,active:true},west={id:'west',enseigne:'Test',ville:'Ouest',distance:1,x:0,active:true},west2={id:'west2',enseigne:'Test',ville:'Ouest 2',distance:2,x:-1,active:true},stores=[anchor,near,west,west2];
   const plan={Lundi:[west],Mardi:[anchor],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]},week='2026-09-14',state={manualWeekEdits:{[week]:{at:'2026-09-13T12:00:00Z',plan}},locks:{anchor:{day:'Mardi',week}},included:{}};

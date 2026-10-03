@@ -237,18 +237,19 @@ function lockDayForWeek(id,weekKey,source){
   if(!entry.week)return entry.day;               // verrou récurrent : toutes les semaines
   return entry.week===String(weekKey||'')?entry.day:'';
 }
-function hasDatedPinForWeek(weekKey){
-  for(const raw of Object.values(state&&state.locks||{}))if(raw&&typeof raw==='object'&&!Array.isArray(raw)&&String(raw.week||'')===String(weekKey)&&DAYS.includes(String(raw.day||'')))return true;
+function hasDatedPinForWeek(weekKey,plan){
+  const source=plan||{};
+  for(const [id,raw] of Object.entries(state&&state.locks||{}))if(raw&&typeof raw==='object'&&!Array.isArray(raw)&&String(raw.week||'')===String(weekKey)&&DAYS.includes(String(raw.day||''))&&((source[String(raw.day)]||[]).some(s=>String(s&&s.id)===String(id))))return true;
   return false
 }
-function adaptiveManualWeek(weekKey,snap){
-  const removed=Array.isArray(snap&&snap.manualRemovedIds)&&snap.manualRemovedIds.length;
-  return !!(snap&&snap.manualEdited&&(snap.manualAdaptive||removed))||hasDatedPinForWeek(weekKey)
+function adaptiveManualWeek(weekKey,snap,manualEntry){
+  const removed=Array.isArray(snap&&snap.manualRemovedIds)&&snap.manualRemovedIds.length,plan=(snap&&snap.plan)||(manualEntry&&manualEntry.plan)||{};
+  return !!(snap&&snap.manualEdited&&(snap.manualAdaptive||removed))||hasDatedPinForWeek(weekKey,plan)
 }
-function wholeWeekManual(weekKey,snap,manualEntry){return !!((snap&&snap.manualEdited)||manualEntry)&&!adaptiveManualWeek(weekKey,snap)}
+function wholeWeekManual(weekKey,snap,manualEntry){return !!((snap&&snap.manualEdited)||manualEntry)&&!adaptiveManualWeek(weekKey,snap,manualEntry)}
 function removedIdsForWeek(snap){return new Set(((snap&&snap.manualRemovedIds)||[]).map(String))}
 function keepAdaptiveMeta(next,weekKey,snap){
-  if(!adaptiveManualWeek(weekKey,snap))return next;
+  if(!adaptiveManualWeek(weekKey,snap,null))return next;
   next.manualEdited=true;next.manualAdaptive=true;next.manualEditedAt=snap&&snap.manualEditedAt||new Date().toISOString();
   const removed=[...removedIdsForWeek(snap)].sort();if(removed.length)next.manualRemovedIds=removed;
   return next
