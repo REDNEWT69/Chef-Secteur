@@ -161,7 +161,8 @@
       let coverage='';try{if(typeof api.coverageSummaryText==='function')coverage=api.coverageSummaryText(built&&built.coverage,' · ')}catch(e){}
       generationStatus('Planning généré sur 3 semaines. '+visits+' visite'+(visits>1?'s':'')+' · '+stores+' magasin'+(stores>1?'s':'')+coverage+'.','ok');
       ensureUnifiedGenerationUi();
-      return{ok:true,start:start,weeks:3,result:built};
+      const actualStart=built&&built.weeks&&built.weeks[0]&&built.weeks[0].weekKey||null;
+      return{ok:true,start:actualStart,weeks:3,result:built};
     }catch(e){
       const message=e&&e.message?e.message:String(e);
       generationStatus(message,'bad');
