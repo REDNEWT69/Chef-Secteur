@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
 // V263.1 — cas qui demandent le runtime complet, sur un vrai téléphone 390 px.
-//  a. Le contrôleur pose le drapeau avant d'entrer dans V185, le vrai moteur laisse
+//  a. (r38 : une seule lecture du cache Agenda par génération.) Le contrôleur pose le drapeau avant d'entrer dans V185, le vrai moteur laisse
 //     Agenda en lecture du cache, puis V251 finalise une fois. La protection vérifie
 //     ainsi le nouveau propriétaire du drapeau sans dépendre de l'enveloppe V184 retirée.
 //  g. Pilotage ouvert : suppression d'une visite ou planning modifié → anneau et tuiles
@@ -44,7 +44,7 @@ test('B2 : le contrôleur garde Agenda en cache pendant le vrai moteur 3 semaine
     const st = window.state;
     const stores = Array.from({ length: 30 }, (_, i) => ({ id: 'a-' + i, enseigne: 'Magasin', ville: 'Ville ' + i, adresse: i + ' rue du Test', dept: '99',
       lat: 43.658 + (i % 7) * 0.03, lon: -0.668 + Math.floor(i / 7) * 0.04, active: true, priority: 3, intervalDays: 30, products: [] }));
-    st.profile = Object.assign({}, st.profile || {}, { baseName: 'Base', baseLat: 43.658, baseLon: -0.668, overnightMode: 'never' });
+    st.profile = Object.assign({}, st.profile || {}, { baseName: 'Domicile', baseAddress: '1 rue de la Base, Dax', baseLat: 43.658, baseLon: -0.668, overnightMode: 'never' });
     st.settings = Object.assign({}, st.settings || {}, { weekDate: '2026-09-14', days: ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'], target: 10, maxVisitsPerDay: 3, startTime: '08:30', endTime: '18:00', visitMinutes: 45, brands: [], products: [] });
     st.stores = stores; st.plan = { Lundi: [], Mardi: [], Mercredi: [], Jeudi: [], Vendredi: [], Samedi: [] };
     st.included = {}; st.excluded = {}; st.appointments = []; st.calendarEvents = []; st.manualWeekEdits = {}; st.locks = {}; st.visits = {};
@@ -101,7 +101,7 @@ test('B2 : le contrôleur garde Agenda en cache pendant le vrai moteur 3 semaine
   expect(generation.totalVisits, 'la génération réelle doit réussir').toBeGreaterThan(0);
   expect(generation.weeks).toBe(3);
   expect(generation.restored, 'le contrôleur doit restaurer la valeur précédente du drapeau').toBe('before-controller');
-  expect(generation.calendar, 'Agenda doit être consulté une fois par semaine sous le drapeau du contrôleur').toHaveLength(3);
+  expect(generation.calendar, 'r38 : Agenda est lu une seule fois (cache) sous le drapeau du contrôleur, sans faire défiler weekDate').toHaveLength(1);
   for (const call of generation.calendar) {
     expect(call.active, 'le vrai moteur doit appeler Agenda avec le drapeau strictement true').toBe(true);
     expect(call).toMatchObject({ ok: true, cached: true, reason: 'planning-cache' });
