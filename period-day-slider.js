@@ -72,7 +72,7 @@
     return true;
   }
   function loadDate(raw,options){
-    const date=raw instanceof Date?new Date(raw):parse(raw);if(!date)return false;
+    const date=raw&&typeof raw.getTime==='function'?new Date(raw.getTime()):parse(raw);if(!date)return false;
     const a=load(ARCHIVE_KEY),mon=monday(date),key=iso(mon),snap=a[key],name=dayName(date),r=range(),allowOutside=!!(options&&options.allowOutsideRange),shown=dayShown(date,r,()=>a);
     if(!allowOutside&&!shown)return false;
     outsideRangeDate=allowOutside&&!shown?iso(date):'';
