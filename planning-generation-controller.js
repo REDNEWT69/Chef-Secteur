@@ -53,6 +53,12 @@
     const raw=(input&&input.value)||(window.state&&state.settings&&state.settings.weekDate)||isoDate(new Date());
     return mondayOf(parseDate(raw)||new Date());
   }
+  function explicitRangeStartMonday(){
+    const input=document.getElementById('rangeStart');
+    if(!input||!input.dataset||input.dataset.snailUserEdited!=='1')return null;
+    const chosen=parseDate(input.value);
+    return chosen?mondayOf(chosen):null;
+  }
 
   function ensureUnifiedGenerationUi(){
     const generate=mainGenerateAnchor();
@@ -75,7 +81,7 @@
     }
     /* Texte réécrit seulement s'il doit changer : cette fonction repasse à chaque
        événement planning, et une écriture DOM inutile relance les observateurs. */
-    const hintText='La génération prépare 3 semaines d’affilée à partir de la semaine affichée. Optimisation géographique et découché sont calculés automatiquement.';
+    const hintText='La génération prépare 3 semaines d’affilée à partir de la date de début choisie dans « Planifier plusieurs semaines », sinon de la semaine affichée. Optimisation géographique et découché sont calculés automatiquement.';
     if(hint.textContent!==hintText)hint.textContent=hintText;
 
     /* Le recalcul reste utile quand la semaine est déjà entamée, mais ce n'est pas un
@@ -134,8 +140,9 @@
    * Le cycle escargot 3 semaines existait déjà (StoreRunnerTerrainPlanningV1), mais il
    * était rangé derrière une action séparée dans « Planifier plusieurs semaines » alors
    * que c'est l'usage réel du terrain. Cette fonction ne replanifie rien elle-même :
-   * elle prend la semaine affichée comme première semaine du cycle et délègue au moteur
-   * existant, lu au moment de l'appel pour conserver les enveloppes V185
+   * elle prend d’abord une date de début explicitement choisie dans « Planifier plusieurs
+   * semaines » ; sinon la semaine affichée reste la première semaine du cycle. Elle délègue
+   * ensuite au moteur existant, lu au moment de l'appel pour conserver les enveloppes V185
    * (optimisation géographique) et V248 (matrice routière) posées par-dessus.
    *
    * La génération d'une seule semaine (`generateWeek`) reste intacte pour ses autres
@@ -153,7 +160,7 @@
       generationStatus(message,'bad');
       return{ok:false,__storeRunnerRejectedEmpty:true,error:message};
     }
-    const start=isoDate(currentWeekMonday());
+    const start=isoDate(explicitRangeStartMonday()||currentWeekMonday());
     setGenerateBusy(true);
     generationStatus('Génération de 3 semaines · rotation géographique…','busy');
     try{

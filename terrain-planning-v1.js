@@ -142,17 +142,21 @@ function orderedPlacementDays(activeDays,plan,quotas,credit){
    Tant que deux journées restent sous leur quota, un magasin libre préfère la journée
    dont les visites déjà fixées sont les plus proches. Sans ancre, l'ordre historique
    de répartition reste strictement inchangé. */
-function dayCohesionDistanceV265(plan,day,store,distanceBetween){
-  const rows=(plan&&plan[day])||[];if(!rows.length)return Infinity;
+function dayCohesionDistanceV265(plan,day,store,distanceBetween,distanceFromBase){
+  const rows=(plan&&plan[day])||[];
+  if(!rows.length){try{const n=Number(distanceFromBase(store));return Number.isFinite(n)&&n>=0?n:Infinity}catch(e){return Infinity}}
   let best=Infinity;for(const anchor of rows){try{const n=Number(distanceBetween(anchor,store));if(Number.isFinite(n)&&n>=0&&n<best)best=n}catch(e){}}
   return best
 }
-function orderedAdaptivePlacementDays(activeDays,plan,quotas,credit,store,distanceBetween){
+function orderedAdaptivePlacementDays(activeDays,plan,quotas,credit,store,distanceBetween,distanceFromBase){
   const base=orderedPlacementDays(activeDays,plan,quotas,credit),order=new Map(base.map((d,i)=>[d,i]));
   return base.slice().sort((a,b)=>{
     const an=(plan[a]||[]).length<(quotas[a]||0),bn=(plan[b]||[]).length<(quotas[b]||0);
     if(an!==bn)return an?-1:1;
-    const da=dayCohesionDistanceV265(plan,a,store,distanceBetween),dbv=dayCohesionDistanceV265(plan,b,store,distanceBetween),af=Number.isFinite(da),bf=Number.isFinite(dbv);
+    /* Pour une journée vide, le coût de référence est le trajet depuis la base.
+       Une journée ancrée ne gagne donc que si le candidat est réellement plus proche de
+       cette zone que de la base. « distance finie » n'est plus synonyme de « proche ». */
+    const da=dayCohesionDistanceV265(plan,a,store,distanceBetween,distanceFromBase),dbv=dayCohesionDistanceV265(plan,b,store,distanceBetween,distanceFromBase),af=Number.isFinite(da),bf=Number.isFinite(dbv);
     if(af!==bf)return af?-1:1;
     if(af&&Math.abs(da-dbv)>1e-9)return da-dbv;
     return order.get(a)-order.get(b)
@@ -1038,7 +1042,7 @@ function buildThreeWeekSnail(options){
     const skippedThisWeek=weekRanked.length-candidates.length;
     if(!activeDays.length){const diagnostics=weekDistributionDiagnostics({mon,days,activeDays,plan,target,max,ranked:candidates,used,weekPlaced,credit,fits,frozenDays,recentlyVisited:skippedThisWeek});weeks.push({weekKey,plan,manual:false,unplaced,diagnostics,frozenDays});expireDues(iso(addDays(mon,7)));continue}
     const place=s=>{
-      const open=new Set(freeOn(s)),placementDays=adaptiveManual?orderedAdaptivePlacementDays(activeDays,plan,quotas,credit,s,between):orderedPlacementDays(activeDays,plan,quotas,credit);
+      const open=new Set(freeOn(s)),placementDays=adaptiveManual?orderedAdaptivePlacementDays(activeDays,plan,quotas,credit,s,between,distance):orderedPlacementDays(activeDays,plan,quotas,credit);
       for(const day of placementDays){
         if(!open.has(day))continue;
         const trial=plan[day].concat([s]),cost=trial.reduce((n,x)=>n+Math.max(1,Number(credit(x))||1),0);
@@ -1055,7 +1059,7 @@ function buildThreeWeekSnail(options){
     }
     const placeForced=item=>{
       const s=item.store,k=storeKey(s);if(weekPlaced.has(k))return;
-      const candidateDays=item.day?[item.day]:(adaptiveManual?orderedAdaptivePlacementDays(activeDays,plan,quotas,credit,s,between):orderedPlacementDays(activeDays,plan,quotas,credit));
+      const candidateDays=item.day?[item.day]:(adaptiveManual?orderedAdaptivePlacementDays(activeDays,plan,quotas,credit,s,between,distance):orderedPlacementDays(activeDays,plan,quotas,credit));
       for(const day of candidateDays){
         const trial=plan[day].concat([s]),cost=trial.reduce((n,x)=>n+Math.max(1,Number(credit(x))||1),0);
         if(cost>max||!fits(trial,day,mon))continue;
