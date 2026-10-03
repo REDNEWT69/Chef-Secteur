@@ -30,7 +30,7 @@ const CORE_SHELL = [
   "./terrain-planning-v1.js", "./working-hours-end.js", "./daily-capacity.js",
   "./planning-pro-plus.js", "./planning-summary-v219.js", "./period-day-slider.js",
   "./planning-manual-visits.js", "./planning-reorder-v254.js", "./workdays-enforcer.js",
-  "./planning-command-engine.js", "./planning-command-ui.js",
+  "./planning-command-engine.js",
   "./visit-history-delete.js", "./assistant-sheet-drag.js", "./visual-refresh-v1.js",
   "./home-refresh-v2.js", "./sector-pilotage.js", "./v182-fixes.js",
   "./planning-route-optimizer-v251.js", "./auto-planning-fix.js",

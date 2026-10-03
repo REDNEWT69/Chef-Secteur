@@ -37,7 +37,7 @@ aperçu altéré ou obsolète.
 | D. placement minimal | `planning-manual-visits.js` | `addToPlan(copie, id, jour)`, `scheduleIssue` | non (sur copie) |
 | D. recalcul | `planning-cascade-v181.js` | `storeRunnerRecalculateRemainingWeek.build({readControls:false})` | non |
 | D. contrôles | horaires `StoreOpeningHoursV1.scheduleRoute`, découché V189 `StoreRunnerOvernightV182.analyze`, km `routeMetrics` | | non |
-| E. aperçu | `planning-command-ui.js` | feuille `#srCommandSheet` (textContent seulement) | non |
+| E. aperçu | `planning-command-engine.js` (partie interface) | feuille `#srCommandSheet` (textContent seulement) | non |
 | F. appliquer une période | `ChefReliability` | `capture` → archive (`generatedArchiveEntry`) + `state.plan` de la semaine affichée → `persist` (journalisé, atomique) | **oui, après validation** |
 | F. appliquer un placement | `planning-manual-visits.js`, `range-planner-v2.js`, `period-day-slider.js` | `addStore`, `storeRunnerPinPlannedStore`, `openDate` | **oui, après validation** |
 | F. appliquer un recalcul | `planning-cascade-v181.js` | `applyResult(result)` (le chemin du bouton) | **oui, après validation** |
@@ -164,8 +164,10 @@ jeudi », « ajoute un magasin »…) ne sont pas captées.
 - `src/chef-secteur.html` : `assistantSend` confie d'abord la phrase à
   `storeRunnerPlanningCommand` ; une commande planning n'atteint jamais `applyAIActions` de l'IA
   en ligne.
-- `index.html`, `sw.js` : deux modules ajoutés au chargement et au cache hors ligne (`BUILD_REV`
-  inchangé : à monter dans la PR au moment de la validation).
+- `index.html`, `sw.js` : un module ajouté au chargement et au cache hors ligne. Moteur et feuille
+  d'aperçu partagent ce fichier : le démarrage charge 75 scripts, exactement le budget figé par
+  `tests/fixtures/cleanup-baseline-r20.json` (vérifié par `boot-v234-browser`). `BUILD_REV`
+  inchangé : à monter dans la PR au moment de la validation.
 
 ## Tests
 

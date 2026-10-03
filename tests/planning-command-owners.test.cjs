@@ -103,15 +103,17 @@ let passed = 0; const ok = name => { passed++; console.log('✓ ' + name); };
   {
     const core = read('src/chef-secteur.html'), send = core.match(/function assistantSend\(\)\{.*$/m)[0];
     assert(send.indexOf('storeRunnerPlanningCommand') > 0 && send.indexOf('storeRunnerPlanningCommand') < send.indexOf("aiConfig.mode==='online'"), 'commande planning interceptée avant l’IA en ligne');
-    const ui = read('planning-command-ui.js'), engine = read('planning-command-engine.js');
+    const engine = read('planning-command-engine.js'), ui = engine.slice(engine.indexOf('interface mobile'));
+    assert(ui.length > 1000, 'la feuille d’aperçu vit dans le même module (une seule ressource au démarrage)');
     assert.doesNotMatch(ui, /innerHTML|insertAdjacentHTML|outerHTML/, 'aucun HTML construit à partir du texte');
-    assert.doesNotMatch(engine + ui, /\beval\s*\(|new Function\s*\(|localStorage\.(?:get|set|remove)Item/, 'ni eval, ni stockage direct');
+    assert.doesNotMatch(engine, /\beval\s*\(|new Function\s*\(|localStorage\.(?:get|set|remove)Item/, 'ni eval, ni stockage direct');
     /* Seule écriture directe admise : le paquet ChefReliability (bundle.state…) persisté d’un bloc,
        comme le fait le cycle terrain. L’état vivant n’est jamais modifié en place. */
     assert.doesNotMatch(engine, /\b(?:ctx|win|root|window)\.state\.(?:plan|locks|profile|appointments|visits|manualWeekEdits|excluded|included|settings)\b(?:\.[\w$]+|\[[^\]]+\])*\s*=(?![=>])/, 'le moteur de commandes n’écrit aucune structure d’un autre propriétaire');
     assert.match('ctx.state.locks[id]={day}', /\b(?:ctx|win|root|window)\.state\.(?:plan|locks|profile|appointments|visits|manualWeekEdits|excluded|included|settings)\b(?:\.[\w$]+|\[[^\]]+\])*\s*=(?![=>])/, 'garde-fou du contrôle lui-même');
     const sw = read('sw.js'), index = read('index.html');
-    for (const f of ['planning-command-engine.js', 'planning-command-ui.js']) { assert(sw.includes('"./' + f + '"'), f + ' en cache hors ligne'); assert(index.includes("'./" + f + "'"), f + ' chargé par index.html'); }
+    assert(!require('node:fs').existsSync(path.join(ROOT, 'planning-command-ui.js')), 'pas de second module au démarrage');
+    for (const f of ['planning-command-engine.js']) { assert(sw.includes('"./' + f + '"'), f + ' en cache hors ligne'); assert(index.includes("'./" + f + "'"), f + ' chargé par index.html'); }
     const rev = /const BUILD_REV = "([^"]+)"/.exec(sw)[1];
     assert.equal(rev, '20261003-r38-temporal-geographic-coherence-264', 'BUILD_REV non modifié tant que le lot n’est pas validé');
     ok('noyau, interface et cache : point d’entrée unique, texte jamais interprété, BUILD_REV r38 conservé');
