@@ -84,13 +84,36 @@ V265 (Command Engine), r38/r39 (départ, semaine active), V264, H2, V189, V251, 
 (`terrain-planning-v1.js`, `auto-planning-fix.js`, `planning-route-optimizer-v251.js`, `v182-fixes.js`,
 `planning-cascade-v181.js`, `planning-command-engine.js`, `store-opening-hours.js`) n'est modifié.
 
-## Décision à valider
+## Décision à valider : démarrage + `CORE_SHELL`
 
-`store-explorer.js` est un **module de démarrage supplémentaire** (76 scripts au lieu de 75, budget de
-`cleanup-baseline-r20`) et une entrée de `CORE_SHELL` dans `sw.js` au-delà de `BUILD_REV` — deux cas qui
-demandent un accord humain avant fusion (AGENTS.md). Alternative écartée : loger 500 lignes de lecture
-transverse dans `visit-coverage.js` ou le noyau, ce qui aurait fait de la couverture le propriétaire d'écrans
-qu'elle ne possède pas.
+`store-explorer.js` est un **module de démarrage supplémentaire** (76 scripts au lieu de 75, plafond de
+`cleanup-baseline-r20`) et une entrée de `CORE_SHELL` dans `sw.js` au-delà de `BUILD_REV` : deux cas qui
+demandent un accord humain avant fusion (AGENTS.md).
+
+**Chargement à la demande (à l'ouverture de « Mes magasins ») : étudié, écarté.** Raisons précises :
+
+1. **Hors ligne.** Un script chargé à la demande est demandé avec `?rev=BUILD_REV`. Dans `sw.js`, seuls les
+   fichiers de `CORE_SHELL` sont préchargés sous cette clé et servis par `ownRevisionAsset`. Un fichier de
+   `OPTIONAL_SHELL` est stocké sous une clé sans `rev` ; la requête `?rev=` passe par `networkFirst` avec
+   `foreignRevision=true`, qui **n'a volontairement aucun repli sur le cache** (V260, pour ne jamais mêler
+   deux révisions). Résultat : hors ligne, le module ne se chargerait pas. Le précédent
+   (`visit-report-ai-json-v225.js`, absent du cache) est déjà inscrit comme dette dans ce dépôt. Charger sans
+   `?rev=` rétablirait le repli mais réintroduirait le mélange ancienne page / nouveau module que V260
+   supprime. De plus, `OPTIONAL_SHELL` est installé en `allSettled` : un échec de téléchargement n'empêche
+   pas l'installation, alors que `CORE_SHELL` garantit une révision complète ou rien.
+2. **`sw.js` est touché de toute façon.** Le chargement à la demande ne supprime donc pas l'exception
+   « modification de `sw.js` au-delà de `BUILD_REV` » ; il n'évite que le 76e script.
+3. **Plusieurs portes d'entrée.** La fiche 360 s'ouvre aussi depuis le Planning, l'Accueil, le Pilotage et
+   la couverture (`openStoreQuick`), pas seulement depuis « Mes magasins ». Un chargeur devrait être branché
+   dans le noyau à chaque porte, et le premier rendu de la liste deviendrait asynchrone (liste sans filtre
+   puis enrichie) : un changement de comportement visible, alors que la consigne est de ne pas en changer.
+4. **Garde-fous existants.** `pwa-cache-contract` exige que tout module injecté soit en cache ; un module à
+   la demande demanderait une nouvelle catégorie de test et un chargeur borné à tester hors ligne.
+
+Gain évité : un script d'environ 25 Ko sur 76. Alternative écartée aussi : loger ce code dans
+`visit-coverage.js` ou le noyau, ce qui ferait de la couverture le propriétaire d'écrans qu'elle ne possède pas.
+Si le plafond de 75 scripts doit rester strict, la bonne voie est de **fusionner un module existant** (décision
+séparée, hors de ce lot), pas de contourner le cache.
 
 ## Tests
 
