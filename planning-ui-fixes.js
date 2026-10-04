@@ -112,6 +112,10 @@
     const plan=document.querySelector('#planPanel .applePlan'),title=plan&&plan.querySelector('.applePlanTitle'),tabs=document.getElementById('dayTabs'),timeline=plan&&plan.querySelector('.timelineShell'),metrics=document.getElementById('planMetrics'),saturday=document.getElementById('saturdayRecommendation'),departure=plan&&plan.querySelector('.departureCard'),settings=document.getElementById('planningSettings');
     if(!plan||!tabs||!timeline)return;
     const editing=isEditingLocked(),hero=ensurePlanningHero(plan,title);moveAfter(hero,tabs);
+    /* Explorer Terrain V1 : la navigation par semaine (period-day-slider.js) se range entre le héros
+       et la bande des jours, qu'elle pilote. Même principe que le message « semaine non générée » :
+       sans ce déplacement, réordonner le panneau la laisserait seule plus bas. */
+    const weekNav=document.getElementById('periodWeekNavV266');if(weekNav)moveAfter(hero,weekNav);
     /* La bande de période pose son message « semaine non générée » juste après #dayTabs.
        Réordonner le panneau sans l'emmener laissait ce message seul en haut du planning,
        détaché de la bande qu'il explique. */
