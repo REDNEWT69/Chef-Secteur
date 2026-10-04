@@ -42,7 +42,7 @@ propriétaire.
 
 `store-explorer.js` (`StoreRunnerStoreExplorer`) ajoute au-dessus de la liste un titre, des compteurs et deux
 rangées de filtres : **P1 · P2 · P3 / autres** et **À visiter · En retard · Jamais visité**. P1/P2 sont ceux du
-dernier fichier performance importé (`performancePriorities(state,{includeTreated:true})`, V263 : la priorité du parc ne dépend pas du statut « traité » ; le défaut, utilisé par les moteurs, reste inchangé) ; **P3 = tout le reste** (aucun P3 n'existe
+dernier fichier performance importé (`performancePriorities`, V263) ; la priorité est **stable jusqu'au prochain import** : « traité » est un flag de suivi, jamais une sortie de priorité (voir « Priorité P1/P2 et traité » ci-dessous) ; **P3 = tout le reste** (aucun P3 n'existe
 dans le fichier). « À visiter » = jamais visité, en retard ou à revoir bientôt ; « En retard » = ratio ≥ 100 %
 de la fréquence. Chaque ligne affiche statut, priorité, **dernière** et **prochaine** visite (date planifiée,
 sinon échéance) et le nombre de contraintes. Un filtre de statut trie par palier métier (V263.3).
@@ -60,6 +60,27 @@ Lues, jamais écrites (`constraintsFor`) : désactivé, exclu, imposé, pose ré
 (expirée si la semaine est passée), rendez-vous, arrivée imposée (avec son mode), et la **garde de couverture**
 « visité récemment » (douce : un rendez-vous, une pose ou « Imposé » passent outre). Chaque ligne dit sa
 force (`hard` / `soft`) et renvoie à son propriétaire.
+
+## Priorité P1/P2 et « traité » (correction métier, revue #496)
+
+Un magasin P1/P2 **conserve sa priorité jusqu'au prochain fichier performance** ; « traité » est un flag de
+suivi (`performance-data-v190.js`, indexé par semaine d'import, donc remis à zéro par un nouvel import), pas
+une sortie de priorité. Corrigé à la source, dans chaque lecteur :
+
+- `visit-coverage.js` : `performancePriorities` ne filtre plus les traités (`.since` = date d'import).
+- `performance-data-v190.js` : `planningBoost` garde le coup de pouce d'un magasin traité ; `completedVisitsFor`
+  expose `days`, `crossVisits` expose `visitsSinceImport`.
+- `weekly-brief-v246.js` et `range-planner-v2.js` (V211) : le P1/P2 d'un magasin traité compte toujours.
+- `assistant-performance-context-v192.js` : un P1 traité reste « à faire » tant qu'il a moins de 2 visites
+  depuis l'import (la question explicite « P1 non traités » garde son sens).
+
+**Garde V263 et SEF.** Le SEF demande au moins 2 visites pour un P1. Tant qu'un P1 a moins de
+`RULES.p1MinVisits` (2) visites réalisées **depuis l'import**, la garde « visité trop récemment » cède
+(`secondVisit`, « 2e passage P1 attendu ») ; dès 2 visites depuis l'import, elle reprend. Sans effet sur P2 et
+sur les magasins sans priorité. Décisions validées par le propriétaire du dépôt. Test : `p1-treated-priority-v266.test.cjs`.
+
+Comportement de planification modifié (assumé) : les P1 traités reprennent leur palier/boost, et un P1 à une
+seule visite peut être reprogrammé avant la moitié de sa fréquence.
 
 ## Refus du planning
 

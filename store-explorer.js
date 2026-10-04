@@ -64,10 +64,10 @@ function contextFor(state,options){
     try{needOf=C.needOf(state,{today,priorities:o.priorities,visitDays:o.visitDays})}catch(e){needOf=null}
     try{planned=C.plannedDates(state,archive,today)}catch(e){planned=new Map()}
   }
-  /* Priorité du parc (P1/P2 du dernier fichier performance), indépendante du statut « traité » : un P1
-     traité reste P1 dans « Mes magasins ». `needOf` garde son propre filtre pour les moteurs. */
+  /* Priorité du parc : P1/P2 du dernier fichier performance, stable jusqu'au prochain import — « traité »
+     n'en sort pas (revue #496). Même lecture que les moteurs (`visit-coverage.js`). */
   let park=o.priorities instanceof Map?o.priorities:new Map();
-  if(!(o.priorities instanceof Map)&&C&&typeof C.performancePriorities==='function'){try{park=C.performancePriorities(state,{includeTreated:true})}catch(e){park=new Map()}}
+  if(!(o.priorities instanceof Map)&&C&&typeof C.performancePriorities==='function'){try{park=C.performancePriorities(state)}catch(e){park=new Map()}}
   return{state:state||{},today,archive,C,needOf,planned,park,cache:new Map()};
 }
 function needFor(ctx,store){try{return ctx.needOf?ctx.needOf(store):null}catch(e){return null}}
@@ -122,6 +122,7 @@ function constraintsFor(state,storeId,options,shared){
     }else out.push({kind:'appointment',strength:'hard',title:'Rendez-vous '+frDate(date)+(time?' · '+time:''),detail:[a.type,a.duration?a.duration+' min':''].filter(Boolean).join(' · ')||'Rendez-vous',date,time,appointmentId:String(a.id||''),source:'appointments'});
   }
   const need=needFor(ctx,store);
+  if(need&&need.secondVisit)out.push({kind:'second_visit',strength:'soft',title:'2e passage P1 attendu',detail:'Le SEF demande au moins 2 visites pour un P1 : la garde « visité récemment » est levée jusqu’à 2 passages depuis l’import du fichier performance.',source:'coverage'});
   if(need&&need.blocked){
     const until=guardUntil(need);
     out.push({kind:'guard',strength:'soft',title:'Visité récemment',detail:'Non reproposé automatiquement'+(until?' avant le '+frDate(until):'')+' ; un rendez-vous, une pose ou « Imposé » passent outre.',date:until,source:'coverage'});

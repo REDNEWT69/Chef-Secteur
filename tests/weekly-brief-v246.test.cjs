@@ -79,8 +79,8 @@ function base() {
   }
   const e = B.effectivePriority('e', '2026-W39', opts);
   assert.equal(e.base.performance, 'P1');
-  assert.equal(e.base.treated, true, 'un P1 marqué traité ne reçoit plus de coup de pouce');
-  assert.equal(e.weekBoost, 0);
+  assert.equal(e.base.treated, true, 'le flag « traité » reste visible');
+  assert.equal(e.weekBoost, 60, '« traité » ne neutralise plus la priorité P1 jusqu’au prochain fichier (revue #496)');
   assert.equal(B.weekBoost('a', '2026-W39', opts), 60);
   assert.equal(B.planningPriority('a', '2026-W39', opts), 5 * B.STRUCTURAL_WEIGHT + 60);
   // Aucune écriture : ni l'état, ni le stockage.

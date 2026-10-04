@@ -328,7 +328,8 @@ function completedVisitsFor(state,storeId){
   const history=(Array.isArray(legacy.history)?legacy.history:[]).filter(Boolean).slice().sort();
   const last=text(done[0]&&done[0].completedDate)||text(legacy.lastVisit)||history[history.length-1]||'';
   const count=done.length||history.length;
-  return last?{lastVisit:last,count,source:done.length?'businessV2':'historique'}:null;
+  const days=[...new Set(done.map(v=>text(v.completedDate)).concat(history,legacy.lastVisit?[text(legacy.lastVisit)]:[]).filter(Boolean))].sort();
+  return last?{lastVisit:last,count,days,source:done.length?'businessV2':'historique'}:null;
 }
 
 /* « Déjà traité » : une marque posée sur la semaine, pas sur le planning. Marquer un P1
@@ -473,7 +474,8 @@ function crossVisits(db,options){
     const trend=row.pdmYtd!=null&&before&&before.pdmYtd!=null?Math.round((row.pdmYtd-before.pdmYtd)*100)/100:null;
     const status=statusOf(row,snap.targetPdm);
     const treated=isTreated(db,snap.week,row.storeId);
-    return Object.assign({},row,{store,visits,trend,previousWeek:before?previousWeek:null,
+    const since=text(snap.importedAt).slice(0,10),sinceImport=visits&&Array.isArray(visits.days)&&since?visits.days.filter(d=>d>=since).length:null;
+    return Object.assign({},row,{store,visits,visitsSinceImport:sinceImport,trend,previousWeek:before?previousWeek:null,
       status,underTarget:status.underTarget,weekly:weeklyTrend(row),
       treated,qualifying:treated?null:qualifyingVisit(visits,snap)});
   });
@@ -534,7 +536,8 @@ function planningBoost(db,storeId,stores){
   const data=readStore(db),list=stores||((root.state&&root.state.stores)||[]);
   const row=matchRows(snap.rows,list,data.mapping).rows.find(r=>String(r.storeId)===String(storeId));
   if(!row||!row.prio)return 0;
-  if(isTreated(db,snap.week,storeId))return 0;   // déjà traité cette semaine : plus de coup de pouce
+  /* « Traité » est un flag de suivi, pas une sortie de priorité : un P1/P2 garde son coup de pouce jusqu'au
+     prochain fichier performance (revue #496 ; le SEF demande au moins 2 visites pour un P1). */
   return PLANNING_BOOST[row.prio]||0;
 }
 

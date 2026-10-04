@@ -46,12 +46,15 @@ const frozen=JSON.stringify(state);
 // --- Contraintes : nature, force, propriétaire --------------------------------------------------
 const kinds=id=>X.constraintsFor(state,id,opts).map(c=>c.kind);
 const a=X.constraintsFor(state,'a',opts);
-assert.deepEqual(a.map(c=>c.kind),['lock_dated','arrival','appointment','guard'],'pose manuelle, arrivée imposée, rendez-vous (triés par date), garde de couverture');
+assert.deepEqual(a.map(c=>c.kind),['lock_dated','arrival','appointment','second_visit'],'pose manuelle, arrivée imposée, rendez-vous (triés par date), puis 2e passage P1 (la garde cède sous 2 visites)');
 assert.equal(a[0].strength,'hard');assert.equal(a[0].source,'locks');assert.equal(a[0].date,'2026-10-08');assert.match(a[0].title,/Pose manuelle/);
 assert.equal(a[1].mode,'strict','une entrée « Horaire manuel » existante est lue « strict », sans migration');
 assert.match(a[1].title,/Arrivée imposée 09:30/);assert.match(a[1].detail,/^Strict/);
 assert.equal(a[1].appointmentId,'h1');assert.equal(a[2].appointmentId,'r1');
-assert.equal(a[3].strength,'soft');assert.equal(a[3].date,'2026-10-20','visité le 05/10, mensuel : non reproposé avant la moitié du cycle (15 j)');
+assert.equal(a[3].strength,'soft');assert.match(a[3].title,/2e passage P1/);
+// Même magasin sans priorité P1 : la garde de couverture s'applique (visité le 05/10, mensuel : jusqu'à la moitié du cycle, 15 j).
+const guarded=X.constraintsFor(state,'a',{today:TODAY,archive,priorities:new Map()}).find(c=>c.kind==='guard');
+assert.ok(guarded&&guarded.strength==='soft');assert.equal(guarded.date,'2026-10-20');assert.match(guarded.detail,/avant le/);
 assert.ok(!a.some(c=>c.appointmentId==='r0'),'un rendez-vous passé n’est plus une contrainte active');
 const b=X.constraintsFor(state,'b',opts);
 assert.deepEqual(b.map(c=>c.kind),['lock_recurring','arrival']);
@@ -89,7 +92,7 @@ assert.equal(p.contacts.length,1);assert.equal(p.contacts[0].email,'marie@exampl
 assert.equal(p.note,'PLV à revoir');assert.equal(p.openActions,1);assert.equal(p.openOpportunities,1);
 assert.equal(X.profileFor(state,'jamais',opts),null);
 const html=X.sectionHtml(p,{photoCount:3});
-assert.match(html,/Contraintes actives/);assert.match(html,/data-sr-x-plan="2026-10-08"/);assert.match(html,/data-sr-x-visit="v1"/);assert.match(html,/data-sr-x-pilotage="covered"/);assert.match(html,/3 photos/);
+assert.match(html,/Contraintes actives/);assert.match(html,/data-sr-x-plan="2026-10-08"/);assert.match(html,/data-sr-x-visit="v1"/);assert.match(html,/data-sr-x-pilotage="ok"/);assert.match(html,/3 photos/);
 assert.ok(!/<script|onerror=/i.test(X.sectionHtml(X.profileFor(state,'x"><img src=x onerror=alert(1)>',opts),{})),'aucune donnée magasin n’est injectée en HTML brut');
 const quiet=X.sectionHtml(X.profileFor(state,'d',opts),{});
 assert.match(quiet,/Désactivé du secteur/);
@@ -130,10 +133,9 @@ assert.equal(typeof sorted2.compare,'function');X.resetFilters();
     isTreated:(db,week,id)=>String(id)==='a'
   };
   try{
-    assert.deepEqual([...C.performancePriorities(state)],[['b','P2']],'défaut inchangé : les moteurs ignorent un magasin traité');
-    assert.deepEqual([...C.performancePriorities(state,{includeTreated:true})],[['a','P1'],['b','P2']],'priorité du parc, traités compris');
+    assert.deepEqual([...C.performancePriorities(state)],[['a','P1'],['b','P2']],'la priorité est stable : « traité » n’en sort pas (voir p1-treated-priority-v266)');
     const o={today:TODAY,archive};
-    assert.equal(C.need(state,stores[0],{today:TODAY}).priority,'','le besoin de visite (moteurs) reste sans P1 pour un magasin traité');
+    assert.equal(C.need(state,stores[0],{today:TODAY}).priority,'P1','les moteurs lisent la même priorité que Mes magasins');
     const p=X.profileFor(state,'a',o);
     assert.equal(p.priority,'P1','fiche : un P1 traité reste P1');
     const lc=X.listContext(Object.assign({state},o));

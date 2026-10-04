@@ -108,6 +108,7 @@ jobs:
       - run: node tests/three-week-forecast-v263-6.test.cjs
       - run: node tests/period-day-slider.test.cjs
       - run: node tests/store-explorer-v266.test.cjs
+      - run: node tests/p1-treated-priority-v266.test.cjs
       - run: node tests/period-day-tabs-contract.test.cjs
       - run: node tests/planning-auto-today-v205.test.cjs
       - run: node tests/planning-period-date.test.cjs
