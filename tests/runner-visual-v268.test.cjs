@@ -3,7 +3,7 @@
 // n'écrit aucune donnée, n'appelle aucun moteur, n'est branché sur aucun écran, et ne se
 // positionne jamais par rapport à l'écran (ni fixed, ni sticky). Le comportement réel (états,
 // variantes, bulles, mouvement, safe areas, 360/390 px) est vérifié dans un vrai Chromium par
-// runner-visual-v266-browser.spec.cjs.
+// runner-visual-v268-browser.spec.cjs.
 const assert = require('assert/strict');
 const fs = require('fs');
 const path = require('path');
@@ -22,8 +22,9 @@ assert.match(index, /'\.\/store-explorer\.js','\.\/runner-visual\.js','\.\/weekl
   'Runner est chargé avant les derniers modules, sans déplacer mobile-ux-v262.js en dernier');
 assert.equal(sw.split('"./runner-visual.js"').length - 1, 1, 'sw.js précache runner-visual.js une seule fois (CORE_SHELL, obligatoire)');
 assert.ok(sw.indexOf('"./runner-visual.js"') < sw.indexOf('const OPTIONAL_SHELL'), 'runner-visual.js est dans le shell obligatoire, pas dans le facultatif');
-assert.equal(version.displayVersion, '266', 'la version visible n’augmente pas');
-assert.match(version.latestBuild, /-266$/, 'le build garde la version visible 266');
+assert.equal(version.displayVersion, '268', 'Runner dans l’Assistant est une nouveauté visible : V268');
+assert.match(version.latestBuild, /-268$/, 'le build se termine par la version visible 268');
+assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-268$/);
 assert.equal(index.match(/const BUILD_REV='([^']+)'/)[1], version.latestBuild);
 assert.equal(sw.match(/const BUILD_REV = "([^"]+)"/)[1], version.latestBuild);
 assert.ok(!fs.existsSync(path.join(__dirname, '..', 'runner-visual.css')), 'aucune feuille séparée : le style est injecté au premier mount');
@@ -178,8 +179,47 @@ assert.equal(typeof ctxTaken.StoreRunnerRunner.setState, 'function', 'le nom can
 
 /* 10. Rien n'est branché : aucun module d'écran ne connaît Runner. */
 const consumers = fs.readdirSync(path.join(__dirname, '..')).filter(f => f.endsWith('.js') && f !== 'runner-visual.js');
-const wired = consumers.filter(f => /StoreRunnerRunner|\bRunner\.(setState|showMessage|mount|reset)\b/.test(read(f)));
-assert.deepEqual(wired, [], 'aucun module ne branche Runner dans cette PR : ' + wired.join(', '));
+const wired = consumers.filter(f => /StoreRunnerRunner|\bRunner\.(setState|showMessage|mount|reset|unmount|getState)\b|window\.Runner\b/.test(read(f)));
+assert.deepEqual(wired, ['assistant-upgrade.js'], 'Runner est branché dans l’Assistant seulement (propriétaire : assistant-upgrade.js) : ' + wired.join(', '));
 assert.doesNotMatch(read('src/chef-secteur.html'), /StoreRunnerRunner|\bRunner\.(setState|showMessage|mount|reset)\b|srRunner/, 'le noyau ne branche pas Runner');
+for (const owner of ['planning-command-engine.js', 'planning-ui-fixes.js', 'store-explorer.js', 'visit-coverage.js', 'planning-generation-controller.js', 'home-refresh-v2.js', 'sector-pilotage.js'])
+  assert.doesNotMatch(read(owner), /StoreRunnerRunner|window\.Runner\b|(?<![A-Za-z])Runner\.(mount|unmount|setState|showMessage|hideMessage|reset|getState)\b|srRunner|srAssistantRunner/, owner + ' ne connaît pas Runner (ni Planning, ni Forecast, ni Command Engine, ni Explorer Terrain)');
 
-console.log('PASS: Runner Visual System V1 — présentation pure, rien de branché, mouvement borné, texte inerte');
+/* 11. Adaptateur Assistant (assistant-upgrade.js) : présentation pure, dérivée du chat, sans timer ni persistance. */
+const assistant = read('assistant-upgrade.js');
+const adapter = assistant.slice(assistant.indexOf('const RUNNER_SLOT_ID'), assistant.indexOf('function install(){'));
+assert.ok(adapter.length > 1500, 'adaptateur trouvé');
+assert.doesNotMatch(adapter, /setTimeout|setInterval|requestAnimationFrame/, 'aucun timer dans l’adaptateur');
+assert.doesNotMatch(adapter, /localStorage|sessionStorage|__chefStorage|indexedDB|\bsave\s*\(|\bstate\.|window\.state|renderAll|generateWeek|storeRunnerPlanningCommand|StoreRunnerPlanningCommandUI/, 'aucune donnée, aucune écriture planning, aucun appel au Command Engine');
+assert.doesNotMatch(adapter, /window\.(assistantBot|assistantAdd|assistantSend|toggleAssistant|assistantHandle)\s*=/, 'aucune fonction de l’Assistant ou du noyau remplacée');
+assert.doesNotMatch(adapter, /addEventListener/, 'aucun écouteur de document : trois observateurs bornés');
+assert.equal((adapter.match(/\.observe\(/g) || []).length, 3, 'trois observations : panneau (classe), messages (enfants directs), statut');
+assert.match(adapter, /observer\.observe\(panel,\{attributes:true,attributeFilter:\['class'\]\}\)/, 'panneau : classe seulement, jamais son sous-arbre (Runner y vit)');
+assert.match(adapter, /observer\.observe\(msgs,\{childList:true\}\)/, 'messages : enfants directs seulement');
+assert.match(adapter, /pointer-events:none/, 'le conteneur de Runner ignore le toucher');
+assert.match(adapter, /!panel\.classList\.contains\('open'\)\)return;/, 'rien n’est monté tant que le panneau n’a pas été ouvert');
+assert.match(adapter, /variant:'sheet'/, 'en-tête de bottom sheet');
+assert.doesNotMatch(adapter, /innerHTML/, 'texte du chat copié par textContent (via Runner), jamais en HTML');
+assert.match(assistant, /\n\s*installRunnerPresence\(\);\n\s*\}/, 'installé une seule fois par install()');
+assert.match(assistant, /window\.__assistantRunner/, 'garde d’installation unique');
+
+/* Les marqueurs de copie qui pilotent les états existent bien dans le code propriétaire : si l’Assistant
+   change un message, ce test casse au lieu de laisser Runner afficher un état faux. */
+const core = read('src/chef-secteur.html'), engine = read('planning-command-engine.js');
+assert.ok(core.includes("assistantBot('✦ Je réfléchis…')"), 'bulle d’attente de l’envoi en ligne');
+for (const marker of ['IA en ligne indisponible', 'Erreur :', 'Actions appliquées', 'Semaine générée avec ', ' a été régénéré']) assert.ok(core.includes(marker), 'message du noyau : ' + marker);
+for (const marker of ['Commande appliquée', 'Application impossible']) assert.ok(engine.includes(marker), 'message du Command Engine : ' + marker);
+for (const marker of ['IA en ligne indisponible', 'Erreur :', 'Application impossible']) assert.ok(adapter.includes("'" + marker + "'"), 'alerte : ' + marker);
+for (const marker of ['Actions appliquées', 'Commande appliquée', 'Semaine générée', 'a été régénéré']) assert.ok(adapter.includes("'" + marker + "'"), 'succès : ' + marker);
+
+/* Option `silent` de Runner : bulle visible, jamais annoncée deux fois. */
+assert.equal(R.normalizeMessage('a', { silent: true }).silent, true);
+assert.equal(R.normalizeMessage('a', { silent: 'oui' }).silent, false, 'seul true est accepté');
+assert.equal(R.normalizeMessage('a').silent, false);
+
+/* Livraison : « Quoi de neuf » V268, build cohérent. */
+const whatsNew = read('store-runner-whats-new.js');
+assert.match(whatsNew, /version:'268',\s*title:'Runner, ton copilote, dans l’Assistant'/, 'entrée utilisateur V268 dans « Quoi de neuf »');
+assert.ok(whatsNew.indexOf("version:'268'") < whatsNew.indexOf("version:'267'"), 'versions récentes en premier');
+
+console.log('PASS: Runner Visual System V1 — présentation pure, branché dans l’Assistant seulement, mouvement borné, texte inerte');

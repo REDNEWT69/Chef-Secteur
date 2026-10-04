@@ -103,7 +103,10 @@ function normalizeMessage(input,extra){
     title:clean(pick('title'),TITLE_MAX),
     state:isState(state)?state:null,
     duration:clampDuration(pick('duration')),
-    side:SIDES.indexOf(side)!==-1?side:null
+    side:SIDES.indexOf(side)!==-1?side:null,
+    /* `silent` : bulle visible mais non annoncée par la région vocale (état neutre d'un écran qui
+       répond déjà à voix haute : l'Assistant ne doit pas être lu deux fois). */
+    silent:pick('silent')===true
   };
 }
 function accessibleLabel(state){return ACCESSIBLE_NAME+' : '+(STATE_LABELS[state]||STATE_LABELS.neutral).toLowerCase()}
@@ -377,7 +380,7 @@ function createInstance(doc,options){
       if(host.getAttribute('data-motion')!=='off')restart(figure,'is-pop');
       try{host.dispatchEvent(new root.CustomEvent(CHANGE_EVENT,{bubbles:true,detail:{state,previous,id}}))}catch(e){}
     }
-    const message=o.message!=null?normalizeMessage(o.message,{title:o.title,duration:o.duration,side:o.side}):null;
+    const message=o.message!=null?normalizeMessage(o.message,{title:o.title,duration:o.duration,side:o.side,silent:o.silent}):null;
     if(message)showMessage(message);
     else if(changed){
       /* Un état qui change sans bulle reste annoncé, sauf le retour au calme. */
@@ -399,7 +402,7 @@ function createInstance(doc,options){
     textEl.textContent=message.text;
     bubble.hidden=false;
     if(host.getAttribute('data-motion')!=='off')restart(bubble,'is-in');
-    announce((message.title?message.title+'. ':'')+message.text,state==='alert');
+    if(message.silent)announce('',false);else announce((message.title?message.title+'. ':'')+message.text,state==='alert');
     if(message.duration)hideTimer=root.setTimeout(()=>{hideTimer=0;hideMessage()},message.duration);
     return true;
   }
@@ -438,7 +441,7 @@ function createInstance(doc,options){
   applySide(opts.side);
   host.setAttribute('data-state',state);
   paintLabel();
-  if(opts.message!=null)showMessage(opts.message,{title:opts.title,duration:opts.duration});
+  if(opts.message!=null)showMessage(opts.message,{title:opts.title,duration:opts.duration,silent:opts.silent});
   return inst;
 }
 

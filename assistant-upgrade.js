@@ -132,11 +132,80 @@
     document.addEventListener('store-runner:assistant-mode-changed',refresh);
     window.__assistantStatusEvents=true;
   }
+  /* ------------------------------------------------------------------ Runner (V268)
+     Présence VISUELLE de Runner dans l'Assistant. L'Assistant monte Runner (`runner-visual.js`) et
+     traduit ses propres signaux en état visuel ; Runner ne lit rien, ne possède aucun état métier et
+     n'écrit rien. L'état est DÉRIVÉ de ce que le chat montre déjà, sans mémoire ni persistance :
+       - analyzing : la bulle « ✦ Je réfléchis… » de l'envoi en ligne est le dernier message ;
+       - alert     : le dernier message du bot est une erreur (IA indisponible, erreur, application
+                     impossible), ou le statut de l'Assistant est en erreur (`.ai-status.bad`) ;
+       - success   : le dernier message du bot confirme une action appliquée (Command Engine, actions
+                     de l'IA, semaine générée, jour régénéré) ;
+       - neutral   : tout le reste.
+     Ni le Command Engine ni le noyau ne sont modifiés. Trois observateurs bornés (liste des messages,
+     statut, classe du panneau) : aucun timer, aucune boucle, aucun écouteur de document. Runner n'est monté
+     qu'à la première ouverture du panneau ; le conteneur ignore le toucher (`pointer-events:none`). */
+  const RUNNER_SLOT_ID='srAssistantRunner';
+  const RUNNER_PENDING=/^✦ Je réfléchis/;
+  const RUNNER_ERRORS=['IA en ligne indisponible','Erreur :','Application impossible'];
+  const RUNNER_DONE=['Actions appliquées','Commande appliquée','Semaine générée','a été régénéré'];
+  const RUNNER_COPY={
+    neutral:{title:'Runner',text:'Prêt quand tu l’es.'},
+    analyzing:{title:'Analyse en cours…',text:'Je prépare une réponse pour ton secteur.'},
+    alert:{title:'Attention !',text:'Une erreur est survenue.'},
+    success:{title:'C’est fait !',text:'Action appliquée.'}
+  };
+  let runnerInstance=null,runnerSignature='';
+  function runnerLine(text,marker){
+    const lines=String(text||'').split('\n').map(l=>l.trim()).filter(Boolean);
+    return (marker&&lines.find(l=>l.indexOf(marker)!==-1))||lines[0]||'';
+  }
+  function runnerStateOf(msgs,status){
+    const kids=msgs.children,last=kids.length?kids[kids.length-1]:null;
+    if(last&&last.classList.contains('bot')){
+      const text=String(last.textContent||'').trim();
+      if(RUNNER_PENDING.test(text))return{state:'analyzing'};
+      if(RUNNER_ERRORS.some(m=>text.indexOf(m)===0))return{state:'alert',text:runnerLine(text)};
+      const done=RUNNER_DONE.find(m=>text.indexOf(m)!==-1);
+      if(done)return{state:'success',text:runnerLine(text,done)};
+    }
+    if(status&&status.classList.contains('bad'))return{state:'alert',text:String(status.textContent||'').trim()};
+    return{state:'neutral'};
+  }
+  function syncRunner(){
+    const panel=document.getElementById('assistantPanel'),msgs=document.getElementById('assistantMsgs');
+    if(!panel||!msgs||!window.Runner||!panel.classList.contains('open'))return;
+    if(!runnerInstance||!runnerInstance.isConnected()){
+      let slot=document.getElementById(RUNNER_SLOT_ID);
+      if(!slot){slot=document.createElement('div');slot.id=RUNNER_SLOT_ID;slot.style.cssText='margin:6px 16px 4px;pointer-events:none';msgs.parentNode.insertBefore(slot,msgs)}
+      runnerInstance=window.Runner.mount(slot,{variant:'sheet',size:'md',state:'neutral',title:RUNNER_COPY.neutral.title,message:RUNNER_COPY.neutral.text,silent:true});
+      runnerSignature='neutral|';
+      if(!runnerInstance)return;
+    }
+    const next=runnerStateOf(msgs,document.getElementById('assistantAIStatus'));
+    const signature=next.state+'|'+(next.text||'');
+    if(signature===runnerSignature)return;
+    runnerSignature=signature;
+    const copy=RUNNER_COPY[next.state];
+    runnerInstance.setState(next.state,{title:copy.title,message:next.text||copy.text,silent:next.state==='neutral'});
+  }
+  function installRunnerPresence(){
+    if(window.__assistantRunner||typeof MutationObserver==='undefined')return;
+    const panel=document.getElementById('assistantPanel'),msgs=document.getElementById('assistantMsgs');
+    if(!panel||!msgs)return;
+    window.__assistantRunner=true;
+    const observer=new MutationObserver(syncRunner),status=document.getElementById('assistantAIStatus');
+    observer.observe(panel,{attributes:true,attributeFilter:['class']});
+    observer.observe(msgs,{childList:true});
+    if(status)observer.observe(status,{childList:true,characterData:true,attributes:true,attributeFilter:['class']});
+    syncRunner();
+  }
   function install(){
     enrichContext();
     hookLocal();
     installStatusEvents();
     updateAssistantStatus();
+    installRunnerPresence();
   }
   function boot(){install()}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();

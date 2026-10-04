@@ -82,7 +82,7 @@ function collectRunnerStyles() {
     live: ['position', 'width', 'height', 'overflow', 'whiteSpace', 'marginTop', 'paddingTop', 'opacity']
   };
   const out = {};
-  document.querySelectorAll('.srRunner').forEach((host, h) => {
+  document.querySelectorAll('.isoSlot .srRunner').forEach((host, h) => {
     [host, ...host.querySelectorAll('*')].forEach((el, i) => {
       const cs = getComputedStyle(el);
       let g;
@@ -237,91 +237,6 @@ for (const [deviceName, device] of ANDROID) {
       expect(errors).toEqual([]);
     });
 
-    test('Assistant — ouverture au toucher, Runner en en-tête, pastilles et saisie toujours atteignables', async ({ page }, testInfo) => {
-      const errors = await bootApp(page);
-      await tapCenter(page, '#bottomAppNav .bottomNavBtn.ia');
-      await page.waitForSelector('#assistantPanel.open');
-      await page.waitForTimeout(500);
-      expect(await mountAt(page, { anchor: '#assistantMsgs', where: 'before', id: 'rnAssist', margin: '8px 16px 0', options: { variant: 'sheet', state: 'analyzing', title: 'Analyse en cours…', message: 'Je vérifie les contraintes, les temps de trajet et les meilleurs créneaux.' } })).toBe(true);
-      await settle(page);
-      await shot(page, testInfo, deviceName + '-4-assistant');
-      const m = await page.evaluate(() => {
-        const r = sel => document.querySelector(sel).getBoundingClientRect();
-        const host = r('#rnAssist .srRunner'), status = r('#assistantAIStatus'), msgs = r('#assistantMsgs'), chips = r('.achips'), input = r('.ainput');
-        const inter = (a, b) => !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
-        return { belowStatus: host.top >= status.bottom - 1, msgsHeight: msgs.height, chipsVisible: chips.bottom <= innerHeight && chips.top >= 0, inputVisible: input.bottom <= innerHeight && input.top >= 0, overlaps: [inter(host, chips), inter(host, input)], figure: document.querySelector('#rnAssist .srRunnerFigure').getBoundingClientRect().width, runnerBottom: host.bottom, chipsTop: chips.top, panelFixed: getComputedStyle(document.getElementById('assistantPanel')).position };
-      });
-      expect(m.belowStatus).toBe(true);
-      expect(m.msgsHeight, 'la zone de messages reste utilisable').toBeGreaterThanOrEqual(150);
-      expect(m.chipsVisible && m.inputVisible).toBe(true);
-      expect(m.overlaps, 'Runner ne recouvre ni les pastilles ni la saisie').toEqual([false, false]);
-      expect(m.figure).toBe(120);
-      expect(m.panelFixed, 'la feuille est celle de l’app (fixe) ; Runner, lui, reste dans son flux').toBe('fixed');
-
-      /* Toucher réel sur une pastille de l'app : son gestionnaire s'exécute, Runner ne bouge pas. */
-      const before = await page.evaluate(() => document.getElementById('assistantMsgs').children.length);
-      await tapCenter(page, '.achips button');
-      await page.waitForTimeout(600);
-      const after = await page.evaluate(() => ({ msgs: document.getElementById('assistantMsgs').children.length, state: window.Runner.getState(), mounted: window.Runner.mounted() }));
-      expect(after.msgs, 'la pastille de l’app a réagi au toucher').toBeGreaterThan(before);
-      expect(after).toMatchObject({ state: 'analyzing', mounted: 1 });
-      expect(errors).toEqual([]);
-    });
-
-    test('Assistant — clavier ouvert : Runner se réduit, la saisie reste visible', async ({ page }, testInfo) => {
-      const errors = await bootApp(page);
-      const fullHeight = device.viewport.height;
-      await tapCenter(page, '#bottomAppNav .bottomNavBtn.ia');
-      await page.waitForSelector('#assistantPanel.open');
-      await page.waitForTimeout(500);
-      await mountAt(page, { anchor: '#assistantMsgs', where: 'before', id: 'rnAssist', margin: '8px 16px 0', options: { variant: 'sheet', state: 'analyzing', title: 'Analyse en cours…', message: 'Je vérifie les contraintes, les temps de trajet et les meilleurs créneaux.' } });
-      await settle(page);
-      const closed = await page.evaluate(() => document.querySelector('#rnAssist .srRunnerFigure').getBoundingClientRect().width);
-      expect(closed).toBe(120);
-
-      /* Même méthode que V262 : toucher le champ, puis la zone d'affichage se réduit (Android, resizes-content). */
-      await tapCenter(page, '#assistantInput');
-      await page.setViewportSize({ width: vw, height: Math.round(fullHeight * 0.55) });
-      await expect(page.locator('html')).toHaveAttribute('data-sr-keyboard', 'open');
-      await page.waitForTimeout(400);
-      await shot(page, testInfo, deviceName + '-5-assistant-clavier');
-      const open = await page.evaluate(() => {
-        const r = sel => document.querySelector(sel).getBoundingClientRect();
-        const host = r('#rnAssist .srRunner'), input = r('#assistantInput'), msgs = r('#assistantMsgs'), head = r('.ahead');
-        const inter = (a, b) => !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
-        return { figure: document.querySelector('#rnAssist .srRunnerFigure').getBoundingClientRect().width, inputInView: input.top >= 0 && input.bottom <= innerHeight, overlapsInput: inter(host, input), msgs: msgs.height, headVisible: head.top >= 0 && head.bottom <= innerHeight, vh: innerHeight, hostBottom: host.bottom, inputTop: input.top };
-      });
-      expect(open.figure, 'clavier ouvert : Runner réduit à 56 px').toBe(56);
-      expect(open.inputInView, 'le champ de saisie reste visible au-dessus du clavier').toBe(true);
-      expect(open.overlapsInput).toBe(false);
-      expect(open.headVisible, 'le titre de la feuille reste visible').toBe(true);
-      expect(open.hostBottom, 'Runner reste au-dessus de la saisie').toBeLessThanOrEqual(open.inputTop);
-
-      await page.evaluate(() => document.activeElement.blur());
-      await page.setViewportSize({ width: vw, height: fullHeight });
-      await expect(page.locator('html')).not.toHaveAttribute('data-sr-keyboard', 'open');
-      await page.waitForTimeout(300);
-      const restored = await page.evaluate(() => document.querySelector('#rnAssist .srRunnerFigure').getBoundingClientRect().width);
-      expect(restored, 'clavier fermé : Runner retrouve sa taille').toBe(120);
-      expect(errors).toEqual([]);
-    });
-
-    test('Bouton retour Android — referme l’assistant, Runner reste intact, aucune fuite', async ({ page }) => {
-      const errors = await bootApp(page);
-      await tapCenter(page, '#bottomAppNav .bottomNavBtn.ia');
-      await page.waitForSelector('#assistantPanel.open');
-      await mountAt(page, { anchor: '#assistantMsgs', where: 'before', id: 'rnAssist', margin: '8px 16px 0', options: { variant: 'sheet', state: 'analyzing', title: 'Analyse en cours…', message: 'Je vérifie.' } });
-      await page.waitForTimeout(500);
-      await page.goBack();                                   // le bouton retour d'Android
-      await expect(page.locator('#assistantPanel')).not.toHaveClass(/open/);
-      const closed = await page.evaluate(() => ({ mounted: window.Runner.mounted(), state: window.Runner.getState(), still: !!document.querySelector('#rnAssist .srRunner'), url: location.pathname }));
-      expect(closed, 'le retour ferme la feuille de l’app ; Runner n’intercepte pas le retour').toEqual({ mounted: 1, state: 'analyzing', still: true, url: '/' });
-      await tapCenter(page, '#bottomAppNav .bottomNavBtn.ia');
-      await page.waitForSelector('#assistantPanel.open');
-      expect(await page.evaluate(() => window.Runner.getState()), 'à la réouverture Runner est toujours là').toBe('analyzing');
-      expect(errors).toEqual([]);
-    });
-
     test('Défilement tactile — un geste commencé sur Runner fait défiler la page', async ({ page }) => {
       const errors = await bootApp(page);
       await tapCenter(page, '#bottomAppNav [data-panel="planPanel"]');
@@ -378,50 +293,22 @@ for (const [deviceName, device] of ANDROID) {
       expect(errors).toEqual([]);
     });
 
-    test('Assistant — zone haute sous encoche : Runner reste sous l’en-tête, constat consigné sur la feuille de l’app', async ({ page }, testInfo) => {
-      const errors = await bootApp(page);
-      const client = await page.context().newCDPSession(page);
-      let applied = true;
-      try { await client.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 48, bottom: 24, left: 0, right: 0 } }); } catch (error) {
-        applied = false; testInfo.annotations.push({ type: 'safe-area-emulation-indisponible', description: String(error.message).slice(0, 120) });
-      }
-      await tapCenter(page, '#bottomAppNav .bottomNavBtn.ia');
-      await page.waitForSelector('#assistantPanel.open');
-      await mountAt(page, { anchor: '#assistantMsgs', where: 'before', id: 'rnAssist', margin: '8px 16px 0', options: { variant: 'sheet', state: 'analyzing', title: 'Analyse en cours…', message: 'Je vérifie les contraintes, les temps de trajet et les meilleurs créneaux.' } });
-      await settle(page);
-      const m = await page.evaluate(() => {
-        const r = sel => document.querySelector(sel).getBoundingClientRect();
-        return { sheetTop: r('#assistantPanel').top, headBottom: r('.ahead').bottom, hostTop: r('#rnAssist .srRunner').top, chipsTop: r('.achips').top, hostBottom: r('#rnAssist .srRunner').bottom, inputBottom: r('.ainput').bottom, vh: innerHeight };
-      });
-      /* Constat (hors périmètre de Runner) : la feuille de l'Assistant est fixée à ~26 px du haut et ne
-         lit pas env(safe-area-inset-top). Sans encoche cela ne change rien ; sous une encoche ou en
-         affichage bord à bord (Android 15), son titre pourrait passer sous la barre d'état. À valider
-         sur appareil réel par le propriétaire de la feuille avant d'y intégrer Runner. */
-      testInfo.annotations.push({ type: 'constat feuille Assistant', description: 'haut de la feuille = ' + Math.round(m.sheetTop) + ' px pour un inset haut ' + (applied ? 48 : 0) + ' px' });
-      expect(m.hostTop, 'Runner commence sous l’en-tête de la feuille').toBeGreaterThanOrEqual(m.headBottom);
-      expect(m.hostBottom, 'Runner reste au-dessus des pastilles').toBeLessThanOrEqual(m.chipsTop);
-      expect(m.inputBottom, 'la saisie reste dans l’écran').toBeLessThanOrEqual(m.vh);
-      await shot(page, testInfo, deviceName + '-7-assistant-encoche');
-      await client.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 0, bottom: 0, left: 0, right: 0 } }).catch(() => { });
-      expect(errors).toEqual([]);
-    });
-
     test('Police système agrandie (≈ 150 %) — rien ne déborde, la zone de saisie reste atteignable', async ({ page }) => {
       const errors = await bootApp(page);
       await tapCenter(page, '#bottomAppNav .bottomNavBtn.ia');
       await page.waitForSelector('#assistantPanel.open');
-      await mountAt(page, { anchor: '#assistantMsgs', where: 'before', id: 'rnAssist', margin: '8px 16px 0', options: { variant: 'sheet', state: 'alert', title: 'Attention !', message: 'Il y a un risque de retard sur un magasin P1, à vérifier avant de partir.' } });
+      await page.waitForSelector('#srAssistantRunner .srRunner');
       await page.addStyleTag({ content: '.srRunnerBubbleText{font-size:21px!important}.srRunnerBubbleTitle{font-size:24.75px!important}' });
       await settle(page);
       const m = await page.evaluate(() => {
         const r = sel => document.querySelector(sel).getBoundingClientRect();
-        const host = r('#rnAssist .srRunner'), bubble = r('#rnAssist .srRunnerBubble'), input = r('.ainput'), chips = r('.achips');
-        return { bubbleRight: bubble.right, vw: innerWidth, chipsVisible: chips.bottom <= innerHeight, inputVisible: input.bottom <= innerHeight, hostBottom: host.bottom, chipsTop: chips.top, figure: document.querySelector('#rnAssist .srRunnerFigure').getBoundingClientRect().width };
+        const host = r('#srAssistantRunner .srRunner'), bubble = r('#srAssistantRunner .srRunnerBubble'), input = r('.ainput'), chips = r('.achips');
+        return { bubbleRight: bubble.right, vw: innerWidth, chipsVisible: chips.bottom <= innerHeight, inputVisible: input.bottom <= innerHeight, hostBottom: host.bottom, chipsTop: chips.top, figure: document.querySelector('#srAssistantRunner .srRunnerFigure').getBoundingClientRect().width };
       });
       expect(m.bubbleRight).toBeLessThanOrEqual(m.vw);
       expect(m.chipsVisible && m.inputVisible).toBe(true);
       expect(m.hostBottom, 'le texte agrandi ne passe pas sous les pastilles').toBeLessThanOrEqual(m.chipsTop);
-      expect(m.figure, 'le personnage ne grossit pas avec le texte').toBe(120);
+      expect(m.figure, 'le personnage ne grossit pas avec le texte').toBe(88);
       expect(await overflowX(page)).toBeLessThanOrEqual(1);
       expect(errors).toEqual([]);
     });
@@ -435,7 +322,7 @@ for (const [deviceName, device] of IPHONE) {
   test.describe(deviceName + ' (adaptation, émulation Chromium)', () => {
     test.use(device);
 
-    test('Planning et Assistant — Runner dans le flux, encoche et barre d’accueil respectées', async ({ page }, testInfo) => {
+    test('Planning — Runner dans le flux, encoche et barre d’accueil respectées', async ({ page }, testInfo) => {
       const errors = await bootApp(page);
       const client = await page.context().newCDPSession(page);
       let applied = true;
@@ -461,21 +348,6 @@ for (const [deviceName, device] of IPHONE) {
       expect(end.hostBottom, 'fin de page : le dernier bloc dégage la barre basse').toBeLessThanOrEqual(end.navTop);
       expect(end.floating).toBe(0);
 
-      await page.evaluate(() => window.scrollTo(0, 0));
-      await tapCenter(page, '#bottomAppNav .bottomNavBtn.ia');
-      await page.waitForSelector('#assistantPanel.open');
-      await mountAt(page, { anchor: '#assistantMsgs', where: 'before', id: 'rnAssist', margin: '8px 16px 0', options: { variant: 'sheet', state: 'analyzing', title: 'Analyse en cours…', message: 'Je vérifie les contraintes, les temps de trajet et les meilleurs créneaux.' } });
-      await settle(page);
-      await shot(page, testInfo, deviceName + '-2-assistant');
-      const sheet = await page.evaluate(() => {
-        const r = sel => document.querySelector(sel).getBoundingClientRect();
-        const host = r('#rnAssist .srRunner'), head = r('.ahead'), input = r('.ainput'), chips = r('.achips');
-        return { headTop: head.top, hostTop: host.top, hostBottom: host.bottom, chipsTop: chips.top, inputBottom: input.bottom, vh: innerHeight, msgs: r('#assistantMsgs').height };
-      });
-      testInfo.annotations.push({ type: 'constat feuille Assistant', description: 'titre de la feuille à ' + Math.round(sheet.headTop) + ' px pour un inset haut ' + (applied ? 47 : 0) + ' px (feuille de l’app, hors Runner)' });
-      expect(sheet.hostBottom, 'Runner reste au-dessus des pastilles').toBeLessThanOrEqual(sheet.chipsTop);
-      expect(sheet.inputBottom, 'la saisie reste dans l’écran').toBeLessThanOrEqual(sheet.vh);
-      expect(sheet.msgs).toBeGreaterThanOrEqual(120);
       expect(await overflowX(page)).toBeLessThanOrEqual(1);
       await client.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 0, bottom: 0, left: 0, right: 0 } }).catch(() => { });
       expect(errors).toEqual([]);

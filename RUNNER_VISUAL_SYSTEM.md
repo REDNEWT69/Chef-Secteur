@@ -1,11 +1,11 @@
 # Runner Visual System V1
 
-Runner est le copilote **visuel** de Store Runner : un personnage, quatre états, une bulle. Ce lot ne crée que la couche de présentation réutilisable. **Rien n'est branché** : aucun écran, aucun moteur (Planning, Forecast, Command Engine, Explorer Terrain) ne connaît Runner.
+Runner est le copilote **visuel** de Store Runner : un personnage, quatre états, une bulle. Depuis la **V268** il est visible dans **l'Assistant** (et nulle part ailleurs) : l'Assistant le monte et traduit ses propres signaux en état visuel. Planning, Forecast, Command Engine et Explorer Terrain ne le connaissent pas.
 
 **Mobile uniquement, Android d'abord.** Store Runner est Android-first : Runner a été pensé et validé sur Android, puis adapté à l'iPhone. Il n'a aucune mise en page desktop : sa feuille de style ne contient aucune requête de largeur. Références : **Pixel 7 (412 px)** et **Galaxy S8 (360 px, Samsung)**, puis iPhone 14 ; 320 px sans défilement horizontal. L'application installée est verrouillée en portrait (`portrait-primary` dans le manifeste) : le paysage n'est pas un cas de conception, seulement de robustesse. En cas de doute entre desktop et mobile, c'est le mobile qui a été choisi.
 
-- Build `20261004-r41-runner-visual-266`, version visible **inchangée : 266**.
-- PR Draft, **non fusionnée**. Décision à valider avant fusion : voir « Chargement et budget de démarrage ».
+- Build `20261004-r42-runner-assistant-268`, version visible **268** (« Quoi de neuf » : « Runner, ton copilote, dans l'Assistant »).
+- Budget de démarrage **77 scripts** et entrée de shell dans `sw.js` : décisions explicitement validées.
 - Module : `runner-visual.js` (`StoreRunnerRunner`, alias `Runner`). Un seul fichier, aucune dépendance, aucune feuille séparée.
 
 ![Runner sur Android, rendu réel dans l'application](tests/fixtures/runner-visual-android-real.webp)
@@ -48,7 +48,7 @@ Règles mobiles, vérifiées par les tests :
 
 ## Validation Android dans la vraie application
 
-La page d'aperçu n'a pas suffi : c'est le test dans l'application réelle, sous **Pixel 7** et **Galaxy S8** émulés (toucher, DPR 2,6 / 3, UA Android), qui a trouvé un vrai défaut et qui fixe les comportements ci-dessous. Runner n'est branché nulle part : le spec le monte dans des emplacements de test de l'accueil, du Planning et de l'Assistant (`tests/runner-visual-android-v266-browser.spec.cjs`, captures en `RUNNER_SHOTS_DIR`).
+La page d'aperçu n'a pas suffi : c'est le test dans l'application réelle, sous **Pixel 7** et **Galaxy S8** émulés (toucher, DPR 2,6 / 3, UA Android), qui a trouvé un vrai défaut et qui fixe les comportements ci-dessous. Runner n'est branché nulle part : le spec le monte dans des emplacements de test de l'accueil, du Planning et de l'Assistant (`tests/runner-visual-android-v268-browser.spec.cjs`, captures en `RUNNER_SHOTS_DIR`).
 
 **Défaut trouvé et corrigé.** L'application contient `#premiumHomeV2 svg, .bottomAppNav svg { width:24px; height:24px; display:block }` (règle d'icônes à identifiant). Sur l'accueil, elle réduisait le dessin de Runner de 88 px à 24 px (la boîte de la figure restait à 88 px, ce que mesuraient mes premiers tests) et rendait visibles les pictogrammes masqués des cartes. Runner impose désormais sa taille et son affichage SVG avec `!important`, strictement limité à ses trois règles SVG (vérifié par le test unitaire). **Garde-fou permanent :** le test « Isolation du style » compare, élément par élément, les styles calculés de cinq combinaisons de Runner (bulle, bulle à gauche, sheet, carte alerte, carte succès) dans l'accueil, le Planning et l'Assistant réels contre une page témoin sans règle d'application : zéro écart exigé (mutation vérifiée : retirer le `!important` fait échouer le test avec `88px` contre `24px`).
 
@@ -72,6 +72,21 @@ La page d'aperçu n'a pas suffi : c'est le test dans l'application réelle, sous
 **Safe areas Android émulées** (CDP `Emulation.setSafeAreaInsetsOverride`) : barre d'état (haut 32 px), trou de caméra + barre de gestes (48 / 24 px), navigation à trois boutons (32 / 48 px). Runner étant dans le flux, il ne peut ni passer sous une barre ni sous l'encoche ; ce sont les marges de l'hôte qui comptent (la fixture montre le montage correct d'un sheet et d'une barre basse).
 
 **iPhone, ensuite.** Safari/WebKit n'est pas installé dans l'environnement de test : l'iPhone 14 est validé sous **émulation Chromium** (UA, taille, DPR, safe areas encoche 47 px + barre d'accueil 34 px) pour Planning et Assistant. Non vérifiable ici et à contrôler sur un iPhone réel (phase de test terrain PWA) : le rendu WebKit du SVG et de `transform-box`, `min()` dans `calc()`, le clavier iOS (qui ne redimensionne pas le contenu : la réduction de Runner à 56 px s'appuie sur l'attribut de `mobile-ux-v262.js`, qui lit `visualViewport`), et l'encoche réelle.
+
+## Branchement V268 : l'Assistant, et rien d'autre
+
+`assistant-upgrade.js` (propriétaire des enrichissements de l'Assistant) monte Runner **à la première ouverture** du panneau, dans l'en-tête de l'Assistant (`#srAssistantRunner`, entre le statut et la liste des messages, variante `sheet`, 88 px). Au démarrage et panneau fermé : aucun nœud, aucun style. Le conteneur est en `pointer-events:none` : aucun toucher n'est intercepté.
+
+L'état est **dérivé de ce que le chat montre déjà**, sans mémoire, sans persistance et sans timer, par trois observateurs bornés (classe du panneau, enfants directs de la liste des messages, statut) :
+
+| État de Runner | Signal existant de l'Assistant |
+| --- | --- |
+| `analyzing` | le dernier message est la bulle « ✦ Je réfléchis… » de l'envoi en ligne |
+| `alert` | le dernier message du bot est une erreur (« IA en ligne indisponible », « Erreur : », « Application impossible ») ou le statut est en erreur (`.ai-status.bad`) |
+| `success` | le dernier message du bot confirme une action appliquée (« Commande appliquée » du Command Engine, « Actions appliquées » de l'IA, « Semaine générée », « a été régénéré ») |
+| `neutral` | tout le reste, y compris après un nouveau message de l'utilisateur |
+
+Les marqueurs de copie sont **épinglés par le test unitaire** (ils doivent exister dans le noyau ou le Command Engine) : si l'Assistant change un message, le test casse au lieu de laisser Runner afficher un état faux. L'état neutre est affiché sans annonce vocale (`silent`) : l'Assistant répond déjà à voix haute. Le Command Engine, le noyau et `generateWeek` ne sont pas modifiés ; Runner n'écrit rien (état de l'app et stockage strictement inchangés, vérifié).
 
 ## Ce que Runner ne fait jamais
 
@@ -132,20 +147,16 @@ Tous les calques du dessin sont déjà dans le SVG ; `data-state` sur le contene
 
 ## Chargement et budget de démarrage
 
-`runner-visual.js` est chargé avec les autres modules par `index.html` (avant `weekly-brief-import-v246b.js`, `mobile-ux-v262.js` restant le dernier module) et précaché dans le shell obligatoire de `sw.js`, comme tout ce que `index.html` charge. Il fait **77** ressources script au démarrage au lieu de 76 : le plafond de `CLEANUP_BASELINE_R20.md` / `tests/fixtures/cleanup-baseline-r20.json` est relevé d'une unité, comme pour `store-explorer.js`. **Cette décision est à valider avant fusion.**
+`runner-visual.js` est chargé avec les autres modules par `index.html` (avant `weekly-brief-import-v246b.js`, `mobile-ux-v262.js` restant le dernier module) et précaché dans le shell obligatoire de `sw.js`, comme tout ce que `index.html` charge. Il fait **77** ressources script au démarrage au lieu de 76 : le plafond de `CLEANUP_BASELINE_R20.md` / `tests/fixtures/cleanup-baseline-r20.json` est relevé d'une unité, comme pour `store-explorer.js`. **Budget 77 et modification de `sw.js` : décisions explicitement validées.**
 
-Alternative sans nouveau script de démarrage : ne pas charger Runner au démarrage, et laisser le premier propriétaire d'écran qui l'adoptera ajouter `runner-visual.js` dans sa propre PR (avec le bump et le plafond). Ce lot serait alors un pur ajout de fichiers sans effet sur le runtime ; l'inconvénient est que l'API n'existe pas dans la PWA tant qu'un écran ne l'embarque pas, donc pas de test navigateur « dans l'application ». Le choix retenu ici (chargé mais dormant) a été préféré pour que le prochain lot n'ait qu'à appeler `Runner.mount`.
-
-Fusion : modification de `sw.js` au-delà de `BUILD_REV` (une entrée de shell) → accord humain explicite requis par `AGENTS.md`.
-
-## Points d'intégration futurs (non faits)
+## Points d'intégration futurs (non faits — l'Assistant est livré en V268)
 
 Dans tous les cas, **le propriétaire de l'écran monte Runner et traduit son propre résultat** ; Runner ne lit jamais le résultat d'un moteur. Chacune demande sa propre PR, son propre test et une vérification 390 px (Android d'abord).
 
 | Surface | Variante | Intégration envisagée |
 | --- | --- | --- |
 | Planning | `bubble` | conseil dans une carte entre le sélecteur de semaine et la liste des visites ; l'emplacement appartient à `planning-ui-fixes.js`. |
-| Assistant / Command Engine | `sheet` | en-tête du bottom sheet : `analyzing` pendant l'interprétation, `alert` quand l'aperçu cite une contrainte, `success` après l'application validée. La liste d'étapes et « Annuler » restent à l'assistant. Les commandes planning restent hors des actions directes de l'IA en ligne. |
+| Assistant / Command Engine | `sheet` | **livré en V268** (voir plus haut). Une future intégration du Command Engine lui-même (aperçu, journal) reste une décision séparée. |
 | Alertes de contraintes | `panel` | `alert` + titre / texte déjà produits par le propriétaire de la contrainte ; « Voir détails » / « Réorganiser » restent ses boutons. |
 | Succès après application | `panel` | `setState('success', { message, resetAfter })` à l'événement existant `store-runner:planning-updated` ; « Voir ma tournée » reste le bouton de l'écran. |
 | Explorer Terrain | `bubble` | message court dans la fiche Magasin 360 pour une contrainte active (la source reste `store-explorer.js`). |
@@ -154,18 +165,18 @@ Dans tous les cas, **le propriétaire de l'écran monte Runner et traduit son pr
 
 | Test | Contrat |
 | --- | --- |
-| `tests/runner-visual-v266.test.cjs` (Reliability) | chargé une fois, précaché, build cohérent, version visible 266 ; aucune donnée / moteur / écouteur / observateur / réseau / `setInterval` ; texte jamais en HTML ; **mobile d'abord** : seule requête média = mouvement réduit, jamais `fixed`/`sticky`/`z-index`/unité de viewport, aucun bouton ni lien dessiné ; animations `transform`/`opacity` seulement, aucune `infinite`, boucle bornée à 16 ; contrastes AA ; API pure ; alias `Runner` jamais écrasé ; aucun module ne branche Runner |
-| `tests/runner-visual-v266-browser.spec.cjs` (Reliability, mobile) | **Android 390, Android 360, iPhone 390** : démarrage dormant dans la vraie app ; `state` et stockage inchangés ; style non altéré par l'app ; quatre états ; trois variantes (disposition, teintes, pictogrammes) ; injection `<img onerror>` inerte ; annonce lecteur d'écran ; **Runner dans le flux, jamais fixe, aucun bouton de l'hôte recouvert** ; **safe areas émulées** (encoche, barre de gestes, paysage) ; aucun débordement horizontal jusqu'à 320 px ; tailles ; pas d'instance orpheline après des rendus répétés ; aucune animation au repos, boucle bornée ; mode réduit ; `motion:'off'` |
-| `tests/runner-visual-android-v266-browser.spec.cjs` (Reliability, vraie application) | **Pixel 7, Galaxy S8**, puis iPhone 14 (émulation) : alignement sur les cartes réelles, dessin à 88 px, jamais sous la barre basse, **isolation du style** accueil / Planning / Assistant, toucher réel sur les pastilles, glissement commencé sur Runner, **clavier ouvert**, **bouton retour**, safe areas Android (barre d'état, trou de caméra, trois boutons), police agrandie |
-| `tests/fixtures/runner-visual-preview.html` | page d'aperçu de test (jamais chargée par l'app ni mise en cache) : carte Planning, bottom sheet Assistant, cartes d'alerte et de succès, avec les boutons et la barre basse de l'hôte |
+| `tests/runner-visual-v268.test.cjs` (Reliability) | chargé une fois, précaché, build V268 cohérent, « Quoi de neuf » V268 ; aucune donnée / moteur / écouteur / réseau / `setInterval` dans `runner-visual.js` ; texte jamais en HTML ; **mobile d'abord** : seule requête média = mouvement réduit, jamais `fixed`/`sticky`/`z-index`, aucun bouton ni lien dessiné ; `!important` limité aux SVG ; animations `transform`/`opacity`, aucune `infinite`, boucle bornée à 16 ; contrastes AA ; alias `Runner` jamais écrasé ; **Runner branché dans `assistant-upgrade.js` seulement** (ni Planning, ni Forecast, ni Command Engine, ni Explorer Terrain) ; adaptateur sans timer ni donnée ni écouteur de document, trois observations bornées, conteneur `pointer-events:none` ; marqueurs de copie épinglés dans le noyau et le Command Engine |
+| `tests/runner-assistant-v268-browser.spec.cjs` (Reliability, **vraie application**) | **Android 390, Android 360 (Galaxy S8)**, puis iPhone 14 (émulation) : dormant jusqu'à la première ouverture, monté une seule fois ; **quatre états réels** (neutre, analyse, alerte, succès, retour au calme, statut en erreur) ; aucun toucher intercepté (tap sur Runner, pastille, défilement des messages) ; **clavier ouvert** 88 → 56 px (Android) ; **bouton Retour** ; **safe areas** (barre d'état, trou de caméra, barre de gestes, trois boutons, encoche iPhone) ; **animations réduites** ; une seule boucle bornée ; **accessibilité** (nom, annonces polie/assertive, rien de focusable, tabulation, texte hostile inerte) ; **aucune donnée écrite** ; **PWA** : précache `?rev=`, Assistant et Runner hors ligne |
+| `tests/runner-visual-v268-browser.spec.cjs` (Reliability, mobile) | Android 390, Android 360, iPhone 390, 320 px : variantes, accessibilité, mouvement borné, mode réduit, dormance, `state` et stockage inchangés |
+| `tests/runner-visual-android-v268-browser.spec.cjs` (Reliability, vraie application) | Pixel 7, Galaxy S8, iPhone 14 (émulation) : alignement sur les cartes réelles, dessin à 88 px, **isolation du style** accueil / Planning / Assistant, jamais sous la barre basse, glissement commencé sur Runner, safe areas du Planning, police agrandie |
+| `tests/fixtures/runner-visual-preview.html` | page d'aperçu de test (jamais chargée par l'app ni mise en cache) |
 
 Plafond de scripts : `tests/priority-campaign-removal-browser.spec.cjs` (77) et `tests/fixtures/cleanup-baseline-r20.json`.
 
 ## Questions ouvertes
 
-1. Valider le plafond 77 (ou choisir l'alternative sans chargement au démarrage).
-2. Art maître : le design peut-il fournir un SVG ou un PNG transparent haute définition ? Le gabarit actuel est un redessin.
-3. Poses de la planche (propose, montre le planning, analyse, explique, valide, salut) : variantes de gestes qui s'ajoutent sans changer l'API ; hors périmètre, les quatre états demandés sont livrés.
-4. Zone haute de la feuille de l'Assistant (`env(safe-area-inset-top)`) : à vérifier sur appareil Android réel, puis à traiter par son propriétaire avant d'y monter Runner.
-5. Contrôle sur iPhone réel (WebKit, clavier iOS, encoche) pendant la phase de test terrain PWA.
-6. Runner dans le bouton IA ou la barre de navigation basse : **non préparé et déconseillé** (un personnage près d'une action principale contredit la règle « jamais flottant »). Décision produit si cela revient.
+1. Art maître : le design peut-il fournir un SVG ou un PNG transparent haute définition ? Le gabarit actuel est un redessin.
+2. Zone haute de la feuille de l'Assistant (`env(safe-area-inset-top)`) : à vérifier sur appareil Android réel, puis à traiter par son propriétaire.
+3. Contrôle sur iPhone réel (WebKit, clavier iOS, encoche) pendant la phase de test terrain PWA.
+4. Poses de la planche (propose, montre le planning, analyse, explique, valide, salut) : variantes de gestes qui s'ajoutent sans changer l'API.
+5. Prochaines surfaces (Planning, alertes de contraintes, succès après application, Explorer Terrain) : chacune demande sa propre PR, son test et une vérification 390 px.
