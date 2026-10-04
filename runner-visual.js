@@ -235,16 +235,21 @@ function toneCss(){
 const CSS=[
 '.srRunner{--sr-runner-size:88px;--rn-ink:'+INK+';--rn-sub:'+SUBINK+';--rn-bubble-line:#dbe5f6;position:relative;display:flex;align-items:center;gap:12px;box-sizing:border-box;min-width:0;max-width:100%;contain:layout style;-webkit-tap-highlight-color:transparent;font-family:inherit}',
 toneCss(),
+/* Android : clavier ouvert (attribut public posé par mobile-ux-v262.js), Runner se réduit à 56 px pour
+   laisser la zone de saisie et les messages respirer. Lecture seule : Runner n'écrit jamais cet attribut. */
+'html[data-sr-keyboard="open"] .srRunner{--rn-cap:56px}',
 '.srRunner[data-side="left"]{flex-direction:row-reverse}',
 '.srRunner[data-variant="panel"]{flex-direction:column;align-items:stretch;gap:0}',
 '.srRunner[data-variant="panel"] .srRunnerFigure{align-self:center}',
-'.srRunnerFigure{flex:0 0 auto;width:var(--sr-runner-size);height:calc(var(--sr-runner-size)*'+ART_RATIO.toFixed(4)+');line-height:0;pointer-events:none;user-select:none;-webkit-user-select:none}',
-'.srRunnerFigure .rnArt{display:block;width:100%;height:100%;overflow:visible}',
+'.srRunnerFigure{flex:0 0 auto;width:min(var(--sr-runner-size),var(--rn-cap,999px));height:calc(min(var(--sr-runner-size),var(--rn-cap,999px))*'+ART_RATIO.toFixed(4)+');line-height:0;pointer-events:none;user-select:none;-webkit-user-select:none}',
+/* L'app pose des règles de pictogrammes avec un identifiant (`#premiumHomeV2 svg{width:24px;height:24px;display:block}`) :
+   sans !important elles écrasent le dessin (24 px au lieu de 88 px) et rendent visibles les pictogrammes masqués. */
+'.srRunnerFigure .rnArt{display:block!important;width:100%!important;height:100%!important;overflow:visible}',
 /* Calques : tous présents dans le SVG, un seul visible selon l'état. */
 '.srRunner .rnLayer{opacity:0;transition:opacity .16s ease}',
 '.srRunner[data-state="neutral"] .rnLayer[data-rn="neutral"],.srRunner[data-state="analyzing"] .rnLayer[data-rn="analyzing"],.srRunner[data-state="alert"] .rnLayer[data-rn="alert"],.srRunner[data-state="success"] .rnLayer[data-rn="success"]{opacity:1}',
 /* Bulle contextuelle (variante par défaut) : carte blanche, accent d'état, queue vers Runner. */
-'.srRunnerBubble{position:relative;display:flex;align-items:flex-start;gap:10px;flex:1 1 auto;min-width:0;box-sizing:border-box;padding:11px 14px;border-radius:18px;background:#fff;border:1px solid var(--rn-bubble-line);border-left:4px solid var(--rn-accent);box-shadow:0 6px 18px rgba(23,44,96,.10);color:var(--rn-ink);font-size:14px;line-height:1.4;font-weight:500;letter-spacing:-.005em;overflow-wrap:anywhere}',
+'.srRunnerBubble{position:relative;display:flex;align-items:flex-start;gap:10px;flex:1 1 auto;min-width:0;box-sizing:border-box;padding:12px 16px;border-radius:22px;background:#fff;border:1px solid var(--rn-bubble-line);border-left:4px solid var(--rn-accent);box-shadow:0 6px 18px rgba(23,44,96,.10);color:var(--rn-ink);font-size:14px;line-height:1.4;font-weight:500;letter-spacing:-.005em;overflow-wrap:anywhere}',
 '.srRunnerBubble[hidden]{display:none}',
 '.srRunner[data-variant="bubble"] .srRunnerBubble::before{content:"";position:absolute;width:12px;height:12px;background:#fff;border:1px solid var(--rn-bubble-line);border-top:0;border-right:0;transform:rotate(45deg);left:-8px;top:calc(50% - 6px)}',
 '.srRunner[data-variant="bubble"][data-side="left"] .srRunnerBubble::before{left:auto;right:-7px;transform:rotate(225deg)}',
@@ -252,12 +257,12 @@ toneCss(),
 '.srRunner[data-variant="sheet"] .srRunnerBubble{padding:0;border:0;border-radius:0;background:none;box-shadow:none}',
 '.srRunner[data-variant="sheet"] .srRunnerBubbleTitle{font-size:16.5px}',
 /* Carte d'alerte ou de succès : bloc teinté pleine largeur sous Runner. */
-'.srRunner[data-variant="panel"] .srRunnerBubble{margin-top:-8px;padding:12px 14px;border:1px solid var(--rn-line);border-radius:16px;background:var(--rn-tint);box-shadow:none}',
+'.srRunner[data-variant="panel"] .srRunnerBubble{margin-top:-8px;padding:12px 16px;border:1px solid var(--rn-line);border-radius:20px;background:var(--rn-tint);box-shadow:none}',
 '.srRunner[data-variant="panel"] .srRunnerBubbleTitle{color:var(--rn-title)}',
 '.srRunnerIcon{display:none;flex:0 0 22px;width:22px;height:22px;margin-top:1px}',
 '.srRunner[data-variant="panel"][data-state="alert"] .srRunnerIcon,.srRunner[data-variant="panel"][data-state="success"] .srRunnerIcon{display:block}',
-'.srRunnerIcon svg{display:none;width:100%;height:100%}',
-'.srRunner[data-state="alert"] .rnIconAlert,.srRunner[data-state="success"] .rnIconOk{display:block}',
+'.srRunnerIcon svg{display:none!important;width:100%!important;height:100%!important}',
+'.srRunner[data-state="alert"] .rnIconAlert,.srRunner[data-state="success"] .rnIconOk{display:block!important}',
 '.srRunnerBubbleBody{display:block;flex:1 1 auto;min-width:0}',
 '.srRunnerBubbleTitle{display:block;margin:0 0 2px;font-weight:700;font-size:14.5px;color:var(--rn-ink)}',
 '.srRunnerBubbleTitle:empty{display:none}',

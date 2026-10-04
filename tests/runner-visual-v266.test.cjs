@@ -66,6 +66,9 @@ for (const block of keyframeBlocks) {
 }
 assert.doesNotMatch(css, /infinite/, 'aucune animation infinie : un état oublié ne tourne jamais en continu');
 assert.match(css, /animation:srRunnerDot 1\.4s ease-in-out 16/, 'la seule boucle (points « analyzing ») est bornée à 16 passages');
+assert.deepEqual([...css.matchAll(/'([^'{]+)\{[^}']*!important[^}']*\}'/g)].map(m => m[1]).filter(sel => !/prefers-reduced|data-motion/.test(sel) && !/\*/.test(sel)),
+  ['.srRunnerFigure .rnArt', '.srRunnerIcon svg', '.srRunner[data-state="alert"] .rnIconAlert,.srRunner[data-state="success"] .rnIconOk'],
+  '!important réservé aux SVG de Runner, que les règles `#id svg` de l’application atteignent sinon');
 assert.doesNotMatch(css, /will-change/, 'aucune promotion de calque permanente');
 assert.doesNotMatch(css, /filter\s*:|backdrop-filter/, 'aucun filtre coûteux sur mobile');
 assert.match(css, /@media \(prefers-reduced-motion:reduce\)\{\.srRunner \*,\.srRunner \*::before\{animation:none!important;transition:none!important\}\}/, 'mode réduit d’animations');
@@ -83,6 +86,9 @@ assert.doesNotMatch(css, /\binset\s*:/, 'aucun ancrage aux bords');
 assert.doesNotMatch(css, /z-index|100vh|100vw|100dvh|vh\b|vw\b/, 'aucun empilement ni unité de viewport : Runner ne passe jamais au-dessus d’une action');
 assert.doesNotMatch(mod, /<(button|a|input|select|textarea)\b|tabindex|onclick|\.focus\s*\(|setAttribute\('tabindex'|addEventListener/i, 'Runner ne dessine aucun bouton ni lien : les actions appartiennent à l’écran hôte');
 assert.equal((css.match(/pointer-events\s*:\s*none/g) || []).length, 1, 'la figure ne capte aucun tap');
+assert.match(css, /'html\[data-sr-keyboard="open"\] \.srRunner\{--rn-cap:56px\}'/, 'clavier Android ouvert : Runner se réduit à 56 px');
+assert.doesNotMatch(mod, /(set|remove)Attribute\(\s*['"]data-sr-keyboard|dataset\.srKeyboard/, 'Runner lit l’état du clavier, il ne l’écrit jamais (propriétaire : mobile-ux-v262.js)');
+assert.match(mod, /\.srRunnerFigure\{[^}]*width:min\(var\(--sr-runner-size\),var\(--rn-cap,999px\)\)/, 'taille effective = taille demandée plafonnée');
 assert.match(css, /\.srRunnerFigure\{[^}]*pointer-events:none/);
 assert.doesNotMatch(mod, /\bxl\b/, 'plus de grande taille de type desktop');
 

@@ -2,15 +2,17 @@
 
 Runner est le copilote **visuel** de Store Runner : un personnage, quatre états, une bulle. Ce lot ne crée que la couche de présentation réutilisable. **Rien n'est branché** : aucun écran, aucun moteur (Planning, Forecast, Command Engine, Explorer Terrain) ne connaît Runner.
 
-**Mobile uniquement, Android d'abord.** Runner n'a aucune mise en page desktop : sa feuille de style ne contient aucune requête de largeur. Référence : Android 390 px, vérifié aussi à 360 px (le plus petit téléphone courant), puis iPhone 390 px, et 320 px sans défilement horizontal. En cas de doute entre desktop et mobile, c'est le mobile qui a été choisi.
+**Mobile uniquement, Android d'abord.** Store Runner est Android-first : Runner a été pensé et validé sur Android, puis adapté à l'iPhone. Il n'a aucune mise en page desktop : sa feuille de style ne contient aucune requête de largeur. Références : **Pixel 7 (412 px)** et **Galaxy S8 (360 px, Samsung)**, puis iPhone 14 ; 320 px sans défilement horizontal. L'application installée est verrouillée en portrait (`portrait-primary` dans le manifeste) : le paysage n'est pas un cas de conception, seulement de robustesse. En cas de doute entre desktop et mobile, c'est le mobile qui a été choisi.
 
 - Build `20261004-r41-runner-visual-266`, version visible **inchangée : 266**.
 - PR Draft, **non fusionnée**. Décision à valider avant fusion : voir « Chargement et budget de démarrage ».
 - Module : `runner-visual.js` (`StoreRunnerRunner`, alias `Runner`). Un seul fichier, aucune dépendance, aucune feuille séparée.
 
+![Runner sur Android, rendu réel dans l'application](tests/fixtures/runner-visual-android-real.webp)
+
 ![États de Runner](tests/fixtures/runner-visual-states.webp)
 
-![Intégration mobile, Android 390 px](tests/fixtures/runner-visual-preview-390.webp)
+![Page d'aperçu de test, 390 px](tests/fixtures/runner-visual-preview-390.webp)
 
 ## Direction visuelle
 
@@ -43,6 +45,33 @@ Règles mobiles, vérifiées par les tests :
 - **Les actions appartiennent à l'hôte.** « Voir détails », « Réorganiser », « Annuler », « Voir ma tournée » sont les boutons de l'écran, au style de l'app, cibles ≥ 48 px. Runner ne dessine aucun bouton ni lien, ne prend jamais le focus et sa figure ne capte aucun tap (`pointer-events:none`) : le centre de chaque bouton de l'hôte reste atteignable.
 - **Largeur : celle du conteneur.** La bulle prend la largeur restante, coupe les noms sans espace (`overflow-wrap:anywhere`) et ne déborde ni de sa carte ni de l'écran à 320, 360 et 390 px. Texte ≥ 14 px, police héritée de l'application.
 - **Contrastes AA.** Toutes les paires texte / fond (encre, texte secondaire, titres d'alerte et de succès sur leurs teintes) sont ≥ 4,5:1, vérifiées par le test unitaire.
+
+## Validation Android dans la vraie application
+
+La page d'aperçu n'a pas suffi : c'est le test dans l'application réelle, sous **Pixel 7** et **Galaxy S8** émulés (toucher, DPR 2,6 / 3, UA Android), qui a trouvé un vrai défaut et qui fixe les comportements ci-dessous. Runner n'est branché nulle part : le spec le monte dans des emplacements de test de l'accueil, du Planning et de l'Assistant (`tests/runner-visual-android-v266-browser.spec.cjs`, captures en `RUNNER_SHOTS_DIR`).
+
+**Défaut trouvé et corrigé.** L'application contient `#premiumHomeV2 svg, .bottomAppNav svg { width:24px; height:24px; display:block }` (règle d'icônes à identifiant). Sur l'accueil, elle réduisait le dessin de Runner de 88 px à 24 px (la boîte de la figure restait à 88 px, ce que mesuraient mes premiers tests) et rendait visibles les pictogrammes masqués des cartes. Runner impose désormais sa taille et son affichage SVG avec `!important`, strictement limité à ses trois règles SVG (vérifié par le test unitaire). **Garde-fou permanent :** le test « Isolation du style » compare, élément par élément, les styles calculés de cinq combinaisons de Runner (bulle, bulle à gauche, sheet, carte alerte, carte succès) dans l'accueil, le Planning et l'Assistant réels contre une page témoin sans règle d'application : zéro écart exigé (mutation vérifiée : retirer le `!important` fait échouer le test avec `88px` contre `24px`).
+
+| Comportement Android | Résultat vérifié |
+| --- | --- |
+| Alignement et espacement | Runner prend la largeur exacte des cartes de l'app (écart ≤ 1 px à gauche et à droite), rayon 22 px proche des cartes (24–25 px), hauteur d'un Runner `md` < 17 % de l'écran |
+| Barre basse flottante de l'app | jamais recouvert : en fin de page le dernier bloc reste au-dessus, y compris avec une barre à trois boutons (inset bas 48 px) |
+| Toucher réel | une pastille de l'Assistant touchée au doigt exécute son gestionnaire, Runner ne bouge pas ; la figure ne capte aucun tap |
+| Défilement | un glissement du doigt **commencé sur Runner** (figure ou bulle) fait défiler la page (événements tactiles du navigateur) |
+| **Clavier ouvert** (`interactive-widget=resizes-content`) | Runner passe de 120 à **56 px** via l'attribut public `html[data-sr-keyboard="open"]` posé par `mobile-ux-v262.js` (lecture seule, aucun écouteur) ; la saisie reste visible, le titre de la feuille aussi, puis Runner retrouve 120 px |
+| **Bouton retour** | le retour referme la feuille de l'app comme avant ; Runner ne l'intercepte pas, reste monté et inchangé |
+| Police système agrandie (≈ 150 %) | le texte de bulle grandit, rien ne déborde, Runner ne passe pas sous les pastilles, la figure ne grossit pas |
+| Rendus répétés de l'app | six rendus successifs par `innerHTML` laissent une seule instance de Runner (purge à `mount`) |
+
+**Constats sur l'application elle-même (non corrigés ici, hors périmètre de Runner).**
+
+1. **Feuille de l'Assistant et zone haute.** Elle est fixée à ≈ 26 px du haut et ne lit pas `env(safe-area-inset-top)`. Sans encoche, sans effet. Sous une encoche, un trou de caméra ou un affichage bord à bord (Android 15), son grabber et son titre peuvent passer sous la barre d'état. À vérifier sur appareil réel par le propriétaire de la feuille **avant** d'y intégrer Runner. Le spec consigne la mesure (annotation « constat feuille Assistant ») sans l'imposer.
+2. **Réordonnancement du Planning.** `planning-ui-fixes.js` déplace ses blocs un instant après le rendu : un conteneur posé « à côté » d'un bloc avant ce réordonnancement reste derrière. Le propriétaire d'un écran doit monter Runner **dans son propre rendu**, comme ses autres blocs ; `home-refresh-v2.js` redessine aussi l'accueil. `mount` ne fuit pas si le redessin retire Runner.
+3. **Conteneurs de l'accueil.** `#premiumHomeV2` ordonne ses blocs avec `order` : un conteneur d'intégration doit copier celui de son voisin (le spec le fait).
+
+**Safe areas Android émulées** (CDP `Emulation.setSafeAreaInsetsOverride`) : barre d'état (haut 32 px), trou de caméra + barre de gestes (48 / 24 px), navigation à trois boutons (32 / 48 px). Runner étant dans le flux, il ne peut ni passer sous une barre ni sous l'encoche ; ce sont les marges de l'hôte qui comptent (la fixture montre le montage correct d'un sheet et d'une barre basse).
+
+**iPhone, ensuite.** Safari/WebKit n'est pas installé dans l'environnement de test : l'iPhone 14 est validé sous **émulation Chromium** (UA, taille, DPR, safe areas encoche 47 px + barre d'accueil 34 px) pour Planning et Assistant. Non vérifiable ici et à contrôler sur un iPhone réel (phase de test terrain PWA) : le rendu WebKit du SVG et de `transform-box`, `min()` dans `calc()`, le clavier iOS (qui ne redimensionne pas le contenu : la réduction de Runner à 56 px s'appuie sur l'attribut de `mobile-ux-v262.js`, qui lit `visualViewport`), et l'encoche réelle.
 
 ## Ce que Runner ne fait jamais
 
@@ -127,6 +156,7 @@ Dans tous les cas, **le propriétaire de l'écran monte Runner et traduit son pr
 | --- | --- |
 | `tests/runner-visual-v266.test.cjs` (Reliability) | chargé une fois, précaché, build cohérent, version visible 266 ; aucune donnée / moteur / écouteur / observateur / réseau / `setInterval` ; texte jamais en HTML ; **mobile d'abord** : seule requête média = mouvement réduit, jamais `fixed`/`sticky`/`z-index`/unité de viewport, aucun bouton ni lien dessiné ; animations `transform`/`opacity` seulement, aucune `infinite`, boucle bornée à 16 ; contrastes AA ; API pure ; alias `Runner` jamais écrasé ; aucun module ne branche Runner |
 | `tests/runner-visual-v266-browser.spec.cjs` (Reliability, mobile) | **Android 390, Android 360, iPhone 390** : démarrage dormant dans la vraie app ; `state` et stockage inchangés ; style non altéré par l'app ; quatre états ; trois variantes (disposition, teintes, pictogrammes) ; injection `<img onerror>` inerte ; annonce lecteur d'écran ; **Runner dans le flux, jamais fixe, aucun bouton de l'hôte recouvert** ; **safe areas émulées** (encoche, barre de gestes, paysage) ; aucun débordement horizontal jusqu'à 320 px ; tailles ; pas d'instance orpheline après des rendus répétés ; aucune animation au repos, boucle bornée ; mode réduit ; `motion:'off'` |
+| `tests/runner-visual-android-v266-browser.spec.cjs` (Reliability, vraie application) | **Pixel 7, Galaxy S8**, puis iPhone 14 (émulation) : alignement sur les cartes réelles, dessin à 88 px, jamais sous la barre basse, **isolation du style** accueil / Planning / Assistant, toucher réel sur les pastilles, glissement commencé sur Runner, **clavier ouvert**, **bouton retour**, safe areas Android (barre d'état, trou de caméra, trois boutons), police agrandie |
 | `tests/fixtures/runner-visual-preview.html` | page d'aperçu de test (jamais chargée par l'app ni mise en cache) : carte Planning, bottom sheet Assistant, cartes d'alerte et de succès, avec les boutons et la barre basse de l'hôte |
 
 Plafond de scripts : `tests/priority-campaign-removal-browser.spec.cjs` (77) et `tests/fixtures/cleanup-baseline-r20.json`.
@@ -136,4 +166,6 @@ Plafond de scripts : `tests/priority-campaign-removal-browser.spec.cjs` (77) et 
 1. Valider le plafond 77 (ou choisir l'alternative sans chargement au démarrage).
 2. Art maître : le design peut-il fournir un SVG ou un PNG transparent haute définition ? Le gabarit actuel est un redessin.
 3. Poses de la planche (propose, montre le planning, analyse, explique, valide, salut) : variantes de gestes qui s'ajoutent sans changer l'API ; hors périmètre, les quatre états demandés sont livrés.
-4. Runner dans le bouton IA ou la barre de navigation basse : **non préparé et déconseillé** (un personnage près d'une action principale contredit la règle « jamais flottant »). Décision produit si cela revient.
+4. Zone haute de la feuille de l'Assistant (`env(safe-area-inset-top)`) : à vérifier sur appareil Android réel, puis à traiter par son propriétaire avant d'y monter Runner.
+5. Contrôle sur iPhone réel (WebKit, clavier iOS, encoche) pendant la phase de test terrain PWA.
+6. Runner dans le bouton IA ou la barre de navigation basse : **non préparé et déconseillé** (un personnage près d'une action principale contredit la règle « jamais flottant »). Décision produit si cela revient.
