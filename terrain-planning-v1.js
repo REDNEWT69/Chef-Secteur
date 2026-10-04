@@ -417,7 +417,9 @@ function optimizeThreeWeekCrossDay(weeks,options){
   if(options&&options.crossDayEnabled===false)return{applied:false,reason:'no-real-visit-history'};
   if(!Array.isArray(weeks)||!weeks.length||typeof needAt!=='function'||typeof options.evaluateDayRoute!=='function')return{applied:false,reason:'missing-evaluator-or-coverage'};
   const days=(options.days||[]).filter(day=>DAYS.includes(day)),max=Math.max(1,Number(options.maxCreditsPerDay)||4),target=Math.max(1,Number(options.target)||20),credit=options.creditOf||(()=>1),blocked=options.dayBlocked||(()=>false),lockFor=options.lockDayForWeek||(()=>''),apptFor=options.appointmentDay||(()=>''),completedOn=options.completedOn||(()=>false),excludedForWeek=typeof options.excludedForWeek==='function'?options.excludedForWeek:(()=>false),imposed=state.included||{},memory=options.memory||{usedKeys:new Set(),useCount:new Map()},ranked=(options.ranked||[]).filter(Boolean),reservations=options.overnightReservations||state.hotelReservations||{};
-  const first=parseISO(weeks[0].weekKey),horizonEnd=iso(addDays(first,20)),overnightDates=new Set();
+  /* `horizonEnd` suit l'horizon réellement construit (commande planning sur 1 à 6 semaines) ;
+     sans l'option, il reste le dernier jour du cycle de 3 semaines. */
+  const first=parseISO(weeks[0].weekKey),horizonEnd=/^\d{4}-\d{2}-\d{2}$/.test(String(options.horizonEnd||''))?String(options.horizonEnd):iso(addDays(first,20)),overnightDates=new Set();
   for(const row of Object.values(reservations||{})){if(row&&row.fromDate)overnightDates.add(String(row.fromDate));if(row&&row.toDate)overnightDates.add(String(row.toDate))}
   const refusal={manualWeeks:0,pastDays:0,unavailableDays:0,overnightDays:0,appointments:0,locks:0,imposed:0,completed:0,deadlines:0},slots=[],weekSlots=new Map();let slotIndex=0;
   for(const week of weeks){
@@ -856,6 +858,9 @@ function summarizeOpeningHours(weeks,state=root.state,hoursApi=root.StoreOpening
    semaine entamée sont conservées telles quelles, et une visite faite aujourd'hui reste
    sur aujourd'hui. Sans ces options, le cycle est exactement celui d'avant V263. */
 function buildThreeWeekSnail(options){
+  /* Commande planning V1 : `weekCount` (1 à 6) borne l'horizon à la période demandée. Sans
+     l'option, l'horizon reste exactement le cycle historique de 3 semaines. */
+  const weekCount=Number.isInteger(options.weekCount)&&options.weekCount>=1&&options.weekCount<=6?options.weekCount:3;
   const state=options.state,first=monday(options.firstMonday),days=(options.days||[]).filter(d=>DAYS.includes(d)),target=Math.max(1,Number(options.target)||20),max=Math.max(1,Number(options.maxCreditsPerDay)||4),archive=options.archive||{},distance=options.distanceOf||(()=>Infinity),between=options.distanceBetween||((a,b)=>{try{const n=Number(root.hav(a,b));return Number.isFinite(n)?n:Infinity}catch(e){return Infinity}}),priority=options.priorityOf||(()=>0),credit=options.creditOf||(()=>1),lockFor=options.lockDayForWeek||(()=>''),apptFor=options.appointmentDay||(()=>''),fits=options.dayFits||(()=>true),blocked=options.dayBlocked||(()=>false),imposed=state&&state.included||{};
   const needOf=typeof options.needOf==='function'?options.needOf:null,today=/^\d{4}-\d{2}-\d{2}$/.test(String(options.today||''))?String(options.today):'',existingPlanFor=typeof options.existingPlanFor==='function'?options.existingPlanFor:null,completedOn=typeof options.completedOn==='function'?options.completedOn:(()=>false);
   if(!days.length)throw new Error('Choisis au moins un jour travaillé.');
@@ -896,7 +901,7 @@ function buildThreeWeekSnail(options){
      compté d'avance dans used : un magasin réservé n'entre dans le cycle qu'avec sa semaine.
      RDV, verrous et imposés restent des contraintes explicites, honorées comme avant. */
   const reservedUntil=new Map();
-  for(let wi=0;wi<3;wi++){
+  for(let wi=0;wi<weekCount;wi++){
     const key=iso(addDays(first,wi*7)),manual=protectedFor(key),adaptive=adaptiveFor(key);
     if(manual)for(const s of flattenPlan(manual)){const k=s&&storeKey(s);if(k&&!(reservedUntil.get(k)>key))reservedUntil.set(k,key)}
     if(adaptive)for(const s of flattenPlan(adaptive.plan)){const id=String(s&&s.id||''),k=s&&storeKey(s);if(k&&adaptive.datedIds.has(id)&&!(reservedUntil.get(k)>key))reservedUntil.set(k,key)}
@@ -914,7 +919,7 @@ function buildThreeWeekSnail(options){
      ni les horaires : toute obligation impossible rejoint un refus unique, levé avant toute
      proposition. Elle n'entre dans used qu'une fois posée ; d'ici là, la sélection libre ne prend pas
      son magasin. Une échéance au-delà de l'horizon ne reste qu'un apport de score (Lot 3A). */
-  const horizonStart=iso(first),horizonEnd=iso(addDays(first,20)),cycleKeys=[0,1,2].map(wi=>iso(addDays(first,wi*7))),afterKey=iso(addDays(first,21));
+  const horizonStart=iso(first),horizonEnd=iso(addDays(first,weekCount*7-1)),cycleKeys=Array.from({length:weekCount},(_,wi)=>iso(addDays(first,wi*7))),afterKey=iso(addDays(first,weekCount*7));
   const isDay=v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||'')),dm=d=>d.slice(8,10)+'/'+d.slice(5,7),dateIn=(wk,day)=>iso(addDays(parseISO(wk),DAYS.indexOf(day)));
   const manualPlans=new Map(cycleKeys.map(k=>[k,protectedFor(k)]));
   /* Placements explicites du magasin à partir de `lower` : semaine retouchée du cycle (même passée),
@@ -934,7 +939,7 @@ function buildThreeWeekSnail(options){
     if(isDay(dated)&&dated>afterKey){const day=lockFor(s.id,dated);if(DAYS.includes(day))out.push({date:dateIn(dated,day),why:'verrouillé le ',ahead:true})}
     return out.filter(f=>f.date>=lower&&(!f.ahead||!today||f.date>=today)).sort((a,b)=>a.date.localeCompare(b.date));
   };
-  const obligations=new Map(),lostDues=[],deadlinePins=new Map(),loseDue=(o,why)=>{o.state='lost';lostDues.push({o,why})};
+  const obligations=new Map(),lostDues=[],commandLost=[],deadlinePins=new Map(),loseDue=(o,why)=>{o.state='lost';(o.command?commandLost:lostDues).push({o,why})};
   for(const wk of cycleKeys)for(const r of briefLot(wk).rows.values()){
     const d=r.deadline,due=d&&String(d.dueDate||'');
     if(!isDay(due)||due<horizonStart||due>horizonEnd)continue;
@@ -950,6 +955,28 @@ function buildThreeWeekSnail(options){
     if(fixed.some(f=>f.date<=due)){o.state='done';o.by='explicit';continue}
     if(fixed.length)o.after=fixed[0];
   }
+  /* Commande planning V1 (`options.requiredVisits`, planning-command-engine.js) : une visite
+     demandée explicitement, une seule fois entre `from` (début de période, jamais avant
+     aujourd'hui) et `dueDate`, posée au plus tôt à `notBefore`. Même mécanique que les
+     échéances du brief — première journée compatible — avec trois écarts : la garde
+     anti-sur-visite a déjà été appliquée par l'appelant (`notBefore`) ; seule une fenêtre de
+     jours (`pin`) est figée pour V264, une visite demandée sur toute la période restant libre
+     pour la géographie ; une visite impossible est rendue dans `out.commandVisits` au lieu d'un
+     refus global, pour que la commande n'applique rien et explique pourquoi. Sans l'option,
+     rien ne change. */
+  const commandKeys=[];
+  for(const req of Array.isArray(options.requiredVisits)?options.requiredVisits:[]){
+    const due=String(req&&req.dueDate||''),from=isDay(req&&req.from)?String(req.from):horizonStart,notBefore=isDay(req&&req.notBefore)&&String(req.notBefore)>from?String(req.notBefore):from,s=req&&byId.get(String(req.storeId)),label=String(req&&req.label||'');
+    if(!s){commandLost.push({o:{key:String(req&&req.storeId),store:{id:req&&req.storeId},dueDate:due,label,command:true,state:'lost'},why:'magasin hors du vivier planifiable (inactif, exclu ou filtré)'});continue}
+    const key=storeKey(s);commandKeys.push(key+'|'+due);
+    if(obligations.has(key+'|'+due)){obligations.get(key+'|'+due).from=from;continue}
+    const o={key,store:s,dueDate:due,from,notBefore,label,ruleId:'planning-command',lower:iso(monday(parseISO(notBefore)||first)),state:'open',command:true,pin:!!(req&&req.pin)};obligations.set(key+'|'+due,o);
+    if(!isDay(due)||due<from||due<horizonStart||due>horizonEnd){loseDue(o,'période hors de l’horizon généré');continue}
+    const fixed=explicitPlacements(s,from);
+    if(fixed.some(f=>!f.ahead&&f.date<=due)){o.state='done';o.by='manual';continue}
+    if(fixed.some(f=>f.date<=due)){o.state='done';o.by='explicit';continue}
+    if(fixed.length)o.after=fixed[0];
+  }
   /* Échéance passée sans visite posée : obligation perdue, avec sa raison. */
   const expireDues=next=>{for(const o of obligations.values())if(o.state==='open'&&o.dueDate<next)loseDue(o,o.after?o.after.why+dm(o.after.date)+', après l’échéance':o.dueDate<o.lower||(today&&o.dueDate<today)?'échéance déjà dépassée':o.sawDay?'plus de créneau avant l’échéance : capacité ou horaires':o.sawManual?'semaine modifiée à la main sans ce magasin avant l’échéance':'aucune journée disponible avant l’échéance : jours non travaillés, bloqués ou magasin fermé')};
   /* Refus unique, levé avant toute proposition : rien n'a été écrit. */
@@ -959,7 +986,7 @@ function buildThreeWeekSnail(options){
     const parts=[...groups.values()].map(xs=>'« '+(xs[0].o.label||'Échéance')+' » (échéance le '+dm(xs[0].o.dueDate)+') : '+xs.slice(0,6).map(x=>(((x.o.store&&x.o.store.enseigne)||'Magasin')+' '+((x.o.store&&x.o.store.ville)||'')).trim()+' ('+x.why+')').join(', ')+(xs.length>6?' et '+(xs.length-6)+' autre'+(xs.length>7?'s':''):''));
     throw new Error(lostDues.length+' obligation'+(lostDues.length>1?'s':'')+' d’échéance du brief impossible'+(lostDues.length>1?'s':'')+' à tenir — '+parts.join(' ; ')+'. Le planning précédent est conservé.');
   };
-  for(let wi=0;wi<3;wi++){
+  for(let wi=0;wi<weekCount;wi++){
     const mon=addDays(first,wi*7),weekKey=iso(mon),protectedPlan=protectedFor(weekKey),adaptiveManual=adaptiveFor(weekKey),ref=refOf(mon);
     const dateOf=day=>iso(addDays(mon,DAYS.indexOf(day)));
     const frozenDays=today&&existingPlanFor?DAYS.filter(day=>dateOf(day)<today):[],frozenSet=new Set(frozenDays);
@@ -1023,7 +1050,7 @@ function buildThreeWeekSnail(options){
       }
     }
     /* Lot 3B : une journée passée conservée ou la visite du jour tient déjà l'obligation. */
-    for(const day of DAYS)for(const s of plan[day]){const date=dateOf(day),k=storeKey(s);for(const o of obligations.values())if(o.state==='open'&&o.key===k&&date>=o.lower&&date<=o.dueDate){o.state='done';o.by='kept'}}
+    for(const day of DAYS)for(const s of plan[day]){const date=dateOf(day),k=storeKey(s);for(const o of obligations.values())if(o.state==='open'&&o.key===k&&date>=(o.from||o.lower)&&date<=o.dueDate){o.state='done';o.by='kept'}}
     const activeDays=days.filter(day=>!frozenSet.has(day)&&!blocked(dateOf(day))),weekTarget=Math.max(0,target-frozenCount),quotas=dayQuotas(activeDays,weekTarget);
     const count=()=>flattenPlan(plan,activeDays).length+frozenCount;
     /* V263.1 : un magasin est candidat s'il n'est plus bloqué au dernier jour actif de la
@@ -1081,10 +1108,13 @@ function buildThreeWeekSnail(options){
       const s=o.store,k=o.key;if(weekPlaced.has(k))return;
       for(const day of DAYS){
         if(!activeDays.includes(day))continue;
-        const date=dateOf(day);if(date>o.dueDate||(today&&date<today)||!fits([s],day,mon))continue;
+        const date=dateOf(day);if(date>o.dueDate||(today&&date<today)||(o.notBefore&&date<o.notBefore)||!fits([s],day,mon))continue;
         o.sawDay=true;
         const trial=plan[day].concat([s]);if(routeCreditCost(trial,credit)>max||!fits(trial,day,mon))continue;
-        plan[day]=trial;weekPlaced.add(k);used.add(k);const pin={key:k,weekKey,day,date};deadlinePins.set(k+'|'+date,pin);
+        plan[day]=trial;weekPlaced.add(k);used.add(k);const pin={key:k,weekKey,day,date};
+        /* Une visite demandée sur toute la période reste libre pour la géographie (V264) : le
+           contrôle final la retrouve dans sa fenêtre. Échéances et fenêtres de jours sont figées. */
+        if(!o.command||o.pin)deadlinePins.set(k+'|'+date,pin);
         /* La visite posée tient toute obligation du magasin dont la fenêtre la contient : jamais de doublon. */
         for(const x of obligations.values())if(x.state==='open'&&x.key===k&&!x.after&&date>=x.lower&&date<=x.dueDate){x.state='done';x.by='placed';x.placed=pin}
         return;
@@ -1142,12 +1172,12 @@ function buildThreeWeekSnail(options){
       w.plan=pinned[i];const ref=preparation&&preparation.businessBaselineWeeks&&preparation.businessBaselineWeeks[i];if(ref)ref.plan=Object.fromEntries(DAYS.map(d=>[d,pinned[i][d].slice()]));
     });
   }
-  const crossDay=optimizeThreeWeekCrossDay(weeks,Object.assign({},options,{state,days,target,maxCreditsPerDay:max,ranked,memory,needAt,projectedNeedAt,businessBaselineWeeks:preparation&&preparation.businessBaselineWeeks||null,completedOn,creditOf:credit,lockDayForWeek:lockFor,appointmentDay:apptFor,dayFits:fits,dayBlocked:blocked,overnightReservations:reservations,briefAt,deadlineFixed:deadlinePins,excludedForWeek:(store,weekKey)=>{const info=adaptiveFor(weekKey);if(!info)return false;const id=String(store&&store.id||''),k=storeKey(store);return info.removedIds.has(id)||info.removedIds.has(k)}}));
+  const crossDay=optimizeThreeWeekCrossDay(weeks,Object.assign({},options,{state,days,target,maxCreditsPerDay:max,ranked,memory,horizonEnd,needAt,projectedNeedAt,businessBaselineWeeks:preparation&&preparation.businessBaselineWeeks||null,completedOn,creditOf:credit,lockDayForWeek:lockFor,appointmentDay:apptFor,dayFits:fits,dayBlocked:blocked,overnightReservations:reservations,briefAt,deadlineFixed:deadlinePins,excludedForWeek:(store,weekKey)=>{const info=adaptiveFor(weekKey);if(!info)return false;const id=String(store&&store.id||''),k=storeKey(store);return info.removedIds.has(id)||info.removedIds.has(k)}}));
   /* Lot 3B — contrôle final : chaque obligation tenue par le planning l'est encore après
      l'optimisation, à une date de sa fenêtre. Une visite faite (doneDate) la tient hors planning. */
   if(obligations.size){
     const visitsOf=new Map();for(const week of weeks)for(const day of DAYS)for(const s of (week.plan[day]||[])){const k=storeKey(s);if(!visitsOf.has(k))visitsOf.set(k,[]);visitsOf.get(k).push(dateIn(week.weekKey,day))}
-    for(const o of obligations.values())if(o.state==='done'&&o.by!=='doneDate'&&!(visitsOf.get(o.key)||[]).some(date=>date>=o.lower&&date<=o.dueDate))loseDue(o,'visite d’échéance absente du planning final');
+    for(const o of obligations.values())if(o.state==='done'&&o.by!=='doneDate'&&!(visitsOf.get(o.key)||[]).some(date=>date>=(o.from||o.lower)&&date<=o.dueDate))loseDue(o,'visite d’échéance absente du planning final');
     assertDues();
   }
   const finalUsed=new Set(weeks.flatMap(w=>flattenPlan(w.plan).map(storeKey)));
@@ -1159,7 +1189,14 @@ function buildThreeWeekSnail(options){
   const out={weeks,uniqueStores:finalUsed.size,totalVisits:weeks.reduce((n,w)=>n+flattenPlan(w.plan).length,0),unknownGps:unknownGps.size,dayCoverage:{planned:dayRows.filter(d=>d.status==='planned').length,active:dayRows.length,empty:emptyWorkDays.length},emptyWorkDays,crossDay};
   /* Lot 3B : obligations d'échéance de l'horizon et ce qui les tient (posée, visite faite, journée
      conservée, semaine retouchée, rendez-vous ou verrou). */
-  if(obligations.size)out.deadlines=[...obligations.values()].map(o=>({storeId:String(o.store.id),label:o.label,ruleId:o.ruleId,dueDate:o.dueDate,by:o.by,date:o.placed?o.placed.date:null}));
+  const briefObligations=[...obligations.values()].filter(o=>!o.command);
+  if(briefObligations.length)out.deadlines=briefObligations.map(o=>({storeId:String(o.store.id),label:o.label,ruleId:o.ruleId,dueDate:o.dueDate,by:o.by,date:o.placed?o.placed.date:null}));
+  /* Commande planning : chaque visite demandée, tenue (posée, déjà prévue, RDV/verrou) ou non
+     tenue avec sa raison. Le moteur n'a rien refusé globalement : c'est la commande qui juge. */
+  if(commandKeys.length||commandLost.length){
+    const lostWhy=new Map(commandLost.map(x=>[x.o,x.why]));
+    out.commandVisits=commandKeys.map(k=>{const o=obligations.get(k);return{storeId:String(o.store.id),dueDate:o.dueDate,from:o.from||o.lower,state:o.state==='done'?(o.by==='placed'?'placed':'kept'):'lost',by:o.by||null,date:o.placed?o.placed.date:null,why:o.state==='lost'?(lostWhy.get(o)||''):o.state==='open'?'aucune journée compatible dans la période':''}}).concat(commandLost.filter(x=>!commandKeys.includes(x.o.key+'|'+x.o.dueDate)).map(x=>({storeId:String(x.o.store&&x.o.store.id),dueDate:x.o.dueDate,from:'',state:'lost',by:null,date:null,why:x.why})));
+  }
   /* V263 — ce que le cycle n'a pas pu couvrir, dit clairement : magasins en retard ou jamais
      visités restés hors des 3 semaines faute de capacité, et magasins écartés parce qu'ils
      viennent d'être visités. */
@@ -1291,6 +1328,103 @@ function coverageSummaryText(coverage,prefix){
   if(coverage.uncoveredNever.length)parts.push(n(coverage.uncoveredNever.length,'magasin jamais visité reste','magasins jamais visités restent')+' à placer');
   return parts.length?(prefix||'')+parts.join(' · '):'';
 }
+/* Options du cycle lues dans les propriétaires runtime : besoin réel V263 (couverture lue à la
+   vraie date du jour), visites réalisées, brief V246, horaires, verrous, rendez-vous, Agenda,
+   matrice routière V248 et évaluateur V251. Une seule définition, partagée par la génération
+   3 semaines et par la simulation d'une commande planning : une commande ne peut pas planifier
+   avec d'autres règles que la génération. Lecture seule. */
+function runtimeSnailOptions(state,archive,today,shownWeekKey,shownPlan){
+  const coverageApi=root.StoreRunnerVisitCoverage,needOf=coverageApi&&typeof coverageApi.needOf==='function'?coverageApi.needOf(state,{today}):null;
+  const visitDays=coverageApi&&typeof coverageApi.visitDays==='function'?coverageApi.visitDays(state):null;
+  const completedOn=(id,date)=>visitDays?(visitDays.get(String(id))||[]).includes(date):visitedOnLegacy(state,id,date);
+  const existingPlanFor=key=>key===shownWeekKey?shownPlan:((archive[key]&&archive[key].plan)||null);
+  const hasRealVisitHistory=!!(visitDays&&Array.from(visitDays.values()).some(rows=>Array.isArray(rows)&&rows.length));
+  /* Le classement escargot lit la priorité performance dans son tri (n log n appels), et
+     chaque lecture relit et rapproche tout le fichier importé : 1 770 lectures et 14,7 s
+     mesurées sur 150 magasins. Une lecture par magasin et par génération donne exactement
+     les mêmes valeurs (tests/planning-command-benchmark.test.cjs). */
+  const boosts=new Map(),priorityOf=store=>{const key=String(store&&store.id);if(!boosts.has(key))boosts.set(key,performancePlanningBoost(store,state));return boosts.get(key)};
+  return{needOf,today,existingPlanFor,completedOn,crossDayEnabled:hasRealVisitHistory,state,days:currentDays(state),target:Number(state.settings.target)||20,maxCreditsPerDay:Number(state.settings.maxVisitsPerDay)||4,archive,distanceOf,distanceBetween:roadDistanceV264,evaluateDayRoute:(route,day,weekKey)=>evaluateDayRouteV264(route,day,weekKey,state),overnightReservations:state.hotelReservations||{},priorityOf,weeklyBrief:root.StoreRunnerWeeklyBriefV246,creditOf:visitCredit,lockDayForWeek:lockDay,appointmentDay,dayBlocked:(date)=>dateBlocked(date,state),dayFits:(route,day,mon)=>dayFits(route,day,state,mon)};
+}
+/* Entrée d'archive d'une semaine générée. Même forme pour la génération 3 semaines et pour une
+   commande planning appliquée ; les métadonnées M1 d'une semaine adaptative survivent.
+   `realToday` (commande planning) pose le repère frozenDays des seules journées passées. */
+function generatedArchiveEntry(week,built,state,archive,at,realToday){
+  const previous=archive[week.weekKey]||null,manualInfo=manualWeekInfo(week.weekKey,state,archive),entry={weekMonday:week.weekKey,plan:Object.fromEntries(DAYS.map(d=>[d,(week.plan[d]||[]).map(cloneStore)])),manualEdited:false,generatedMode:built.crossDay&&built.crossDay.applied?'cross-day-v264':'snail-distance-v1',updatedAt:at};
+  if(manualInfo&&manualInfo.adaptive){entry.manualEdited=true;entry.manualAdaptive=true;entry.manualEditedAt=previous&&previous.manualEditedAt||entry.updatedAt;if(manualInfo.removedIds.size)entry.manualRemovedIds=[...manualInfo.removedIds].sort()}
+  if(built.crossDay&&built.crossDay.applied)entry.crossDayOptimized='v264';
+  /* Commande planning : le repère frozenDays (lu par V185 et V251) ne nomme que les journées
+     réellement passées, pas celles laissées telles quelles avant le début de la période. */
+  if(realToday){const mon=parseISO(week.weekKey),frozen=(week.frozenDays||[]).filter(day=>iso(addDays(mon,DAYS.indexOf(day)))<realToday);if(frozen.length)entry.frozenDays=frozen}
+  return entry;
+}
+/* Mesure d'une tournée dans SON ordre, sans la réordonner : kilomètres de ce propriétaire
+   (matrice routière V248, réservations de découché conservées) et conduite selon V251. */
+function routeMetrics(route,day,weekKey,state=root.state){
+  const rows=(route||[]).filter(Boolean),mon=parseISO(weekKey);if(!mon||!DAYS.includes(day))return{kilometers:0,driveMinutes:0,feasible:true,estimatedEnd:null};
+  const kilometers=routeKilometersV264(rows,iso(addDays(mon,DAYS.indexOf(day))),state,{distanceBetween:roadDistanceV264,overnightReservations:state&&state.hotelReservations||{}});
+  let driveMinutes=null,feasible=null,estimatedEnd=null;
+  try{const v=root.StoreRunnerRouteOptimizerV251;if(rows.length&&v&&typeof v.evaluate==='function'){const e=v.evaluate(rows,day,state,{weekMonday:weekKey})||{};driveMinutes=Number(e.driveMinutes);feasible=typeof e.feasible==='boolean'?e.feasible:null;estimatedEnd=Number.isFinite(Number(e.estimatedEnd))?Number(e.estimatedEnd):null}}catch(e){}
+  if(!rows.length)driveMinutes=0;
+  return{kilometers:Number.isFinite(kilometers)?kilometers:null,driveMinutes:Number.isFinite(driveMinutes)?driveMinutes:null,feasible,estimatedEnd};
+}
+/* Commande planning V1 (planning-command-engine.js) — simulation PURE d'une période de 1 à 6
+   semaines entières. Même construction que generateThreeWeekSnail (runtimeSnailOptions) ; les
+   contraintes de la commande passent par les points d'extension déjà existants du moteur :
+     - exactDays [{storeId,date}] : jour exigé, lu comme un verrou de cette seule semaine ;
+     - forbidden [{date,storeIds}] : journée interdite (storeIds vide) ou magasin interdit ce
+       jour-là (dayFits et évaluateur V264 refusent la tournée qui le contient) ;
+     - requiredVisits [{storeId,from,notBefore,dueDate,label,pin}] : visites demandées une fois
+       (pin : figée au jour posé, pour une fenêtre plus courte que la période) ;
+     - spread : répartit les visites demandées sur les semaines, dans l'ordre escargot du moteur.
+   `start` peut tomber après aujourd'hui : les journées entre aujourd'hui et `start` restent
+   telles quelles (même mécanique que les journées passées). Rien n'est écrit, aucune synchro
+   Agenda n'est lancée : le dernier cache Agenda chargé fait foi. */
+function simulateCommandWindow(input){
+  const today=String(input&&input.today||''),start=parseISO(input&&input.start),end=parseISO(input&&input.end);
+  if(!parseISO(today)||!start||!end||end<start)throw new Error('Période de simulation invalide.');
+  const state=copy(input.state),archive=copy(input.archive||{}),first=monday(start),weekCount=Math.round((monday(end)-first)/(7*86400000))+1;
+  if(weekCount<1||weekCount>6)throw new Error('La période doit tenir entre 1 et 6 semaines.');
+  const engineToday=input.start>today?String(input.start):today,shownWeekKey=String(input.shownWeekKey||''),shownPlan=copy(input.shownPlan||state.plan||{});
+  const runtime=runtimeSnailOptions(state,archive,today,shownWeekKey,shownPlan),pool=(state.stores||[]).filter(s=>included(s,state));
+  const exact=new Map((input.exactDays||[]).map(row=>[String(row.storeId),String(row.date)]));
+  const forbiddenDates=new Set(),forbiddenPairs=new Set();
+  for(const row of input.forbidden||[]){const ids=Array.isArray(row.storeIds)?row.storeIds.map(String):[];if(!ids.length)forbiddenDates.add(String(row.date));for(const id of ids)forbiddenPairs.add(id+'|'+String(row.date))}
+  const forbiddenIn=(route,date)=>(route||[]).some(s=>forbiddenPairs.has(String(s&&s.id)+'|'+date));
+  const baseLock=runtime.lockDayForWeek,baseBlocked=runtime.dayBlocked,baseFits=runtime.dayFits,baseEval=runtime.evaluateDayRoute;
+  runtime.lockDayForWeek=(id,weekKey)=>{const date=exact.get(String(id)),d=date&&parseISO(date);if(d&&iso(monday(d))===String(weekKey))return DAYS[(d.getDay()||7)-1]||'';return baseLock(id,weekKey)};
+  runtime.dayBlocked=date=>forbiddenDates.has(String(date))||baseBlocked(date);
+  runtime.dayFits=(route,day,mon)=>{const m=mon instanceof Date?mon:parseISO(mon);if(m&&forbiddenIn(route,iso(addDays(m,DAYS.indexOf(day)))))return false;return baseFits(route,day,mon)};
+  runtime.evaluateDayRoute=(route,day,weekKey)=>{const raw=baseEval(route,day,weekKey),m=parseISO(weekKey);if(m&&forbiddenIn(route,iso(addDays(m,DAYS.indexOf(day)))))return Object.assign({},raw,{feasible:false});return raw};
+  let requiredVisits=(input.requiredVisits||[]).map(row=>({storeId:String(row.storeId),from:String(row.from||input.start),notBefore:String(row.notBefore||row.from||input.start),dueDate:String(row.dueDate||input.end),label:String(row.label||'Commande planning'),pin:!!row.pin}));
+  if(input.spread&&weekCount>1&&requiredVisits.length>1){
+    /* « Répartis » : ordre du moteur (besoin réel, puis score métier, puis distance depuis le
+       départ), découpé en tranches consécutives d'une semaine. Une tranche ne fixe que le plus
+       tôt possible ; la visite peut glisser plus tard dans la période si sa semaine est pleine. */
+    const byId=new Map(pool.map(s=>[String(s.id),s])),wanted=requiredVisits.map(r=>byId.get(r.storeId)).filter(Boolean),needAt=s=>runtime.needOf?runtime.needOf(s,String(input.start)):{tier:3};
+    const ordered=needOrdered(rankStoresForSnail(wanted,runtime.distanceOf,runtime.priorityOf),needAt).map(s=>String(s.id)),size=Math.ceil(ordered.length/weekCount);
+    const slotOf=new Map(ordered.map((id,i)=>[id,Math.min(weekCount-1,Math.floor(i/size))]));
+    requiredVisits=requiredVisits.map(row=>{if(!slotOf.has(row.storeId))return row;const chunkStart=iso(addDays(first,slotOf.get(row.storeId)*7));return Object.assign({},row,{notBefore:chunkStart>row.notBefore?chunkStart:row.notBefore})});
+  }
+  /* La préparation cross-day (V185) lit les verrous et l'Agenda enregistrés, pas ceux de la
+     commande : comme pour une échéance du brief, une préparation qui défait un jour exigé ou
+     remplit un jour/magasin interdit est annulée pour sa semaine. */
+  const violates=(week,before)=>{
+    const mon=parseISO(week.weekKey);
+    for(const [id,date] of exact){const d=parseISO(date);if(!d||iso(monday(d))!==week.weekKey)continue;const day=DAYS[(d.getDay()||7)-1];if(!((week.plan&&week.plan[day])||[]).some(s=>String(s&&s.id)===id))return true}
+    for(const day of DAYS){const date=iso(addDays(mon,DAYS.indexOf(day))),route=(week.plan&&week.plan[day])||[];if(forbiddenIn(route,date))return true;if(forbiddenDates.has(date)&&route.length>((before&&before[day])||[]).length)return true}
+    return false;
+  };
+  runtime.prepareCrossDayWeeks=rows=>{
+    const before=rows.map(w=>Object.fromEntries(DAYS.map(d=>[d,((w.plan&&w.plan[d])||[]).slice()])));
+    const prepared=prepareCrossDayAllocationV264(rows,state,runtime.days,runtime.overnightReservations);
+    rows.forEach((w,i)=>{if(!w.manual&&violates(w,before[i])){w.plan=before[i];const ref=prepared&&prepared.businessBaselineWeeks&&prepared.businessBaselineWeeks[i];if(ref)ref.plan=Object.fromEntries(DAYS.map(d=>[d,before[i][d].slice()]))}});
+    return prepared;
+  };
+  let built=null,error=null;
+  try{built=buildThreeWeekSnail(Object.assign(runtime,{today:engineToday,firstMonday:first,weekCount,stores:pool,requiredVisits}))}catch(e){error=e&&e.message?e.message:String(e)}
+  return{ok:!error,error,built,weekCount,firstWeekKey:iso(first),engineToday,requiredVisits};
+}
 async function generateThreeWeekSnail(options){
   const state=root.state,R=root.ChefReliability,storage=db();
   if(!state||!R||typeof R.capture!=='function'||typeof R.persist!=='function')throw new Error('Protection des données indisponible.');
@@ -1307,22 +1441,14 @@ async function generateThreeWeekSnail(options){
   const status=root.document&&root.document.getElementById('terrainSnailStatus');if(status)status.textContent='Vivier : '+report.planifiable+' planifiables · '+report.withoutGps+' GPS à vérifier · '+report.imposed+' imposés. Agenda puis génération…';
   const calendarSynced=await syncCalendar(first,state);
   const archive=JSON.parse(storage.getItem(ARCHIVE_KEY)||'{}')||{};
-  const coverageApi=root.StoreRunnerVisitCoverage,needOf=coverageApi&&typeof coverageApi.needOf==='function'?coverageApi.needOf(state,{today}):null;
-  const visitDays=coverageApi&&typeof coverageApi.visitDays==='function'?coverageApi.visitDays(state):null;
-  const completedOn=(id,date)=>visitDays?(visitDays.get(String(id))||[]).includes(date):visitedOnLegacy(state,id,date);
-  const existingPlanFor=key=>key===shownWeekKey?shownPlan:((archive[key]&&archive[key].plan)||null);
-  const hasRealVisitHistory=!!(visitDays&&Array.from(visitDays.values()).some(rows=>Array.isArray(rows)&&rows.length));
-  const built=buildThreeWeekSnail({needOf,today,existingPlanFor,completedOn,crossDayEnabled:hasRealVisitHistory,state,firstMonday:first,days,target:Number(state.settings.target)||20,maxCreditsPerDay:Number(state.settings.maxVisitsPerDay)||4,stores:pool,archive,distanceOf,distanceBetween:roadDistanceV264,evaluateDayRoute:(route,day,weekKey)=>evaluateDayRouteV264(route,day,weekKey,state),overnightReservations:state.hotelReservations||{},priorityOf:(store)=>performancePlanningBoost(store,state),weeklyBrief:root.StoreRunnerWeeklyBriefV246,creditOf:visitCredit,lockDayForWeek:lockDay,appointmentDay,dayBlocked:(date)=>dateBlocked(date,state),dayFits:(route,day,mon)=>dayFits(route,day,state,mon)});
+  const built=buildThreeWeekSnail(Object.assign(runtimeSnailOptions(state,archive,today,shownWeekKey,shownPlan),{firstMonday:first,days,stores:pool}));
   if(!built.totalVisits)throw new Error(built.coverage&&built.coverage.recentlyVisited.length?'Aucune visite à proposer : les magasins éligibles viennent tous d’être visités ('+built.coverage.recentlyVisited.length+'). Le planning précédent est conservé.':'Aucune visite ne tient dans les 3 semaines avec les réglages actuels.');
   const overnightReport=analyzeOvernightWeeks(built.weeks,state),hoursReport=summarizeOpeningHours(built.weeks,state);
   R.checkpoint('Avant génération 3 semaines escargot',storage);
   const bundle=R.capture(state,storage);
   for(const week of built.weeks){
     if(week.manual)continue;
-    const previous=bundle.archive[week.weekKey]||null,manualInfo=manualWeekInfo(week.weekKey,bundle.state,bundle.archive),entry={weekMonday:week.weekKey,plan:Object.fromEntries(DAYS.map(d=>[d,(week.plan[d]||[]).map(cloneStore)])),manualEdited:false,generatedMode:built.crossDay&&built.crossDay.applied?'cross-day-v264':'snail-distance-v1',updatedAt:new Date().toISOString()};
-    if(manualInfo&&manualInfo.adaptive){entry.manualEdited=true;entry.manualAdaptive=true;entry.manualEditedAt=previous&&previous.manualEditedAt||entry.updatedAt;if(manualInfo.removedIds.size)entry.manualRemovedIds=[...manualInfo.removedIds].sort()}
-    bundle.archive[week.weekKey]=entry;
-    if(built.crossDay&&built.crossDay.applied)bundle.archive[week.weekKey].crossDayOptimized='v264';
+    bundle.archive[week.weekKey]=generatedArchiveEntry(week,built,bundle.state,bundle.archive,new Date().toISOString());
     /* V185 et V251 lisent ce repère pour ne jamais réorganiser une journée passée. */
     if(week.frozenDays&&week.frozenDays.length)bundle.archive[week.weekKey].frozenDays=week.frozenDays.slice();
   }
@@ -1386,6 +1512,6 @@ function installStartButton(){
 }
 function install(){installThreeWeekReport();installStartButton()}
 function boot(){install();root.document&&root.document.addEventListener('store-runner:planning-updated',()=>{install();renderStoredInsights()});root.document&&root.document.addEventListener('store-runner:data-restored',()=>{install();renderStoredInsights()})}
-const api={coverageSummaryText,needOrdered,rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,orderedAdaptivePlacementDays,manualWeekInfo,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,optimizeThreeWeekCrossDay,evaluateDayRouteV264,completeProtectedWeek,rotationWindowWeeks,rotationMemory,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits,dateBlocked,overnightForPlan,analyzeOvernightWeeks,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={coverageSummaryText,needOrdered,rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,orderedAdaptivePlacementDays,manualWeekInfo,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,simulateCommandWindow,generatedArchiveEntry,routeMetrics,optimizeThreeWeekCrossDay,evaluateDayRouteV264,completeProtectedWeek,rotationWindowWeeks,rotationMemory,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits,dateBlocked,overnightForPlan,analyzeOvernightWeeks,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()}
 })(typeof window!=='undefined'?window:globalThis);

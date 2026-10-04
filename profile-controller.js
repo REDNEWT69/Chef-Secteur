@@ -205,8 +205,12 @@
     return err&&err.message?String(err.message):'Localisation indisponible.';
   }
 
-  async function preparePlanningOrigin(){
-    feedback('Recherche d’une position fraîche avant la génération…','busy');
+  /* r38 — origine de planification en deux temps. `resolvePlanningOrigin` lit une position
+     fraîche (mêmes règles : maximumAge 0, horodatage, précision ≤ 250 m) ou le repli sur une
+     base enregistrée fiable, SANS rien écrire. `applyPlanningOrigin` publie ensuite cette
+     origine dans les champs de départ existants. La génération enchaîne les deux comme avant ;
+     une commande planning lit d'abord, et n'écrit qu'après validation de l'utilisateur. */
+  async function resolvePlanningOrigin(){
     try{
       // Requesting a fix performs the browser/Android permission check and prompts
       // at the user's generation click when permission has not been granted yet.
@@ -215,24 +219,36 @@
       if(accuracy>250)throw {code:2,message:'Position trop imprécise (±'+accuracy+' m).'};
       if(!window.state||!state.profile)throw {code:2,message:'Point de départ indisponible.'};
       const lat=Number(pos.coords.latitude),lon=Number(pos.coords.longitude);
-      state.profile.baseLat=lat;state.profile.baseLon=lon;
-      state.profile.baseName='Ma position actuelle';
-      state.profile.baseAddress='Position GPS · '+lat.toFixed(5)+', '+lon.toFixed(5);
-      installPersistedBase();
-      const message='Position fraîche retenue à ±'+accuracy+' m.';
-      feedback(message,'ok');
-      return {ok:true,source:'gps',base:window.baseObj(),message:message};
+      return {ok:true,source:'gps',lat:lat,lon:lon,accuracy:accuracy,baseName:'Ma position actuelle',baseAddress:'Position GPS · '+lat.toFixed(5)+', '+lon.toFixed(5),message:'Position fraîche retenue à ±'+accuracy+' m.'};
     }catch(err){
       if(explicitUserBase()){
-        installPersistedBase();
         const message=locationFailure(err)+' Utilisation de la base enregistrée « '+(state.profile.baseName||state.profile.baseAddress)+' ».';
-        feedback(message,'ok');
-        return {ok:true,source:'saved_base',base:window.baseObj(),message:message};
+        return {ok:true,source:'saved_base',lat:Number(state.profile.baseLat),lon:Number(state.profile.baseLon),baseName:state.profile.baseName||'',baseAddress:state.profile.baseAddress||'',message:message};
       }
-      const message=locationFailure(err)+' Une localisation fraîche est requise : autorise la localisation ou enregistre une adresse de base fiable dans Mon secteur.';
-      feedback(message,'bad');
-      throw new Error(message);
+      return {ok:false,source:'none',error:locationFailure(err)+' Une localisation fraîche est requise : autorise la localisation ou enregistre une adresse de base fiable dans Mon secteur.'};
     }
+  }
+  function applyPlanningOrigin(origin,profile){
+    const target=profile||(window.state&&state.profile);
+    if(!origin||origin.ok!==true||!target)return false;
+    if(origin.source==='gps'){
+      if(!validCoordinates(origin.lat,origin.lon))return false;
+      target.baseLat=Number(origin.lat);target.baseLon=Number(origin.lon);
+      target.baseName=origin.baseName;target.baseAddress=origin.baseAddress;
+    }
+    if(!profile||profile===(window.state&&state.profile))installPersistedBase();
+    return true;
+  }
+  async function preparePlanningOrigin(){
+    feedback('Recherche d’une position fraîche avant la génération…','busy');
+    const origin=await resolvePlanningOrigin();
+    if(!origin.ok){
+      feedback(origin.error,'bad');
+      throw new Error(origin.error);
+    }
+    applyPlanningOrigin(origin);
+    feedback(origin.message,'ok');
+    return {ok:true,source:origin.source,base:window.baseObj(),message:origin.message};
   }
 
   function installPersistedBase(){
@@ -276,7 +292,7 @@
   window.storeRunnerToast=toast;
   window.StoreRunnerGeocode={forward:forwardGeocode,reverse:reverseGeocode};
   window.storeRunnerHasValidBase=validBase;
-  window.StoreRunnerProfile={preparePlanningOrigin:preparePlanningOrigin};
+  window.StoreRunnerProfile={preparePlanningOrigin:preparePlanningOrigin,resolvePlanningOrigin:resolvePlanningOrigin,applyPlanningOrigin:applyPlanningOrigin};
   window.storeRunnerPreparePlanningOrigin=preparePlanningOrigin;
   window.lookupDepartureAddress=async function(){
     const btn=document.getElementById('departureLookupBtn');

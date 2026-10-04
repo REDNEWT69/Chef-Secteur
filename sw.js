@@ -1,4 +1,4 @@
-const BUILD_REV = "20261003-r38-temporal-geographic-coherence-264";
+const BUILD_REV = "20261004-r39-planning-command-engine-265";
 /* V261.2 hotfix : même révision applicative, nouveau namespace de cache afin que les
    PWA déjà installées récupèrent le correctif de capacité à la source (visit-counting.js)
    sans mélanger ancien et nouveau shell. Le BUILD_REV reste V261 : aucune migration. */
@@ -30,6 +30,7 @@ const CORE_SHELL = [
   "./terrain-planning-v1.js", "./working-hours-end.js", "./daily-capacity.js",
   "./planning-pro-plus.js", "./planning-summary-v219.js", "./period-day-slider.js",
   "./planning-manual-visits.js", "./planning-reorder-v254.js", "./workdays-enforcer.js",
+  "./planning-command-engine.js",
   "./visit-history-delete.js", "./assistant-sheet-drag.js", "./visual-refresh-v1.js",
   "./home-refresh-v2.js", "./sector-pilotage.js", "./v182-fixes.js",
   "./planning-route-optimizer-v251.js", "./auto-planning-fix.js",

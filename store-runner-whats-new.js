@@ -25,6 +25,17 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'265',
+      title:'Pilote ton planning en une phrase',
+      items:[
+        'Dans l’assistant, dis simplement ce que tu veux : « Programme mes P1 avant la W42 », « Mets Valence mardi », « Évite Lyon jeudi », « Recalcule seulement le reste de ma semaine ».',
+        'Avant tout changement, Store Runner te montre ce qu’il va faire, jour par jour. Rien ne bouge tant que tu n’as pas appuyé sur « Appliquer ».',
+        'Tes rendez-vous, tes magasins posés ou verrouillés, tes visites déjà faites et tes journées passées restent protégés : une demande ne les déplace jamais.',
+        'Quand une demande est impossible ou ambiguë, la raison est expliquée clairement ; si plusieurs magasins correspondent, tu choisis le bon.',
+        'La génération du planning est plus rapide, surtout quand ton fichier performance est importé.'
+      ]
+    },
+    {
       version:'264',
       title:'Trois semaines mieux organisées, sans sacrifier les priorités',
       items:[

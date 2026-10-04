@@ -158,9 +158,11 @@ function previewLines(r){
   if(r.coverageBefore!=null)lines.push('Magasins à rattraper planifiés : '+r.coverageBefore+' → '+r.coverageAfter);
   return lines;
 }
-function build(){
+/* `readControls:false` (commande planning) : calcul pur, sans relire les réglages affichés dans
+   state ni sauvegarder. Le bouton garde sa lecture des réglages avant recalcul. */
+function build(options){
   if(!window.state||!state.plan)return{ok:false,error:'Aucun planning à recalculer.'};
-  try{if(typeof window.readPlanningControls==='function')window.readPlanningControls();else if(typeof readPlanningControls==='function')readPlanningControls()}catch(e){return{ok:false,error:e&&e.message?e.message:String(e)}}
+  if(!(options&&options.readControls===false))try{if(typeof window.readPlanningControls==='function')window.readPlanningControls();else if(typeof readPlanningControls==='function')readPlanningControls()}catch(e){return{ok:false,error:e&&e.message?e.message:String(e)}}
   const mon=weekMonday(),weekKey=iso(mon),today=iso(new Date()),days=workDays(),max=Math.max(1,Math.min(8,Number(state.settings&&state.settings.maxVisitsPerDay)||4)),archive=load(ARCHIVE_KEY,{}),source={},weeks={},entries={},movable=[],overCapacityKept=[],removed=[],needFn=coverageNeed();
   let total=0,visited=0,appointments=0,locks=0,past=0,stableKept=0;
   source[weekKey]=clone(state.plan||empty());for(const [key,snap] of Object.entries(archive))if(key>weekKey&&snap&&snap.plan&&parse(key))source[key]=clone(snap.plan);
@@ -283,6 +285,18 @@ function confirmText(result){
   const lines=Array.isArray(result&&result.previewLines)?result.previewLines:[];
   return 'Recalculer le reste du planning à partir d’aujourd’hui ?\n\n'+(lines.length?'Ce que le recalcul change :\n'+lines.join('\n')+'\n\n':'')+'Les visites déjà effectuées, les rendez-vous et les magasins posés ou verrouillés restent en place. Les journées futures encore valides ne bougent pas.';
 }
+/* Application d'un recalcul déjà calculé ET déjà montré : proposition (application V189),
+   marque des semaines changées, rendu et événement. Le bouton l'appelle après sa confirmation ;
+   la commande planning après la sienne, sur un résultat qu'elle a vérifié identique à l'aperçu. */
+async function applyResult(result){
+  if(!result||!result.ok||result.unchanged)return false;
+  const accepted=window.ChefReliability&&typeof ChefReliability.propose==='function'?await ChefReliability.propose({plan:result.plan,weekDate:result.weekKey,archive:result.archive,range:result.range,storeCount:result.range.totalStores,visitCredits:result.range.totalVisits,previewTitle:'Ce que le recalcul change',previewLines:result.previewLines}):false;
+  if(!accepted)return false;
+  markManual(result.weeks,result.changedWeekKeys);
+  try{if(typeof window.renderAll==='function')window.renderAll();else if(typeof renderAll==='function')renderAll()}catch(e){}
+  try{document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{source:'recalculatePlanningCascade'}}))}catch(e){}
+  return true;
+}
 async function recalc(){
   if(!window.state||!state.plan){status('Aucun planning à recalculer.','bad');return{ok:false}}
   status('Recalcul stable du planning…','busy');
@@ -295,16 +309,15 @@ async function recalc(){
     /* V263 : calculer d'abord, puis montrer ce qui change avant d'appliquer. La proposition
        est ensuite appliquée par ChefReliability.propose (application automatique V189). */
     if(!confirm(confirmText(result))){status('Planning précédent conservé.','busy');return{ok:false,cancelled:true}}
-    const accepted=window.ChefReliability&&typeof ChefReliability.propose==='function'?await ChefReliability.propose({plan:result.plan,weekDate:result.weekKey,archive:result.archive,range:result.range,storeCount:result.range.totalStores,visitCredits:result.range.totalVisits,previewTitle:'Ce que le recalcul change',previewLines:result.previewLines}):false;
-    if(!accepted){status('Planning précédent conservé.','busy');return{ok:false,cancelled:true}}
-    markManual(result.weeks,result.changedWeekKeys);
-    try{if(typeof window.renderAll==='function')window.renderAll();else if(typeof renderAll==='function')renderAll()}catch(e){}
-    try{document.dispatchEvent(new CustomEvent('store-runner:planning-updated',{detail:{source:'recalculatePlanningCascade'}}))}catch(e){}
+    if(!await applyResult(result)){status('Planning précédent conservé.','busy');return{ok:false,cancelled:true}}
     const spill=result.lastWeekKey>result.weekKey?' · décalage jusqu’à la semaine du '+result.lastWeekKey:'';
     status('Planning recalculé ✓ '+result.moved+' visite'+(result.moved>1?'s':'')+' déplacée'+(result.moved>1?'s':'')+' · '+result.stableKept+' visite'+(result.stableKept>1?'s':'')+' future'+(result.stableKept>1?'s':'')+' laissée'+(result.stableKept>1?'s':'')+' en place'+(result.removed.length?' · '+result.removed.length+' retirée'+(result.removed.length>1?'s':'')+' (déjà visité'+(result.removed.length>1?'s':'')+')':'')+(result.added.length?' · '+result.added.length+' ajoutée'+(result.added.length>1?'s':'')+' (en retard)':'')+spill+'.'+(warning?' '+warning:''),'ok');
     return result;
   }catch(e){const message=e&&e.message?e.message:String(e);status('Recalcul impossible : '+message,'bad');return{ok:false,error:message}}
 }
+/* La commande planning lit build/applyResult sur la fonction publique existante : aucun
+   nouveau global (contrat P0.2a). */
+recalc.build=build;recalc.applyResult=applyResult;
 function install(){window.storeRunnerRecalculateRemainingWeek=recalc;window.__storeRunnerBuildRemainingWeekPlan=build;const b=document.getElementById('recalculateRemainingWeekBtn');if(b)b.textContent='↻ Recalculer le reste du planning';return true}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();window.addEventListener('load',install,{once:true});document.addEventListener('store-runner:data-restored',install);document.addEventListener('visibilitychange',()=>{if(!document.hidden)install()});
 })();
