@@ -32,19 +32,19 @@ test('semaine précédente/suivante, Aujourd’hui et calendrier sans régénér
   const nav=page.locator('#periodWeekNavV266');
   await expect(nav).toBeVisible();
   await expect(nav).toHaveAttribute('data-relation','current');
-  await expect(nav.locator('[data-week-relation]')).toHaveText('Semaine en cours');
-  for(const sel of ['[data-week-nav="prev"]','[data-week-nav="next"]','[data-week-nav="today"]','[data-week-pick]']){
+  await expect(nav.locator('[data-week-relation]')).toHaveText('En cours');
+  for(const sel of ['[data-week-nav="prev"]','[data-week-nav="next"]','[data-week-nav="today"]','.periodWeekNavPick']){
     const box=await nav.locator(sel).boundingBox();expect(box.height,sel+' cible tactile').toBeGreaterThanOrEqual(44);
   }
   // Précédente : semaine passée, archive intacte, aucune génération.
   await nav.locator('[data-week-nav="prev"]').click();await page.clock.runFor(300);
   await expect(nav).toHaveAttribute('data-relation','past');
-  await expect(nav.locator('[data-week-relation]')).toContainText('Semaine passée');
+  await expect(nav.locator('[data-week-relation]')).toContainText('Passée');
   expect(await page.evaluate(()=>({week:state.settings.weekDate,mer:state.plan.Mercredi.map(s=>s.id),mar:state.plan.Mardi.map(s=>s.id),tab:document.querySelector('#dayTabs .periodDayTab.active')?.dataset.date}))).toEqual({week:'2026-09-28',mer:[],mar:['nav-a'],tab:'2026-09-30'});
   // Suivante ×2 : semaine à venir jamais générée, ouverte vide et annoncée.
   await nav.locator('[data-week-nav="next"]').click();await page.clock.runFor(200);
   await nav.locator('[data-week-nav="next"]').click();await page.clock.runFor(300);
-  await expect(nav.locator('[data-week-relation]')).toHaveText('Semaine à venir · non générée');
+  await expect(nav.locator('[data-week-relation]')).toHaveText('À venir · non générée');
   await expect(page.locator('#periodDayNotice')).toContainText('non générée');
   const after=await page.evaluate(()=>({gen:window.__gen,week:state.settings.weekDate,empty:Object.values(state.plan).every(d=>!d.length),archive:JSON.parse(__chefStorage.getItem('chef_sector_plan_archive_v1')||'{}')}));
   expect(after.gen).toBe(0);expect(after.week).toBe('2026-10-12');expect(after.empty).toBe(true);
