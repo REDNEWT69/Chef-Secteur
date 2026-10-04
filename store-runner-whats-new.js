@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'267',
+      title:'Anticipe les magasins à surveiller',
+      items:[
+        'Store Runner repère les magasins qui risquent de devenir en retard dans les trois prochaines semaines.',
+        'Tu distingues les magasins déjà en retard de ceux qui le seront bientôt, avec la date prévue.',
+        'Cette anticipation est visible depuis « Mes magasins » et dans la Fiche 360 de chaque magasin.',
+        'Les priorités terrain et les visites déjà prévues sont prises en compte pour mieux cibler les magasins à surveiller.'
+      ]
+    },
+    {
       version:'266',
       title:'Explore ton terrain, semaine après semaine',
       items:[
