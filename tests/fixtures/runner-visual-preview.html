@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Runner Visual System V1 — aperçu mobile de test</title>
+<!-- Fixture de test : n'est chargée ni par index.html ni par sw.js. Elle monte le vrai
+     runner-visual.js dans des conteneurs imitant les surfaces MOBILES où Runner sera intégré
+     (carte Planning, bottom sheet Assistant, cartes d'alerte et de succès). Les boutons, la
+     liste d'étapes et la barre de navigation basse appartiennent à l'écran hôte : Runner n'en
+     dessine aucun. Aucune donnée de l'application. -->
+<style>
+  html,body{margin:0}
+  body{background:#f2f5fa;color:#10224d;font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    padding:calc(12px + env(safe-area-inset-top,0px)) calc(16px + env(safe-area-inset-right,0px)) calc(88px + env(safe-area-inset-bottom,0px)) calc(16px + env(safe-area-inset-left,0px))}
+  h1{font-size:17px;margin:0 0 6px}
+  h2{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#4a5b7d;margin:20px 0 8px}
+  .card{background:#fff;border:1px solid #e1e8f5;border-radius:18px;padding:12px;box-shadow:0 6px 18px rgba(23,44,96,.06)}
+  .row{display:flex;gap:8px}
+  .row>.card{flex:1 1 0;min-width:0;display:flex;justify-content:center;padding:8px 4px}
+  .days{display:flex;gap:6px;margin-bottom:10px}
+  .days b{flex:1;text-align:center;padding:6px 0;border-radius:12px;background:#eef3fb;font-size:13px}
+  .days b.on{background:#fff;border:1px solid #2f7bff;color:#1558d6}
+  .visit{display:flex;align-items:center;gap:10px;padding:10px 2px;border-top:1px solid #edf1f8}
+  .visit i{flex:0 0 26px;height:26px;border-radius:50%;background:#2f7bff;color:#fff;font:700 13px/26px system-ui;text-align:center}
+  .visit span{flex:1;min-width:0}
+  .visit small{display:block;color:#4a5b7d}
+  .btn{display:flex;align-items:center;justify-content:center;box-sizing:border-box;min-height:48px;padding:0 16px;border-radius:14px;border:1px solid #bcd0f5;background:#fff;color:#1558d6;font:600 15px system-ui;width:100%}
+  .btn.primary{background:#1f6fff;border-color:#1f6fff;color:#fff}
+  .btns{display:flex;gap:8px;margin-top:10px}
+  .btns .btn{flex:1 1 0;min-width:0}
+  .sheet{background:#fff;border-radius:24px 24px 0 0;border:1px solid #e1e8f5;border-bottom:0;padding:10px 16px calc(16px + env(safe-area-inset-bottom,0px));box-shadow:0 -8px 24px rgba(23,44,96,.08)}
+  .sheet .grab{width:44px;height:4px;border-radius:2px;background:#cfd8e8;margin:0 auto 12px}
+  .sheet h3{margin:0 0 6px;font-size:17px}
+  .steps{margin:12px 0;border:1px solid #e1e8f5;border-radius:16px}
+  .steps div{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;font-size:14px}
+  .steps div+div{border-top:1px solid #edf1f8}
+  .steps em{margin-left:auto;font-style:normal;color:#22b573;font-weight:700}
+  /* barre de navigation basse de l'hôte : fixe, avec sa marge de sécurité. Runner n'y touche jamais. */
+  #hostNav{position:fixed;left:0;right:0;bottom:0;z-index:5;display:flex;justify-content:space-around;align-items:center;
+    min-height:56px;padding:0 8px env(safe-area-inset-bottom,0px);background:#fff;border-top:1px solid #e1e8f5;font-size:12px;color:#4a5b7d}
+  #hostNav span{display:flex;align-items:center;justify-content:center;min-width:64px;min-height:48px}
+</style>
+</head>
+<body>
+<h1>Runner — intégration mobile</h1>
+
+<h2>Planning · conseil dans la carte (bulle)</h2>
+<div class="card" id="planning">
+  <div class="days"><b>Lun 11</b><b>Mar 12</b><b class="on">Mar 13</b><b>Jeu 14</b><b>Ven 15</b></div>
+  <div id="planningRunner"></div>
+  <div class="visit"><i>1</i><span>Carrefour Annemasse<small>09:00 · ZC Les Voirons</small></span></div>
+  <div class="visit"><i>2</i><span>Intermarché Vétraz<small>10:30 · Rue des Érables</small></span></div>
+</div>
+
+<h2>Assistant · en-tête de bottom sheet</h2>
+<div class="sheet" id="assistant">
+  <div class="grab"></div>
+  <h3>Assistant Runner</h3>
+  <div id="assistantRunner"></div>
+  <div class="steps"><div>Analyse des temps de trajet…<em>✓</em></div><div>Vérification des contraintes magasin…</div><div>Optimisation de l'ordre de visite…</div></div>
+  <button class="btn" id="assistantCancel" type="button">Annuler</button>
+</div>
+
+<h2>Alerte de contrainte (carte)</h2>
+<div class="card" id="alertCard">
+  <div id="alertRunner"></div>
+  <div class="btns"><button class="btn" id="alertDetails" type="button">Voir détails</button><button class="btn primary" id="alertFix" type="button">Réorganiser</button></div>
+</div>
+
+<h2>Succès après application (carte)</h2>
+<div class="card" id="successCard">
+  <div id="successRunner"></div>
+  <div class="btns"><button class="btn primary" id="successGo" type="button">Voir ma tournée</button></div>
+</div>
+
+<h2>Quatre états · sm</h2>
+<div class="row" id="states"></div>
+
+<h2>Runner à droite, bulle à gauche</h2>
+<div class="card" id="leftBubble"></div>
+
+<h2>Texte long et nom sans espace</h2>
+<div class="card" id="longText"></div>
+
+<nav id="hostNav" aria-label="Navigation de l'hôte"><span>Planning</span><span>Magasins</span><span>Assistant</span><span>Plus</span></nav>
+
+<script src="../../runner-visual.js"></script>
+<script>
+(function(){
+  var R=window.Runner;
+  var q=function(id){return document.getElementById(id)};
+  /* mouvement coupé : captures déterministes */
+  function opt(o){return Object.assign({motion:'off'},o)}
+
+  R.mount(q('planningRunner'),opt({state:'neutral',size:'md',message:'Je te recommande de commencer par Carrefour Annemasse. Trajet le plus court !'}));
+  R.mount(q('assistantRunner'),opt({variant:'sheet',state:'analyzing',title:'Analyse en cours…',message:'Je vérifie les contraintes, les temps de trajet et les meilleurs créneaux.'}));
+  R.mount(q('alertRunner'),opt({variant:'panel',state:'alert',title:'Attention !',message:'Il y a un risque de retard sur un magasin P1.'}));
+  R.mount(q('successRunner'),opt({variant:'panel',state:'success',title:'Trajet optimisé !',message:'Ta tournée est prête. 18 min de trajet économisées.'}));
+  R.STATES.forEach(function(state){
+    var cell=document.createElement('div');
+    cell.className='card';
+    q('states').appendChild(cell);
+    R.mount(cell,opt({state:state,size:'sm',decorative:true}));
+  });
+  R.mount(q('leftBubble'),opt({state:'neutral',size:'md',side:'left',message:'Prêt quand tu l’es !'}));
+  R.mount(q('longText'),opt({state:'alert',size:'md',message:'Intermarché-Bonneville-Zone-Commerciale-du-Mont-Blanc-Avenue-des-Alpes introuvable dans le secteur actif.'}));
+})();
+</script>
+</body>
+</html>

@@ -27,7 +27,7 @@ Les protections spécialisées restent propriétaires :
 - Agenda reste propriétaire de la borne exclusive : `2026-10-05 → 2026-10-10` bloque exactement les 5, 6, 7, 8 et 9 octobre, jamais le 10. Une journée, chevauchements, ordre inversé, hors horizon, férié et semaine entamée sont couverts.
 - Trois cycles capture → archive/plage → restauration → retour applicatif conservent le plan, son ordre et les workdays à empreinte identique.
 
-Le test de boot mobile existant mesure 75 ressources script sur r20 (76 depuis Explorer Terrain V1 : `store-explorer.js`, plafond relevé d'une unité, décision tracée dans `EXPLORER_TERRAIN.md` et à valider avant fusion). Ce nombre est un plafond de référence, pas un objectif après ménage : une suppression pourra le réduire, mais aucune duplication ou croissance silencieuse n’est admise. Les protections existantes de boot, PWA, migration de cache, mobile 390 px et catalogue sont référencées explicitement dans le JSON et leur présence dans Reliability est vérifiée.
+Le test de boot mobile existant mesure 75 ressources script sur r20 (76 depuis Explorer Terrain V1 : `store-explorer.js` ; 77 avec Runner Visual System V1 : `runner-visual.js`, plafond relevé d'une unité, décision explicitement validée et tracée dans `RUNNER_VISUAL_SYSTEM.md`). Ce nombre est un plafond de référence, pas un objectif après ménage : une suppression pourra le réduire, mais aucune duplication ou croissance silencieuse n’est admise. Les protections existantes de boot, PWA, migration de cache, mobile 390 px et catalogue sont référencées explicitement dans le JSON et leur présence dans Reliability est vérifiée.
 
 ## Commandes de référence
 

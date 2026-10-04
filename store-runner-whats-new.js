@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'268',
+      title:'Runner, ton copilote, dans l’Assistant',
+      items:[
+        'Runner, le copilote de Store Runner, apparaît maintenant en haut de l’Assistant.',
+        'Il montre quand l’Assistant réfléchit, signale un problème et confirme quand une action est appliquée.',
+        'Il reste discret : il ne cache aucun bouton et se réduit quand le clavier s’ouvre.',
+        'Il respecte le réglage « réduire les animations » de ton téléphone.'
+      ]
+    },
+    {
       version:'267',
       title:'Anticipe les magasins à surveiller',
       items:[
