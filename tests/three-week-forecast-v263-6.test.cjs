@@ -60,6 +60,32 @@ function weekPlan(stores,offset=0){const plan=emptyPlan();DAYS.forEach((day,di)=
   assert.strictEqual(row(out,'w2').firstAcceptableWeek,'2026-10-05');
 }
 
+// Intelligence Terrain V2 Lot 1 : retard actuel et bascules sur l'horizon glissant S1 / S2 / S3.
+{
+  const stores=[
+    {id:'late-now',enseigne:'Darty',ville:'Retard',intervalDays:30},
+    {id:'risk-w1',enseigne:'Fnac',ville:'S1',intervalDays:30},
+    {id:'risk-w2',enseigne:'Boulanger',ville:'S2',intervalDays:30},
+    {id:'risk-w3',enseigne:'Conforama',ville:'S3',intervalDays:30},
+    {id:'never-v2',enseigne:'Carrefour',ville:'Jamais',intervalDays:30}
+  ];
+  const state=baseState(stores);
+  setVisit(state,'late-now','2026-08-23'); // échéance 22/09 : 6 jours de retard
+  setVisit(state,'risk-w1','2026-09-04');  // échéance 04/10 : J+6
+  setVisit(state,'risk-w2','2026-09-08');  // échéance 08/10 : J+10
+  setVisit(state,'risk-w3','2026-09-15');  // échéance 15/10 : J+17
+  const out=forecast(state);
+  assert.strictEqual(out.horizonStart,TODAY);assert.strictEqual(out.horizonEnd,'2026-10-18');
+  const late=row(out,'late-now');assert.strictEqual(late.forecastKind,'late_today');assert.strictEqual(late.forecastDate,'2026-09-22');assert.strictEqual(late.lateDays,6);assert.match(late.forecastReason,/En retard depuis 6 jours/);
+  const w1=row(out,'risk-w1'),w2=row(out,'risk-w2'),w3=row(out,'risk-w3');
+  assert.deepStrictEqual([w1.forecastWeek,w2.forecastWeek,w3.forecastWeek],[1,2,3]);
+  assert.deepStrictEqual([w1.forecastInDays,w2.forecastInDays,w3.forecastInDays],[6,10,17]);
+  assert.deepStrictEqual([w1.forecastDate,w2.forecastDate,w3.forecastDate],['2026-10-04','2026-10-08','2026-10-15']);
+  assert.match(w2.forecastReason,/deviendra en retard dans 10 jours/);
+  const never=row(out,'never-v2');assert.strictEqual(never.forecastKind,'never');assert.strictEqual(never.forecastDate,'');assert.match(never.forecastReason,/Jamais visité/);
+  assert.deepStrictEqual(out.counts.watch,{total:5,lateToday:1,never:1,week1:1,week2:1,week3:1});
+}
+
 // 2b. Les placements réels de S2 (plan live) et S3 (archive) deviennent les recommandations du forecast.
 {
   const liveS2={id:'live-s2',enseigne:'Darty',ville:'Plan S2',intervalDays:15};
@@ -129,6 +155,8 @@ function weekPlan(stores,offset=0){const plan=emptyPlan();DAYS.forEach((day,di)=
   const second=forecast(after),r=row(second,'visit');
   assert.strictEqual(r.status,'enough');
   assert.strictEqual(r.firstAcceptableDate,'2026-10-13');
+  assert.strictEqual(r.forecastKind,'outside');
+  assert.strictEqual(r.forecastDate,'2026-10-28','la visite réelle remet l’échéance à partir de sa vraie date');
 }
 
 // 8. La projection simule les visites déjà prévues et signale les bascules en retard non couvertes.
@@ -144,6 +172,25 @@ function weekPlan(stores,offset=0){const plan=emptyPlan();DAYS.forEach((day,di)=
   assert.strictEqual(s.willBecomeLate,true);
   assert.strictEqual(s.projectedStatus,'late');
   assert(out.counts.becomesLate>=1);
+  assert.strictEqual(out.projection.realVisits,false);
+  assert.strictEqual(p.lastVisit,'2026-09-04','une date planifiée ne remplace jamais la dernière visite réelle');
+  assert.strictEqual(p.projectedLastVisit,'2026-10-01','la visite planifiée reste identifiée seulement dans la projection');
+}
+
+// Import performance : P1/P2 restent stables même « traités », puis suivent le nouvel import.
+{
+  const saved={db:globalThis.__chefStorage,perf:globalThis.StoreRunnerPerformanceV190};let version=1;
+  globalThis.__chefStorage={getItem(){return null}};
+  globalThis.StoreRunnerPerformanceV190={
+    latestSnapshot:()=>version===1?{week:'W39',importedAt:'2026-09-21T08:00:00Z',rows:[]}:{week:'W40',importedAt:'2026-09-28T08:00:00Z',rows:[]},
+    matchRows:()=>({rows:version===1?[{storeId:'perf-a',prio:'P1'},{storeId:'perf-b',prio:'P2'}]:[{storeId:'perf-b',prio:'P1'}]}),
+    readStore:()=>({mapping:{}}),isTreated:()=>true
+  };
+  try{
+    const state=baseState([{id:'perf-a',enseigne:'A',ville:'A',intervalDays:30},{id:'perf-b',enseigne:'B',ville:'B',intervalDays:30}]);
+    let out=forecast(state);assert.strictEqual(row(out,'perf-a').priority,'P1');assert.strictEqual(row(out,'perf-b').priority,'P2');assert.match(row(out,'perf-a').forecastReason,/P1/);
+    version=2;out=forecast(state);assert.strictEqual(row(out,'perf-a').priority,'');assert.strictEqual(row(out,'perf-b').priority,'P1');
+  }finally{globalThis.__chefStorage=saved.db;globalThis.StoreRunnerPerformanceV190=saved.perf;if(saved.db===undefined)delete globalThis.__chefStorage;if(saved.perf===undefined)delete globalThis.StoreRunnerPerformanceV190}
 }
 
 // 9. Vingt exécutions donnent exactement la même sortie, sans effet de bord sur state/archive/range.
