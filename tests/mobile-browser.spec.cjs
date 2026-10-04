@@ -239,7 +239,9 @@ test('Store Runner V1 reste utilisable sur un vrai viewport mobile 390 px', asyn
     await page.keyboard.press('Escape').catch(() => {});
   }
 
-  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  /* Défilement immédiat : la page est plus haute avec la navigation par semaine, et un défilement animé
+     (scroll-behavior:smooth) n'est pas toujours terminé après 160 ms sur un runner lent. */
+  await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }));
   await page.waitForTimeout(160);
   const lastRow = page.locator('#planPanel .timelineRow').last();
   await expect(lastRow).toBeVisible();
