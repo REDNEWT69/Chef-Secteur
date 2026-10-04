@@ -19,6 +19,20 @@ assert.equal(Manual.removeFromPlan(state,'a','Mardi').ok,false,'une suppression 
 
 const excluded={stores:[a],excluded:{a:true},plan:{Lundi:[],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]}};
 assert.equal(Manual.addToPlan(excluded,'a','Lundi').ok,false,'un magasin exclu ne doit pas être ajouté');
+// Explorer Terrain V1 : chaque refus nomme la contrainte en cause et comment la lever.
+{
+  const refused=Manual.addToPlan(excluded,'a','Lundi');
+  assert.equal(refused.code,'excluded_store');assert.equal(refused.constraint,'excluded');
+  assert.match(refused.error,/exclu du planning.*Réactiver.*Mes magasins/);
+  const inactive=JSON.parse(JSON.stringify(excluded));inactive.excluded={};inactive.stores[0].active=false;
+  const off=Manual.addToPlan(inactive,'a','Lundi');
+  assert.equal(off.code,'inactive_store');assert.match(off.error,/désactivé du secteur.*Actif/);
+  const unknown=Manual.addToPlan(inactive,'absent','Lundi');
+  assert.equal(unknown.code,'unknown_store');assert.match(unknown.error,/n’existe plus/);
+  assert.equal(Manual.refusalFor(excluded,{id:'a',active:true},'a').short,'Exclu du planning');
+  assert.equal(Manual.refusalFor({excluded:{}},{id:'a',active:true},'a'),null,'un magasin disponible n’est pas refusé');
+  assert.deepEqual(excluded.plan&&Object.values(excluded.plan).flat().filter(s=>s&&s.id==='a'),[],'un refus n’écrit rien dans le planning');
+}
 
 assert.match(source,/glisse une visite à gauche ou à droite/i,'le geste doit être découvrable');
 assert.match(source,/Math\.abs\(dx\)<68/,'un swipe court ne doit rien supprimer');

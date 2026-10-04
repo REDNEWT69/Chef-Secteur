@@ -367,9 +367,10 @@ await (async function fichierReel(){
   assert.ok(P.PLANNING_BOOST.P1>P.PLANNING_BOOST.P2,'P1 pèse plus que P2');
   assert.equal(P.PLANNING_BOOST.watch,0,'« à surveiller » reste informatif, sans effet sur le planning');
   assert.equal(P.PLANNING_BOOST.nodata,0);
-  // Un P1 déjà traité cette semaine ne se fait plus pousser.
+  // « Traité » est un flag de suivi : la priorité performance tient jusqu'au prochain import (revue #496, SEF : 2 visites pour un P1).
   P.markTreated(db,P.latestSnapshot(db).week,'s1','2026-09-22');
-  assert.equal(P.planningBoost(db,'s1',stores),0,'un magasin déjà traité ne repasse pas devant');
+  assert.equal(P.planningBoost(db,'s1',stores),boost,'un magasin traité garde son coup de pouce jusqu’au prochain fichier');
+  assert.ok(P.crossVisits(db,{stores}).rows.find(r=>String(r.storeId)==='s1').treated,'le flag « traité » reste lisible');
   P.markTreated(db,P.latestSnapshot(db).week,'s1',null);
   // Le planificateur ne consulte cette valeur que dans son classement de génération.
   // V211 centralise désormais retard + cadence + P1/P2 dans planningNeedV211(), puis
@@ -381,7 +382,7 @@ await (async function fichierReel(){
     'scoreOf doit déléguer au besoin V211 plutôt que maintenir un classement concurrent');
   assert.ok(!/performanceBoost/.test(planner.split('function performanceBoost')[0]),
     'la performance ne doit toujours pas influencer le planning au chargement');
-  console.error('  Planning : coup de pouce '+boost+' pour un P1, 0 une fois traité, 0 sans import');
+  console.error('  Planning : coup de pouce '+boost+' pour un P1, inchangé une fois traité, 0 sans import');
 })();
 
 // --- Semaines chevauchantes : tout gardé, une seule valeur affichée ------------------

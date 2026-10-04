@@ -186,10 +186,14 @@ test('Store Runner V1 reste utilisable sur un vrai viewport mobile 390 px', asyn
 
   const swipeTarget = page.locator('#planPanel .timelineRow .tlMain').first();
   await expect(swipeTarget).toBeVisible();
-  const swipeBox = await swipeTarget.boundingBox();
-  if (!swipeBox) throw new Error('Zone de swipe introuvable');
+  /* Explorer Terrain V1 : la navigation par semaine occupe une ligne de plus sous l'en-tête ; comme un
+     utilisateur, on amène la visite au centre de l'écran avant de la balayer. */
   await tabs.nth(0).click();
   expect(await activeDate(page)).toBe('2026-09-14');
+  await swipeTarget.evaluate(n => n.scrollIntoView({ block: 'center', behavior: 'instant' }));
+  await page.waitForTimeout(120);
+  const swipeBox = await swipeTarget.boundingBox();
+  if (!swipeBox) throw new Error('Zone de swipe introuvable');
   await touchDrag(page,
     { x: Math.min(340, swipeBox.x + swipeBox.width * 0.82), y: swipeBox.y + Math.min(36, swipeBox.height * 0.5) },
     { x: Math.max(55, swipeBox.x + swipeBox.width * 0.22), y: swipeBox.y + Math.min(36, swipeBox.height * 0.5) }
@@ -235,7 +239,9 @@ test('Store Runner V1 reste utilisable sur un vrai viewport mobile 390 px', asyn
     await page.keyboard.press('Escape').catch(() => {});
   }
 
-  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  /* Défilement immédiat : la page est plus haute avec la navigation par semaine, et un défilement animé
+     (scroll-behavior:smooth) n'est pas toujours terminé après 160 ms sur un runner lent. */
+  await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }));
   await page.waitForTimeout(160);
   const lastRow = page.locator('#planPanel .timelineRow').last();
   await expect(lastRow).toBeVisible();

@@ -25,6 +25,17 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'266',
+      title:'Explore ton terrain, semaine après semaine',
+      items:[
+        'Dans le Planning, passe d’une semaine à l’autre avec les flèches, reviens à aujourd’hui d’un geste, ou choisis une date dans le calendrier pour retrouver ton historique. Consulter une semaine ne la régénère jamais.',
+        '« Mes magasins » se filtre par priorité (P1, P2, P3), par magasins à visiter ou en retard, et chaque ligne affiche la dernière et la prochaine visite.',
+        'Touche « Fiche 360 » : statut, cadence, contacts, frise du magasin (visites, rendez-vous, actions, photos) et liens directs vers le planning, la dernière visite, les photos et le pilotage.',
+        'Chaque fiche liste les contraintes actives : rendez-vous, magasin posé à la main, heure d’arrivée imposée, magasin imposé ou exclu.',
+        'Quand un magasin ne peut pas être placé, la raison est maintenant dite clairement, avec comment la lever.'
+      ]
+    },
+    {
       version:'265',
       title:'Pilote ton planning en une phrase',
       items:[

@@ -138,7 +138,11 @@ async function applyAndCompare(rt, session, text) {
     assert.deepEqual(after.Lundi, ['bv', 'dv'], 'lundi (passé, visite faite) identique');
     assert.deepEqual(after.Mardi, ['bl'], 'mardi (passé) identique');
     assert.equal(DAYS.filter(d => after[d].includes('bv')).length, 1, 'aucune seconde visite de Boulanger Valence');
-    assert(p1.simulation.notes.some(n => /Boulanger Valence.*déjà couvert/.test(n)), 'garde V263 : visité récemment');
+    /* Revue #496 : Boulanger Valence est P1 avec une seule visite — la garde V263 « déjà couvert » cède pour le
+       2e passage (SEF), elle ne produit donc plus cette note. La commande ne place toutefois aucune seconde
+       visite dans la semaine d'une visite réalisée (assertion ci-dessus), et ce 2e passage souhaité ne rend pas la
+       commande inapplicable (planning-command-engine : `second_visit_unplaced`, avertissement et non refus). */
+    assert(!p1.simulation.notes.some(n => /Boulanger Valence.*déjà couvert/.test(n)), 'P1 à une visite : plus de garde « déjà couvert »');
     assert(DAYS.slice(2).some(d => after[d].includes('da')), 'Darty Annemasse (P1) placé mercredi ou après');
     await applyAndCompare(rt, p1, 'P1');
     const gone = await rt.run('Programme mes P1 W40');

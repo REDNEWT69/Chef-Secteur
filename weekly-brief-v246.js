@@ -374,7 +374,8 @@ function evaluate(store,week,perfCtx,rules,ctx){
   const id=String(store.id),structural=structuralValue(store);
   const row=perfCtx.rows.get(id)||null,prio=row&&row.prio||null;
   const treated=prio?perfCtx.treated(id):null;
-  const perfRaw=prio&&!treated?(Number(perfCtx.boosts[prio])||0):0;
+  /* « Traité » reste un flag de suivi : la priorité performance compte jusqu'au prochain fichier (revue #496). */
+  const perfRaw=prio?(Number(perfCtx.boosts[prio])||0):0;
   /* Neutraliser une priorité performance qui n'existe pas ne dit rien : la règle ne
      s'affiche que sur les magasins qui ont effectivement un P1/P2 dans le fichier. */
   const hasPerf=prio==='P1'||prio==='P2';

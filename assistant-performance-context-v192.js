@@ -43,7 +43,8 @@ function record(r,view){
     mission:r.comment||''
   };
 }
-function actionableRows(view){return view?view.rows.filter(r=>r.storeId&&!r.treated&&(r.prio==='P1'||r.prio==='P2')):[]}
+/* Un P1 traité reste à faire tant qu'il a moins de 2 visites depuis l'import (SEF) ; « traité » seul ne l'en sort pas. */
+function actionableRows(view){return view?view.rows.filter(r=>r.storeId&&(r.prio==='P1'||r.prio==='P2')&&(!r.treated||(r.prio==='P1'&&Number.isFinite(r.visitsSinceImport)&&r.visitsSinceImport<2))):[]}
 function contextRows(view){
   if(!view)return[];
   const out=[],seen=new Set();

@@ -208,7 +208,8 @@ test('un ordre infaisable est enregistré tel quel, avec un avertissement clair'
   t.state.plan.Jeudi=[rdv,a];t.state.appointments=[{id:'r',storeId:'rdv',date:'2026-09-24',time:'09:00',duration:60,type:'Rendez-vous'}];
   const conflict=Manual.reorderCheck(t.state,'rdv','Jeudi',t.policy(),1);
   assert.equal(conflict.ok,true);assert.equal(conflict.warning.code,'rdv-conflict');
-  assert.equal(conflict.warning.reason,'Le rendez-vous de 09:00 chez Fnac rdv n’est plus tenable avec cet ordre.');
+  assert.equal(conflict.warning.reason,'Le rendez-vous de 09:00 chez Fnac rdv n’est plus tenable avec cet ordre : avec ce trajet, tu n’y serais que vers 09:30.','Explorer Terrain : le refus nomme la contrainte (rendez-vous 09:00) et pourquoi (trajet)');
+  assert.deepEqual(conflict.warning.constraint,{kind:'appointment',time:'09:00',storeId:'rdv'});
   // Réparer un rendez-vous déjà intenable ne déclenche aucun avertissement.
   t.state.plan.Jeudi=[a,rdv];
   const repaired=await Manual.reorderStore(t.ctx,'rdv','Jeudi',0);

@@ -37,9 +37,9 @@ const QUICK_ID='sqCoverageV263';
    visité (3,5) › en retard (3) › bientôt dû (2) › à jour (1) ; garde (0). Un magasin jamais
    visité passe donc devant un retard normal, jamais devant un magasin très en retard.
    - P1 (fichier performance) départage à l'intérieur de son palier (+0,25, moins de la
-     moitié de l'écart entre deux paliers) : il ne change jamais de palier et ne lève
-     jamais la garde. */
-const RULES=Object.freeze({recentRatio:.5,soonRatio:.75,veryLateRatio:1.5,enoughVisits:2,overVisits:4,
+     moitié de l'écart entre deux paliers) : il ne change jamais de palier. Il ne lève la garde
+     que pour un P1 qui a moins de 2 visites depuis l'import du fichier (RULES.p1MinVisits, SEF). */
+const RULES=Object.freeze({recentRatio:.5,soonRatio:.75,veryLateRatio:1.5,enoughVisits:2,overVisits:4,p1MinVisits:2,
   tiers:Object.freeze({veryLate:4,never:3.5,late:3,soon:2,ok:1,blocked:0}),priorityTierBonus:Object.freeze({P1:.25})});
 const STATUS=Object.freeze({
   never:{label:'Jamais visité',group:'catchup'},
@@ -83,18 +83,20 @@ function visitDays(state){
   if(!map)map=fallbackCompletedVisitDays(state);
   const out=new Map();for(const [id,days] of map)out.set(String(id),Array.from(days).sort());return out;
 }
-/* P1/P2 du dernier fichier performance importé, hors magasins déjà « traités » cette
-   semaine — même lecture que V211 et que les suggestions du planning manuel. */
+/* P1/P2 du dernier fichier performance importé. La priorité est STABLE jusqu'au prochain import :
+   « traité » est un flag de suivi (performance-data-v190.js), jamais une sortie de priorité — un P1
+   traité après un passage reste P1 (règle métier, revue #496). `out.since` porte la date d'import du
+   fichier : les visites réalisées depuis comptent pour le minimum de passages P1 (RULES.p1MinVisits). */
 function performancePriorities(state){
-  const out=new Map();
+  const out=new Map();out.since='';
   try{
     const P=root&&root.StoreRunnerPerformanceV190,db=storage();
     if(!P||!db||typeof P.latestSnapshot!=='function'||typeof P.matchRows!=='function'||typeof P.readStore!=='function')return out;
     const snap=P.latestSnapshot(db);if(!snap)return out;
+    out.since=String(snap.importedAt||'').slice(0,10);
     const data=P.readStore(db)||{},rows=((P.matchRows(snap.rows,(state&&state.stores)||[],data.mapping||{})||{}).rows)||[];
     for(const r of rows){
       if(!r||r.storeId==null)continue;const prio=String(r.prio||'');if(prio!=='P1'&&prio!=='P2')continue;
-      try{if(typeof P.isTreated==='function'&&P.isTreated(db,snap.week,r.storeId))continue}catch(e){}
       out.set(String(r.storeId),prio);
     }
   }catch(e){}
@@ -137,6 +139,15 @@ function evaluate(store,ref,ctx){
   row.dueInDays=diffDays(refIso,row.nextDue);
   row.overdueDays=Math.max(0,row.ageDays-interval);
   row.blocked=row.ratio<RULES.recentRatio||(row.visitsInCycle>=RULES.enoughVisits&&row.ratio<RULES.soonRatio);
+  /* Le SEF demande au moins 2 visites pour un P1 : tant qu'il en a moins depuis l'import du fichier
+     performance, la garde « visité trop récemment » cède (revue #496). Sans effet sur les autres magasins ;
+     dès 2 visites depuis l'import, la garde reprend. « Traité » n'intervient pas. Seules les visites RÉELLES
+     lèvent la garde : une projection (`projectedAfterVisit`, V264 cross-day) garde la garde, pour qu'une visite
+     planifiée ne devienne pas un second passage automatique dans le même cycle. */
+  if(row.blocked&&priority==='P1'&&!ctx.projection){
+    const since=String(ctx.priorities.since||'')||'0000-01-01';
+    if(countBetween(known,since,upTo)<RULES.p1MinVisits){row.blocked=false;row.secondVisit=true}
+  }
   if(row.blocked){row.status=row.visitsInCycle>=RULES.overVisits?'over':'enough';row.tier=RULES.tiers.blocked}
   else if(row.ratio>=1){row.status='late';row.tier=row.ratio>=RULES.veryLateRatio?RULES.tiers.veryLate:RULES.tiers.late}
   else if(row.ratio>=RULES.soonRatio){row.status='soon';row.tier=RULES.tiers.soon}
@@ -164,7 +175,7 @@ function needOf(state,options){
     const id=String(store&&store.id),day=isoOf(visitDate),at=isoOf(ref)||ctx.today,key=id+'|'+day+'|'+at;
     if(!projectionCache.has(key)){
       const days=new Map(ctx.days),own=(days.get(id)||[]).slice();if(day&&!own.includes(day)){own.push(day);own.sort()}days.set(id,own);
-      projectionCache.set(key,evaluate(store,at,Object.assign({},ctx,{days})))
+      projectionCache.set(key,evaluate(store,at,Object.assign({},ctx,{days,projection:true})))
     }
     return projectionCache.get(key)
   };
@@ -184,6 +195,7 @@ function explain(row){
     parts.push(plural(row.visitsMonth,'visite','visites')+' ce mois','dernière visite '+agoText(row.daysSinceToday),'fréquence '+row.intervalDays+' j');
   }else{
     parts.push('dernière visite '+agoText(row.daysSinceToday),'fréquence '+row.intervalDays+' j');
+    if(row.secondVisit)parts.push('2e passage P1 attendu');
     const late=Math.max(0,row.daysSinceToday-row.intervalDays),due=row.intervalDays-row.daysSinceToday;
     if(late>0)parts.push('retard '+late+' j');else if(due>0&&row.status==='soon')parts.push('échéance dans '+due+' j');
     parts.push(plural(row.visitsMonth,'visite','visites')+' ce mois');

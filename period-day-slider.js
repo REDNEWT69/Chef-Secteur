@@ -325,7 +325,53 @@
     }
     const active=updateActiveTab(box);
     if(active){syncPlanningHero();centerIfOffscreen(box,active)}
+    try{renderWeekNav()}catch(e){}
     syncOvernightVisibility();
+    return true;
+  }
+  /* Explorer Terrain V1 — navigation par semaine. Aucune donnée propre : la semaine chargée reste
+     state.settings.weekDate, le plan chargé reste state.plan / l'archive, et chaque geste passe par
+     loadDate (donc par openDate). Une semaine sans archive s'ouvre vide et annoncée « non générée » :
+     naviguer ne génère, ne régénère et ne réécrit jamais rien. */
+  const NAV_ID='periodWeekNavV266';
+  function todayNoon(){const d=new Date();d.setHours(12,0,0,0);return d}
+  function shownMonday(){let raw='';try{raw=String((state.settings&&state.settings.weekDate)||'').slice(0,10)}catch(e){}return parse(weekKeyOf(raw))||monday(todayNoon())}
+  function weekRelation(mon){const cur=iso(monday(todayNoon())),key=iso(mon);return key<cur?'past':(key>cur?'future':'current')}
+  function shortDate(d){try{return new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'short'}).format(d).replace('.','')}catch(e){return iso(d)}}
+  /* Jour ouvert en arrivant dans une semaine : le même jour de la semaine que le jour courant
+     s'il y est consultable (jour travaillé ou portant des visites), sinon le premier consultable. */
+  function pickDayInWeek(mon){
+    const archive=()=>load(ARCHIVE_KEY),work=currentWorkDays(),want=DAYS.indexOf(String(window.selectedPlanningDay||''));
+    const usable=i=>{const d=addDays(mon,i);return work.includes(DAYS[i])||dayHasVisits(d,archive)};
+    if(want>=0&&usable(want))return addDays(mon,want);
+    for(let i=0;i<DAYS.length;i++)if(usable(i))return addDays(mon,i);
+    return addDays(mon,Math.max(0,want));
+  }
+  function openWeekOffset(step){return loadDate(pickDayInWeek(addDays(shownMonday(),7*step)),{allowOutsideRange:true})}
+  /* Aujourd'hui : le dimanche n'appartient à aucune journée de la bande, on ouvre le lundi à venir. */
+  function openToday(){const t=todayNoon();return loadDate(t.getDay()===0?addDays(t,1):t,{allowOutsideRange:true})}
+  function openPickedDate(value){const d=parse(value);if(!d)return false;return loadDate(d.getDay()===0?pickDayInWeek(monday(d)):d,{allowOutsideRange:true})}
+  function navCss(){if(document.getElementById('periodWeekNavCss'))return;const s=document.createElement('style');s.id='periodWeekNavCss';s.textContent='.periodWeekNav{display:flex;align-items:center;gap:6px;margin:2px 0 6px}.periodWeekNav button,.periodWeekNavPick{flex:0 0 auto;min-height:44px;border:1px solid #e1e5ed;border-radius:14px;background:#fff;color:#1d2939;font:inherit;font-weight:700}.periodWeekNav button[data-week-nav="prev"],.periodWeekNav button[data-week-nav="next"]{width:44px;padding:0;font-size:22px;line-height:1}.periodWeekNav button[data-week-nav="today"]{padding:0 10px;font-size:13px}.periodWeekNavLabel{flex:1 1 0;min-width:0;text-align:center}.periodWeekNavLabel b{display:block;font-size:13px;color:#1d2939;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.periodWeekNavLabel small{display:block;font-size:10px;color:#667085;margin-top:1px;line-height:1.15}.periodWeekNav[data-relation="past"] .periodWeekNavLabel small{color:#9a6200}.periodWeekNavPick{position:relative;width:44px;display:flex;align-items:center;justify-content:center;font-size:18px;overflow:hidden}.periodWeekNavPick input{position:absolute;inset:0;width:100%;height:100%;min-height:0;opacity:0;border:0;padding:0;cursor:pointer}.periodWeekNav [data-week-nav="today"][aria-current="true"]{background:#111318;color:#fff;border-color:#111318}';document.head.appendChild(s)}
+  function renderWeekNav(){
+    const box=document.getElementById('dayTabs');if(!box||!box.parentNode||typeof document.createElement!=='function')return false;
+    navCss();
+    let nav=document.getElementById(NAV_ID);
+    if(!nav){
+      nav=document.createElement('div');nav.id=NAV_ID;nav.className='periodWeekNav';nav.setAttribute('role','group');nav.setAttribute('aria-label','Navigation par semaine');
+      nav.innerHTML='<button type="button" data-week-nav="prev" aria-label="Semaine précédente">‹</button><div class="periodWeekNavLabel" aria-live="polite"><b data-week-label></b><small data-week-relation></small></div><button type="button" data-week-nav="next" aria-label="Semaine suivante">›</button><button type="button" data-week-nav="today">Aujourd’hui</button><label class="periodWeekNavPick"><span aria-hidden="true">📅</span><input type="date" data-week-pick aria-label="Aller à une date"></label>';
+      nav.addEventListener('click',function(e){const b=e.target&&e.target.closest?e.target.closest('[data-week-nav]'):null;if(!b)return;const kind=b.getAttribute('data-week-nav');if(kind==='prev')openWeekOffset(-1);else if(kind==='next')openWeekOffset(1);else if(kind==='today')openToday()});
+      nav.addEventListener('click',function(e){const f=e.target&&e.target.closest?e.target.closest('[data-week-pick]'):null;if(f&&typeof f.showPicker==='function')try{f.showPicker()}catch(err){}});
+      nav.addEventListener('change',function(e){const f=e.target&&e.target.closest?e.target.closest('[data-week-pick]'):null;if(f&&f.value)openPickedDate(f.value)});
+    }
+    if(nav.nextElementSibling!==box)box.insertAdjacentElement('beforebegin',nav);
+    const mon=shownMonday(),rel=weekRelation(mon),sat=addDays(mon,5);
+    let generated=false;try{generated=planHasVisits(state.plan)}catch(e){}
+    nav.dataset.relation=rel;nav.dataset.generated=generated?'1':'0';
+    const label=nav.querySelector('[data-week-label]'),relation=nav.querySelector('[data-week-relation]'),pick=nav.querySelector('[data-week-pick]'),today=nav.querySelector('[data-week-nav="today"]');
+    if(label)label.textContent=shortDate(mon)+' – '+shortDate(sat);
+    if(relation)relation.textContent=(rel==='past'?'Passée · consultation':rel==='future'?'À venir':'En cours')+(generated?'':' · non générée');
+    if(pick&&activeDate&&pick.value!==activeDate)pick.value=activeDate;
+    if(today){if(rel==='current')today.setAttribute('aria-current','true');else today.removeAttribute('aria-current')}
     return true;
   }
   function css(){if(document.getElementById('periodDaySliderCss'))return;const s=document.createElement('style');s.id='periodDaySliderCss';s.textContent='.periodDayTabs{display:flex!important;gap:8px!important;overflow-x:auto!important;overflow-y:hidden!important;grid-template-columns:none!important;-webkit-overflow-scrolling:touch;touch-action:auto!important;overscroll-behavior-x:contain;padding:4px 1px 8px!important;scrollbar-width:none}.periodDayTabs::-webkit-scrollbar{display:none}.periodDayTab{position:relative;flex:1 1 0!important;min-width:56px!important;max-width:96px!important;touch-action:auto!important;border:1px solid #e1e5ed;background:#fff;border-radius:16px;padding:8px 6px!important;text-align:center;color:#667085;min-height:66px}.periodDayTab span,.periodDayTab small{display:block;font-size:10px;line-height:1.1}.periodDayTab b{display:block;font-size:18px;line-height:1.2;color:#1d2939;margin:2px 0}.periodDayTab.active{background:#111318!important;color:#fff!important;border-color:#111318!important}.periodDayTab.active b{color:#fff!important}.periodDayTab .hotelDayBadge{position:absolute;top:4px;right:4px;display:flex!important;align-items:center;justify-content:center;width:18px;height:18px;margin:0!important;padding:0!important;overflow:hidden;border-radius:999px;background:#fff4c2;border:1px solid rgba(154,98,0,.16);font-size:0!important;line-height:1!important;box-shadow:0 2px 7px rgba(91,64,0,.10);z-index:2}.periodDayTab .hotelDayBadge:before{content:"🌙";font-size:11px;line-height:1}.periodDayTab.active .hotelDayBadge{position:static;width:18px;height:18px;display:flex!important;align-items:center;justify-content:center;margin:4px auto 0!important;padding:0!important;overflow:hidden;border-radius:999px;font-size:0!important;line-height:1!important;color:#ffe08a;background:rgba(255,224,138,.12);border-color:rgba(255,224,138,.26);box-shadow:none}.periodDayTab.active .hotelDayBadge:before{content:"🌙";font-size:11px;line-height:1}.planningOvernightCueV206{width:100%;display:flex;align-items:center;gap:10px;margin:10px 0 2px;padding:11px 12px;border:1px solid rgba(154,98,0,.18);border-radius:16px;background:linear-gradient(135deg,rgba(255,248,219,.98),rgba(255,255,255,.92));box-shadow:0 6px 18px rgba(91,64,0,.08);color:#3f3212;text-align:left;min-height:54px}.planningOvernightCueIcon{font-size:20px!important;line-height:1!important;flex:0 0 auto}.planningOvernightCueCopy{display:flex!important;flex:1 1 auto;min-width:0;flex-direction:column;gap:2px}.planningOvernightCueCopy b{font-size:12px;line-height:1.2;color:#3f3212;white-space:normal}.planningOvernightCueCopy small{font-size:10px;color:#806b32;white-space:normal}.planningOvernightCueArrow{font-size:23px!important;line-height:1!important;color:#9a6200;flex:0 0 auto}.planningOvernightCueV206.is-pulsing{animation:srOvernightCuePulseV206 .62s ease-in-out 2}.srHotelFocusV206{animation:srHotelFocusV206 .8s ease-out 1}@keyframes srOvernightCuePulseV206{0%,100%{transform:scale(1);box-shadow:0 6px 18px rgba(91,64,0,.08)}50%{transform:scale(1.018);box-shadow:0 8px 25px rgba(184,132,0,.20)}}@keyframes srHotelFocusV206{0%{outline:0 solid rgba(242,201,76,0)}35%{outline:5px solid rgba(242,201,76,.28);outline-offset:4px}100%{outline:0 solid rgba(242,201,76,0);outline-offset:8px}}.periodDayTab.srOvernightDayV207:not(:has(.hotelDayBadge))::before{content:"🌙";position:absolute;top:4px;right:4px;display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:999px;background:#fff4c2;border:1px solid rgba(154,98,0,.16);font-size:11px;line-height:1;box-shadow:0 2px 7px rgba(91,64,0,.10);z-index:3}.periodDayTab.active.srOvernightDayV207:not(:has(.hotelDayBadge))::before{content:"🌙";position:static;width:18px;height:18px;display:flex;align-items:center;justify-content:center;margin:4px auto 0;padding:0;font-size:11px;line-height:1;color:#ffe08a;background:rgba(255,224,138,.12);border-color:rgba(255,224,138,.26);box-shadow:none}.periodDayTab.srOvernightRingV207::after{content:"";position:absolute;inset:-4px;border-radius:20px;padding:2px;background:conic-gradient(from 0deg,rgba(255,205,64,0) 0 15%,rgba(255,205,64,.98) 28%,rgba(255,244,174,.42) 42%,rgba(255,205,64,0) 58% 100%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;z-index:4;opacity:0;animation:srOvernightRingV207 1.05s linear 2}.periodDayTab.srOvernightRingV207{box-shadow:0 0 0 1px rgba(242,201,76,.28),0 0 20px rgba(242,201,76,.22)}@keyframes srOvernightRingV207{0%{transform:rotate(0deg);opacity:0}12%{opacity:1}88%{opacity:1}100%{transform:rotate(360deg);opacity:0}}@media(prefers-reduced-motion:reduce){.planningOvernightCueV206.is-pulsing,.srHotelFocusV206,.periodDayTab.srOvernightRingV207::after{animation:none!important}.periodDayTab.srOvernightRingV207::after{opacity:0!important}}';document.head.appendChild(s)}
@@ -338,6 +384,6 @@
   document.addEventListener('change',function(event){if(event.target&&event.target.id==='weekDate')loadDate(event.target.value,{allowOutsideRange:true})});
   document.addEventListener('store-runner:data-restored',function(){activeDate='';outsideRangeDate='';scheduleRender()});
   document.addEventListener('store-runner:planning-user-opened',function(){overnightCuePulseRequested=true;focusTodayIfVisible();scheduleRender()});
-  window.StoreRunnerPeriodDaySlider={focusToday:focusTodayIfVisible,syncOvernight:syncOvernightVisibility,openDate:function(raw){return loadDate(raw,{allowOutsideRange:true})}};
+  window.StoreRunnerPeriodDaySlider={focusToday:focusTodayIfVisible,syncOvernight:syncOvernightVisibility,openDate:function(raw){return loadDate(raw,{allowOutsideRange:true})},openWeek:openWeekOffset,openToday:openToday,renderWeekNav:renderWeekNav};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();

@@ -33,6 +33,20 @@
 
   function isManual(row) { return !!(row && row.manualHours === true); }
 
+  /* Explorer Terrain V1 — distinction Auto / Flexible / Strict de l'heure d'arrivée, PRÉPARÉE sans
+     rien changer au moteur. Aujourd'hui l'ordonnanceur unique (`StoreOpeningHoursV1.scheduleRoute`)
+     traite toute entrée « Horaire manuel » comme imposée : c'est « strict », et c'est ce que lit
+     arrivalMode pour les entrées existantes, sans migration. « auto » = aucune entrée, l'heure est
+     calculée. « flexible » est un champ facultatif `arrivalMode` d'une entrée ; il n'est écrit par
+     aucun écran et le moteur ne le distingue pas encore : il est lu comme une heure souhaitée, mais
+     appliquée comme strict tant qu'une décision explicite n'a pas branché l'ordonnanceur. */
+  const ARRIVAL_MODES = Object.freeze(['auto', 'flexible', 'strict']);
+  function arrivalMode(entry) {
+    if (!isManual(entry)) return 'auto';
+    return entry.arrivalMode === 'flexible' ? 'flexible' : 'strict';
+  }
+  function arrivalModeFor(state, storeId, date) { return arrivalMode(findManual(state, storeId, date)); }
+
   /* Arrivée + départ => durée déduite. Arrivée seule => la durée prévue est conservée,
      jamais réinventée. */
   function deriveDuration(time, endTime, fallback) {
@@ -73,6 +87,8 @@
       type: TYPE,
       manualHours: true,
       note: '',
+      /* Facultatif : absent pour « strict », la forme des entrées déjà saisies est inchangée. */
+      ...(options.arrivalMode === 'flexible' ? { arrivalMode: 'flexible' } : {}),
     };
   }
 
@@ -109,7 +125,7 @@
     return schedule.rows.find(row => String(row.store && row.store.id) === String(storeId)) || null;
   }
 
-  const api = { TYPE, MIN_MINUTES, minutes, clock, isManual, deriveDuration, findManual, realAppointment,
+  const api = { TYPE, MIN_MINUTES, ARRIVAL_MODES, arrivalMode, arrivalModeFor, minutes, clock, isManual, deriveDuration, findManual, realAppointment,
     buildEntry, applyManual, clearManual, scheduleFor, rowFor };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

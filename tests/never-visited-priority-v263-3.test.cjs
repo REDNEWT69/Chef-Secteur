@@ -149,17 +149,19 @@ async function scenario(name,fn){
     assert.deepEqual(catchUp,['VL','N','L','S'],'À rattraper dans l’ordre métier : '+catchUp.join(','));
   });
 
-  await scenario('Couverture — D P1 départage dans son palier sans jamais en changer ni lever la garde',async()=>{
-    const stores=sector().concat([store('NP1',9),store('LP1',9),store('SP1',9),store('VLP1',9),store('BP1',9)]);
-    const visits=history(Object.assign({},VISITS,{LP1:VISITS.L,SP1:VISITS.S,VLP1:VISITS.VL,BP1:VISITS.B}));
-    const perf={NP1:'P1',LP1:'P1',SP1:'P1',VLP1:'P1',BP1:'P1'};
+  await scenario('Couverture — D P1 départage dans son palier sans en changer ; la garde ne cède qu’à un P1 sous 2 visites',async()=>{
+    const stores=sector().concat([store('NP1',9),store('LP1',9),store('SP1',9),store('VLP1',9),store('BP1',9),store('B2P1',9)]);
+    const visits=history(Object.assign({},VISITS,{LP1:VISITS.L,SP1:VISITS.S,VLP1:VISITS.VL,BP1:VISITS.B,B2P1:['2026-09-15','2026-09-22']}));
+    const perf={NP1:'P1',LP1:'P1',SP1:'P1',VLP1:'P1',BP1:'P1',B2P1:'P1'};
     const state=makeState({stores,visits}),ctx=baseContext(FRIDAY,state,storage({}),perf);
     const need=ctx.StoreRunnerVisitCoverage.needOf(state),t=id=>need(state.stores.find(s=>s.id===id),MONDAY);
     assert.equal(t('NP1').priority,'P1','le P1 est bien lu par la couverture');
     const chain=['VL','NP1','N','LP1','L','SP1','S','O'];
     for(let i=1;i<chain.length;i++)assert.ok(t(chain[i-1]).tier>t(chain[i]).tier,chain[i-1]+' ('+t(chain[i-1]).tier+') doit rester devant '+chain[i]+' ('+t(chain[i]).tier+')');
     assert.equal(t('VLP1').tier,t('VL').tier,'très en retard P1 reste au palier le plus urgent');
-    assert.equal(t('BP1').blocked,true,'P1 ne lève jamais la garde');assert.equal(t('BP1').tier,0);
+    assert.equal(t('BP1').blocked,false,'P1 à une seule visite : la garde cède pour le 2e passage (SEF, revue #496)');assert.equal(t('BP1').secondVisit,true);
+    assert.equal(t('B2P1').blocked,true,'P1 déjà passé 2 fois : la garde reprend');assert.equal(t('B2P1').tier,0);
+    assert.equal(t('B').blocked,true,'un magasin non P1 reste gardé');
   });
 
   /* ------------------------------------------------------- F : cycle 3 semaines ---- */
@@ -270,8 +272,8 @@ async function scenario(name,fn){
   });
 
   /* ------------------------------------------------------ I : garde anti-sur-visite ---- */
-  await scenario('I — aucun magasin bloqué reproposé automatiquement, même P1, par aucun moteur',async()=>{
-    const stores=sector().concat([store('BP1',0.2)]),visits=history(Object.assign({},VISITS,{BP1:VISITS.B})),perf={BP1:'P1'};
+  await scenario('I — aucun magasin bloqué reproposé automatiquement par aucun moteur ; un P1 passé 2 fois reste gardé',async()=>{
+    const stores=sector().concat([store('BP1',0.2)]),visits=history(Object.assign({},VISITS,{BP1:['2026-09-15','2026-09-22']})),perf={BP1:'P1'};
     const r=await runThreeWeeks({today:FRIDAY,target:6,stores,visits,perf});
     const first=weekIds(r.weeks[0].plan);
     for(const id of ['B','BP1'])assert.ok(!first.includes(id),id+' visité il y a 6 j reproposé en semaine 1 : '+first.join(','));

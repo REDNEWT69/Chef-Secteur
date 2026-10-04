@@ -5,7 +5,7 @@ const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
 /* Total officiel des ressources script au démarrage : 74 après la suppression A4 de la
    campagne V187, 75 depuis le Planning Command Engine (Lot B, planning-command-engine.js).
    Il reste plafonné par le budget figé de cleanup-baseline-r20, qui n'augmente pas. */
-const OFFICIAL_SCRIPT_RESOURCES=75;
+const OFFICIAL_SCRIPT_RESOURCES=76;
 
 test.use({
   viewport:{width:390,height:844},

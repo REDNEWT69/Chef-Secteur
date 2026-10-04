@@ -121,7 +121,10 @@ assert.match(notice.textContent,/^Semaine du 21 septembre non générée/);
 planningFix.reorderPlanning();
 assert.equal(box.nextElementSibling,notice,'réorganiser le panneau ne doit pas laisser le message loin de la bande');
 const order=plan.children.map(el=>el.id||el.className);
-assert.equal(order.indexOf('planningHeroV2')+1,order.indexOf('dayTabs'),'la bande doit rester juste sous l’en-tête du jour');
+/* Explorer Terrain V1 : la navigation par semaine (période-day-slider) s'intercale entre l'en-tête du
+   jour et la bande qu'elle pilote ; planning-ui-fixes (propriétaire de la hiérarchie) la range. */
+assert.equal(order.indexOf('planningHeroV2')+1,order.indexOf('periodWeekNavV266'),'la navigation par semaine vient juste sous l’en-tête du jour');
+assert.equal(order.indexOf('periodWeekNavV266')+1,order.indexOf('dayTabs'),'puis la bande des jours qu’elle pilote');
 assert.equal(order.indexOf('dayTabs')+1,order.indexOf('periodDayNotice'),'puis le message de la bande');
 assert.equal(order.indexOf('periodDayNotice')+1,order.indexOf('planningToolsV2'),'puis seulement les actions du planning');
 assert.equal(box.dataset.periodSliderOwner,'1','un simple déplacement ne doit pas faire perdre la prise en charge');

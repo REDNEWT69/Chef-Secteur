@@ -84,7 +84,7 @@ function performancePriorityV211(s){
     if(!api||!db||typeof api.rowForStore!=='function')return '';
     const row=api.rowForStore(db,s&&s.id),snap=typeof api.latestSnapshot==='function'?api.latestSnapshot(db):null;
     if(!row||!['P1','P2'].includes(String(row.prio||'')))return '';
-    if(snap&&typeof api.isTreated==='function'&&api.isTreated(db,snap.week,s&&s.id))return '';
+    /* « Traité » est un flag de suivi, pas une sortie de priorité : P1/P2 stable jusqu'au prochain import (revue #496). */
     return String(row.prio)
   }catch(e){return ''}
 }

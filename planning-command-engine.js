@@ -629,11 +629,15 @@ function simulatePlan(ctx,intent){
   /* Visites demandées par les filtres : la garde anti-sur-visite (V263) s'applique — un
      magasin visité trop récemment pour toute la période n'est pas reprogrammé. */
   const required=[];const fixedIds=new Set([...exactRows,...keepRows].map(r=>r.id));
+  /* Revue #496 : un P1 à moins de 2 visites depuis l'import a la garde V263 levée (2e passage SEF). Ce passage est
+     souhaité, pas imposé : s'il ne tient pas dans la période, c'est un avertissement, jamais un refus de la commande. */
+  const secondIds=new Set();
   for(const ref of intent.filters.stores){
     if(fixedIds.has(ref.id))continue;const store=storeById(ctx,ref.id),why=planifiable(ctx,store);
     if(why){warnings.push({code:'target_skipped',message:storeLabel(store||{enseigne:ref.id})+' : '+why+', non programmé.'});continue}
     let notBefore='';for(let d=scope.start;d<=scope.end;d=addDays(d,1)){if(dayIssue(ctx,d))continue;let blocked=false;try{blocked=!!(ctx.needOf&&ctx.needOf(store,d).blocked)}catch(e){blocked=false}if(!blocked){notBefore=d;break}}
     if(!notBefore){notes.push(storeLabel(store)+' : visité récemment, déjà couvert pour toute la période.');continue}
+    try{if(ctx.needOf&&ctx.needOf(store,notBefore).secondVisit)secondIds.add(String(ref.id))}catch(e){}
     required.push({storeId:ref.id,from:scope.start,notBefore,dueDate:scope.end,label:'Commande planning'});
   }
   for(const row of c.windowDays)for(const ref of row.stores){
@@ -653,7 +657,7 @@ function simulatePlan(ctx,intent){
   }catch(e){return{weeks:[],blocking:[{code:'engine_refused',message:e.message||String(e)}],warnings,notes}}
   if(!sim.ok)return{weeks:[],blocking:[{code:'engine_refused',message:sim.error}],warnings,notes};
   const built=sim.built;
-  for(const row of built.commandVisits||[])if(row.state==='lost'){const store=storeById(ctx,row.storeId);blocking.push({code:'required_unplaced',message:storeLabel(store||{enseigne:row.storeId})+' : '+(String(row.why||'aucune journée compatible').replace(/l’échéance/g,'la fin de la période'))+'.'})}
+  for(const row of built.commandVisits||[])if(row.state==='lost'&&secondIds.has(String(row.storeId))){const store=storeById(ctx,row.storeId);warnings.push({code:'second_visit_unplaced',message:storeLabel(store||{enseigne:row.storeId})+' : 2e passage P1 non placé dans la période (garde levée, aucune journée compatible).'})}else if(row.state==='lost'){const store=storeById(ctx,row.storeId);blocking.push({code:'required_unplaced',message:storeLabel(store||{enseigne:row.storeId})+' : '+(String(row.why||'aucune journée compatible').replace(/l’échéance/g,'la fin de la période'))+'.'})}
   /* Post-passes du pipeline 3 semaines, sur copie : V185 (repli géographique sans passe
      cross-day) puis V251 (ordre intra-journée). Une passe qui défait une contrainte de la
      commande est annulée pour sa semaine, comme pour une échéance du brief. */
@@ -686,7 +690,7 @@ function simulatePlan(ctx,intent){
   for(const row of c.windowDays)for(const ref of row.stores){const ok=weeks.some(w=>DAYS.some(day=>{const d=dateOfDay(w.weekKey,day);return d>=row.dates[0]&&d<=row.dates[row.dates.length-1]&&(w.after[day]||[]).some(s=>String(s.id)===ref.id)}));if(!ok)blocking.push({code:'required_unplaced',message:storeLabel(storeById(ctx,ref.id)||{})+' n’a pas pu être placé '+row.dates.map(DAYS_LABEL).join(' ou ')+'.'})}
   /* Visites demandées : toujours présentes dans leur fenêtre après les passes géographiques. */
   const targetIds=required.map(r=>r.storeId);let placedTargets=0;
-  for(const req of required){const ok=weeks.some(w=>DAYS.some(day=>{const d=dateOfDay(w.weekKey,day);return d>=req.from&&d<=req.dueDate&&(w.after[day]||[]).some(s=>String(s.id)===req.storeId)}));if(ok)placedTargets++;else if(!(built.commandVisits||[]).some(row=>row.storeId===req.storeId&&row.state==='lost'))blocking.push({code:'required_unplaced',message:storeLabel(storeById(ctx,req.storeId)||{})+' n’est plus dans la période après optimisation.'})}
+  for(const req of required){const ok=weeks.some(w=>DAYS.some(day=>{const d=dateOfDay(w.weekKey,day);return d>=req.from&&d<=req.dueDate&&(w.after[day]||[]).some(s=>String(s.id)===req.storeId)}));if(ok)placedTargets++;else if(secondIds.has(String(req.storeId))){if(!(built.commandVisits||[]).some(row=>row.storeId===req.storeId&&row.state==='lost'))warnings.push({code:'second_visit_unplaced',message:storeLabel(storeById(ctx,req.storeId)||{})+' : 2e passage P1 non placé dans la période.'})}else if(!(built.commandVisits||[]).some(row=>row.storeId===req.storeId&&row.state==='lost'))blocking.push({code:'required_unplaced',message:storeLabel(storeById(ctx,req.storeId)||{})+' n’est plus dans la période après optimisation.'})}
   if(built.coverage&&built.coverage.uncoveredLate&&built.coverage.uncoveredLate.length)warnings.push({code:'coverage',message:built.coverage.uncoveredLate.length+' magasin(s) en retard restent hors de la période faute de capacité.'});
   for(const r of keepRows){const w=weeks.find(x=>x.weekKey===mondayOf(r.date)),was=w&&(w.before[dayNameOf(r.date)]||[]).some(s=>String(s.id)===r.id);if(w&&!was)warnings.push({code:'keep_moved',message:storeLabel(storeById(ctx,r.id)||{})+' n’était pas prévu le '+DAYS_LABEL(r.date)+' : il y sera placé.'})}
   const at='planning-command-v1';
