@@ -81,6 +81,44 @@ async function editStore(win,id,day,remove){
 }
 async function addStore(win,id,day){return editStore(win,id,day||currentDay(win),false)}
 async function removeStore(win,id,day){return editStore(win,id,day||currentDay(win),true)}
+/* Déprogrammation demandée hors du geste de la liste (Assistant en ligne) : mêmes écritures
+   que removeStore, mais le résultat n'est « réussi » que si le plan canonique, relu après
+   l'écriture, ne contient plus le magasin ce jour-là. Ce chemin refuse tout ce que le geste
+   manuel laisse à la main de l'utilisateur : journée passée, visite déjà réalisée, rendez-vous,
+   magasin posé/verrouillé ou imposé. Un état de protection illisible refuse aussi. */
+function isPlanned(state,id,day){return dayIds(state,day).includes(String(id))}
+function unscheduleCheck(win,id,options){
+  options=options||{};const state=win&&win.state,sid=String(id==null?'':id);
+  const refuse=(code,error)=>({ok:false,code,error});
+  if(!state||!sid)return refuse('store','magasin non précisé');
+  let day=DAYS.includes(options.day)?options.day:'';
+  if(!day&&options.date){day=DAYS.find(d=>weekDayDate(state,d)===String(options.date).slice(0,10))||'';if(!day)return refuse('week','cette date n’est pas dans la semaine affichée : ouvre-la dans le Planning')}
+  if(!day)return refuse('day','jour non précisé');
+  const date=weekDayDate(state,day),store=findStore(state,sid),label=store?storeLabel(store):'';
+  if(!isPlanned(state,sid,day))return Object.assign(refuse('missing',(label||'ce magasin')+' n’est pas prévu '+day.toLowerCase()+' : rien à déprogrammer'),{day,date,label});
+  const base=Object.assign({day,date,label,storeId:sid});
+  if(date&&date<todayISO())return Object.assign(refuse('past','une journée passée ne se modifie plus'),base);
+  const metrics=win.StoreRunnerActivityMetrics;
+  if(!metrics||typeof metrics.completedVisitDays!=='function')return Object.assign(refuse('protection','protection des visites réalisées indisponible'),base);
+  let done;try{done=metrics.completedVisitDays(state)}catch(e){done=null}
+  if(!done||typeof done.get!=='function')return Object.assign(refuse('protection','protection des visites réalisées illisible'),base);
+  const days=done.get(sid);
+  if(days&&days.has(date))return Object.assign(refuse('completed','visite déjà réalisée ce jour-là : elle ne se déprogramme pas'),base);
+  if(((state.appointments)||[]).some(a=>a&&String(a.storeId)===sid&&String(a.date||'').slice(0,10)===date))return Object.assign(refuse('appointment','un rendez-vous est fixé ce jour-là : modifie-le dans Rendez-vous'),base);
+  let lock=null;try{lock=typeof win.storeRunnerLockInfo==='function'?win.storeRunnerLockInfo(sid):((state.locks&&state.locks[sid])||null)}catch(e){lock=null}
+  if(lock&&lock.day===day&&(lock.recurring||!lock.week||lock.week===currentWeekKey(state)))return Object.assign(refuse('locked','magasin verrouillé ce jour-là : retire d’abord le verrou'),base);
+  if(state.included&&state.included[sid])return Object.assign(refuse('imposed','magasin imposé au planning : retire d’abord l’imposition'),base);
+  return Object.assign({ok:true},base);
+}
+async function unscheduleStore(win,id,options){
+  const check=unscheduleCheck(win,id,options);
+  if(!check.ok)return check;
+  const result=await removeStore(win,check.storeId,check.day);
+  if(!result||!result.ok)return Object.assign({},check,{ok:false,code:'not_applied',error:(result&&result.error)||'le planning n’a pas été modifié'});
+  /* Relecture canonique : l'écriture est confirmée par l'état, pas par son retour. */
+  if(isPlanned(win.state,check.storeId,check.day))return Object.assign({},check,{ok:false,code:'not_applied',error:'le magasin est toujours dans le planning'});
+  return Object.assign({},check,{ok:true,verified:true});
+}
 
 /* ---------------------------------------------------------------------------
    V254.3 — réordonner une journée au doigt (issue #426).
@@ -501,5 +539,5 @@ function bindRow(win,row){if(!row||row.classList.contains('calendarEvent')||row.
 function enhance(win){const doc=win.document,shell=doc.querySelector('#planPanel .timelineShell');if(!shell)return false;let head=shell.querySelector('.pmvHead');if(!head){head=doc.createElement('div');head.className='pmvHead';head.innerHTML='<span>Visites</span><button class="pmvAdd" type="button">＋ Ajouter</button>';const timeline=shell.querySelector('.appleTimeline');shell.insertBefore(head,timeline||shell.firstChild);/* Le swipe reste actif, mais son mode d'emploi n'a pas à occuper l'écran en permanence :
    l'élément reste en place, masqué, pour rester disponible à la demande. */const hint=doc.createElement('div');hint.className='pmvHint';hint.hidden=true;hint.textContent='Astuce : glisse une visite à gauche ou à droite pour la retirer.';head.insertAdjacentElement('afterend',hint);head.querySelector('.pmvAdd').addEventListener('click',()=>openDialog(win))}shell.querySelectorAll('.timelineRow:not(.calendarEvent)').forEach(r=>bindRow(win,r));renderSuggestions(win);installRadiusField(win);return true}
 function install(win){if(installed)return;installed=true;ensureCss(win.document);ensureDialog(win);const run=()=>setTimeout(()=>enhance(win),0);run();win.document.addEventListener('store-runner:planning-updated',run);win.document.addEventListener('store-runner:data-restored',run);if(typeof win.MutationObserver!=='undefined'){const panel=win.document.getElementById('planPanel');if(panel){observer=new win.MutationObserver(run);observer.observe(panel,{childList:true,subtree:true})}}}
-return{DAYS,clonePlan,currentWeekKey,plannedDay,refusalFor,addToPlan,removeFromPlan,currentDay,addStore,removeStore,capacityWarning,parseRowStoreId,install,enhance,dayIds,weekDayDate,reorderInPlan,reorderCheck,reorderPolicy,scheduleIssue,reorderStore,undoEdit,DEFAULT_RADIUS_KM,MAX_SUGGESTIONS,MAX_WITH_PRIORITY,PRIO_BADGE,radiusKm,coords,dateOfDay,haversine,computeSuggestions,suggestionsFor,suggestionLabel,visitLabel,renderSuggestions,acceptSuggestion,installRadiusField};
+return{DAYS,clonePlan,currentWeekKey,plannedDay,refusalFor,addToPlan,removeFromPlan,currentDay,addStore,removeStore,isPlanned,unscheduleCheck,unscheduleStore,capacityWarning,parseRowStoreId,install,enhance,dayIds,weekDayDate,reorderInPlan,reorderCheck,reorderPolicy,scheduleIssue,reorderStore,undoEdit,DEFAULT_RADIUS_KM,MAX_SUGGESTIONS,MAX_WITH_PRIORITY,PRIO_BADGE,radiusKm,coords,dateOfDay,haversine,computeSuggestions,suggestionsFor,suggestionLabel,visitLabel,renderSuggestions,acceptSuggestion,installRadiusField};
 });
