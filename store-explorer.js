@@ -31,7 +31,7 @@ const MANUAL_HOURS_TYPE='Horaire manuel';
 const TIMELINE_SHOWN=8;
 const TIMELINE_MAX=60;
 const PRIORITY_FILTERS=Object.freeze([['all','Tous'],['P1','P1'],['P2','P2'],['P3','P3 / autres']]);
-const STATUS_FILTERS=Object.freeze([['all','Tout'],['todo','À visiter'],['late','En retard'],['never','Jamais visité']]);
+const STATUS_FILTERS=Object.freeze([['all','Tout'],['watch','3 semaines'],['todo','À visiter'],['late','En retard'],['never','Jamais visité']]);
 const filter={priority:'all',status:'all'};
 
 function pad(n){return String(n).padStart(2,'0')}
@@ -68,7 +68,12 @@ function contextFor(state,options){
      n'en sort pas (revue #496). Même lecture que les moteurs (`visit-coverage.js`). */
   let park=o.priorities instanceof Map?o.priorities:new Map();
   if(!(o.priorities instanceof Map)&&C&&typeof C.performancePriorities==='function'){try{park=C.performancePriorities(state)}catch(e){park=new Map()}}
-  return{state:state||{},today,archive,C,needOf,planned,park,cache:new Map()};
+  let forecast=null,forecastById=new Map();
+  if(C&&typeof C.forecastThreeWeeks==='function')try{
+    forecast=C.forecastThreeWeeks(state,{today,archive,range:o.range,firstMonday:o.firstMonday,priorities:park,visitDays:o.visitDays,dayBlocked:o.dayBlocked,lockDayForWeek:o.lockDayForWeek});
+    forecastById=new Map((forecast.rows||[]).map(row=>[String(row.id),row]));
+  }catch(e){forecast=null;forecastById=new Map()}
+  return{state:state||{},today,archive,C,needOf,planned,park,forecast,forecastById,cache:new Map()};
 }
 function needFor(ctx,store){try{return ctx.needOf?ctx.needOf(store):null}catch(e){return null}}
 
@@ -185,14 +190,14 @@ function contactsOf(state,id){
 function validEmail(v){return/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v||'').trim())}
 function profileFor(state,storeId,options,shared){
   const ctx=shared||contextFor(state,options),store=find(state,storeId);if(!store)return null;
-  const id=String(store.id),need=needFor(ctx,store),b=(state&&state.businessV2)||{};
+  const id=String(store.id),need=needFor(ctx,store),forecast=ctx.forecastById.get(id)||null,b=(state&&state.businessV2)||{};
   const appts=((state&&state.appointments)||[]).filter(a=>a&&String(a.storeId)===id&&isoOf(a.date)>=ctx.today&&!(a.manualHours===true||a.type===MANUAL_HOURS_TYPE)).sort((a,c)=>(String(a.date)+String(a.time)).localeCompare(String(c.date)+String(c.time)));
   const planned=ctx.planned.get(id)||'',nextAppt=appts[0]?{date:isoOf(appts[0].date),time:String(appts[0].time||''),type:String(appts[0].type||''),id:String(appts[0].id||'')}:null;
   const openActions=(b.actions||[]).filter(a=>a&&String(a.storeId)===id&&!['done','cancelled'].includes(a.status)).length;
   const openOpportunities=(b.opportunities||[]).filter(o=>o&&String(o.storeId)===id&&['open','in_progress'].includes(o.status)).length;
   const next=[planned&&{kind:'planned',date:planned},nextAppt&&{kind:'appointment',date:nextAppt.date}].filter(Boolean).sort((a,c)=>a.date.localeCompare(c.date))[0]||null;
   return{
-    store,id,need,
+    store,id,need,forecast,
     cadence:{label:String(store.freq||'Mensuel'),intervalDays:need?need.intervalDays:null},
     lastVisit:need&&need.lastVisit||'',
     nextVisit:next?{date:next.date,kind:next.kind}:null,
@@ -215,7 +220,7 @@ function listContext(options){
 }
 function rowOf(ctx,store){
   const id=String(store&&store.id);let row=ctx.cache.get(id);
-  if(!row){const need=needFor(ctx,store);row={need,planned:ctx.planned.get(id)||'',priority:ctx.park.get(id)||'',constraints:null};ctx.cache.set(id,row)}
+  if(!row){const need=needFor(ctx,store);row={need,forecast:ctx.forecastById.get(id)||null,planned:ctx.planned.get(id)||'',priority:ctx.park.get(id)||'',constraints:null};ctx.cache.set(id,row)}
   return row;
 }
 function priorityKey(row){return row.priority==='P1'||row.priority==='P2'?row.priority:'P3'}
@@ -223,6 +228,7 @@ function matches(store,lc){
   const f=(lc&&lc.filter)||filter;if(f.priority==='all'&&f.status==='all')return true;
   const row=rowOf(lc.ctx,store);
   if(f.priority!=='all'&&priorityKey(row)!==f.priority)return false;
+  if(f.status==='watch')return !!(row.forecast&&row.forecast.watch);
   if(f.status==='todo')return !!(row.need&&row.need.group==='catchup');
   if(f.status==='late')return !!(row.need&&row.need.status==='late');
   if(f.status==='never')return !!(row.need&&row.need.status==='never');
@@ -238,24 +244,25 @@ function statusChip(need){return need?'<span class="srXChip srXs-'+(STATUS_CLASS
 /* Ligne ajoutée sous chaque magasin de la liste : statut, priorité, dernière et prochaine visite,
    contraintes, et l'entrée vers la fiche 360. Texte échappé, aucune donnée du magasin n'est écrite. */
 function rowHtml(store,lc){
-  const row=rowOf(lc.ctx,store),need=row.need,cons=constraintCount(lc,store);
+  const row=rowOf(lc.ctx,store),need=row.need,forecast=row.forecast,cons=constraintCount(lc,store);
   const last=need&&need.lastVisit?'Dernière '+frDate(need.lastVisit)+(need.daysSinceToday!=null?' ('+(need.daysSinceToday===0?'aujourd’hui':'il y a '+need.daysSinceToday+' j')+')':''):'Jamais visité';
   const nextDate=row.planned||'',next=nextDate?'Prochaine '+frDate(nextDate):(need&&need.nextDue?'À planifier · échéance '+frDate(need.nextDue,false):'À planifier');
   const prio=row.priority?'<span class="srXChip srXp">'+esc(row.priority)+'</span>':'';
-  return'<small class="srXRow">'+statusChip(need)+prio+'<span>'+esc(last)+'</span><span>'+esc(next)+'</span>'+(cons?'<span class="srXCons">🔒 '+plural(cons,'contrainte','contraintes')+'</span>':'')+'</small>'
+  const risk=forecast&&forecast.watch?'<span class="srXForecast">'+esc(forecast.forecastReason)+(forecast.forecastWeek?' · semaine '+forecast.forecastWeek:'')+'</span>':'';
+  return'<small class="srXRow">'+statusChip(need)+prio+risk+'<span>'+esc(last)+'</span><span>'+esc(next)+'</span>'+(cons?'<span class="srXCons">🔒 '+plural(cons,'contrainte','contraintes')+'</span>':'')+'</small>'
     +'<button type="button" class="srXOpen" data-sr-store-360="'+esc(store.id)+'">Fiche 360</button>';
 }
 function counts(ctx){
-  const state=ctx.state,out={priority:{all:0,P1:0,P2:0,P3:0},status:{all:0,todo:0,late:0,never:0}};
+  const state=ctx.state,out={priority:{all:0,P1:0,P2:0,P3:0},status:{all:0,watch:0,todo:0,late:0,never:0}};
   for(const s of (state.stores||[])){
     if(!s||s.active===false||(state.excluded&&state.excluded[s.id]))continue;
     const row=rowOf(ctx,s),need=row.need;
     out.priority.all++;out.priority[priorityKey(row)]++;out.status.all++;
+    if(row.forecast&&row.forecast.watch)out.status.watch++;
     if(need){if(need.group==='catchup')out.status.todo++;if(need.status==='late')out.status.late++;if(need.status==='never')out.status.never++}
   }
   return out;
 }
-
 /* --- Interface ------------------------------------------------------------------------------ */
 function ensureCss(doc){
   if(doc.getElementById(STYLE_ID))return;
@@ -266,6 +273,7 @@ function ensureCss(doc){
     +'#storeList .srXRow{display:flex!important;flex-wrap:wrap;gap:4px 8px;align-items:center;margin-top:5px;font-size:11px;color:#475467}.srXChip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;background:#eef1f5;color:#344054}'
     +'.srXs-late{background:#fee4e2;color:#b42318}.srXs-never{background:#eaecf0;color:#475467}.srXs-soon{background:#fef0c7;color:#93370d}.srXs-ok{background:#d1fadf;color:#05603a}.srXs-covered{background:#d1e9ff;color:#175cd3}.srXp{background:#111318;color:#fff}.srXCons{font-weight:700;color:#9a6200}'
     +'.srXOpen{margin-top:6px;min-height:44px;padding:0 14px;border:1px solid #e1e5ed;border-radius:12px;background:#fff;color:#0a6dd9;font:inherit;font-size:13px;font-weight:800}'
+    +'.srXForecast{flex-basis:100%;font-weight:750;color:#344054}'
     +'#srStore360{margin:12px 0 4px;padding:14px;border:1px solid #e5e7eb;border-radius:18px;background:#f8fafc}#srStore360 h3{margin:14px 0 6px;font-size:13px;color:#344054}#srStore360 h3:first-child{margin-top:0}'
     +'.srXFacts{display:grid;grid-template-columns:1fr 1fr;gap:8px}.srXFact{padding:9px 10px;border:1px solid #e5e7eb;border-radius:12px;background:#fff}.srXFact small{display:block;font-size:10px;color:#667085}.srXFact b{display:block;font-size:13px;margin-top:2px}'
     +'.srXList{display:grid;gap:6px;margin:0;padding:0;list-style:none}.srXItem{padding:9px 10px;border:1px solid #e5e7eb;border-radius:12px;background:#fff;font-size:12px;line-height:1.35}.srXItem b{display:block;font-size:13px}.srXItem span{color:#667085}.srXItem[data-strength="hard"]{border-left:4px solid #9a6200}.srXItem[data-strength="soft"]{border-left:4px solid #98a2b3}'
@@ -293,7 +301,7 @@ function ensureBar(win,lc){
   if(bar.nextElementSibling!==list)list.insertAdjacentElement('beforebegin',bar);
   const c=counts(lc.ctx),shown=list.querySelectorAll('.storeline').length;
   const head=bar.querySelector('[data-sr-x-count]');
-  if(head)head.textContent=(lc.active?plural(shown,'magasin affiché','magasins affichés')+' · ':'')+plural(c.status.all,'magasin actif','magasins actifs')+' · '+c.status.todo+' à visiter · '+c.status.late+' en retard';
+  if(head)head.textContent=(lc.active?plural(shown,'magasin affiché','magasins affichés')+' · ':'')+plural(c.status.all,'magasin actif','magasins actifs')+' · '+c.status.todo+' à visiter · '+c.status.late+' en retard · '+c.status.watch+' à surveiller sur 3 semaines';
   const p=bar.querySelector('[data-sr-x-group="priority"]'),s=bar.querySelector('[data-sr-x-group="status"]');
   const ph=chipsHtml('priority',PRIORITY_FILTERS,filter.priority,c.priority),sh=chipsHtml('status',STATUS_FILTERS,filter.status,c.status);
   if(p&&p.__html!==ph){p.innerHTML=ph;p.__html=ph}
@@ -315,12 +323,18 @@ function eventHtml(e){
   return'<'+tag+(attr?' type="button"':'')+attr+' data-kind="'+esc(e.kind)+'"'+(future?' data-future="1"':'')+'><b>'+esc(e.title)+'</b><span>'+esc(when)+(e.detail?' · '+esc(e.detail):'')+'</span></'+tag+'>';
 }
 function todayNow(){return iso(new Date())}
+function forecastSummary(row,need){
+  if(!row)return need?need.label:'—';
+  if(row.forecastKind==='late_today')return'En retard '+(row.lateDays?'depuis '+row.lateDays+' jour'+(row.lateDays>1?'s':''):'depuis aujourd’hui');
+  if(row.forecastKind==='becomes_late')return(need&&need.label||'À jour')+' · deviendra en retard dans '+row.forecastInDays+' jour'+(row.forecastInDays>1?'s':'');
+  return row.forecastKind==='never'?'Jamais visité':(need?need.label:'—')
+}
 function sectionHtml(p,opts){
   const o=opts||{},need=p.need,tl=o.timeline||p.timeline,expanded=!!o.expanded;
   const last=p.lastVisit?frDate(p.lastVisit)+(need&&need.daysSinceToday!=null?' · '+(need.daysSinceToday===0?'aujourd’hui':'il y a '+need.daysSinceToday+' j'):''):'Jamais';
   const next=p.nextVisit?frDate(p.nextVisit.date)+(p.nextVisit.kind==='planned'?' · planifiée':' · rendez-vous'):(p.nextDue?'À planifier · échéance '+frDate(p.nextDue,false):'À planifier');
   const cad=p.cadence.label+(p.cadence.intervalDays?' · '+p.cadence.intervalDays+' j':'');
-  const facts='<div class="srXFacts"><div class="srXFact"><small>Statut</small><b>'+(need?esc(need.label)+(p.priority?' · '+esc(p.priority):''):'—')+'</b></div><div class="srXFact"><small>Cadence</small><b>'+esc(cad)+'</b></div><div class="srXFact"><small>Dernière visite</small><b>'+esc(last)+'</b></div><div class="srXFact"><small>Prochaine visite</small><b>'+esc(next)+'</b></div></div>';
+  const facts='<div class="srXFacts"><div class="srXFact"><small>Statut</small><b>'+esc(forecastSummary(p.forecast,need))+(p.priority?' · '+esc(p.priority):'')+'</b></div><div class="srXFact"><small>Cadence</small><b>'+esc(cad)+'</b></div><div class="srXFact"><small>Dernière visite</small><b>'+esc(last)+'</b></div><div class="srXFact"><small>Prochaine visite</small><b>'+esc(next)+'</b></div></div>';
   const contacts=p.contacts.length?'<ul class="srXList">'+p.contacts.map(c=>'<li class="srXItem"><b>'+esc(c.name||c.role||c.email)+'</b><span>'+esc([c.name?c.role:'',c.email&&!validEmail(c.email)?c.email:''].filter(Boolean).join(' · '))+'</span>'+(validEmail(c.email)?' <a href="mailto:'+esc(c.email)+'">'+esc(c.email)+'</a>':'')+'</li>').join('')+'</ul>':'<p class="srXEmpty">Aucun contact. Ajoute-les dans « Voir la fiche › Contacts ».</p>';
   const cons=p.constraints.length?'<ul class="srXList">'+p.constraints.map(constraintHtml).join('')+'</ul>':'<p class="srXEmpty">Aucune contrainte : Store Runner décide seul de la date et de l’heure.</p>';
   const ev=tl.upcoming.concat(tl.past),shown=expanded?ev:ev.slice(0,TIMELINE_SHOWN);

@@ -97,6 +97,11 @@ assert.ok(!/<script|onerror=/i.test(X.sectionHtml(X.profileFor(state,'x"><img sr
 const quiet=X.sectionHtml(X.profileFor(state,'d',opts),{});
 assert.match(quiet,/Désactivé du secteur/);
 assert.match(X.sectionHtml(X.profileFor(state,stores[5].id,opts),{}),/Aucune contrainte/);
+const futureState=JSON.parse(JSON.stringify(state));futureState.stores=[{id:'future',enseigne:'Darty',ville:'Horizon',freq:'Mensuel',active:true,priority:3}];futureState.visits={future:{lastVisit:'2026-09-16',history:['2026-09-16']}};futureState.appointments=[];futureState.locks={};futureState.included={};futureState.excluded={};futureState.businessV2={version:2,visits:[],actions:[],opportunities:[]};
+const future=X.profileFor(futureState,'future',{today:TODAY,archive:{},priorities:new Map()});
+assert.equal(future.forecast.forecastWeek,2);assert.equal(future.forecast.forecastInDays,9);
+assert.match(X.sectionHtml(future,{}),/À jour · deviendra en retard dans 9 jours/,'la fiche 360 lit le forecast du propriétaire couverture');
+assert.match(X.sectionHtml(X.profileFor(state,'b',opts),{}),/En retard depuis \d+ jours/);
 
 // --- Mes magasins : filtres P1 / P2 / P3, à visiter, en retard ------------------------------------------------
 const lc=X.listContext(Object.assign({state},opts));
@@ -110,10 +115,11 @@ set('P3','all');assert.deepEqual(pick(),['c','d','e'],'P3 = ni P1 ni P2 du fichi
 set('all','todo');assert.deepEqual(pick(),['b','c','d'],'À visiter = jamais visité, en retard ou à revoir bientôt');
 set('all','late');assert.deepEqual(pick(),['b']);
 set('all','never');assert.deepEqual(pick(),['c','d']);
+set('all','watch');assert.deepEqual(pick(),['b','c'],'vue 3 semaines : le forecast exclut les magasins désactivés ou exclus du planning');
 set('P3','todo');assert.deepEqual(pick(),['c','d']);
 X.resetFilters();
 const counts=X.counts(lc.ctx);
-assert.deepEqual(counts.status,{all:4,todo:3,late:1,never:2},'a, b, c et le magasin piège : les désactivés (d) et exclus (e) ne comptent pas');
+assert.deepEqual(counts.status,{all:4,watch:3,todo:3,late:1,never:2},'a, b, c et le magasin piège : les désactivés (d) et exclus (e) ne comptent pas');
 assert.deepEqual(counts.priority,{all:4,P1:1,P2:1,P3:2});
 const row=X.rowHtml(stores[1],lc);
 assert.match(row,/En retard/);assert.match(row,/P2/);assert.match(row,/Dernière .*il y a 67 j/);assert.match(row,/Prochaine/);assert.match(row,/1 contrainte|2 contraintes/);assert.match(row,/data-sr-store-360="b"/);
