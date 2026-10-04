@@ -128,7 +128,7 @@ Tous les calques du dessin sont déjà dans le SVG ; `data-state` sur le contene
 - Animations en `transform` / `opacity` uniquement, pas de `will-change` permanent, **aucun filtre SVG** (les lueurs sont des formes translucides).
 - Au repos : **aucune animation**. Changement d'état : une entrée de 0,42 s, jouée une fois. Bulle : une entrée de 0,22 s.
 - Une seule boucle existe, les trois points de `analyzing`, **bornée à 16 passages (≈ 22 s)** : un état oublié ne tourne jamais en continu sur la batterie d'un téléphone. Alerte : deux pulsations. Succès : une apparition des éclats.
-- Poids : `runner-visual.js` ≈ 31 Ko (≈ 25 Ko hors commentaires), ≈ 11 Ko compressé ; SVG ≈ 11 Ko et 153 éléments par instance ; identifiants de dégradés uniques par instance (un Runner masqué ne prive jamais un autre de ses dégradés). Si plus de quelques Runners coexistent un jour, le dessin pourra passer en sprite partagé ; inutile pour un à deux Runners par écran.
+- Poids : `runner-visual.js` ≈ 32 Ko (≈ 25 Ko hors commentaires), ≈ 11 Ko compressé ; SVG ≈ 11 Ko et 153 éléments par instance ; identifiants de dégradés uniques par instance (un Runner masqué ne prive jamais un autre de ses dégradés). Si plus de quelques Runners coexistent un jour, le dessin pourra passer en sprite partagé ; inutile pour un à deux Runners par écran.
 
 ## Chargement et budget de démarrage
 
