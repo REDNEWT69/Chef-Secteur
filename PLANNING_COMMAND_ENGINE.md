@@ -53,7 +53,7 @@ d'extension **déjà présents** du moteur terrain (`lockDayForWeek`, `dayBlocke
 ```json
 {
   "version": 1,
-  "action": "plan_visits | place_stores | recalculate_rest_of_week",
+  "action": "plan_visits | place_stores | recalculate_rest_of_week | unschedule_store",
   "scope": { "start": "AAAA-MM-JJ", "end": "AAAA-MM-JJ" },
   "filters": {
     "priorities": ["P1", "P2"],
@@ -96,6 +96,7 @@ d'extension **déjà présents** du moteur terrain (`lockDayForWeek`, `dayBlocke
 | « Mets Valence mardi », « Ajoute Darty Annemasse vendredi » | `place_stores`, `exactDays` | planning manuel (déplacement minimal + ancre datée M1) | `addStore` |
 | « … et garde Chambéry mercredi » | `keepDays` | pose datée (ou placement si absent, annoncé) | `storeRunnerPinPlannedStore` |
 | « Recalcule seulement le reste de ma semaine » | `recalculate_rest_of_week` | recalcul V181 ; refus si report sur une autre semaine | `applyResult` |
+| « Déprogramme Limonest [lundi] » | `unschedule_store` | un magasin, un jour facultatif (sans jour : la semaine en cours) ; refus journée passée, visite réalisée, rendez-vous, verrou, magasin imposé, et toute protection illisible (échec fermé) | `StoreRunnerManualPlanning.unscheduleStore`, confirmé par relecture du plan |
 | « Ne touche pas à mes rendez-vous » | information : garanti par construction | — | — |
 
 Variantes reconnues : majuscules, accents, « prio 1 / priorité 1 / P1 », « W42 / S42 / semaine
@@ -199,3 +200,8 @@ jeudi », « ajoute un magasin »…) ne sont pas captées.
 - Adaptateur LLM : mode passerelle `planning_intent` (worker) renvoyant **uniquement** le JSON
   brut ci-dessus, consommé par `acceptModelIntent` puis `resolve` ; non branché en V1 (déploiement
   du worker requis).
+
+
+## Déprogrammation et Assistant en ligne (hotfix r44)
+
+`unschedule_store` est le seul nom d'action canonique. L'IA en ligne ne modifie jamais le Planning : `applyAIActions` refuse ce type (renvoi vers la commande) et ignore tout autre alias ; la phrase de l'IA (« C'est fait… déprogrammée ») n'est jamais une preuve et est remplacée par un échec explicite tant que rien n'est appliqué. La déprogrammation suit le chemin des autres commandes : aperçu sans écriture → Appliquer → `unscheduleStore` → relecture (`verifyAppliedPlans`) ; échec = restauration d'avant. Test : `tests/assistant-action-truth-r44.test.cjs`.

@@ -81,14 +81,15 @@ async function editStore(win,id,day,remove){
 }
 async function addStore(win,id,day){return editStore(win,id,day||currentDay(win),false)}
 async function removeStore(win,id,day){return editStore(win,id,day||currentDay(win),true)}
-/* Déprogrammation demandée hors du geste de la liste (Assistant en ligne) : mêmes écritures
+/* `options.state` : copie de semaine à contrôler (simulation du Command Engine) ; sans elle, l'état affiché.
+   Déprogrammation demandée hors du geste de la liste (Assistant en ligne) : mêmes écritures
    que removeStore, mais le résultat n'est « réussi » que si le plan canonique, relu après
    l'écriture, ne contient plus le magasin ce jour-là. Ce chemin refuse tout ce que le geste
    manuel laisse à la main de l'utilisateur : journée passée, visite déjà réalisée, rendez-vous,
    magasin posé/verrouillé ou imposé. Un état de protection illisible refuse aussi. */
 function isPlanned(state,id,day){return dayIds(state,day).includes(String(id))}
 function unscheduleCheck(win,id,options){
-  options=options||{};const state=win&&win.state,sid=String(id==null?'':id);
+  options=options||{};const state=options.state||(win&&win.state),sid=String(id==null?'':id);
   const refuse=(code,error)=>({ok:false,code,error});
   if(!state||!sid)return refuse('store','magasin non précisé');
   let day=DAYS.includes(options.day)?options.day:'';
@@ -104,8 +105,12 @@ function unscheduleCheck(win,id,options){
   if(!done||typeof done.get!=='function')return Object.assign(refuse('protection','protection des visites réalisées illisible'),base);
   const days=done.get(sid);
   if(days&&days.has(date))return Object.assign(refuse('completed','visite déjà réalisée ce jour-là : elle ne se déprogramme pas'),base);
-  if(((state.appointments)||[]).some(a=>a&&String(a.storeId)===sid&&String(a.date||'').slice(0,10)===date))return Object.assign(refuse('appointment','un rendez-vous est fixé ce jour-là : modifie-le dans Rendez-vous'),base);
-  let lock=null;try{lock=typeof win.storeRunnerLockInfo==='function'?win.storeRunnerLockInfo(sid):((state.locks&&state.locks[sid])||null)}catch(e){lock=null}
+  if(state.appointments!==undefined&&!Array.isArray(state.appointments))return Object.assign(refuse('protection','rendez-vous illisibles : protection indisponible'),base);
+  if((state.appointments||[]).some(a=>a&&String(a.storeId)===sid&&String(a.date||'').slice(0,10)===date))return Object.assign(refuse('appointment','un rendez-vous est fixé ce jour-là : modifie-le dans Rendez-vous'),base);
+  /* Verrous : la seule lecture admise est celle du propriétaire (storeRunnerLockInfo). Absente ou en erreur, on refuse : jamais « pas de verrou » par défaut. */
+  if(typeof win.storeRunnerLockInfo!=='function')return Object.assign(refuse('protection','lecture des verrous indisponible'),base);
+  let lock;try{lock=win.storeRunnerLockInfo(sid)}catch(e){return Object.assign(refuse('protection','lecture des verrous impossible'),base)}
+  if(lock!==null&&lock!==undefined&&(typeof lock!=='object'||Array.isArray(lock)))return Object.assign(refuse('protection','verrou illisible'),base);
   if(lock&&lock.day===day&&(lock.recurring||!lock.week||lock.week===currentWeekKey(state)))return Object.assign(refuse('locked','magasin verrouillé ce jour-là : retire d’abord le verrou'),base);
   if(state.included&&state.included[sid])return Object.assign(refuse('imposed','magasin imposé au planning : retire d’abord l’imposition'),base);
   return Object.assign({ok:true},base);
