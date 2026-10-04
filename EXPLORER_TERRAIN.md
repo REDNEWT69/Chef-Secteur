@@ -88,7 +88,8 @@ Le refus d'un placement manuel nomme la contrainte et comment la lever (`refusal
 dans Mes magasins », désactivé → « Actif dans sa fiche », inconnu. Le dialogue « Ajouter un magasin » ne cache
 plus silencieusement ces magasins : une recherche les montre grisés avec leur raison. Un ordre qui rend un
 rendez-vous ou une arrivée imposée intenable le dit avec sa cause (trajet trop long, fermeture ou Agenda) et
-renvoie `constraint:{kind,time,storeId}`. Le Command Engine n'est pas modifié.
+renvoie `constraint:{kind,time,storeId}`. Ces refus ne touchent pas le Command Engine ; son seul changement
+(2e passage P1) est décrit dans « Priorité P1/P2 et traité » et « Préservé ».
 
 ## Auto / Flexible / Strict — préparation, sans effet moteur
 
@@ -101,51 +102,24 @@ imposé, et la fiche l'annonce honnêtement. Brancher le moteur sera une décisi
 
 ## Préservé
 
-V265 (Command Engine), r38/r39 (départ, semaine active), V264, H2, V189, V251, M1 : aucun fichier moteur
-(`terrain-planning-v1.js`, `auto-planning-fix.js`, `planning-route-optimizer-v251.js`, `v182-fixes.js`,
-`planning-cascade-v181.js`, `planning-command-engine.js`, `store-opening-hours.js`) n'est modifié.
+V265 (Command Engine), r38/r39 (départ, semaine active), V264, H2, V189, V251, M1 : leur comportement est
+préservé, vérifié par leurs tests (`cross-day-planning-v264`, `cross-day-overnight-h2`,
+`planning-command-simulation`, V251, M1…). Aucun de ces fichiers moteur n'est modifié : `terrain-planning-v1.js`,
+`auto-planning-fix.js`, `planning-route-optimizer-v251.js`, `v182-fixes.js`, `planning-cascade-v181.js`,
+`store-opening-hours.js`.
 
-## Décision à valider : démarrage + `CORE_SHELL`
+**Exception : `planning-command-engine.js` est modifié, a minima, par conséquence de la règle P1.** Depuis la
+règle « P1 sous 2 visites réelles depuis l'import : la garde V263 cède » (revue #496), un P1 déjà visité une
+fois devient une cible éligible d'une commande comme « Programme mes P1 cette semaine ». Le moteur terrain
+ne place pas toujours ce 2e passage dans la période ; sans adaptation, la commande entière était refusée
+(`required_unplaced`). Le Command Engine range donc ce 2e passage parmi les passages **souhaités** :
 
-`store-explorer.js` est un **module de démarrage supplémentaire** (76 scripts au lieu de 75, plafond de
-`cleanup-baseline-r20`) et une entrée de `CORE_SHELL` dans `sw.js` au-delà de `BUILD_REV` : deux cas qui
-demandent un accord humain avant fusion (AGENTS.md).
+- cible éligible avec `needOf(...).secondVisit` → suivie dans un ensemble `secondIds` ;
+- si elle n'est pas placée, le code `second_visit_unplaced` est un **avertissement** (`warnings`), jamais un
+  blocage : la commande reste applicable ;
+- toute autre cible non placée reste bloquante (`required_unplaced`), inchangé ;
+- ni l'intention JSON, ni le schéma, ni la simulation, ni l'application ne changent.
 
-**Chargement à la demande (à l'ouverture de « Mes magasins ») : étudié, écarté.** Raisons précises :
-
-1. **Hors ligne.** Un script chargé à la demande est demandé avec `?rev=BUILD_REV`. Dans `sw.js`, seuls les
-   fichiers de `CORE_SHELL` sont préchargés sous cette clé et servis par `ownRevisionAsset`. Un fichier de
-   `OPTIONAL_SHELL` est stocké sous une clé sans `rev` ; la requête `?rev=` passe par `networkFirst` avec
-   `foreignRevision=true`, qui **n'a volontairement aucun repli sur le cache** (V260, pour ne jamais mêler
-   deux révisions). Résultat : hors ligne, le module ne se chargerait pas. Le précédent
-   (`visit-report-ai-json-v225.js`, absent du cache) est déjà inscrit comme dette dans ce dépôt. Charger sans
-   `?rev=` rétablirait le repli mais réintroduirait le mélange ancienne page / nouveau module que V260
-   supprime. De plus, `OPTIONAL_SHELL` est installé en `allSettled` : un échec de téléchargement n'empêche
-   pas l'installation, alors que `CORE_SHELL` garantit une révision complète ou rien.
-2. **`sw.js` est touché de toute façon.** Le chargement à la demande ne supprime donc pas l'exception
-   « modification de `sw.js` au-delà de `BUILD_REV` » ; il n'évite que le 76e script.
-3. **Plusieurs portes d'entrée.** La fiche 360 s'ouvre aussi depuis le Planning, l'Accueil, le Pilotage et
-   la couverture (`openStoreQuick`), pas seulement depuis « Mes magasins ». Un chargeur devrait être branché
-   dans le noyau à chaque porte, et le premier rendu de la liste deviendrait asynchrone (liste sans filtre
-   puis enrichie) : un changement de comportement visible, alors que la consigne est de ne pas en changer.
-4. **Garde-fous existants.** `pwa-cache-contract` exige que tout module injecté soit en cache ; un module à
-   la demande demanderait une nouvelle catégorie de test et un chargeur borné à tester hors ligne.
-
-Gain évité : un script d'environ 25 Ko sur 76. Alternative écartée aussi : loger ce code dans
-`visit-coverage.js` ou le noyau, ce qui ferait de la couverture le propriétaire d'écrans qu'elle ne possède pas.
-Si le plafond de 75 scripts doit rester strict, la bonne voie est de **fusionner un module existant** (décision
-séparée, hors de ce lot), pas de contourner le cache.
-
-## Tests
-
-`tests/store-explorer-v266.test.cjs` (contraintes, frise, filtres, absence d'écriture, échappement),
-`tests/explorer-week-nav-browser.spec.cjs` et `tests/explorer-stores-browser.spec.cjs` (390 px), ainsi que
-les contrats mis à jour : `period-day-tabs-contract` (ordre héros › navigation › bande), `planning-reorder-v254`
-(cause du refus), `planning-manual-visits` (`refusalFor`), `priority-campaign-removal-browser` (76 scripts).
-
-## Limites connues
-
-- P1/P2 absents sans fichier performance importé : les chips affichent 0.
-- Pas de test automatisé de bascule `flexible` (aucun écran ne l'écrit).
-- Les photos de la frise sont groupées par jour et lues à l'ouverture de la fiche (IndexedDB, asynchrone).
-- Le libellé du bouton de la barre basse reste « Magasins » (largeur 390 px) ; le titre de l'écran est « Mes magasins ».
+Couverture : `planning-command-simulation.test.cjs` (scénario F + G : un P1 visité une fois dans la semaine
+n'est plus « déjà couvert », la commande reste applicable et ne crée aucune seconde visite dans la semaine d'une
+visite réalisée). Le correctif est dans le commit `d454408`.
