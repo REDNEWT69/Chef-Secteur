@@ -1,4 +1,4 @@
-const BUILD_REV = "20261004-r44-assistant-action-truth-269";
+const BUILD_REV = "20261005-r46-runner-home-270";
 /* V261.2 hotfix : même révision applicative, nouveau namespace de cache afin que les
    PWA déjà installées récupèrent le correctif de capacité à la source (visit-counting.js)
    sans mélanger ancien et nouveau shell. Le BUILD_REV reste V261 : aucune migration. */

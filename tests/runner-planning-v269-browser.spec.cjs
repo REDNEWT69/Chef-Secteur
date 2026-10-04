@@ -568,7 +568,7 @@ test.describe('PWA — cache et hors ligne', () => {
     page.on('pageerror', error => errors.push(String((error && error.message) || error)));
     const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
     const rev = sw.match(/const BUILD_REV = "([^"]+)"/)[1];
-    expect(rev).toMatch(/-269$/);
+    expect(rev).toBe(require('../version.json').latestBuild);
     expect(sw.match(/const CORE_SHELL = \[([\s\S]*?)\];/)[1]).toContain('"./runner-visual.js"');
     expect(sw.match(/const CORE_SHELL = \[([\s\S]*?)\];/)[1]).toContain('"./planning-ui-fixes.js"');
     await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
