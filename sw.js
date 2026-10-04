@@ -1,4 +1,4 @@
-const BUILD_REV = "20261004-r41-runner-visual-266";
+const BUILD_REV = "20261004-r41-intelligence-terrain-267";
 /* V261.2 hotfix : même révision applicative, nouveau namespace de cache afin que les
    PWA déjà installées récupèrent le correctif de capacité à la source (visit-counting.js)
    sans mélanger ancien et nouveau shell. Le BUILD_REV reste V261 : aucune migration. */

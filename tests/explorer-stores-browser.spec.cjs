@@ -105,6 +105,36 @@ test('Mes magasins filtrable, fiche 360 avec contraintes, frise et liens',async(
   expect(errors).toEqual([]);
 });
 
+test('Forecast 3 semaines lisible dans Explorer et Magasin 360 à 390 px',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+  await page.clock.install({time:new Date('2026-10-07T09:00:00')});
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.StoreRunnerStoreExplorer&&window.StoreRunnerVisitCoverage&&window.state&&window.__chefStorage);
+  await page.clock.runFor(1200);
+  await page.evaluate(()=>{
+    const mk=(id,ville)=>({id,enseigne:'Enseigne',ville,adresse:'1 rue Test',dept:'69',lat:45.7,lon:4.8,freq:'Mensuel',active:true,priority:3,products:['Blanc']});
+    const late=mk('forecast-late','Retard'),future=mk('forecast-future','Bascule'),never=mk('forecast-never','Jamais');
+    state.settings={...state.settings,weekDate:'2026-10-05',days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi']};
+    state.stores=[late,future,never];state.plan={Lundi:[],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};state.notes={};state.included={};state.excluded={};state.locks={};state.appointments=[];state.calendarEvents=[];state.hotelReservations={};
+    state.visits={'forecast-late':{lastVisit:'2026-08-31',history:['2026-08-31']},'forecast-future':{lastVisit:'2026-09-16',history:['2026-09-16']}};
+    __chefStorage.setItem('chef_sector_plan_archive_v1','{}');__chefStorage.setItem('chef_sector_range_v1',JSON.stringify({start:'2026-10-05',end:'2026-10-25',workDays:state.settings.days,coverage:{needAware:true,uncoveredLate:[],uncoveredNever:[],recentlyVisited:[]}}));
+    save();renderAll();goTab('storesPanel');renderStores();
+  });
+  await page.clock.runFor(250);
+  const bar=page.locator('#srExplorerBar');
+  await expect(bar.locator('[data-sr-x-count]')).toContainText('3 à surveiller sur 3 semaines');
+  const watchFilter=bar.locator('[data-sr-x-status="watch"]');await expect(watchFilter).toContainText('3 semaines');await expect(watchFilter).toContainText('3');
+  const box=await watchFilter.boundingBox();expect(box.height).toBeGreaterThanOrEqual(44);
+  await watchFilter.click();
+  await expect(page.locator('#storeList .storeline')).toHaveCount(3);
+  await expect(page.locator('[data-store-id="forecast-late"] .srXForecast')).toContainText('En retard depuis 7 jours');
+  await expect(page.locator('[data-store-id="forecast-future"] .srXForecast')).toContainText('deviendra en retard dans 9 jours · semaine 2');
+  await page.locator('[data-store-id="forecast-future"] .srXOpen').evaluate(button=>button.click());
+  await expect(page.locator('#srStore360 .srXFact').first()).toContainText('À jour · deviendra en retard dans 9 jours');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth)).toBeLessThanOrEqual(1);
+  expect(errors).toEqual([]);
+});
+
 /* Revue PR #496 : les photos de la fiche se relisent à chaque ouverture, même pour le même magasin. */
 test('fiche 360 : photo ajoutée entre deux ouvertures du même magasin',async({page})=>{
   const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
