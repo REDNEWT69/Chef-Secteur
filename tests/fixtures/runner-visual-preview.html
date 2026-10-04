@@ -93,10 +93,10 @@
   /* mouvement coupé : captures déterministes */
   function opt(o){return Object.assign({motion:'off'},o)}
 
-  R.mount(q('planningRunner'),opt({state:'neutral',size:'md',message:'Je te recommande de commencer par Carrefour Annemasse. Trajet le plus court !'}));
+  R.mount(q('planningRunner'),opt({state:'neutral',size:'md',message:'3 visites prévues aujourd’hui. Premier arrêt : Carrefour Annemasse.'}));
   R.mount(q('assistantRunner'),opt({variant:'sheet',state:'analyzing',title:'Analyse en cours…',message:'Je vérifie les contraintes, les temps de trajet et les meilleurs créneaux.'}));
   R.mount(q('alertRunner'),opt({variant:'panel',state:'alert',title:'Attention !',message:'Il y a un risque de retard sur un magasin P1.'}));
-  R.mount(q('successRunner'),opt({variant:'panel',state:'success',title:'Trajet optimisé !',message:'Ta tournée est prête. 18 min de trajet économisées.'}));
+  R.mount(q('successRunner'),opt({variant:'panel',state:'success',title:'C’est fait !',message:'Le planning a été recalculé.'}));
   R.STATES.forEach(function(state){
     var cell=document.createElement('div');
     cell.className='card';

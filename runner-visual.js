@@ -114,7 +114,7 @@ function accessibleLabel(state){return ACCESSIBLE_NAME+' : '+(STATE_LABELS[state
 /* ------------------------------------------------------------------- dessin */
 /* Le dessin reprend la planche officielle Runner V1 : tête en goutte nacrée, visière sombre
    à liseré bleu, yeux lumineux, crête bleue type aileron, pastille d'oreille bleue, corps
-   ovoïde blanc avec l'emblème de navigation, mains bleues, halo bleu sous le corps. Aucun
+   ovoïde blanc avec l'emblème « R », mains bleues, halo bleu sous le corps. Aucun
    filtre SVG (coûteux sur mobile) : les lueurs sont des formes translucides superposées.
    Les identifiants de dégradés sont uniques par instance : un Runner masqué ne prive jamais
    un autre de ses dégradés. `{u}` est remplacé par le numéro d'instance. */
@@ -190,8 +190,9 @@ function artMarkup(){
     +'<path d="M158 192C172 200 176 226 166 240C162 228 160 210 148 200Z" fill="url(#rn{u}-navy)"/>'
     +'<ellipse cx="118" cy="182" rx="30" ry="9" fill="#0d2468"/>'
     +'<circle cx="124" cy="224" r="23" fill="#fff" fill-opacity=".55" stroke="#c4d2ea" stroke-width="1.6"/>'
-    /* emblème de navigation : flèche bicolore penchée vers le haut à droite */
-    +'<g transform="translate(124 224) rotate(36)"><path d="M0 -16L12 14L0 7Z" fill="#1558d6"/><path d="M0 -16L-12 14L0 7Z" fill="#4da3ff"/></g>'
+    /* emblème : un « R » stylisé, bicolore (fût et panse bleu profond, jambe bleu clair), tracé en
+       courbes et non en texte (aucune police) ; épais et légèrement incliné pour rester lisible dès 56 px */
+    +'<g transform="translate(124 224) skewX(-8) translate(-124 -224)" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M114 237V211H125C132 211 135.5 214.5 135.5 220C135.5 225.5 132 229 125 229H114" stroke="#1558d6"/><path d="M124 229L133.5 237" stroke="#4da3ff"/></g>'
     /* tête en goutte nacrée */
     +'<ellipse cx="26" cy="120" rx="14" ry="27" transform="rotate(-6 26 120)" fill="url(#rn{u}-blue)"/>'
     +'<ellipse cx="22" cy="118" rx="4.5" ry="12" transform="rotate(-6 22 118)" fill="#fff" opacity=".55"/>'

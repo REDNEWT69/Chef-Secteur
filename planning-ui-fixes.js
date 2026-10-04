@@ -131,10 +131,148 @@
     /* V263 : le bloc Couverture (visit-coverage.js) se range juste sous les actions, replié
        sur une ligne : on voit ce qui reste à rattraper avant de générer ou de recalculer. */
     const coverage=document.getElementById('planningCoverageV263');
-    moveAfter(notice||tabs,tools);if(coverage){moveAfter(tools,coverage);moveAfter(coverage,timeline)}else moveAfter(tools,timeline);
+    /* V269 : Runner prend place sous la Couverture et avant la liste des visites. Même principe que
+       les autres blocs : ce module pose l'emplacement, jamais le contenu d'un autre propriétaire. */
+    const runnerSlot=ensureRunnerSlot();
+    moveAfter(notice||tabs,tools);observeGenerateBusy(tools);
+    let above=tools;if(coverage){moveAfter(tools,coverage);above=coverage}
+    if(runnerSlot){moveAfter(above,runnerSlot);above=runnerSlot}
+    moveAfter(above,timeline);
     const monthly=document.querySelector('#planPanel #managerPlanningMonth, #planPanel .managerPlanningMonth, #planPanel .monthPlanning, #planPanel [data-planning-month]');let anchor=timeline;
     if(monthly){moveAfter(anchor,monthly);anchor=monthly}if(metrics){moveAfter(anchor,metrics);anchor=metrics}if(saturday){moveAfter(anchor,saturday);anchor=saturday}if(departure){moveAfter(anchor,departure);anchor=departure}
     if(settings&&!editing&&(settings.parentNode!==plan||settings.nextElementSibling))plan.appendChild(settings);
+  }
+
+  /* V269 — Runner dans le Planning.
+     Ce module possède la hiérarchie du Planning : il pose l'emplacement de Runner et traduit en
+     état visuel des faits que d'AUTRES propriétaires produisent déjà :
+       - le plan affiché (`state.plan`) : nombre de visites et premier arrêt ;
+       - l'ordonnanceur d'ouverture (`StoreOpeningHoursV1.scheduleRoute`, déjà lu par les alertes
+         du planning) : RDV à vérifier, magasins sans créneau, fin estimée au-delà de la limite ;
+       - le forecast de couverture (`StoreRunnerVisitCoverage.forecastThreeWeeks`) : magasins à
+         surveiller et contraintes explicites incompatibles avec les jours disponibles ;
+       - les événements publics de génération (`chef-range-generated`), de recalcul
+         (`store-runner:planning-updated`, source `recalculatePlanningCascade`) et de commande
+         (`store-runner:planning-command-applied`), et le marqueur d'occupation du bouton
+         « Générer mes 3 semaines » (planning-generation-controller.js) pour l'état « analyse ».
+     Runner (runner-visual.js) reste de la présentation pure. Ici rien n'est décidé, calculé,
+     persisté ni écrit : aucun `state`, aucun stockage, aucun moteur. Et aucune provenance n'est
+     inventée — pas de « trajet le plus court » ni de « meilleur choix » : aucun propriétaire ne
+     fournit ce motif, donc le premier arrêt est nommé sans dire pourquoi il l'est. */
+  const RUNNER_SLOT_ID='planningRunnerV269',RUNNER_SUCCESS_MS=6000,RUNNER_MIN_MS=1500,RUNNER_FORECAST_MS=60000;
+  const RUNNER_DONE={range:'Tes 3 semaines sont générées.',cascade:'Le planning a été recalculé.',command:'La commande a été appliquée au planning.'};
+  let runnerInstance=null,runnerSignature='',runnerDone=null,runnerForecastRead=null;
+
+  function localIso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+  function mondayIso(d){const x=new Date(d),w=x.getDay()||7;x.setDate(x.getDate()-w+1);return localIso(x)}
+  function plural(n,one,many){return n+' '+(n>1?many:one)}
+  function runnerClock(v){v=Math.round(v);return String(Math.floor(v/60)%24).padStart(2,'0')+':'+String(v%60).padStart(2,'0')}
+  function runnerWhen(date,today){return localIso(date)===today?'aujourd’hui':new Intl.DateTimeFormat('fr-FR',{weekday:'long',day:'numeric'}).format(date)}
+  function runnerCap(text){return text.charAt(0).toUpperCase()+text.slice(1)}
+  function runnerStoreLabel(row){const s=row||{};return String(s.enseigne||'Magasin')+(s.ville?' '+s.ville:'')}
+
+  /* Faits de l'ordonnanceur pour le jour affiché, dans ses propres mots. */
+  function runnerDayIssues(route,name){
+    try{
+      const api=window.StoreOpeningHoursV1;
+      if(!api||typeof api.scheduleRoute!=='function'||!route.length)return[];
+      const s=api.scheduleRoute(route,name,state);if(!s)return[];
+      const out=[],closed=Number(s.closedCount)||0,conflicts=Number(s.appointmentConflicts)||0;
+      if(s.estimatedEnd!=null&&Number.isFinite(s.endLimit)&&s.estimatedEnd>s.endLimit+.001)out.push('fin estimée '+runnerClock(s.estimatedEnd)+' après ta limite de '+runnerClock(s.endLimit));
+      if(closed)out.push(plural(closed,'magasin sans créneau disponible','magasins sans créneau disponible'));
+      if(conflicts)out.push(conflicts+' RDV à vérifier');
+      return out;
+    }catch(e){return[]}
+  }
+  /* Empreinte des données que le forecast lit dans `state` : une visite, un rendez-vous, un jour posé, un
+     magasin ajouté, désactivé ou changé de fréquence relance le calcul, sans attendre un événement que le
+     noyau n'émet pas toujours (marquer « Visité » n'en émet aucun). Lecture seule, quelques dizaines de Ko. */
+  function runnerInputsKey(){
+    const s=state||{},done=s.businessV2&&Array.isArray(s.businessV2.visits)?s.businessV2.visits.filter(function(v){return v&&v.status==='completed'}).map(function(v){return[v.storeId,v.completedDate]}):[];
+    const text=JSON.stringify([s.visits,s.appointments,s.locks,s.included,s.excluded,s.settings&&s.settings.days,(s.stores||[]).map(function(x){return[x&&x.id,x&&x.active,x&&x.intervalDays,x&&x.freq,x&&x.priority]}),done]);
+    let h=2166136261;for(let i=0;i<text.length;i++){h^=text.charCodeAt(i);h=Math.imul(h,16777619)}
+    return text.length+':'+(h>>>0);
+  }
+  /* Comptes du forecast 3 semaines, tels que son propriétaire les donne : aucun second calcul de couverture.
+     Le forecast coûte de 30 à 300 ms selon la taille du secteur : changer de jour ne le recalcule pas.
+     La lecture est mémorisée pour le jour, la semaine et l'empreinte des données ; elle est aussi oubliée à
+     chaque événement qui change des données hors de `state` (archive, fichier performance : liste dans
+     `forgetForecast`) et, au plus tard, après une minute. */
+  function runnerForecast(today){
+    const key=today+'|'+mondayIso(weekMonday())+'|'+runnerInputsKey();
+    if(runnerForecastRead&&runnerForecastRead.key===key&&Date.now()-runnerForecastRead.at<RUNNER_FORECAST_MS)return runnerForecastRead.facts;
+    let facts=null;
+    try{
+      const api=window.StoreRunnerVisitCoverage;
+      const c=api&&typeof api.forecastThreeWeeks==='function'?(api.forecastThreeWeeks(state,{today})||{}).counts:null;
+      if(c)facts={watch:Number(c.watch&&c.watch.total)||0,constraints:Number(c.constraintIssues)||0};
+    }catch(e){facts=null}
+    runnerForecastRead={key,at:Date.now(),facts};
+    return facts;
+  }
+  function forgetForecast(){runnerForecastRead=null}
+  function generationBusy(){return !!document.querySelector('#planningToolsV2 [data-planning-generate="three-weeks"][disabled]')}
+
+  /* Ce que Runner affiche pour le jour sélectionné, ou null s'il n'y a rien d'utile à dire. */
+  function runnerView(){
+    if(runnerDone){
+      const left=runnerDone.until-Date.now();
+      if(left>=RUNNER_MIN_MS)return{state:'success',title:'C’est fait !',text:RUNNER_DONE[runnerDone.kind],resetAfter:left};
+      runnerDone=null;
+    }
+    if(generationBusy())return{state:'analyzing',title:'Génération en cours…',text:'Je prépare tes 3 semaines.'};
+    const date=selectedDayDate(),today=localIso(new Date());
+    /* Le plan chargé doit être celui de la semaine du jour affiché : sinon on attend le rendu suivant. */
+    if(mondayIso(date)!==mondayIso(weekMonday()))return null;
+    const name=selectedDayName(),rows=state.plan&&state.plan[name],route=Array.isArray(rows)?rows:[],when=runnerWhen(date,today);
+    /* Journée passée : un simple rappel, jamais de conseil ni d'alerte sur l'avenir. */
+    if(localIso(date)<today)return route.length?{state:'neutral',title:'Journée passée',text:plural(route.length,'visite était prévue','visites étaient prévues')+' '+when+'.'}:null;
+    const issues=runnerDayIssues(route,name);
+    if(issues.length)return{state:'alert',title:'Contrainte détectée',text:runnerCap(when)+' : '+issues.join(' · ')+'.'};
+    const forecast=runnerForecast(today);
+    if(forecast&&forecast.constraints)return{state:'alert',title:'Contrainte détectée',text:plural(forecast.constraints,'rendez-vous ou jour posé tombe','rendez-vous ou jours posés tombent')+' sur un jour non travaillé ou bloqué, dans les 3 prochaines semaines.'};
+    const watch=forecast&&forecast.watch?plural(forecast.watch,'magasin à surveiller','magasins à surveiller')+' sur les 3 prochaines semaines.':'';
+    if(route.length)return{state:'neutral',title:'Ta journée',text:plural(route.length,'visite prévue','visites prévues')+' '+when+'. Premier arrêt : '+runnerStoreLabel(route[0])+'.'+(watch?' '+watch:'')};
+    return watch?{state:'neutral',title:'Ta journée',text:'Aucune visite prévue '+when+'. '+watch}:null;
+  }
+
+  function ensureRunnerSlot(){
+    const plan=document.querySelector('#planPanel .applePlan');
+    if(!plan||!window.StoreRunnerRunner)return null;
+    let slot=document.getElementById(RUNNER_SLOT_ID);
+    if(!slot){slot=document.createElement('div');slot.id=RUNNER_SLOT_ID;slot.hidden=true}
+    return slot;
+  }
+  function syncRunner(){
+    const panel=document.getElementById('planPanel'),slot=document.getElementById(RUNNER_SLOT_ID),api=window.StoreRunnerRunner;
+    if(!panel||!slot||!api||!panel.classList.contains('active'))return;
+    const view=runnerView();
+    if(!view){if(!slot.hidden)slot.hidden=true;return}
+    /* Un rendu du Planning peut retirer l'emplacement : Runner est alors remonté, sans annonce. */
+    const fresh=!runnerInstance||!runnerInstance.isConnected()||runnerInstance.el.parentNode!==slot;
+    if(fresh){
+      runnerInstance=api.mount(slot,{variant:'bubble',size:'sm',state:'neutral'});
+      runnerSignature='';
+      if(!runnerInstance){slot.hidden=true;return}
+    }
+    if(slot.hidden)slot.hidden=false;
+    const signature=view.state+'|'+view.title+'|'+view.text;
+    if(signature===runnerSignature)return;
+    runnerSignature=signature;
+    /* Le quotidien (neutre) ne s'annonce pas à voix haute ; une alerte, une analyse ou un succès qui
+       APPARAISSENT pendant que le Planning est ouvert, si. */
+    runnerInstance.setState(view.state,{title:view.title,message:view.text,silent:fresh||view.state==='neutral',resetAfter:view.resetAfter});
+  }
+  function celebrate(kind){
+    const panel=document.getElementById('planPanel');
+    if(!panel||!panel.classList.contains('active')||!window.StoreRunnerRunner)return;
+    runnerDone={kind,until:Date.now()+RUNNER_SUCCESS_MS};schedule();
+  }
+  function observeGenerateBusy(tools){
+    if(!tools||tools.__runnerBusyObserver||typeof MutationObserver==='undefined')return;
+    const observer=new MutationObserver(schedule);
+    observer.observe(tools,{subtree:true,attributes:true,attributeFilter:['disabled']});
+    tools.__runnerBusyObserver=observer;
   }
 
   function choiceSummary(boxId,type){
@@ -242,11 +380,12 @@
        de reporting « Qualité du planning / Cette semaine » fait doublon avec les tuiles
        d'accueil et le détail d'activité : il est retiré de la vue, pas supprimé. */
     #planningProTop>.proTop{display:none!important}
+    #planningRunnerV269{margin:0 0 12px;pointer-events:none}#planningRunnerV269[hidden]{display:none}
     #planningSettings{scroll-margin-top:72px}#planningSettings[open]>.settingsInner{display:block!important}.planningChoice{margin:10px 0;border:1px solid rgba(120,125,140,.15);border-radius:16px;background:rgba(255,255,255,.58);overflow:hidden}.planningChoice>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:12px 14px;cursor:pointer;font-weight:800;color:#1f2937}.planningChoice>summary::-webkit-details-marker{display:none}.planningChoice>summary:after{content:'＋';font-size:18px;color:#1674d9;margin-left:6px}.planningChoice[open]>summary:after{content:'−'}.planningChoice>summary small{margin-left:auto;color:#7a8290;font-size:11px;font-weight:650;white-space:nowrap;max-width:58%;overflow:hidden;text-overflow:ellipsis}.planningChoiceBody{padding:0 12px 13px}.planningChoiceBody>label:first-child{display:none}.planningChoiceBody .checkgrid{display:grid!important;grid-template-columns:1fr!important;gap:6px!important;max-height:170px;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2px}.planningChoiceBody .checkitem{min-height:42px;margin:0}#planningDaysDetails .planningChoiceBody #daysBox{max-height:none!important;overflow:visible!important;-webkit-overflow-scrolling:auto;touch-action:auto}.planningAdvancedDetails .premium-time{margin-top:6px}.planningCalendarDetails .calendarConnect{margin:0!important;border:0!important;box-shadow:none!important;background:transparent!important;padding:4px 0!important}.planningRangeDetails .formgrid{margin-top:4px}.planningDuplicateGenerate{display:none!important}.planningStoreCount{margin:6px 0 2px;color:#697386}.planningRangeDetails{order:20}
     @media(max-width:650px){.planningHeroV2{padding-top:2px}.planningHeroTop{align-items:flex-start}.planningHeroWeek{max-width:58%;line-height:1.3}.planningHeroDay{font-size:50px}.planningHeroFull{font-size:13px}.planningToolsV2{margin-bottom:10px}.planningToolsV2 button{flex:1 1 calc(50% - 4px);min-width:0;min-height:44px}.planningChoice{border-radius:15px}.planningChoice>summary{padding:11px 12px}.planningChoiceBody{padding:0 10px 11px}.planningChoiceBody .checkgrid{max-height:150px}#planningDaysDetails .planningChoiceBody #daysBox{max-height:none!important;overflow:visible!important}.planningAdvancedDetails .formgrid,.planningRangeDetails .formgrid{grid-template-columns:1fr!important}}
   `;document.head.appendChild(s)}
 
-  function run(){css();syncSmartBrief();if(isEditingLocked())return;reorderPlanning();compactSettings();restoreHotelStars()}
+  function run(){css();syncSmartBrief();if(isEditingLocked())return;reorderPlanning();compactSettings();restoreHotelStars();try{syncRunner()}catch(e){}}
   function schedule(){if(scheduled)return;scheduled=true;requestAnimationFrame(function(){scheduled=false;run()})}
   function observeDayTabs(){const tabs=document.getElementById('dayTabs');if(!tabs||tabs.__planningFixObserver)return;const observer=new MutationObserver(schedule);observer.observe(tabs,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});tabs.__planningFixObserver=observer}
   function observePlanPanel(){const plan=document.getElementById('planPanel');if(!plan||plan.__planningActiveObserver)return;const observer=new MutationObserver(schedule);observer.observe(plan,{attributes:true,attributeFilter:['class']});plan.__planningActiveObserver=observer}
@@ -276,7 +415,14 @@
   // fermeture du panneau, jamais sur un simple changement de focus.
   document.addEventListener('focusout',e=>{if(editingLocked)return;if(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD))setTimeout(schedule,80)},true);
   document.addEventListener('toggle',e=>{if(e.target&&e.target.id==='planningSettings'&&!e.target.open){editingLocked=false;schedule()}},true);
-  document.addEventListener('store-runner:planning-updated',schedule);document.addEventListener('store-runner:data-restored',schedule);document.addEventListener('store-runner:calendar-updated',schedule);
+  document.addEventListener('store-runner:planning-updated',function(e){const d=e&&e.detail;if(!d||d.reason!=='period-date-loaded')forgetForecast();if(d&&d.source==='recalculatePlanningCascade')celebrate('cascade');schedule()});document.addEventListener('store-runner:data-restored',schedule);document.addEventListener('store-runner:calendar-updated',schedule);
+  /* Le forecast se relit quand une donnée dont il dépend change (changer de jour ne la change pas). */
+  ['store-runner:data-restored','store-runner:calendar-updated','store-runner:visit-deleted','store-runner:store-added','store-runner:stores-added','store-runner:planning-user-opened','store-runner:planning-command-applied'].forEach(function(name){document.addEventListener(name,forgetForecast)});
+  /* V269 : un succès de génération, de recalcul ou de commande est un moment, pas un état durable.
+     Runner le montre quelques secondes (`resetAfter`) puis la journée reprend la main. */
+  window.addEventListener('chef-range-generated',function(){forgetForecast();celebrate('range')});
+  document.addEventListener('store-runner:planning-command-applied',function(){celebrate('command')});
+  document.addEventListener('store-runner:runner-state',function(e){const slot=document.getElementById(RUNNER_SLOT_ID),d=e&&e.detail;if(slot&&e.target&&slot.contains(e.target)&&d&&d.previous==='success'){runnerDone=null;schedule()}});
   // Les réinstallations globales sur le focus de la fenêtre ou la visibilité de l'onglet
   // sont interdites par AGENTS.md quand un événement métier existe déjà - ce sont elles qui
   // déclenchaient la réorganisation du panneau pendant la saisie sur iOS.
