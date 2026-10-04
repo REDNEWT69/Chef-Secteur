@@ -2,17 +2,19 @@
 
 Runner est le copilote **visuel** de Store Runner : un personnage, quatre états, une bulle. Ce lot ne crée que la couche de présentation réutilisable. **Rien n'est branché** : aucun écran, aucun moteur (Planning, Forecast, Command Engine, Explorer Terrain) ne connaît Runner.
 
+**Mobile uniquement, Android d'abord.** Runner n'a aucune mise en page desktop : sa feuille de style ne contient aucune requête de largeur. Référence : Android 390 px, vérifié aussi à 360 px (le plus petit téléphone courant), puis iPhone 390 px, et 320 px sans défilement horizontal. En cas de doute entre desktop et mobile, c'est le mobile qui a été choisi.
+
 - Build `20261004-r41-runner-visual-266`, version visible **inchangée : 266**.
 - PR Draft, **non fusionnée**. Décision à valider avant fusion : voir « Chargement et budget de démarrage ».
 - Module : `runner-visual.js` (`StoreRunnerRunner`, alias `Runner`). Un seul fichier, aucune dépendance, aucune feuille séparée.
 
 ![États de Runner](tests/fixtures/runner-visual-states.webp)
 
-![Aperçu 390 px](tests/fixtures/runner-visual-preview-390.webp)
+![Intégration mobile, Android 390 px](tests/fixtures/runner-visual-preview-390.webp)
 
 ## Direction visuelle
 
-Les deux planches officielles Runner V1 fixent la direction : silhouette en goutte, tête nacrée, **visière sombre** à liseré bleu, yeux lumineux, **crête bleue** type aileron, pastille d'oreille bleue, corps ovoïde blanc, **emblème de navigation** (flèche bicolore dans un disque), mains bleues, halo bleu sous le corps, palette blanc/bleu. Le dessin les reprend sans réinterprétation : seuls les yeux, les bras et les effets changent d'un état à l'autre.
+Les planches officielles Runner V1 fixent l'identité : silhouette en goutte, tête nacrée, **visière sombre** à liseré bleu, yeux lumineux, **crête bleue** type aileron, pastille d'oreille bleue, corps ovoïde blanc, **emblème de navigation** (flèche bicolore dans un disque), mains bleues, halo bleu sous le corps, palette blanc/bleu. Le dessin les reprend sans réinterprétation : seuls les yeux, les bras et les effets changent d'un état à l'autre. La planche d'intégration mobile (Planning, Assistant en bottom sheet, alerte, succès) fixe la mise en page, pas l'identité.
 
 | État | Yeux | Geste | Effet |
 | --- | --- | --- | --- |
@@ -21,9 +23,26 @@ Les deux planches officielles Runner V1 fixent la direction : silhouette en gout
 | `alert` — Une contrainte détectée | deux ovales ambre | bras tendu | pastille rouge « ! », éclats ambre |
 | `success` — Tout est ok | une arche, un clin d'œil | main bleue levée | éclats verts |
 
-**Limite connue, à lire.** Les planches fournies sont des images raster sans source maître (ni SVG, ni PNG transparent, ni modèle 3D) ; le rendu 3D n'est pas extractible proprement (fond dégradé, résolution ≈ 150 px pour un état). Le dessin est donc un **redessin vectoriel** fidèle aux formes, aux couleurs et aux proportions, mais plus « à plat » que le rendu 3D (ombres et reflets simplifiés, pas de matière). Si le design livre un jour l'art maître, il remplace le gabarit SVG de `runner-visual.js` sans toucher à l'API ni aux écrans hôtes.
+**Limite connue, à lire.** Les planches fournies sont des images raster sans source maître (ni SVG, ni PNG transparent, ni modèle 3D) ; le rendu 3D n'est pas extractible proprement (fond dégradé, ≈ 150 px de haut pour un état). Le dessin est donc un **redessin vectoriel** fidèle aux formes, aux couleurs et aux proportions, mais plus « à plat » que le rendu 3D (ombres et reflets simplifiés). Si le design livre l'art maître, il remplace le gabarit SVG de `runner-visual.js` sans toucher à l'API ni aux écrans hôtes.
 
-Pas d'actifs raster dans le runtime : un SVG inline reste net à toute densité (iPhone 3×, Android), pèse ≈ 11 Ko par instance et ne demande aucun fichier de plus à précacher. Un jeu WebP/PNG ne se justifiera que pour une surface qui ne peut pas porter de SVG (notification système, carte de partage) : décision à prendre alors, pas maintenant.
+Pas d'actifs raster dans le runtime : un SVG inline reste net à toute densité (Android 2–3×, iPhone 3×), pèse ≈ 11 Ko par instance et ne demande aucun fichier de plus à précacher. Un jeu WebP/PNG ne se justifiera que pour une surface qui ne peut pas porter de SVG (notification système, carte de partage) : décision à prendre alors. Les deux WebP de `tests/fixtures/` ne servent qu'à relire cette PR.
+
+## Intégration native mobile : trois variantes, toujours dans le flux
+
+| Variante | Surface | Composition |
+| --- | --- | --- |
+| `bubble` (défaut) | carte Planning, message de l'assistant | Runner (88 px) à côté d'une bulle blanche à accent d'état et queue vers lui ; `side:'left'` inverse |
+| `sheet` | en-tête du bottom sheet Assistant | Runner (120 px) et texte **sans cadre** ; titre 16,5 px |
+| `panel` | carte d'alerte de contrainte, carte de succès | Runner (88 px) centré **au-dessus** d'un bloc teinté pleine largeur, pictogramme ⚠ ou ✓ |
+
+Règles mobiles, vérifiées par les tests :
+
+- **Aucun personnage flottant.** Runner n'est jamais `fixed`, jamais `sticky`, n'a aucun `z-index`, aucun `inset`, aucune unité de viewport. Il occupe de la place dans le flux de l'écran hôte : il ne peut donc masquer aucune action principale, ni la barre de navigation basse, ni le bouton IA.
+- **Discret.** Tailles de téléphone : `sm` 56 · `md` 88 · `lg` 120 px (plafond numérique 144 px, plus de `xl`). Une bulle sans texte n'existe pas ; `duration` la referme seule.
+- **Safe areas.** Runner n'est ancré à aucun bord de l'écran, donc il ne peut ni passer sous l'encoche, ni sous la barre de gestes, ni sous la barre d'état. Les marges `env(safe-area-inset-*)` des feuilles, barres et pages restent à leur **propriétaire** ; la fixture montre le montage correct (sheet et barre basse de l'hôte) et le test émule trois situations (iPhone encoche + barre d'accueil, Android barre de gestes, paysage avec encoche).
+- **Les actions appartiennent à l'hôte.** « Voir détails », « Réorganiser », « Annuler », « Voir ma tournée » sont les boutons de l'écran, au style de l'app, cibles ≥ 48 px. Runner ne dessine aucun bouton ni lien, ne prend jamais le focus et sa figure ne capte aucun tap (`pointer-events:none`) : le centre de chaque bouton de l'hôte reste atteignable.
+- **Largeur : celle du conteneur.** La bulle prend la largeur restante, coupe les noms sans espace (`overflow-wrap:anywhere`) et ne déborde ni de sa carte ni de l'écran à 320, 360 et 390 px. Texte ≥ 14 px, police héritée de l'application.
+- **Contrastes AA.** Toutes les paires texte / fond (encre, texte secondaire, titres d'alerte et de succès sur leurs teintes) sont ≥ 4,5:1, vérifiées par le test unitaire.
 
 ## Ce que Runner ne fait jamais
 
@@ -37,16 +56,16 @@ Au démarrage il ne fait strictement rien : aucun nœud, aucun style, aucun éco
 
 ## API de présentation
 
-L'API globale n'agit que sur le Runner **principal** (le dernier monté encore présent dans le document). Sans Runner monté elle ne crée rien et répond `false` : appeler `Runner.setState(...)` depuis un moteur avant qu'un écran n'ait monté Runner est donc sans effet, jamais une erreur. Aucune méthode ne lève d'exception vers le code appelant.
+L'API globale n'agit que sur le Runner **principal** (le dernier monté encore présent dans le document). Sans Runner monté elle ne crée rien et répond `false` : appeler `Runner.setState(...)` avant qu'un écran n'ait monté Runner est sans effet, jamais une erreur. Aucune méthode ne lève d'exception vers le code appelant.
 
 ```js
-// L'écran hôte décide de l'emplacement.
-const runner = Runner.mount(container, { state:'neutral', size:'md', side:'right' });
+// L'écran hôte décide de l'emplacement ; Runner prend place dans son flux.
+const runner = Runner.mount(container, { variant:'bubble', state:'neutral' });
 
 Runner.setState('analyzing');                                  // true | false
 Runner.showMessage('Je vérifie les contraintes…');             // bulle
-Runner.showMessage({ title:'Attention', text:'…' }, { state:'alert' });
-Runner.setState('success', { message:'Tournée optimisée', title:'Parfait !', resetAfter:4000 });
+Runner.showMessage({ title:'Attention !', text:'…' }, { state:'alert' });
+Runner.setState('success', { message:'Ta tournée est prête.', title:'Trajet optimisé !', resetAfter:4000 });
 Runner.hideMessage();
 Runner.reset();                                                // neutre, bulle fermée
 Runner.getState();                                             // 'neutral' | … | null
@@ -55,15 +74,15 @@ Runner.unmount(container | runner);
 
 | Élément | Rôle |
 | --- | --- |
-| `Runner.STATES`, `STATE_LABELS`, `SIDES`, `SIZES` | constantes gelées |
+| `Runner.STATES`, `STATE_LABELS`, `VARIANTS`, `SIDES`, `SIZES`, `TONES` | constantes gelées |
 | `mount(conteneur, options)` | retourne l'instance, ou `null` si le conteneur est introuvable |
-| options de `mount` | `state`, `size` (`sm` 56 · `md` 88 · `lg` 128 · `xl` 176 · nombre 32–320), `side` (`right` · `left` · `top` · `bottom`, côté de la bulle), `message`, `title`, `duration`, `motion` (`'off'` coupe tout mouvement), `decorative` (aucun nom accessible) |
+| options de `mount` | `variant` (`bubble` · `sheet` · `panel`, défaut `bubble`), `state`, `size` (`sm` · `md` · `lg` · nombre 32–144 ; défaut `md`, `lg` pour `sheet`), `side` (`right` · `left`), `message`, `title`, `duration`, `motion` (`'off'` coupe tout mouvement), `decorative` (aucun nom accessible) |
 | `setState(état, { message, title, duration, resetAfter, side })` | état inconnu refusé (`false`), même état : aucun rejeu |
 | `showMessage(texte \| { text, title, state, duration, side }, options)` | texte borné à 280 caractères, titre à 60, durée 1,5 s – 2 min (`0` : reste jusqu'à `hideMessage`) ; un texte vide ferme la bulle |
-| instance | `el`, `getState`, `setState`, `showMessage`, `hideMessage`, `reset`, `destroy`, `isConnected` |
+| instance | `el`, `variant`, `getState`, `setState`, `showMessage`, `hideMessage`, `reset`, `destroy`, `isConnected` |
 | événement | `store-runner:runner-state`, émis sur l'élément et remontant dans le document (`bubbles`), `detail: { state, previous, id }`, seulement quand l'état change |
 
-Un Runner dont le conteneur est retiré par un rendu de l'écran hôte est oublié au prochain appel : pas de fuite, pas d'observateur. `unmount` accepte l'instance ou son conteneur.
+**Pas de fuite quand un écran se redessine.** Les écrans de l'app se redessinent souvent en `innerHTML`. Chaque `mount` oublie d'abord les Runners dont le conteneur a été retiré : six rendus successifs laissent une seule instance vivante. Un Runner monté dans un nœud pas encore attaché reste vivant jusqu'à son insertion, puis suit le document. `unmount` accepte l'instance ou son conteneur.
 
 ## Un état, pas une reconstruction
 
@@ -73,17 +92,14 @@ Tous les calques du dessin sont déjà dans le SVG ; `data-state` sur le contene
 
 - La figure est `role="img"` avec un nom : « Runner, copilote terrain : en attente / il réfléchit / une contrainte détectée / tout est ok ». `decorative:true` la masque quand le texte voisin dit déjà la même chose.
 - Une région `role="status"` (visuellement masquée) annonce la bulle et les changements d'état ; elle passe en `aria-live="assertive"` pour une alerte. La bulle visuelle est `aria-hidden` : pas de double lecture. Retour au calme : aucune annonce.
-- Runner est **décoratif au toucher** : `pointer-events:none`, aucun élément focusable. Il ne capte jamais un tap destiné à l'écran dessous, et n'ajoute aucune cible de 44 px à garantir.
-- Texte de bulle ≥ 14 px, contraste encre `#10224d` sur blanc.
-- `prefers-reduced-motion: reduce` coupe toute animation et toute transition ; les états restent distincts par les yeux, les gestes et les effets. `motion:'off'` fait de même à la demande de l'écran hôte (captures déterministes).
+- `prefers-reduced-motion: reduce` coupe toute animation et toute transition ; les états restent distincts par les yeux, les gestes, les effets et le pictogramme. `motion:'off'` fait de même à la demande de l'écran hôte (captures déterministes).
 
 ## Mouvement et performance
 
 - Animations en `transform` / `opacity` uniquement, pas de `will-change` permanent, **aucun filtre SVG** (les lueurs sont des formes translucides).
 - Au repos : **aucune animation**. Changement d'état : une entrée de 0,42 s, jouée une fois. Bulle : une entrée de 0,22 s.
-- Une seule boucle existe, les trois points de `analyzing`, **bornée à 16 passages (≈ 22 s)** : un état oublié ne tourne jamais en continu. Alerte : deux pulsations. Succès : une apparition des éclats.
-- Poids : `runner-visual.js` ≈ 27 Ko, ≈ 9 Ko compressé (dessin ≈ 10 Ko, style ≈ 5 Ko, logique), SVG ≈ 153 éléments par instance, identifiants de dégradés uniques par instance (un Runner masqué ne prive jamais un autre de ses dégradés).
-- Si plus de quelques Runners coexistent un jour, le dessin pourra passer en sprite partagé (`<symbol>`) ; inutile pour un à deux Runners par écran.
+- Une seule boucle existe, les trois points de `analyzing`, **bornée à 16 passages (≈ 22 s)** : un état oublié ne tourne jamais en continu sur la batterie d'un téléphone. Alerte : deux pulsations. Succès : une apparition des éclats.
+- Poids : `runner-visual.js` ≈ 31 Ko (≈ 25 Ko hors commentaires), ≈ 11 Ko compressé ; SVG ≈ 11 Ko et 153 éléments par instance ; identifiants de dégradés uniques par instance (un Runner masqué ne prive jamais un autre de ses dégradés). Si plus de quelques Runners coexistent un jour, le dessin pourra passer en sprite partagé ; inutile pour un à deux Runners par écran.
 
 ## Chargement et budget de démarrage
 
@@ -95,25 +111,23 @@ Fusion : modification de `sw.js` au-delà de `BUILD_REV` (une entrée de shell) 
 
 ## Points d'intégration futurs (non faits)
 
-Dans tous les cas, **le propriétaire de l'écran monte Runner et traduit son propre résultat** ; Runner ne lit jamais le résultat d'un moteur.
+Dans tous les cas, **le propriétaire de l'écran monte Runner et traduit son propre résultat** ; Runner ne lit jamais le résultat d'un moteur. Chacune demande sa propre PR, son propre test et une vérification 390 px (Android d'abord).
 
-| Surface | Intégration envisagée |
-| --- | --- |
-| Assistant / Command Engine | `mount` dans l'en-tête de la feuille ; `analyzing` pendant l'interprétation, `alert` quand l'aperçu cite une contrainte, `success` après l'application validée. Les commandes planning restent hors des actions directes de l'IA en ligne. |
-| Planning | bulle de proposition sur l'accueil ou le jour actif ; propriétaire : `planning-ui-fixes.js` pour l'emplacement. |
-| Explorer Terrain | message court dans la fiche Magasin 360 pour une contrainte active (la source reste `store-explorer.js`). |
-| Alertes de contraintes | `alert` + `showMessage` à partir du texte déjà produit par le propriétaire de la contrainte. |
-| Succès après application | `setState('success', { message, resetAfter })` à l'événement existant `store-runner:planning-updated`. |
-
-Chacune demande sa propre PR, son propre test et, si l'écran change, une vérification 390 px.
+| Surface | Variante | Intégration envisagée |
+| --- | --- | --- |
+| Planning | `bubble` | conseil dans une carte entre le sélecteur de semaine et la liste des visites ; l'emplacement appartient à `planning-ui-fixes.js`. |
+| Assistant / Command Engine | `sheet` | en-tête du bottom sheet : `analyzing` pendant l'interprétation, `alert` quand l'aperçu cite une contrainte, `success` après l'application validée. La liste d'étapes et « Annuler » restent à l'assistant. Les commandes planning restent hors des actions directes de l'IA en ligne. |
+| Alertes de contraintes | `panel` | `alert` + titre / texte déjà produits par le propriétaire de la contrainte ; « Voir détails » / « Réorganiser » restent ses boutons. |
+| Succès après application | `panel` | `setState('success', { message, resetAfter })` à l'événement existant `store-runner:planning-updated` ; « Voir ma tournée » reste le bouton de l'écran. |
+| Explorer Terrain | `bubble` | message court dans la fiche Magasin 360 pour une contrainte active (la source reste `store-explorer.js`). |
 
 ## Tests
 
 | Test | Contrat |
 | --- | --- |
-| `tests/runner-visual-v266.test.cjs` (Reliability) | chargé une fois, précaché, build cohérent, version visible 266 ; aucune donnée / moteur / écouteur / observateur / réseau / `setInterval` ; texte jamais en HTML ; animations `transform`/`opacity` seulement, aucune `infinite`, boucle bornée à 16 ; API pure (normalisation, bornes, emoji, état inconnu) ; alias `Runner` jamais écrasé ; aucun module ne branche Runner |
-| `tests/runner-visual-v266-browser.spec.cjs` (mobile 390 px, Android puis iPhone) | démarrage dormant dans la vraie app ; `state` et stockage strictement inchangés ; style de la bulle non altéré par l'app ; quatre états et un seul calque visible ; injection `<img onerror>` inerte ; annonce lecteur d'écran ; durées et retour automatique ; aucun débordement horizontal, rien de focusable ; tailles et dessin dans le cadre ; Runner principal et oubli ; aucune animation au repos, boucle bornée ; mode réduit d'animations ; `motion:'off'` |
-| `tests/fixtures/runner-visual-preview.html` | page d'aperçu de test (jamais chargée par l'app ni mise en cache) : les cinq contextes d'écran à 390 px |
+| `tests/runner-visual-v266.test.cjs` (Reliability) | chargé une fois, précaché, build cohérent, version visible 266 ; aucune donnée / moteur / écouteur / observateur / réseau / `setInterval` ; texte jamais en HTML ; **mobile d'abord** : seule requête média = mouvement réduit, jamais `fixed`/`sticky`/`z-index`/unité de viewport, aucun bouton ni lien dessiné ; animations `transform`/`opacity` seulement, aucune `infinite`, boucle bornée à 16 ; contrastes AA ; API pure ; alias `Runner` jamais écrasé ; aucun module ne branche Runner |
+| `tests/runner-visual-v266-browser.spec.cjs` (Reliability, mobile) | **Android 390, Android 360, iPhone 390** : démarrage dormant dans la vraie app ; `state` et stockage inchangés ; style non altéré par l'app ; quatre états ; trois variantes (disposition, teintes, pictogrammes) ; injection `<img onerror>` inerte ; annonce lecteur d'écran ; **Runner dans le flux, jamais fixe, aucun bouton de l'hôte recouvert** ; **safe areas émulées** (encoche, barre de gestes, paysage) ; aucun débordement horizontal jusqu'à 320 px ; tailles ; pas d'instance orpheline après des rendus répétés ; aucune animation au repos, boucle bornée ; mode réduit ; `motion:'off'` |
+| `tests/fixtures/runner-visual-preview.html` | page d'aperçu de test (jamais chargée par l'app ni mise en cache) : carte Planning, bottom sheet Assistant, cartes d'alerte et de succès, avec les boutons et la barre basse de l'hôte |
 
 Plafond de scripts : `tests/priority-campaign-removal-browser.spec.cjs` (77) et `tests/fixtures/cleanup-baseline-r20.json`.
 
@@ -121,5 +135,5 @@ Plafond de scripts : `tests/priority-campaign-removal-browser.spec.cjs` (77) et 
 
 1. Valider le plafond 77 (ou choisir l'alternative sans chargement au démarrage).
 2. Art maître : le design peut-il fournir un SVG ou un PNG transparent haute définition ? Le gabarit actuel est un redessin.
-3. Faut-il une pose « salut » (bras levé, hero de la planche) pour l'accueil ? Hors périmètre : les quatre états demandés sont livrés ; les poses (propose, montre le planning, analyse, explique, valide) sont des variantes de gestes qui s'ajoutent sans changer l'API.
-4. Placement d'un éventuel Runner flottant (bouton IA) : décision produit, non préparée ici.
+3. Poses de la planche (propose, montre le planning, analyse, explique, valide, salut) : variantes de gestes qui s'ajoutent sans changer l'API ; hors périmètre, les quatre états demandés sont livrés.
+4. Runner dans le bouton IA ou la barre de navigation basse : **non préparé et déconseillé** (un personnage près d'une action principale contredit la règle « jamais flottant »). Décision produit si cela revient.

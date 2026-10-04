@@ -1,7 +1,21 @@
 /* Store Runner V1 — Runner Visual System V1 (`StoreRunnerRunner`, alias `Runner`).
 
    Runner est le copilote VISUEL de Store Runner : un personnage, quatre états, une bulle.
-   Ce module est une couche de présentation pure :
+   Il est pensé MOBILE D'ABORD — Android en priorité, puis iPhone, à partir de 360 px — et n'a
+   aucune mise en page desktop : la feuille de style ne contient aucune requête de largeur.
+
+   Intégration native mobile uniquement, toujours DANS le flux de l'écran hôte :
+   - `bubble` (défaut) : Runner à côté d'une bulle contextuelle, dans une carte (conseil sur le
+     Planning, message de l'assistant) ;
+   - `sheet` : Runner et texte sans cadre, pour l'en-tête d'un bottom sheet (Assistant) ;
+   - `panel` : Runner au-dessus d'un bloc teinté pleine largeur (alerte de contrainte, succès).
+   Runner ne se positionne JAMAIS par rapport à l'écran : ni `fixed`, ni `sticky`, ni bouton
+   flottant. Il ne peut donc ni masquer une action principale, ni passer sous la barre
+   système, l'encoche ou la barre de gestes ; les marges de sécurité (`env(safe-area-inset-*)`)
+   des feuilles et barres restent à leur propriétaire. Il ne dessine aucun bouton : « Voir
+   détails », « Réorganiser », « Annuler » appartiennent à l'écran hôte, au style de l'app.
+
+   Couche de présentation pure :
    - il ne lit ni n'écrit aucune donnée (`state`, stockage, IndexedDB, agenda, performance) ;
    - il ne choisit aucun magasin, ne simule rien, n'appelle aucun moteur et n'est appelé par
      aucun moteur : Planning, Forecast, Command Engine et Explorer Terrain ne le connaissent pas
@@ -10,8 +24,7 @@
      (ni `focus`, ni `visibilitychange`, ni `resize`), sans `setInterval` ni observateur.
 
    Au démarrage il ne fait strictement rien : aucun nœud, aucune feuille de style, aucun
-   écouteur. Le style n'est injecté qu'au premier `mount()`. Rien n'est affiché tant qu'un
-   propriétaire d'écran n'a pas monté Runner dans son conteneur.
+   écouteur. Le style n'est injecté qu'au premier `mount()`.
 
    États : neutral (en attente), analyzing (il réfléchit), alert (une contrainte détectée),
    success (tout est ok). Un état = un attribut `data-state` sur le conteneur ; tous les
@@ -36,17 +49,30 @@ const VERSION=1;
 const STATES=Object.freeze(['neutral','analyzing','alert','success']);
 const STATE_LABELS=Object.freeze({neutral:'En attente',analyzing:'Il réfléchit',alert:'Une contrainte détectée',success:'Tout est ok'});
 const ACCESSIBLE_NAME='Runner, copilote terrain';
-const SIDES=Object.freeze(['right','left','top','bottom']);
-const SIZES=Object.freeze({sm:56,md:88,lg:128,xl:176});
-const SIZE_MIN=32,SIZE_MAX=320;
+const VARIANTS=Object.freeze(['bubble','sheet','panel']);
+const SIDES=Object.freeze(['right','left']);
+/* Tailles pensées pour un téléphone : Runner reste discret. 120 px est la plus grande taille
+   nommée (en-tête de bottom sheet) ; 144 px est le plafond d'une taille numérique. */
+const SIZES=Object.freeze({sm:56,md:88,lg:120});
+const DEFAULT_SIZE=Object.freeze({bubble:'md',panel:'md',sheet:'lg'});
+const SIZE_MIN=32,SIZE_MAX=144;
 const TEXT_MAX=280,TITLE_MAX=60;
 const DURATION_MIN=1500,DURATION_MAX=120000;
 const STYLE_ID='srRunnerCss';
 const ART_RATIO=280/240;
 const CHANGE_EVENT='store-runner:runner-state';
+/* Encres et teintes : toutes les paires texte/fond ≥ 4,5:1 (vérifié par le test unitaire). */
+const INK='#10224d',SUBINK='#46567a';
+const TONES=Object.freeze({
+  neutral:Object.freeze({accent:'#2f7bff',tint:'#f1f6ff',line:'#d3e2fa',title:'#10224d'}),
+  analyzing:Object.freeze({accent:'#3aa0ff',tint:'#eef6ff',line:'#cfe3fb',title:'#10224d'}),
+  alert:Object.freeze({accent:'#e5392b',tint:'#fdecea',line:'#f6cbc6',title:'#b72a1b'}),
+  success:Object.freeze({accent:'#22b573',tint:'#e8f7ef',line:'#bfe6d1',title:'#16704a'})
+});
 
 /* ------------------------------------------------------------------ valeurs */
 function isState(value){return STATES.indexOf(value)!==-1}
+function variantFrom(value){return VARIANTS.indexOf(value)!==-1?value:'bubble'}
 function clean(value,max){
   if(value==null)return '';
   const chars=Array.from(String(value).replace(/\s+/g,' ').trim());
@@ -57,10 +83,10 @@ function clampDuration(value){
   if(!isFinite(n)||n<=0)return 0;
   return Math.min(DURATION_MAX,Math.max(DURATION_MIN,Math.round(n)));
 }
-function sizeFrom(value){
+function sizeFrom(value,variant){
   if(typeof value==='string'&&SIZES[value])return SIZES[value];
   const n=Number(value);
-  if(!isFinite(n)||n<=0)return SIZES.md;
+  if(value==null||!isFinite(n)||n<=0)return SIZES[DEFAULT_SIZE[variant]]||SIZES.md;
   return Math.min(SIZE_MAX,Math.max(SIZE_MIN,Math.round(n)));
 }
 /* Une entrée de bulle : un texte seul, ou { text, title, state, duration, side }. */
@@ -198,24 +224,41 @@ function artMarkup(){
 const ART=artMarkup();
 
 /* -------------------------------------------------------------------- style */
+function toneCss(){
+  return STATES.map(state=>{
+    const t=TONES[state];
+    return '.srRunner[data-state="'+state+'"]{--rn-accent:'+t.accent+';--rn-tint:'+t.tint+';--rn-line:'+t.line+';--rn-title:'+t.title+'}';
+  }).join('');
+}
+/* Mobile d'abord : aucune requête de largeur, aucune hypothèse sur la taille de l'écran. Le
+   conteneur de l'écran hôte décide de la largeur ; Runner prend ce qui reste. */
 const CSS=[
-'.srRunner{--sr-runner-size:88px;--rn-ink:#10224d;--rn-sub:#46567a;--rn-line:#dbe5f6;--rn-accent:#2f7bff;position:relative;display:flex;align-items:center;gap:10px;box-sizing:border-box;max-width:100%;contain:layout style;-webkit-tap-highlight-color:transparent}',
+'.srRunner{--sr-runner-size:88px;--rn-ink:'+INK+';--rn-sub:'+SUBINK+';--rn-bubble-line:#dbe5f6;position:relative;display:flex;align-items:center;gap:12px;box-sizing:border-box;min-width:0;max-width:100%;contain:layout style;-webkit-tap-highlight-color:transparent;font-family:inherit}',
+toneCss(),
 '.srRunner[data-side="left"]{flex-direction:row-reverse}',
-'.srRunner[data-side="top"]{flex-direction:column-reverse;align-items:flex-start}',
-'.srRunner[data-side="bottom"]{flex-direction:column;align-items:flex-start}',
-'.srRunner[data-state="analyzing"]{--rn-accent:#3aa0ff}.srRunner[data-state="alert"]{--rn-accent:#f5a30f}.srRunner[data-state="success"]{--rn-accent:#22b573}',
+'.srRunner[data-variant="panel"]{flex-direction:column;align-items:stretch;gap:0}',
+'.srRunner[data-variant="panel"] .srRunnerFigure{align-self:center}',
 '.srRunnerFigure{flex:0 0 auto;width:var(--sr-runner-size);height:calc(var(--sr-runner-size)*'+ART_RATIO.toFixed(4)+');line-height:0;pointer-events:none;user-select:none;-webkit-user-select:none}',
 '.srRunnerFigure .rnArt{display:block;width:100%;height:100%;overflow:visible}',
 /* Calques : tous présents dans le SVG, un seul visible selon l'état. */
 '.srRunner .rnLayer{opacity:0;transition:opacity .16s ease}',
 '.srRunner[data-state="neutral"] .rnLayer[data-rn="neutral"],.srRunner[data-state="analyzing"] .rnLayer[data-rn="analyzing"],.srRunner[data-state="alert"] .rnLayer[data-rn="alert"],.srRunner[data-state="success"] .rnLayer[data-rn="success"]{opacity:1}',
-/* Bulle */
-'.srRunnerBubble{position:relative;flex:1 1 auto;min-width:0;max-width:280px;box-sizing:border-box;padding:10px 14px;border-radius:18px;background:#fff;border:1px solid var(--rn-line);border-left:4px solid var(--rn-accent);box-shadow:0 8px 24px rgba(23,44,96,.12);color:var(--rn-ink);font:500 14px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Arial,sans-serif;letter-spacing:-.005em;overflow-wrap:anywhere}',
+/* Bulle contextuelle (variante par défaut) : carte blanche, accent d'état, queue vers Runner. */
+'.srRunnerBubble{position:relative;display:flex;align-items:flex-start;gap:10px;flex:1 1 auto;min-width:0;box-sizing:border-box;padding:11px 14px;border-radius:18px;background:#fff;border:1px solid var(--rn-bubble-line);border-left:4px solid var(--rn-accent);box-shadow:0 6px 18px rgba(23,44,96,.10);color:var(--rn-ink);font-size:14px;line-height:1.4;font-weight:500;letter-spacing:-.005em;overflow-wrap:anywhere}',
 '.srRunnerBubble[hidden]{display:none}',
-'.srRunnerBubble::before{content:"";position:absolute;width:12px;height:12px;background:#fff;border:1px solid var(--rn-line);border-top:0;border-right:0;transform:rotate(45deg);left:-8px;top:calc(50% - 6px)}',
-'.srRunner[data-side="left"] .srRunnerBubble::before{left:auto;right:-7px;transform:rotate(225deg)}',
-'.srRunner[data-side="top"] .srRunnerBubble::before{left:calc(var(--sr-runner-size)/2 - 6px);top:auto;bottom:-7px;transform:rotate(-45deg)}',
-'.srRunner[data-side="bottom"] .srRunnerBubble::before{left:calc(var(--sr-runner-size)/2 - 6px);top:-7px;transform:rotate(135deg)}',
+'.srRunner[data-variant="bubble"] .srRunnerBubble::before{content:"";position:absolute;width:12px;height:12px;background:#fff;border:1px solid var(--rn-bubble-line);border-top:0;border-right:0;transform:rotate(45deg);left:-8px;top:calc(50% - 6px)}',
+'.srRunner[data-variant="bubble"][data-side="left"] .srRunnerBubble::before{left:auto;right:-7px;transform:rotate(225deg)}',
+/* En-tête de bottom sheet : texte sans cadre à côté de Runner. */
+'.srRunner[data-variant="sheet"] .srRunnerBubble{padding:0;border:0;border-radius:0;background:none;box-shadow:none}',
+'.srRunner[data-variant="sheet"] .srRunnerBubbleTitle{font-size:16.5px}',
+/* Carte d'alerte ou de succès : bloc teinté pleine largeur sous Runner. */
+'.srRunner[data-variant="panel"] .srRunnerBubble{margin-top:-8px;padding:12px 14px;border:1px solid var(--rn-line);border-radius:16px;background:var(--rn-tint);box-shadow:none}',
+'.srRunner[data-variant="panel"] .srRunnerBubbleTitle{color:var(--rn-title)}',
+'.srRunnerIcon{display:none;flex:0 0 22px;width:22px;height:22px;margin-top:1px}',
+'.srRunner[data-variant="panel"][data-state="alert"] .srRunnerIcon,.srRunner[data-variant="panel"][data-state="success"] .srRunnerIcon{display:block}',
+'.srRunnerIcon svg{display:none;width:100%;height:100%}',
+'.srRunner[data-state="alert"] .rnIconAlert,.srRunner[data-state="success"] .rnIconOk{display:block}',
+'.srRunnerBubbleBody{display:block;flex:1 1 auto;min-width:0}',
 '.srRunnerBubbleTitle{display:block;margin:0 0 2px;font-weight:700;font-size:14.5px;color:var(--rn-ink)}',
 '.srRunnerBubbleTitle:empty{display:none}',
 '.srRunnerBubbleText{display:block;color:var(--rn-sub);font-weight:500}',
@@ -235,9 +278,7 @@ const CSS=[
 '.srRunner[data-state="alert"] .rnSpark,.srRunner[data-state="success"] .rnSpark{animation:srRunnerSpark .32s ease-out both;animation-delay:calc(var(--i)*.09s)}',
 /* Sans mouvement : réglage système, ou `motion:"off"` demandé par l'écran hôte. */
 '@media (prefers-reduced-motion:reduce){.srRunner *,.srRunner *::before{animation:none!important;transition:none!important}}',
-'.srRunner[data-motion="off"] *,.srRunner[data-motion="off"] *::before{animation:none!important;transition:none!important}',
-/* Mobile 390 px : la bulle garde la largeur restante, jamais de défilement horizontal. */
-'@media (max-width:420px){.srRunnerBubble{max-width:none;font-size:14px}.srRunner[data-side="top"] .srRunnerBubble,.srRunner[data-side="bottom"] .srRunnerBubble{align-self:stretch}}'
+'.srRunner[data-motion="off"] *,.srRunner[data-motion="off"] *::before{animation:none!important;transition:none!important}'
 ].join('');
 
 function ensureStyle(doc){
@@ -250,7 +291,16 @@ function ensureStyle(doc){
 /* ---------------------------------------------------------------- instances */
 let uid=0;
 const instances=[];
+const ICONS='<span class="srRunnerIcon" aria-hidden="true">'
+  +'<svg class="rnIconAlert" viewBox="0 0 24 24" focusable="false"><path d="M12 3.2c.5 0 1 .3 1.3.8l8 14c.6 1-.1 2.2-1.3 2.2H4c-1.2 0-1.9-1.2-1.3-2.2l8-14c.3-.5.8-.8 1.3-.8z" fill="'+TONES.alert.accent+'"/><rect x="11" y="8.5" width="2" height="6.5" rx="1" fill="#fff"/><circle cx="12" cy="17.6" r="1.2" fill="#fff"/></svg>'
+  +'<svg class="rnIconOk" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="10" fill="'+TONES.success.accent+'"/><path d="M7.6 12.4l3 3 5.8-6.2" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  +'</span>';
 
+/* Oublie les Runners dont l'écran hôte a retiré le conteneur : un écran qui se redessine à chaque
+   rendu et rappelle `mount` ne laisse donc aucune instance orpheline derrière lui. */
+function prune(){
+  for(let i=instances.length-1;i>=0;i--)if(!instances[i].isConnected())instances.splice(i,1);
+}
 function resolveContainer(doc,target){
   if(!target)return null;
   if(typeof target==='string'){try{return doc.querySelector(target)}catch(e){return null}}
@@ -266,20 +316,22 @@ function restart(el,className){
 function createInstance(doc,options){
   const opts=options&&typeof options==='object'?options:{};
   const id=++uid;
+  const variant=variantFrom(opts.variant);
   const host=doc.createElement('div');
   host.className='srRunner';
   host.setAttribute('data-sr-runner','');
   host.innerHTML='<div class="srRunnerFigure" role="img">'+ART.split('{u}').join(String(id))+'</div>'
-    +'<div class="srRunnerBubble" hidden aria-hidden="true"><b class="srRunnerBubbleTitle"></b><span class="srRunnerBubbleText"></span></div>'
+    +'<div class="srRunnerBubble" hidden aria-hidden="true">'+ICONS+'<span class="srRunnerBubbleBody"><b class="srRunnerBubbleTitle"></b><span class="srRunnerBubbleText"></span></span></div>'
     +'<span class="srRunnerLive" role="status" aria-live="polite" aria-atomic="true"></span>';
-  const figure=host.firstChild;
+  const figure=host.children[0];
   const bubble=host.children[1];
-  const titleEl=bubble.firstChild;
-  const textEl=bubble.lastChild;
-  const live=host.lastChild;
+  const live=host.children[2];
+  const titleEl=bubble.querySelector('.srRunnerBubbleTitle');
+  const textEl=bubble.querySelector('.srRunnerBubbleText');
 
   let state=isState(opts.state)?opts.state:'neutral';
   let destroyed=false;
+  let seen=false;
   let hideTimer=0,resetTimer=0,liveTimer=0;
 
   function clearTimer(timer){if(timer)root.clearTimeout(timer);return 0}
@@ -363,15 +415,21 @@ function createInstance(doc,options){
   }
 
   const inst={
-    id,el:host,
+    id,el:host,variant,
     getState:()=>state,
     setState,showMessage,hideMessage,reset,destroy,
-    isConnected:()=>!destroyed&&host.isConnected
+    /* Vrai tant que le Runner est dans le document, ou n'y a pas encore été posé ; faux dès
+       qu'il en a été retiré (rendu de l'écran hôte) ou détruit. */
+    isConnected:()=>{
+      if(destroyed)return false;
+      if(host.isConnected){seen=true;return true}
+      return !seen;
+    }
   };
 
-  const motion=opts.motion==='off'?'off':'auto';
-  host.setAttribute('data-motion',motion);
-  host.style.setProperty('--sr-runner-size',sizeFrom(opts.size)+'px');
+  host.setAttribute('data-motion',opts.motion==='off'?'off':'auto');
+  host.setAttribute('data-variant',variant);
+  host.style.setProperty('--sr-runner-size',sizeFrom(opts.size,variant)+'px');
   applySide(opts.side);
   host.setAttribute('data-state',state);
   paintLabel();
@@ -383,17 +441,14 @@ function createInstance(doc,options){
 /* Runner « principal » : le dernier monté encore présent dans le document. L'API globale ne
    crée jamais d'instance toute seule : sans Runner monté, elle ne fait rien et répond false. */
 function primary(){
-  for(let i=instances.length-1;i>=0;i--){
-    if(instances[i].isConnected())return instances[i];
-    /* Un conteneur retiré par un rendu de l'écran hôte ne fuit pas : il est oublié ici. */
-    instances.splice(i,1);
-  }
-  return null;
+  prune();
+  return instances.length?instances[instances.length-1]:null;
 }
 function safe(fn,fallback){try{return fn()}catch(e){return fallback}}
 
 /* mount(conteneur, options) → instance, ou null si le conteneur est introuvable. Le propriétaire
-   de l'écran décide de l'emplacement ; Runner ne s'insère jamais ailleurs. */
+   de l'écran décide de l'emplacement ; Runner ne s'insère jamais ailleurs et ne se positionne
+   jamais par rapport à l'écran. */
 function mount(target,options){
   const doc=root.document;
   if(!doc)return null;
@@ -401,8 +456,10 @@ function mount(target,options){
     const container=resolveContainer(doc,target);
     if(!container)return null;
     ensureStyle(doc);
+    prune();
     const inst=createInstance(doc,options);
     container.appendChild(inst.el);
+    inst.isConnected();
     instances.push(inst);
     return inst;
   },null);
@@ -414,7 +471,7 @@ function unmount(ref){
 }
 
 return{
-  VERSION,STATES,STATE_LABELS,SIDES,SIZES,
+  VERSION,STATES,STATE_LABELS,VARIANTS,SIDES,SIZES,TONES,INK,SUBINK,
   isState,normalizeMessage,accessibleLabel,
   mount,unmount,
   setState:(state,opts)=>safe(()=>{const p=primary();return p?p.setState(state,opts):false},false),
@@ -422,6 +479,6 @@ return{
   hideMessage:()=>safe(()=>{const p=primary();return p?p.hideMessage():false},false),
   reset:()=>safe(()=>{const p=primary();return p?p.reset():false},false),
   getState:()=>safe(()=>{const p=primary();return p?p.getState():null},null),
-  mounted:()=>safe(()=>{primary();return instances.length},0)
+  mounted:()=>safe(()=>{prune();return instances.length},0)
 };
 });
