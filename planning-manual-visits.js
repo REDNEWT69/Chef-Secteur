@@ -107,10 +107,10 @@ function unscheduleCheck(win,id,options){
   if(days&&days.has(date))return Object.assign(refuse('completed','visite déjà réalisée ce jour-là : elle ne se déprogramme pas'),base);
   if(state.appointments!==undefined&&!Array.isArray(state.appointments))return Object.assign(refuse('protection','rendez-vous illisibles : protection indisponible'),base);
   if((state.appointments||[]).some(a=>a&&String(a.storeId)===sid&&String(a.date||'').slice(0,10)===date))return Object.assign(refuse('appointment','un rendez-vous est fixé ce jour-là : modifie-le dans Rendez-vous'),base);
-  /* Verrous : la seule lecture admise est celle du propriétaire (storeRunnerLockInfo). Absente ou en erreur, on refuse : jamais « pas de verrou » par défaut. */
+  /* Verrous : la seule lecture admise est celle du propriétaire (storeRunnerLockInfo). Absente, en erreur ou autre chose que null (« aucun verrou ») ou un objet : on refuse, jamais « pas de verrou » par défaut. */
   if(typeof win.storeRunnerLockInfo!=='function')return Object.assign(refuse('protection','lecture des verrous indisponible'),base);
   let lock;try{lock=win.storeRunnerLockInfo(sid)}catch(e){return Object.assign(refuse('protection','lecture des verrous impossible'),base)}
-  if(lock!==null&&lock!==undefined&&(typeof lock!=='object'||Array.isArray(lock)))return Object.assign(refuse('protection','verrou illisible'),base);
+  if(lock!==null&&(typeof lock!=='object'||Array.isArray(lock)))return Object.assign(refuse('protection','verrou illisible'),base);
   if(lock&&lock.day===day&&(lock.recurring||!lock.week||lock.week===currentWeekKey(state)))return Object.assign(refuse('locked','magasin verrouillé ce jour-là : retire d’abord le verrou'),base);
   if(state.included&&state.included[sid])return Object.assign(refuse('imposed','magasin imposé au planning : retire d’abord l’imposition'),base);
   return Object.assign({ok:true},base);

@@ -203,6 +203,9 @@ const KEEP = ['bl', 'blim'];
   await blocked('magasin verrouillé ce jour', { locks: { blim: { day: 'Lundi', week: MONDAY } } }, /verrouillé/);
   await blocked('lecture des verrous en erreur', {}, /lecture des verrous impossible/, 'Déprogramme Limonest lundi', t => { t.ctx.storeRunnerLockInfo = () => { throw new Error('boom'); }; });
   await blocked('lecture des verrous absente', {}, /lecture des verrous indisponible/, 'Déprogramme Limonest lundi', t => { t.ctx.storeRunnerLockInfo = undefined; });
+  for (const [name, value] of [['undefined', undefined], ['chaîne vide', ''], ['chaîne', 'oui'], ['tableau', []], ['nombre', 0], ['faux', false]])
+    await blocked('verrou illisible (' + name + ')', {}, /verrou illisible/, 'Déprogramme Limonest lundi', t => { t.ctx.storeRunnerLockInfo = () => value; });
+  await blocked('magasin imposé', {}, /imposé/, 'Déprogramme Limonest lundi', t => { t.ctx.state.included = { blim: true }; });
   await blocked('verrou illisible', {}, /verrou illisible/, 'Déprogramme Limonest lundi', t => { t.ctx.storeRunnerLockInfo = () => 'oui'; });
   await blocked('visites réalisées illisibles', {}, /protection des visites réalisées indisponible/, 'Déprogramme Limonest lundi', t => { t.ctx.StoreRunnerActivityMetrics = undefined; });
   await blocked('rendez-vous illisibles', {}, /rendez-vous illisibles/, 'Déprogramme Limonest lundi', t => { t.ctx.state.appointments = 'x'; });
@@ -210,6 +213,16 @@ const KEEP = ['bl', 'blim'];
   await blocked('journée passée (sans jour)', { now: '2026-10-06T07:00:00' }, /pas prévu/, 'Déprogramme Limonest');
   await blocked('magasin absent du jour', {}, /n’est pas prévu le mardi/, 'Déprogramme Limonest mardi');
   await blocked('magasin inconnu', {}, /Je ne trouve pas/, 'Déprogramme Zorglub lundi');
+  {
+    /* null = « aucun verrou » : c'est la seule absence de verrou admise. */
+    const t = boot();
+    t.ctx.storeRunnerLockInfo = () => null;
+    const session = await t.run('Déprogramme Limonest lundi');
+    assert.equal(session.simulation.canApply, true, JSON.stringify(session.simulation.blocking));
+    const direct = await t.ctx.StoreRunnerManualPlanning.unscheduleCheck(t.ctx, 'blim', { day: 'Lundi' });
+    assert.equal(direct.ok, true);
+    ok('seul null signifie « aucun verrou »');
+  }
   {
     /* Verrou lisible mais posé un AUTRE jour, et visite faite un autre jour : aucune protection ne s'applique à tort. */
     const t = boot({ locks: { blim: { day: 'Jeudi', week: MONDAY } }, visits: { blim: { lastVisit: '2026-09-01', history: ['2026-09-01'] } } });
