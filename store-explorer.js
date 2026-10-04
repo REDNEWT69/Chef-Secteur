@@ -64,7 +64,11 @@ function contextFor(state,options){
     try{needOf=C.needOf(state,{today,priorities:o.priorities,visitDays:o.visitDays})}catch(e){needOf=null}
     try{planned=C.plannedDates(state,archive,today)}catch(e){planned=new Map()}
   }
-  return{state:state||{},today,archive,C,needOf,planned,cache:new Map()};
+  /* Priorité du parc (P1/P2 du dernier fichier performance), indépendante du statut « traité » : un P1
+     traité reste P1 dans « Mes magasins ». `needOf` garde son propre filtre pour les moteurs. */
+  let park=o.priorities instanceof Map?o.priorities:new Map();
+  if(!(o.priorities instanceof Map)&&C&&typeof C.performancePriorities==='function'){try{park=C.performancePriorities(state,{includeTreated:true})}catch(e){park=new Map()}}
+  return{state:state||{},today,archive,C,needOf,planned,park,cache:new Map()};
 }
 function needFor(ctx,store){try{return ctx.needOf?ctx.needOf(store):null}catch(e){return null}}
 
@@ -193,7 +197,7 @@ function profileFor(state,storeId,options,shared){
     nextVisit:next?{date:next.date,kind:next.kind}:null,
     nextDue:need&&need.nextDue||'',
     plannedDate:planned,nextAppointment:nextAppt,
-    priority:need&&need.priority||'',
+    priority:ctx.park.get(id)||'',
     contacts:contactsOf(state,id),
     note:String((state&&state.notes&&state.notes[id])||''),
     constraints:constraintsFor(state,id,options,ctx),
@@ -210,7 +214,7 @@ function listContext(options){
 }
 function rowOf(ctx,store){
   const id=String(store&&store.id);let row=ctx.cache.get(id);
-  if(!row){const need=needFor(ctx,store);row={need,planned:ctx.planned.get(id)||'',priority:need&&need.priority||'',constraints:null};ctx.cache.set(id,row)}
+  if(!row){const need=needFor(ctx,store);row={need,planned:ctx.planned.get(id)||'',priority:ctx.park.get(id)||'',constraints:null};ctx.cache.set(id,row)}
   return row;
 }
 function priorityKey(row){return row.priority==='P1'||row.priority==='P2'?row.priority:'P3'}
@@ -327,9 +331,16 @@ function sectionHtml(p,opts){
   return'<h3>Magasin 360</h3>'+facts+counts+links+'<h3>Contraintes actives</h3>'+cons+'<h3>Contacts</h3>'+contacts+'<h3>Frise du magasin</h3>'+timeline;
 }
 function quickStoreId(doc){const b=doc.getElementById('srQuickStart');return b&&b.dataset?String(b.dataset.srStart||''):''}
+/* Feuille fermée : les photos lues ne valent plus. Une photo ajoutée ou supprimée entre deux ouvertures
+   (galerie, visite) doit apparaître à la réouverture du même magasin ; une lecture encore en vol est ignorée. */
+function invalidatePhotos(doc){
+  const old=doc&&doc.getElementById(SECTION_ID);
+  if(old){old.__photoGen=(old.__photoGen||0)+1;old.__photoRows=null;old.__photos=null;old.__photoLoading=''}
+}
 function renderSection(win,extra){
   const doc=win&&win.document;if(!doc||!win.state)return false;
-  const sheet=doc.getElementById('storeQuickSheet');if(!sheet||!sheet.classList.contains('open'))return false;
+  const sheet=doc.getElementById('storeQuickSheet');
+  if(!sheet||!sheet.classList.contains('open')){invalidatePhotos(doc);return false}
   const id=quickStoreId(doc);if(!id)return false;
   const p=profileFor(win.state,id);if(!p)return false;
   ensureCss(doc);
@@ -337,7 +348,7 @@ function renderSection(win,extra){
   if(!sec){sec=doc.createElement('section');sec.id=SECTION_ID;sec.setAttribute('aria-label','Fiche magasin 360')}
   const grid=sheet.querySelector('.sheetGrid');
   if(grid&&sec.previousElementSibling!==grid)grid.insertAdjacentElement('afterend',sec);else if(!sec.parentNode)sheet.appendChild(sec);
-  if(sec.dataset.store!==id){sec.dataset.store=id;sec.__expanded=false;sec.__photos=null;sec.__photoRows=null}
+  if(sec.dataset.store!==id){sec.dataset.store=id;sec.__expanded=false;sec.__photos=null;sec.__photoRows=null;sec.__photoGen=(sec.__photoGen||0)+1;sec.__photoLoading=''}
   const timeline=sec.__photoRows?mergePhotos(p.timeline,sec.__photoRows):p.timeline;
   const html=sectionHtml(p,{expanded:sec.__expanded,timeline,photoCount:sec.__photos});
   if(sec.__html!==html){sec.innerHTML=html;sec.__html=html}
@@ -345,8 +356,8 @@ function renderSection(win,extra){
      ignoré si la feuille est passée à un autre magasin entre-temps. */
   const P=win.StorePhotosV1;
   if(P&&typeof P.list==='function'&&sec.__photoLoading!==id&&sec.__photoRows==null){
-    sec.__photoLoading=id;
-    Promise.resolve().then(()=>P.list(id)).then(rows=>{if(sec.dataset.store!==id)return;sec.__photoRows=rows;sec.__photos=rows.length;renderSection(win)}).catch(()=>{if(sec.dataset.store===id){sec.__photoRows=[];sec.__photos=null}});
+    const gen=sec.__photoGen||0;sec.__photoLoading=id;
+    Promise.resolve().then(()=>P.list(id)).then(rows=>{if(sec.dataset.store!==id||(sec.__photoGen||0)!==gen)return;sec.__photoRows=rows;sec.__photos=rows.length;renderSection(win)}).catch(()=>{if(sec.dataset.store===id&&(sec.__photoGen||0)===gen){sec.__photoRows=[];sec.__photos=null}});
   }
   return true;
 }
@@ -382,7 +393,11 @@ function install(win){
     const sheet=doc.getElementById('storeQuickSheet');if(!sheet)return;
     /* Borné à la feuille et aux seuls attributs qui signalent ouverture ou changement de magasin :
        l'écriture de la section elle-même ne relance rien. */
-    observer=new win.MutationObserver(()=>schedule());
+    observer=new win.MutationObserver(()=>{
+      /* Invalidation immédiate, sans attendre l'image suivante : la réouverture ne doit jamais lire un cache périmé. */
+      if(!sheet.classList.contains('open'))invalidatePhotos(doc);
+      schedule();
+    });
     observer.observe(sheet,{subtree:true,attributes:true,attributeFilter:['class','data-sr-start']});
   };
   doc.addEventListener('click',e=>onAction(win,e));

@@ -42,7 +42,7 @@ propriétaire.
 
 `store-explorer.js` (`StoreRunnerStoreExplorer`) ajoute au-dessus de la liste un titre, des compteurs et deux
 rangées de filtres : **P1 · P2 · P3 / autres** et **À visiter · En retard · Jamais visité**. P1/P2 sont ceux du
-dernier fichier performance importé (`performancePriorities`, V263) ; **P3 = tout le reste** (aucun P3 n'existe
+dernier fichier performance importé (`performancePriorities(state,{includeTreated:true})`, V263 : la priorité du parc ne dépend pas du statut « traité » ; le défaut, utilisé par les moteurs, reste inchangé) ; **P3 = tout le reste** (aucun P3 n'existe
 dans le fichier). « À visiter » = jamais visité, en retard ou à revoir bientôt ; « En retard » = ratio ≥ 100 %
 de la fréquence. Chaque ligne affiche statut, priorité, **dernière** et **prochaine** visite (date planifiée,
 sinon échéance) et le nombre de contraintes. Un filtre de statut trie par palier métier (V263.3).

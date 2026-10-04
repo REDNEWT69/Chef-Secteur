@@ -100,6 +100,37 @@ test('Mes magasins filtrable, fiche 360 avec contraintes, frise et liens',async(
   await expect(refused).toBeDisabled();
   await expect(refused).toContainText('Exclu du planning');
   await expect(refused).toContainText('Réactiver');
+  await expect(page.locator('#pmvResults p.tiny'),'pas de « Aucun magasin trouvé » à côté d’un résultat refusé').toHaveCount(0);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth)).toBeLessThanOrEqual(1);
+  expect(errors).toEqual([]);
+});
+
+/* Revue PR #496 : les photos de la fiche se relisent à chaque ouverture, même pour le même magasin. */
+test('fiche 360 : photo ajoutée entre deux ouvertures du même magasin',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+  await page.clock.install({time:new Date('2026-10-07T09:00:00')});
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.StoreRunnerStoreExplorer&&window.StorePhotosV1&&window.state&&window.__chefStorage);
+  await page.clock.runFor(1500);
+  await page.evaluate(()=>{
+    const a={id:'ph-a',enseigne:'Enseigne',ville:'Photo',adresse:'1 rue Test',dept:'69',lat:45.7,lon:4.8,freq:'Mensuel',active:true,priority:3,products:['Blanc']};
+    state.stores=[a];state.plan={Lundi:[],Mardi:[],Mercredi:[],Jeudi:[],Vendredi:[],Samedi:[]};state.appointments=[];state.locks={};state.included={};state.excluded={};
+    window.__rows=[{createdAt:'2026-10-05T12:00:00Z'}];window.__calls=0;
+    StorePhotosV1.list=async()=>{window.__calls++;return window.__rows.slice()};
+    save();renderAll();goTab('storesPanel');renderStores();openStoreQuick('ph-a');
+  });
+  const sec=page.locator('#srStore360');
+  await expect(sec.locator('[data-sr-x-counts]')).toContainText('1 photo');
+  await page.evaluate(()=>closeStoreQuick());
+  await expect(page.locator('#storeQuickSheet')).not.toHaveClass(/open/);
+  await page.evaluate(()=>{window.__rows=[{createdAt:'2026-10-05T12:00:00Z'},{createdAt:'2026-10-06T12:00:00Z'}]});
+  await page.evaluate(()=>openStoreQuick('ph-a'));
+  await expect(sec.locator('[data-sr-x-counts]')).toContainText('2 photos');
+  await expect(sec.locator('.srXTl [data-kind="photos"]')).toHaveCount(2);
+  expect(await page.evaluate(()=>window.__calls)).toBeGreaterThanOrEqual(2);
+  // Suppression : retour à zéro à la réouverture.
+  await page.evaluate(()=>{closeStoreQuick();window.__rows=[]});
+  await page.evaluate(()=>openStoreQuick('ph-a'));
+  await expect(sec.locator('[data-sr-x-counts]')).toContainText('0 photo');
   expect(errors).toEqual([]);
 });

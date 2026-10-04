@@ -85,8 +85,10 @@ function visitDays(state){
 }
 /* P1/P2 du dernier fichier performance importé, hors magasins déjà « traités » cette
    semaine — même lecture que V211 et que les suggestions du planning manuel. */
-function performancePriorities(state){
-  const out=new Map();
+/* `includeTreated` (Explorer Terrain V1) : priorité du PARC, telle que le fichier performance la donne, même
+   pour un magasin « traité » cette semaine. Les moteurs gardent le défaut : un magasin traité ne se reprogramme pas. */
+function performancePriorities(state,options){
+  const out=new Map(),keepTreated=!!(options&&options.includeTreated===true);
   try{
     const P=root&&root.StoreRunnerPerformanceV190,db=storage();
     if(!P||!db||typeof P.latestSnapshot!=='function'||typeof P.matchRows!=='function'||typeof P.readStore!=='function')return out;
@@ -94,7 +96,7 @@ function performancePriorities(state){
     const data=P.readStore(db)||{},rows=((P.matchRows(snap.rows,(state&&state.stores)||[],data.mapping||{})||{}).rows)||[];
     for(const r of rows){
       if(!r||r.storeId==null)continue;const prio=String(r.prio||'');if(prio!=='P1'&&prio!=='P2')continue;
-      try{if(typeof P.isTreated==='function'&&P.isTreated(db,snap.week,r.storeId))continue}catch(e){}
+      try{if(!keepTreated&&typeof P.isTreated==='function'&&P.isTreated(db,snap.week,r.storeId))continue}catch(e){}
       out.set(String(r.storeId),prio);
     }
   }catch(e){}

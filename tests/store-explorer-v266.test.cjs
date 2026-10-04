@@ -120,6 +120,32 @@ const sorted=X.listContext(Object.assign({state},opts));X.filter.status='todo';c
 assert.equal(sorted.compare,null,'sans filtre de statut, l’ordre alphabétique du noyau est conservé');
 assert.equal(typeof sorted2.compare,'function');X.resetFilters();
 
+// --- Priorité du parc : un P1/P2 « traité » reste P1/P2 dans Mes magasins ---------------------------------------
+{
+  const C=globalThis.StoreRunnerVisitCoverage,saved={db:globalThis.__chefStorage,perf:globalThis.StoreRunnerPerformanceV190};
+  globalThis.__chefStorage={getItem(){return null}};
+  globalThis.StoreRunnerPerformanceV190={
+    latestSnapshot:()=>({week:'2026-W41',rows:[{storeId:'a',prio:'P1'},{storeId:'b',prio:'P2'}]}),
+    matchRows:rows=>({rows}),readStore:()=>({mapping:{}}),
+    isTreated:(db,week,id)=>String(id)==='a'
+  };
+  try{
+    assert.deepEqual([...C.performancePriorities(state)],[['b','P2']],'défaut inchangé : les moteurs ignorent un magasin traité');
+    assert.deepEqual([...C.performancePriorities(state,{includeTreated:true})],[['a','P1'],['b','P2']],'priorité du parc, traités compris');
+    const o={today:TODAY,archive};
+    assert.equal(C.need(state,stores[0],{today:TODAY}).priority,'','le besoin de visite (moteurs) reste sans P1 pour un magasin traité');
+    const p=X.profileFor(state,'a',o);
+    assert.equal(p.priority,'P1','fiche : un P1 traité reste P1');
+    const lc=X.listContext(Object.assign({state},o));
+    const set2=(priority,status)=>{X.filter.priority=priority;X.filter.status=status;lc.filter={priority,status}};
+    set2('P1','all');assert.deepEqual(stores.filter(x=>X.matches(x,lc)).map(x=>x.id),['a'],'le filtre P1 garde le P1 traité');
+    set2('P3','all');assert.ok(!stores.some(x=>x.id==='a'&&X.matches(x,lc)),'un P1 traité n’est jamais « P3 / autres »');
+    X.resetFilters();
+    assert.match(X.rowHtml(stores[0],lc),/srXp">P1</,'la ligne affiche P1');
+    assert.equal(X.counts(lc.ctx).priority.P1,1);
+  }finally{globalThis.__chefStorage=saved.db;globalThis.StoreRunnerPerformanceV190=saved.perf;if(saved.db===undefined)delete globalThis.__chefStorage;if(saved.perf===undefined)delete globalThis.StoreRunnerPerformanceV190}
+}
+
 // --- Aucune écriture, aucun second propriétaire -----------------------------------------------------------------------
 assert.equal(JSON.stringify(state),frozen,'lire ne modifie jamais state');
 const src=fs.readFileSync(__dirname+'/../store-explorer.js','utf8');
