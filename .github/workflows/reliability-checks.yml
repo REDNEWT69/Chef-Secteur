@@ -91,6 +91,7 @@ jobs:
       - run: node tests/planning-manual-week-protection.test.cjs
       - run: node tests/planning-command-engine.test.cjs
       - run: node tests/planning-command-owners.test.cjs
+      - run: node tests/assistant-action-truth-r44.test.cjs
       - run: node tests/planning-command-simulation.test.cjs
       - run: node tests/planning-command-benchmark.test.cjs
       - run: node tests/planning-manual-visits.test.cjs

@@ -4,7 +4,7 @@ Runner est le copilote **visuel** de Store Runner : un personnage, quatre états
 
 **Mobile uniquement, Android d'abord.** Store Runner est Android-first : Runner a été pensé et validé sur Android, puis adapté à l'iPhone. Il n'a aucune mise en page desktop : sa feuille de style ne contient aucune requête de largeur. Références : **Pixel 7 (412 px)** et **Galaxy S8 (360 px, Samsung)**, puis iPhone 14 ; 320 px sans défilement horizontal. L'application installée est verrouillée en portrait (`portrait-primary` dans le manifeste) : le paysage n'est pas un cas de conception, seulement de robustesse. En cas de doute entre desktop et mobile, c'est le mobile qui a été choisi.
 
-- Build `20261004-r43-runner-planning-269`, version visible **269** (« Quoi de neuf » : « Runner arrive dans ton Planning » ; la V268, « Runner, ton copilote, dans l'Assistant », reste dessous).
+- Build `20261004-r44-assistant-action-truth-269`, version visible **269** (« Quoi de neuf » : « Runner arrive dans ton Planning » ; la V268, « Runner, ton copilote, dans l'Assistant », reste dessous).
 - Budget de démarrage **77 scripts** (inchangé en V269 : aucun script ajouté) et entrée de shell dans `sw.js` (posée en V268) : décisions explicitement validées.
 - Module : `runner-visual.js` (`StoreRunnerRunner`, alias `Runner`). Un seul fichier, aucune dépendance, aucune feuille séparée.
 

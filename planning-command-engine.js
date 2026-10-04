@@ -30,7 +30,7 @@ const WEEKDAY_NAMES=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','s
 const ARCHIVE_KEY='chef_sector_plan_archive_v1';
 const JOURNAL_KEY='store-runner-planning-command-log-v1';
 const JOURNAL_MAX=30;
-const ACTIONS=['plan_visits','place_stores','recalculate_rest_of_week'];
+const ACTIONS=['plan_visits','place_stores','recalculate_rest_of_week','unschedule_store'];
 const PRIORITIES=['P1','P2'];
 const MAX_WEEKS=6,MAX_LIST=20,MAX_QUERY=80,PREVIEW_TTL_MS=10*60*1000,ORIGIN_TOLERANCE_KM=1;
 const DAY_MS=86400000;
@@ -81,7 +81,8 @@ const VERBS=[
   ['place',/^(mets|met|mettre|ajoute|ajouter|rajoute|rajouter|place|placer|positionne|positionner|deplace|deplacer|decale|decaler|cale|caler)$/],
   ['keep',/^(garde|garder|conserve|conserver|laisse|laisser)$/],
   ['avoid',/^(evite|eviter)$/],
-  ['recalc',/^(recalcule|recalculer|recalcul)$/]
+  ['recalc',/^(recalcule|recalculer|recalcul)$/],
+  ['unschedule',/^(deprogramme|deprogrammes|deprogrammer|deprograme|deprogramer)$/]
 ];
 const DESTRUCTIVE=/\b(supprime|supprimer|efface|effacer|vide|vider|annule|annuler|retire|retirer|enleve|enlever)\b/;
 const POLITE=new Set(['peux','pourrais','pourrait','peut','tu','vous','on','je','j','veux','voudrais','aimerais','souhaite','il','faut','faudrait','stp','svp','merci','bonjour','salut','ok','alors','est','ce','que','qu','vas','va','y','please','hey']);
@@ -237,6 +238,24 @@ function parse(text,ctx){
     }
     for(const s of segments){while(s.tokens.length&&(s.tokens[s.tokens.length-1]==='et'||s.tokens[s.tokens.length-1]==='puis'))s.tokens.pop();s.text=s.tokens.join(' ')}
   }
+  let unschedule=null;
+  if(segments.some(s=>s.kind==='unschedule')){
+    /* Déprogrammation : un seul magasin, un jour facultatif (sans jour : la semaine en cours). */
+    if(segments.length>1)return clarify('Une seule déprogrammation par commande, sans autre consigne : « Déprogramme Limonest lundi ».');
+    const {chunks,pending}=chunkStoresAndDays(segments[0].text.split(' ').filter(Boolean),options.today);
+    if(chunks.length>1)return clarify('Un seul jour à la fois : « Déprogramme Limonest lundi ».');
+    if(!chunks.length){
+      if(!pending||!pending.length)return clarify('Quel magasin déprogrammer ? Exemple : « Déprogramme Limonest lundi ».');
+      if(pending.length>1)return clarify('Un seul magasin à la fois : « Déprogramme Limonest lundi ».');
+      unschedule={query:pending[0],ref:null};
+    }else{
+      const c=chunks[0];
+      if(c.ref.kind==='invalid')return clarify('La date « '+c.ref.text+' » n’existe pas.');
+      if(!c.queries.length)return clarify('Quel magasin déprogrammer '+c.ref.text+' ?');
+      if(c.queries.length>1)return clarify('Un seul magasin à la fois : « Déprogramme Limonest lundi ».');
+      unschedule={query:c.queries[0],ref:c.ref};
+    }
+  }
   if(segments.some(s=>s.kind==='recalc')){
     if(segments.length>1)return clarify('Une seule consigne avec un recalcul : « Recalcule seulement le reste de ma semaine ».');
     if(!/\b(?:reste|semaine)\b/.test(segments[0].text))return clarify('Que faut-il recalculer ? Exemple : « Recalcule seulement le reste de ma semaine ».');
@@ -244,7 +263,9 @@ function parse(text,ctx){
     return{kind:'intent',intent:emptyIntent('recalculate_rest_of_week',{start:options.today,end:sundayOf(options.today)}),acknowledged};
   }
   const dayRefs=[],exact=[],keep=[],forbidden=[],windows=[];let plan=null;
+  if(unschedule&&unschedule.ref)dayRefs.push(unschedule.ref);
   for(const seg of segments){
+    if(seg.kind==='unschedule')continue;
     if(seg.kind==='around'){
       const {chunks,pending}=chunkStoresAndDays(seg.text.split(' '),options.today);
       const queries=chunks.length?chunks[0].queries:(pending||[]);
@@ -293,6 +314,11 @@ function parse(text,ctx){
     if(r.date<options.today)return unsupported('Le '+label(r.date)+' est passé : une commande ne modifie jamais le passé.');
   }
   const uniqueDates=[...new Set(dayRefs.map(r=>r.date))].sort();
+  if(unschedule){
+    const date=unschedule.ref&&unschedule.ref.date,scope=date?{start:date,end:date}:{start:options.today,end:sundayOf(options.today)};
+    const intent=emptyIntent('unschedule_store',scope);intent.filters.stores=storeRefs([unschedule.query]);
+    return{kind:'intent',intent,acknowledged};
+  }
   let action,scope;
   if(plan||forbidden.length){
     action='plan_visits';
@@ -369,6 +395,10 @@ function validate(intent,options){
     if(!c.exactDays.length&&!c.keepDays.length)throw new Error('Placement sans magasin.');
     const monday=mondayOf(intent.scope.start);
     if(intent.scope.end!==addDays(monday,6)||[...c.exactDays,...c.keepDays].some(r=>mondayOf(r.date)!==monday))throw new Error('Un placement porte sur une seule semaine.');
+  }
+  if(action==='unschedule_store'){
+    if(f.priorities.length||f.brands.length||f.stores.length!==1||c.exactDays.length||c.keepDays.length||c.windowDays.length||c.forbidden.length||c.distribution!=='asap')throw new Error('Une déprogrammation vise un seul magasin, sans autre consigne.');
+    if(mondayOf(intent.scope.start)!==mondayOf(intent.scope.end))throw new Error('Une déprogrammation porte sur une seule semaine.');
   }
   if(action==='recalculate_rest_of_week'){
     if(hasFilters||c.exactDays.length||c.keepDays.length||c.windowDays.length||c.forbidden.length||c.distribution!=='asap')throw new Error('Le recalcul ne prend aucun filtre ni contrainte.');
@@ -727,6 +757,30 @@ function simulatePlace(ctx,intent){
   return{weeks:[{weekKey,before,after:sim.plan}],blocking:dedupe(blocking),warnings:dedupe(warnings),notes,payload,keepRows,appointmentsChanged:r.appointments,locksChanged:r.locks};
 }
 
+/* Déprogrammation : le moteur ne décide rien. Les protections (journée passée, visite réalisée,
+   rendez-vous, verrou, magasin imposé) sont celles du propriétaire du Planning, appelées sur une
+   copie de la semaine ; elles échouent fermées. L'écriture réelle est unscheduleStore, à l'application. */
+function simulateUnschedule(ctx,intent){
+  const blocking=[],warnings=[],M=ctx.manual,id=intent.filters.stores[0].id,store=storeById(ctx,id),name=storeLabel(store||{enseigne:id});
+  if(!M||typeof M.unscheduleCheck!=='function'||typeof M.unscheduleStore!=='function')return{weeks:[],blocking:[{code:'owner_missing',message:'La déprogrammation n’est pas disponible : rien n’a été modifié.'}],warnings};
+  const weekKey=mondayOf(intent.scope.start),before=weekPlanFrom(ctx,weekKey);
+  const day=DAYS.find(d=>{const date=dateOfDay(weekKey,d);return date>=intent.scope.start&&date<=intent.scope.end&&(before[d]||[]).some(x=>String(x.id)===String(id))});
+  if(!day){
+    const where=intent.scope.start===intent.scope.end?DAYS_LABEL(intent.scope.start):'la semaine du '+label(weekKey);
+    return{weeks:[],blocking:[{code:'not_planned',message:name+' n’est pas prévu '+(intent.scope.start===intent.scope.end?'le ':'sur ')+where+' : rien à déprogrammer.'}],warnings};
+  }
+  const date=dateOfDay(weekKey,day),sim=copy(ctx.state);
+  sim.plan=copy(before);sim.settings=Object.assign({},sim.settings,{weekDate:weekKey});
+  let check;try{check=M.unscheduleCheck(ctx.win,id,{day,state:sim})}catch(e){check={ok:false,error:'protections illisibles'}}
+  if(!check||!check.ok)return{weeks:[],blocking:[{code:(check&&check.code)||'protection',message:name+' '+DAYS_LABEL(date)+' : '+((check&&check.error)||'protections illisibles')+'.'}],warnings};
+  const after=copy(before);after[day]=(after[day]||[]).filter(x=>String(x.id)!==String(id));
+  const r=candidateIssues(ctx,intent,weekKey,before,after,ctx.today,true);
+  for(const x of r.issues)blocking.push(x);
+  const notes=[];if(weekKey!==shownWeekKey(ctx))notes.push('La semaine du '+label(weekKey)+' s’ouvrira à l’application.');
+  const payload={type:'manual',weekKey,ops:[{kind:'unschedule',storeId:String(id),day}],expected:planIds(after)};
+  return{weeks:[{weekKey,before,after}],blocking:dedupe(blocking),warnings,notes,payload,appointmentsChanged:r.appointments,locksChanged:r.locks};
+}
+
 function simulateRecalc(ctx,intent){
   const cascade=ctx.cascade;
   if(!cascade||typeof cascade.build!=='function'||typeof cascade.applyResult!=='function')return{weeks:[],blocking:[{code:'owner_missing',message:'Le recalcul n’est pas encore chargé.'}],warnings:[]};
@@ -750,7 +804,7 @@ function simulateRecalc(ctx,intent){
    date et une intention identiques. */
 function simulate(intent,ctx){
   const checked=validate(intent,{stage:'resolved',today:ctx.today});
-  const base=checked.action==='plan_visits'?simulatePlan(ctx,checked):checked.action==='place_stores'?simulatePlace(ctx,checked):simulateRecalc(ctx,checked);
+  const base=checked.action==='plan_visits'?simulatePlan(ctx,checked):checked.action==='place_stores'?simulatePlace(ctx,checked):checked.action==='unschedule_store'?simulateUnschedule(ctx,checked):simulateRecalc(ctx,checked);
   return finishSimulation(ctx,checked,base);
 }
 
@@ -842,6 +896,7 @@ async function apply(simulation,ctx,meta){
       }
       for(const op of p.ops){
         if(op.kind==='add'){const res=await ctx.manual.addStore(ctx.win,op.storeId,op.day);if(!res||!res.ok)throw new Error((res&&res.error)||'Placement refusé par le planning manuel.')}
+        else if(op.kind==='unschedule'){const res=await ctx.manual.unscheduleStore(ctx.win,op.storeId,{day:op.day});if(!res||!res.ok||!res.verified)throw new Error((res&&res.error)||'Déprogrammation refusée par le planning.')}
         else if(op.kind==='pin'){if(typeof ctx.pin!=='function'||!ctx.pin(op.storeId,op.day))throw new Error('Pose impossible pour un magasin conservé.')}
         ctx.refresh();
       }
@@ -1060,7 +1115,7 @@ async function start(text,options){
   if(session.status==='preview'){
     renderPreview(text,session,options);
     const t=session.simulation.totals;
-    bot(session.simulation.canApply?'Aperçu prêt : '+[t.requested?t.placedTargets+'/'+t.requested+' magasins demandés placés':'',t.added?t.added+' ajout'+(t.added>1?'s':''):'',t.moved?t.moved+' déplacement'+(t.moved>1?'s':''):''].filter(Boolean).join(' · ')+'. Rien n’est modifié tant que tu n’as pas appuyé sur « Appliquer ».':'Aperçu sans application possible : '+(session.preview.blocking[0]||session.preview.notes[0]||'rien à changer')+'.');
+    bot(session.simulation.canApply?'Aperçu prêt : '+[t.requested?t.placedTargets+'/'+t.requested+' magasins demandés placés':'',t.added?t.added+' ajout'+(t.added>1?'s':''):'',t.removed?t.removed+' retrait'+(t.removed>1?'s':''):'',t.moved?t.moved+' déplacement'+(t.moved>1?'s':''):''].filter(Boolean).join(' · ')+'. Rien n’est modifié tant que tu n’as pas appuyé sur « Appliquer ».':'Aperçu sans application possible : '+(session.preview.blocking[0]||session.preview.notes[0]||'rien à changer')+'.');
   }else if(session.status==='clarify'||session.status==='origin'){renderChoices(text,session,options);bot(session.message)}
   else{renderMessage(text,session.message,session.status==='blocked'||session.status==='unsupported'?'block':'note');bot(session.message)}
   return true;
