@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Runner Visual System V1 — aperçu de test</title>
+<!-- Fixture de test : n'est chargée ni par index.html ni par sw.js. Elle monte le vrai
+     runner-visual.js dans des conteneurs imitant les futurs écrans hôtes (Assistant,
+     Planning, Explorer Terrain, alertes, succès). Aucune donnée de l'application. -->
+<style>
+  html,body{margin:0}
+  body{background:#f2f5fa;color:#10224d;font:15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Arial,sans-serif;padding:16px 16px 40px}
+  h1{font-size:17px;margin:0 0 14px}
+  h2{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#5a6b8c;margin:22px 0 8px}
+  .card{background:#fff;border:1px solid #e1e8f5;border-radius:18px;padding:12px;box-shadow:0 6px 18px rgba(23,44,96,.06)}
+  .row{display:flex;gap:8px}
+  .row>.card{flex:1 1 0;min-width:0;display:flex;justify-content:center}
+  .right{display:flex;justify-content:flex-end}
+</style>
+</head>
+<body>
+<h1>Runner — états et bulles (390 px)</h1>
+
+<h2>Quatre états · sm</h2>
+<div class="row" id="states"></div>
+
+<h2>Assistant · analyse · md, bulle à droite</h2>
+<div class="card" id="assistant"></div>
+
+<h2>Alerte de contrainte · md</h2>
+<div class="card" id="alert"></div>
+
+<h2>Succès après application · lg, bulle en haut</h2>
+<div class="card" id="success"></div>
+
+<h2>Runner à droite, bulle à gauche</h2>
+<div class="card right" id="leftBubble"></div>
+
+<h2>Texte long et nom sans espace</h2>
+<div class="card" id="longText"></div>
+
+<script src="../../runner-visual.js"></script>
+<script>
+(function(){
+  var R=window.Runner;
+  var q=function(id){return document.getElementById(id)};
+  /* mouvement coupé : captures déterministes */
+  var base={motion:'off'};
+  function opt(o){return Object.assign({},base,o)}
+
+  R.STATES.forEach(function(state){
+    var cell=document.createElement('div');
+    cell.className='card';
+    q('states').appendChild(cell);
+    R.mount(cell,opt({state:state,size:'sm',decorative:true}));
+  });
+  R.mount(q('assistant'),opt({state:'analyzing',size:'md',message:'Je vérifie les contraintes, les P1 et les temps de trajet…',title:'Runner'}));
+  R.mount(q('alert'),opt({state:'alert',size:'md',title:'Attention',message:'Schmidt Bourgoin ne tient pas avec une arrivée stricte à 10h30. En mode Flexible ±30 min, je peux le placer jeudi.'}));
+  R.mount(q('success'),opt({state:'success',size:'lg',side:'top',title:'Parfait !',message:'Ta tournée est optimisée. −18 min de trajet.'}));
+  R.mount(q('leftBubble'),opt({state:'neutral',size:'md',side:'left',message:'Prêt quand tu l’es !'}));
+  R.mount(q('longText'),opt({state:'alert',size:'md',message:'Intermarché-Bonneville-Zone-Commerciale-du-Mont-Blanc-Avenue-des-Alpes introuvable dans le secteur actif.'}));
+})();
+</script>
+</body>
+</html>
