@@ -31,7 +31,7 @@ assert(/addEventListener\('toggle',e=>\{if\(e\.target&&e\.target\.id==='planning
 
 // Le panneau ne doit plus être réorganisé pendant la saisie : run() sort tôt tant que le
 // verrou tient, avant reorderPlanning()/compactSettings()/restoreHotelStars().
-assert(/function run\(\)\{css\(\);syncSmartBrief\(\);if\(isEditingLocked\(\)\)return;reorderPlanning\(\);compactSettings\(\);restoreHotelStars\(\)\}/.test(src), 'run() doit sortir avant tout réordonnancement tant que le verrou tient');
+assert(/function run\(\)\{css\(\);syncSmartBrief\(\);if\(isEditingLocked\(\)\)return;reorderPlanning\(\);compactSettings\(\);restoreHotelStars\(\);try\{syncRunner\(\)\}catch\(e\)\{\}\}/.test(src), 'run() doit sortir avant tout réordonnancement — et avant la mise à jour de Runner (V269) — tant que le verrou tient');
 assert(/settings&&!editing/.test(src), 'planningSettings ne doit pas être reparenté pendant une interaction active');
 
 // window.focus et visibilitychange sont interdits par AGENTS.md (pas de réinstallation

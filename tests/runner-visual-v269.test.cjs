@@ -1,9 +1,11 @@
 // Runner Visual System V1 — contrat de la couche visuelle (runner-visual.js).
 // Runner est une présentation pure, pensée MOBILE d'abord (Android puis iPhone) : il ne lit ni
-// n'écrit aucune donnée, n'appelle aucun moteur, n'est branché sur aucun écran, et ne se
-// positionne jamais par rapport à l'écran (ni fixed, ni sticky). Le comportement réel (états,
+// n'écrit aucune donnée, n'appelle aucun moteur, et ne se positionne jamais par rapport à
+// l'écran (ni fixed, ni sticky). Depuis la V269 il est branché dans l'Assistant (V268) et dans le
+// Planning (V269), par leurs propriétaires, et nulle part ailleurs. Le comportement réel (états,
 // variantes, bulles, mouvement, safe areas, 360/390 px) est vérifié dans un vrai Chromium par
-// runner-visual-v268-browser.spec.cjs.
+// runner-visual-v268-browser.spec.cjs, runner-assistant-v268-browser.spec.cjs et
+// runner-planning-v269-browser.spec.cjs.
 const assert = require('assert/strict');
 const fs = require('fs');
 const path = require('path');
@@ -22,9 +24,9 @@ assert.match(index, /'\.\/store-explorer\.js','\.\/runner-visual\.js','\.\/weekl
   'Runner est chargé avant les derniers modules, sans déplacer mobile-ux-v262.js en dernier');
 assert.equal(sw.split('"./runner-visual.js"').length - 1, 1, 'sw.js précache runner-visual.js une seule fois (CORE_SHELL, obligatoire)');
 assert.ok(sw.indexOf('"./runner-visual.js"') < sw.indexOf('const OPTIONAL_SHELL'), 'runner-visual.js est dans le shell obligatoire, pas dans le facultatif');
-assert.equal(version.displayVersion, '268', 'Runner dans l’Assistant est une nouveauté visible : V268');
-assert.match(version.latestBuild, /-268$/, 'le build se termine par la version visible 268');
-assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-268$/);
+assert.equal(version.displayVersion, '269', 'Runner dans le Planning est une nouveauté visible : V269');
+assert.match(version.latestBuild, /-269$/, 'le build se termine par la version visible 269');
+assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-269$/);
 assert.equal(index.match(/const BUILD_REV='([^']+)'/)[1], version.latestBuild);
 assert.equal(sw.match(/const BUILD_REV = "([^"]+)"/)[1], version.latestBuild);
 assert.ok(!fs.existsSync(path.join(__dirname, '..', 'runner-visual.css')), 'aucune feuille séparée : le style est injecté au premier mount');
@@ -177,13 +179,13 @@ vm.runInNewContext(mod, ctxTaken);
 assert.equal(ctxTaken.Runner, existing, 'un global Runner déjà présent n’est jamais écrasé');
 assert.equal(typeof ctxTaken.StoreRunnerRunner.setState, 'function', 'le nom canonique reste disponible');
 
-/* 10. Rien n'est branché : aucun module d'écran ne connaît Runner. */
+/* 10. Deux surfaces branchées, par leur propriétaire : l'Assistant (V268) et le Planning (V269). */
 const consumers = fs.readdirSync(path.join(__dirname, '..')).filter(f => f.endsWith('.js') && f !== 'runner-visual.js');
 const wired = consumers.filter(f => /StoreRunnerRunner|\bRunner\.(setState|showMessage|mount|reset|unmount|getState)\b|window\.Runner\b/.test(read(f)));
-assert.deepEqual(wired, ['assistant-upgrade.js'], 'Runner est branché dans l’Assistant seulement (propriétaire : assistant-upgrade.js) : ' + wired.join(', '));
+assert.deepEqual(wired.sort(), ['assistant-upgrade.js', 'planning-ui-fixes.js'], 'Runner est branché dans l’Assistant (assistant-upgrade.js) et le Planning (planning-ui-fixes.js) seulement : ' + wired.join(', '));
 assert.doesNotMatch(read('src/chef-secteur.html'), /StoreRunnerRunner|\bRunner\.(setState|showMessage|mount|reset)\b|srRunner/, 'le noyau ne branche pas Runner');
-for (const owner of ['planning-command-engine.js', 'planning-ui-fixes.js', 'store-explorer.js', 'visit-coverage.js', 'planning-generation-controller.js', 'home-refresh-v2.js', 'sector-pilotage.js'])
-  assert.doesNotMatch(read(owner), /StoreRunnerRunner|window\.Runner\b|(?<![A-Za-z])Runner\.(mount|unmount|setState|showMessage|hideMessage|reset|getState)\b|srRunner|srAssistantRunner/, owner + ' ne connaît pas Runner (ni Planning, ni Forecast, ni Command Engine, ni Explorer Terrain)');
+for (const owner of ['planning-command-engine.js', 'store-explorer.js', 'visit-coverage.js', 'planning-generation-controller.js', 'home-refresh-v2.js', 'sector-pilotage.js', 'terrain-planning-v1.js', 'planning-cascade-v181.js', 'range-planner-v2.js', 'store-opening-hours.js', 'planning-pro-plus.js', 'period-day-slider.js'])
+  assert.doesNotMatch(read(owner), /StoreRunnerRunner|window\.Runner\b|(?<![A-Za-z])Runner\.(mount|unmount|setState|showMessage|hideMessage|reset|getState)\b|srRunner|srAssistantRunner|planningRunnerV269/, owner + ' ne connaît pas Runner (ni moteur, ni Forecast, ni Command Engine, ni Explorer Terrain)');
 
 /* 11. Adaptateur Assistant (assistant-upgrade.js) : présentation pure, dérivée du chat, sans timer ni persistance. */
 const assistant = read('assistant-upgrade.js');
@@ -212,14 +214,56 @@ for (const marker of ['Commande appliquée', 'Application impossible']) assert.o
 for (const marker of ['IA en ligne indisponible', 'Erreur :', 'Application impossible']) assert.ok(adapter.includes("'" + marker + "'"), 'alerte : ' + marker);
 for (const marker of ['Actions appliquées', 'Commande appliquée', 'Semaine générée', 'a été régénéré']) assert.ok(adapter.includes("'" + marker + "'"), 'succès : ' + marker);
 
+/* 12. Adaptateur Planning (planning-ui-fixes.js) : présentation pure, lit les propriétaires, n'écrit rien. */
+const fixes = read('planning-ui-fixes.js');
+const padapter = fixes.slice(fixes.indexOf('const RUNNER_SLOT_ID'), fixes.indexOf('function choiceSummary'));
+assert.ok(padapter.length > 3000, 'adaptateur Planning trouvé');
+assert.doesNotMatch(padapter, /setTimeout|setInterval|requestAnimationFrame/, 'aucun timer dans l’adaptateur Planning (seul `resetAfter` de Runner, une fois)');
+assert.doesNotMatch(padapter, /localStorage|sessionStorage|__chefStorage|indexedDB|\bsave\s*\(/, 'aucune persistance');
+assert.doesNotMatch(padapter, /\bstate\.[\w.\[\]'"]+\s*=(?!=)|window\.state\s*=(?!=)|Object\.assign\(\s*state\b|\bstate\.[\w.]+\.(push|splice|pop|shift|unshift|sort|reverse)\(/, 'aucune écriture dans state');
+assert.doesNotMatch(padapter, /renderAll|renderWeek|generateWeek|regenerateDay|storeRunnerGenerateThreeWeeks|recalculatePlanningCascade\(|StoreRunnerPlanningCommandEngine|ChefReliability|\.propose\(|\.checkpoint\(/, 'aucun moteur, aucune génération, aucun recalcul, aucune commande n’est appelé');
+assert.doesNotMatch(padapter, /StoreRunnerVisitCoverage\.(need|needOf|compute|evaluate|blocked|plannedDates|visitDays)\b/, 'aucun second calcul de couverture');
+assert.equal((padapter.match(/forecastThreeWeeks\(/g) || []).length, 1, 'un seul appel au forecast, celui de son propriétaire');
+assert.equal((padapter.match(/scheduleRoute\(/g) || []).length, 1, 'un seul appel à l’ordonnanceur, en lecture');
+assert.doesNotMatch(padapter, /innerHTML/, 'texte posé par Runner en textContent, jamais en HTML');
+assert.equal((padapter.match(/api\.mount\(/g) || []).length, 1, 'un seul montage de Runner, dans l’emplacement du Planning');
+assert.match(padapter, /variant:'bubble',size:'sm'/, 'carte Planning discrète : variante bulle, 56 px');
+assert.match(padapter, /\.observe\(tools,\{subtree:true,attributes:true,attributeFilter:\['disabled'\]\}\)/, 'unique observation ajoutée : le marqueur d’occupation du bouton de génération');
+assert.match(padapter, /tools\.__runnerBusyObserver/, 'observateur posé une seule fois');
+/* Ni provenance inventée, ni conseil que personne ne produit. */
+const copy = padapter.match(/'[^']*[a-zàâéèêîôùç’][^']*'/gi).join(' ');
+assert.doesNotMatch(copy, /plus court|meilleur|optim|idéal|recommand|conseill|parce que|car le|choisi pour/i, 'aucune justification inventée');
+/* Journée passée : un rappel, jamais d’alerte ni de forecast sur l’avenir. */
+const view = padapter.slice(padapter.indexOf('function runnerView'), padapter.indexOf('function ensureRunnerSlot'));
+assert.match(view, /if\(localIso\(date\)<today\)return route\.length\?\{state:'neutral',title:'Journée passée'/, 'jour passé : garde explicite, état neutre');
+assert.ok(view.indexOf('Journée passée') !== -1 && view.indexOf('Journée passée') < view.indexOf('runnerDayIssues(route,name)') && view.indexOf('Journée passée') < view.indexOf('runnerForecast(today)'), 'jour passé : retour avant toute alerte et tout forecast');
+/* Emplacement : sous la Couverture, avant la liste des visites, dans la hiérarchie de ce module. */
+assert.match(fixes, /const runnerSlot=ensureRunnerSlot\(\);\s*moveAfter\(notice\|\|tabs,tools\);observeGenerateBusy\(tools\);\s*let above=tools;if\(coverage\)\{moveAfter\(tools,coverage\);above=coverage\}\s*if\(runnerSlot\)\{moveAfter\(above,runnerSlot\);above=runnerSlot\}\s*moveAfter\(above,timeline\);/, 'Couverture › Runner › liste des visites');
+assert.match(fixes, /#planningRunnerV269\{margin:0 0 12px;pointer-events:none\}#planningRunnerV269\[hidden\]\{display:none\}/, 'emplacement en flux, sans capter le toucher');
+assert.match(fixes, /function run\(\)\{css\(\);syncSmartBrief\(\);if\(isEditingLocked\(\)\)return;reorderPlanning\(\);compactSettings\(\);restoreHotelStars\(\);try\{syncRunner\(\)\}catch\(e\)\{\}\}/, 'rien n’est touché pendant la saisie d’un réglage');
+/* Les signaux lus existent bien chez leurs propriétaires : s’ils changent, ce test casse. */
+const sources = { terrain: read('terrain-planning-v1.js'), cascade: read('planning-cascade-v181.js'), commands: read('planning-command-engine.js'), generation: read('planning-generation-controller.js'), hours: read('store-opening-hours.js'), coverage: read('visit-coverage.js'), slider: read('period-day-slider.js') };
+assert.ok(sources.terrain.includes("new CustomEvent('chef-range-generated'"), 'succès de la génération 3 semaines');
+assert.ok(sources.cascade.includes("source:'recalculatePlanningCascade'"), 'succès du recalcul');
+assert.ok(sources.commands.includes("'store-runner:planning-command-applied'"), 'succès d’une commande planning');
+assert.ok(sources.generation.includes('button.disabled=!!busy') && sources.generation.includes('data-planning-generate="three-weeks"'), 'marqueur d’occupation du bouton de génération');
+for (const field of ['appointmentConflicts', 'closedCount', 'estimatedEnd', 'endLimit']) assert.ok(sources.hours.includes(field), 'ordonnanceur : ' + field);
+assert.ok(sources.hours.includes("' RDV à vérifier'") && sources.hours.includes("sans créneau disponible'"), 'mots de l’ordonnanceur repris tels quels');
+assert.ok(sources.coverage.includes('watch:watchCounts') && sources.coverage.includes('constraintIssues'), 'forecast : magasins à surveiller et contraintes incompatibles');
+assert.ok(sources.slider.includes("reason:'period-date-loaded'"), 'changer de jour ne relit pas le forecast');
+for (const [kind, text] of [['range', 'Tes 3 semaines sont générées.'], ['cascade', 'Le planning a été recalculé.'], ['command', 'La commande a été appliquée au planning.']]) assert.ok(padapter.includes(kind + ":'" + text + "'"), 'succès : ' + text);
+
 /* Option `silent` de Runner : bulle visible, jamais annoncée deux fois. */
 assert.equal(R.normalizeMessage('a', { silent: true }).silent, true);
 assert.equal(R.normalizeMessage('a', { silent: 'oui' }).silent, false, 'seul true est accepté');
 assert.equal(R.normalizeMessage('a').silent, false);
 
-/* Livraison : « Quoi de neuf » V268, build cohérent. */
+/* Livraison : « Quoi de neuf » V269 (et V268 conservée dessous), build cohérent. */
 const whatsNew = read('store-runner-whats-new.js');
-assert.match(whatsNew, /version:'268',\s*title:'Runner, ton copilote, dans l’Assistant'/, 'entrée utilisateur V268 dans « Quoi de neuf »');
-assert.ok(whatsNew.indexOf("version:'268'") < whatsNew.indexOf("version:'267'"), 'versions récentes en premier');
+assert.match(whatsNew, /version:'269',\s*title:'Runner arrive dans ton Planning'/, 'entrée utilisateur V269 dans « Quoi de neuf »');
+assert.match(whatsNew, /version:'268',\s*title:'Runner, ton copilote, dans l’Assistant'/, 'entrée V268 conservée');
+assert.ok(whatsNew.indexOf("version:'269'") < whatsNew.indexOf("version:'268'") && whatsNew.indexOf("version:'268'") < whatsNew.indexOf("version:'267'"), 'versions récentes en premier');
+const entry = whatsNew.slice(whatsNew.indexOf("version:'269'"), whatsNew.indexOf("version:'268'"));
+assert.match(entry, /Planning/); assert.match(entry, /résume ta journée/); assert.match(entry, /ne modifie jamais ton planning/, 'dit qu’il ne modifie rien tout seul');
 
-console.log('PASS: Runner Visual System V1 — présentation pure, branché dans l’Assistant seulement, mouvement borné, texte inerte');
+console.log('PASS: Runner Visual System V1 — présentation pure, branché dans l’Assistant et le Planning seulement, mouvement borné, texte inerte');

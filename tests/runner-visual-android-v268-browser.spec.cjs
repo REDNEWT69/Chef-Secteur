@@ -182,7 +182,7 @@ for (const [deviceName, device] of ANDROID) {
 
     test('Accueil — Runner s’aligne sur les cartes réelles et reste discret', async ({ page }, testInfo) => {
       const errors = await bootApp(page);
-      expect(await mountAt(page, { anchor: '.phVisitCard', where: 'after', id: 'rnHome', options: { state: 'neutral', message: 'Je te recommande de commencer par Carrefour Annemasse. Trajet le plus court !' } })).toBe(true);
+      expect(await mountAt(page, { anchor: '.phVisitCard', where: 'after', id: 'rnHome', options: { state: 'neutral', message: '3 visites prévues aujourd’hui. Premier arrêt : Carrefour Annemasse.' } })).toBe(true);
       await page.evaluate(() => document.getElementById('rnHome').scrollIntoView({ block: 'center' }));
       await settle(page);
       await shot(page, testInfo, deviceName + '-1-accueil');
@@ -211,7 +211,7 @@ for (const [deviceName, device] of ANDROID) {
       await tapCenter(page, '#bottomAppNav [data-panel="planPanel"]');
       await page.waitForSelector('#planPanel.active');
       await settleDom(page, '.applePlan');
-      expect(await mountAt(page, { anchor: '.timelineShell', where: 'before', id: 'rnTip', options: { state: 'neutral', message: 'Je te recommande de commencer par Carrefour Annemasse. Trajet le plus court !' } })).toBe(true);
+      expect(await mountAt(page, { anchor: '.timelineShell', where: 'before', id: 'rnTip', options: { state: 'neutral', message: '3 visites prévues aujourd’hui. Premier arrêt : Carrefour Annemasse.' } })).toBe(true);
       expect(await mountAt(page, { anchor: '.applePlan', where: 'append', id: 'rnAlert', margin: '14px 0 0', options: { variant: 'panel', state: 'alert', title: 'Attention !', message: 'Il y a un risque de retard sur un magasin P1.' } })).toBe(true);
       await page.evaluate(() => document.getElementById('rnTip').scrollIntoView({ block: 'center' }));
       await settle(page);
@@ -242,7 +242,7 @@ for (const [deviceName, device] of ANDROID) {
       await tapCenter(page, '#bottomAppNav [data-panel="planPanel"]');
       await page.waitForSelector('#planPanel.active');
       await settleDom(page, '.applePlan');
-      await mountAt(page, { anchor: '#planningToolsV2', where: 'before', id: 'rnTip', options: { state: 'neutral', message: 'Je te recommande de commencer par Carrefour Annemasse. Trajet le plus court !' } });
+      await mountAt(page, { anchor: '#planningToolsV2', where: 'before', id: 'rnTip', options: { state: 'neutral', message: '3 visites prévues aujourd’hui. Premier arrêt : Carrefour Annemasse.' } });
       await page.evaluate(() => { window.scrollTo(0, 0); });
       await settle(page);
       for (const [label, selector] of [['la figure', '#rnTip .srRunnerFigure'], ['la bulle', '#rnTip .srRunnerBubble']]) {
@@ -260,7 +260,7 @@ for (const [deviceName, device] of ANDROID) {
       await tapCenter(page, '#bottomAppNav [data-panel="planPanel"]');
       await page.waitForSelector('#planPanel.active');
       await settleDom(page, '.applePlan');
-      await mountAt(page, { anchor: '.applePlan', where: 'append', id: 'rnEnd', margin: '14px 0 0', options: { variant: 'panel', state: 'success', title: 'Trajet optimisé !', message: 'Ta tournée est prête. 18 min de trajet économisées.' } });
+      await mountAt(page, { anchor: '.applePlan', where: 'append', id: 'rnEnd', margin: '14px 0 0', options: { variant: 'panel', state: 'success', title: 'C’est fait !', message: 'Le planning a été recalculé.' } });
       const client = await page.context().newCDPSession(page);
       const scenarios = [
         { name: 'Android plein écran, barre d’état', insets: { top: 32, bottom: 0, left: 0, right: 0 } },
@@ -332,7 +332,7 @@ for (const [deviceName, device] of IPHONE) {
       await tapCenter(page, '#bottomAppNav [data-panel="planPanel"]');
       await page.waitForSelector('#planPanel.active');
       await settleDom(page, '.applePlan');
-      await mountAt(page, { anchor: '.timelineShell', where: 'before', id: 'rnTip', options: { state: 'neutral', message: 'Je te recommande de commencer par Carrefour Annemasse. Trajet le plus court !' } });
+      await mountAt(page, { anchor: '.timelineShell', where: 'before', id: 'rnTip', options: { state: 'neutral', message: '3 visites prévues aujourd’hui. Premier arrêt : Carrefour Annemasse.' } });
       await mountAt(page, { anchor: '.applePlan', where: 'append', id: 'rnEnd', margin: '14px 0 0', options: { variant: 'panel', state: 'alert', title: 'Attention !', message: 'Il y a un risque de retard sur un magasin P1.' } });
       await page.evaluate(() => document.getElementById('rnTip').scrollIntoView({ block: 'center' }));
       await settle(page);

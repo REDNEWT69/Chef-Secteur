@@ -25,6 +25,17 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'269',
+      title:'Runner arrive dans ton Planning',
+      items:[
+        'Runner, le copilote de Store Runner, se range maintenant dans ton Planning, juste avant la liste de tes visites.',
+        'Il résume ta journée : combien de visites sont prévues, quel est le premier arrêt, et combien de magasins sont à surveiller sur les 3 prochaines semaines.',
+        'Il signale les points d’attention déjà détectés par l’application : rendez-vous à vérifier, magasin sans créneau, fin de journée trop tardive.',
+        'Il confirme quand ta génération sur 3 semaines ou un recalcul vient de se terminer.',
+        'Il s’appuie sur ce que Store Runner sait déjà et ne modifie jamais ton planning tout seul. Son emblème devient un « R » bleu et blanc.'
+      ]
+    },
+    {
       version:'268',
       title:'Runner, ton copilote, dans l’Assistant',
       items:[
