@@ -1,7 +1,7 @@
 # Planning Command Engine — Lot B, V1
 
 Statut : **PR Draft, non fusionnée.** Base `main` `70aa593` (#494, r38). Build proposé :
-`20261004-r39-planning-command-engine-264` (`displayVersion` 264 inchangée), monté après une CI
+`20261004-r39-planning-command-engine-265`, version visible **V265** (Nouveautés V265), monté après une CI
 Reliability entièrement verte sur le code du lot.
 
 L'utilisateur pilote le planning par une phrase. Le moteur de commandes **interprète** la phrase,
@@ -199,5 +199,3 @@ jeudi », « ajoute un magasin »…) ne sont pas captées.
 - Adaptateur LLM : mode passerelle `planning_intent` (worker) renvoyant **uniquement** le JSON
   brut ci-dessus, consommé par `acceptModelIntent` puis `resolve` ; non branché en V1 (déploiement
   du worker requis).
-- Décider si le lot justifie une nouvelle version visible (`displayVersion` 265) au moment de la
-  publication ; le build `r39` garde 264.
