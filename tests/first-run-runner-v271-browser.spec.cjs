@@ -165,7 +165,7 @@ const geometry = (page, label) => page.evaluate(label => {
 }, label);
 async function expectFits(page, label) {
   /* On mesure Runner posé : pas pendant sa sortie de derrière le logo. */
-  await page.waitForFunction(() => window.__audit.moves.every(m => ['finished', 'idle'].includes(m.animation.playState)), null, { timeout: 8000 });
+  await page.waitForFunction(() => window.__audit.moves.every(m => ['finished', 'idle'].includes(m.animation.playState)), null, { timeout: 12000 });
   const g = await geometry(page, label);
   expect(g.overflow, label + ' : aucun défilement horizontal').toBeLessThanOrEqual(1);
   expect(g.card.left, label + ' : carte dans l’écran').toBeGreaterThanOrEqual(0);
@@ -246,7 +246,7 @@ for (const [name, profile] of PROFILES) {
       expect(await guideNodes(page)).toMatchObject({ roots: 1, guideRunners: 1, homeRunners: 0, open: true });
       expect(await geoCalls(page), 'aucune position lue au lancement').toBe(0);
       /* La sortie de derrière le logo : un seul trajet (corps, tête, yeux), après l'Accueil monté. */
-      await page.waitForFunction(() => window.__audit.moves.length === 1 && ['finished', 'idle'].includes(window.__audit.moves[0].animation.playState), null, { timeout: 8000 });
+      await page.waitForFunction(() => window.__audit.moves.length === 1 && ['finished', 'idle'].includes(window.__audit.moves[0].animation.playState), null, { timeout: 12000 });
       const entrance = await page.evaluate(() => ({ moves: window.__audit.moves.length, poses: window.__audit.poses.length, duration: window.__audit.moves[0].options.duration, offsets: window.__audit.moves[0].frames.map(f => f.offset ?? null), afterHome: window.__audit.moves[0].homeBuilt, opacity: window.__audit.moves[0].frames.every(f => f.opacity === 1), onlyMotion: window.__audit.moves[0].frames.every(f => Object.keys(f).every(k => ['transform', 'opacity', 'offset', 'easing'].includes(k))) }));
       expect(entrance).toMatchObject({ moves: 1, poses: 2, duration: 1180, afterHome: true, opacity: true, onlyMotion: true });
       const intro = await expectFits(page, name + ' · présentation');
@@ -357,7 +357,7 @@ for (const [name, profile] of PROFILES) {
       expect(after).toMatchObject({ nodes: { guide: 0, home: 1 }, mounted: 1, moves: 1, startedAfterClose: true, open: false });
       expect(after.events).toEqual([{ name: 'first-run-closed', detail: { status: 'complete' } }]);
       expect(await marker(page)).toMatchObject({ status: 'complete', step: 4 });
-      await page.waitForFunction(() => document.querySelector('#homeRunnerV270 .srRunner').getAnimations({ subtree: true }).every(a => ['finished', 'idle'].includes(a.playState)), null, { timeout: 8000 });
+      await page.waitForFunction(() => document.querySelector('#homeRunnerV270 .srRunner').getAnimations().every(a => ['finished', 'idle'].includes(a.playState)), null, { timeout: 12000 });
       await shot(page, `v271-${key}-9-accueil`);
 
       /* 7. Il ne revient plus : ni au rechargement, ni après avoir vidé ou régénéré son planning. */
@@ -741,7 +741,7 @@ test('rendus répétés, navigation et historique : même étape, même Runner, 
   test.setTimeout(90000);
   const errors = await boot(page);
   await guideReady(page);
-  await page.waitForFunction(() => window.__audit.moves.length === 1 && ['finished', 'idle'].includes(window.__audit.moves[0].animation.playState), null, { timeout: 8000 });
+  await page.waitForFunction(() => window.__audit.moves.length === 1 && ['finished', 'idle'].includes(window.__audit.moves[0].animation.playState), null, { timeout: 12000 });
   await tap(page, 'Commencer');
   await addStores(page, 7);
   await tap(page, 'Continuer');

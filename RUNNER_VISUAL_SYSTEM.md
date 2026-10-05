@@ -4,7 +4,7 @@ Runner est le copilote **visuel** de Store Runner : un personnage, quatre états
 
 **Mobile uniquement, Android d'abord.** Store Runner est Android-first : Runner a été pensé et validé sur Android, puis adapté à l'iPhone. Il n'a aucune mise en page desktop : sa feuille de style ne contient aucune requête de largeur. Références : **Pixel 7 (412 px)** et **Galaxy S8 (360 px, Samsung)**, puis iPhone 14 ; 320 px sans défilement horizontal. L'application installée est verrouillée en portrait (`portrait-primary` dans le manifeste) : le paysage n'est pas un cas de conception, seulement de robustesse. En cas de doute entre desktop et mobile, c'est le mobile qui a été choisi.
 
-- Build `20261005-r47-runner-first-run-271`, version visible **271** (« Quoi de neuf » : « Runner te guide au premier lancement » ; V270, V269 et V268 restent dessous).
+- Build `20261005-r49-runner-presence-271`, version visible **271** (« Quoi de neuf » : « Runner te guide au premier lancement » ; V270, V269 et V268 restent dessous).
 - Budget de démarrage **77 scripts** (inchangé en V269 : aucun script ajouté) et entrée de shell dans `sw.js` (posée en V268) : décisions explicitement validées.
 - Module : `runner-visual.js` (`StoreRunnerRunner`, alias `Runner`). Un seul fichier, aucune dépendance, aucune feuille séparée.
 
@@ -13,6 +13,10 @@ Runner est le copilote **visuel** de Store Runner : un personnage, quatre états
 ![États de Runner](tests/fixtures/runner-visual-states.webp)
 
 ![Page d'aperçu de test, 390 px](tests/fixtures/runner-visual-preview-390.webp)
+
+## Extension de présence V271.1
+
+Le contrat suivant évolue explicitement pour #506 : `setPresence(true)` active une présence neutre locale ; `setPresence(false)` annule idle, trajet/retour, effets CSS et timers de cette instance, puis retire ses écoutes. `returnToRest({duration,offsetX,offsetY})` joue un retour générique sans connaître un écran. Le montage par défaut reste statique. Les états analyzing/alert/success suspendent l'idle ; neutral le reprend avec un délai variable avant le prochain clignement. Les seuls abonnements de Runner sont bornés à une présence ou un trajet actif : préférence système, visibilité, pagehide/pageshow. Ils ne relisent ni ne rendent aucune donnée métier. Contrat détaillé et preuves : [Runner Presence System](RUNNER_PRESENCE_V271_1.md). Les descriptions historiques « aucun écouteur » et « aucune animation au repos » s'appliquent au montage statique, pas à la présence explicitement activée.
 
 ## Direction visuelle
 
@@ -165,7 +169,7 @@ Les marqueurs de copie sont **épinglés par le test unitaire** (ils doivent exi
 - **Aucune donnée** : ni `state`, ni stockage, ni IndexedDB, ni agenda, ni performance, ni photos. Aucun nom de magasin n'y est lu.
 - **Aucune décision** : il ne choisit, ne place, ne déplace ni ne simule aucune visite. Il n'est appelé par aucun moteur ; c'est le propriétaire d'un écran qui traduit le résultat de son moteur en état visuel, jamais l'inverse.
 - **Aucun propriétaire contourné** : aucune fonction globale remplacée, aucun `window.xxx =` hors `StoreRunnerRunner` / `Runner`.
-- **Aucune surveillance** : pas de `setInterval`, pas d'observateur, pas d'écouteur `focus` / `visibilitychange` / `resize`, pas de `requestAnimationFrame`.
+- **Aucune surveillance** : pas de `setInterval`, pas d'observateur, pas d'écouteur `focus` / `resize`, pas de `requestAnimationFrame`.
 - **Aucun réseau**, aucune évaluation dynamique, aucun HTML dynamique : une bulle s'écrit en `textContent`. Un nom de magasin comme `<img onerror=…>` y reste du texte.
 
 Au démarrage il ne fait strictement rien : aucun nœud, aucun style, aucun écouteur. La feuille de style n'est injectée qu'au premier `mount()`.
@@ -213,9 +217,9 @@ Tous les calques du dessin sont déjà dans le SVG ; `data-state` sur le contene
 ## Mouvement et performance
 
 - Animations en `transform` / `opacity` uniquement, pas de `will-change` permanent, **aucun filtre SVG** (les lueurs sont des formes translucides).
-- Au repos : **aucune animation**. Changement d'état : une entrée de 0,42 s, jouée une fois. Bulle : une entrée de 0,22 s.
+- Montage statique : **aucune animation**. Présence explicitement activée V271.1 : idle en séquences Web Animations finies, variables et annulables (contrat ci-dessus). Changement d'état : une entrée de 0,42 s, jouée une fois. Bulle : une entrée de 0,22 s.
 - Une seule boucle existe, les trois points de `analyzing`, **bornée à 16 passages (≈ 22 s)** : un état oublié ne tourne jamais en continu sur la batterie d'un téléphone. Alerte : deux pulsations. Succès : une apparition des éclats.
-- Poids : `runner-visual.js` ≈ 32 Ko (≈ 25 Ko hors commentaires), ≈ 11 Ko compressé ; SVG ≈ 11 Ko et 153 éléments par instance ; identifiants de dégradés uniques par instance (un Runner masqué ne prive jamais un autre de ses dégradés). Si plus de quelques Runners coexistent un jour, le dessin pourra passer en sprite partagé ; inutile pour un à deux Runners par écran.
+- Poids : `runner-visual.js` ≈ 44 Ko, ≈ 13,2 Ko compressé (budget testé 44 Kio / 14 Kio) ; SVG ≈ 11 Ko et 153 éléments par instance ; identifiants de dégradés uniques par instance (un Runner masqué ne prive jamais un autre de ses dégradés). Si plus de quelques Runners coexistent un jour, le dessin pourra passer en sprite partagé ; inutile pour un à deux Runners par écran.
 
 ## Chargement et budget de démarrage
 

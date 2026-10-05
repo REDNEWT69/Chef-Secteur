@@ -15,7 +15,7 @@ Un premier lancement existe déjà dans `navigation-controller.js` (depuis V234)
 | `sw.js` | `BUILD_REV` seulement. Aucune entrée de cache ajoutée : tout ce que le guide utilise est déjà dans le shell obligatoire. |
 | Runner | `runner-visual.js` tel quel, variante `sheet`, taille `md` (comme l'Assistant), mouvement V270 `moveTo(..., { entrance: 'peek' })` pour la présentation. Aucun second Runner, aucun clone SVG. |
 | Schéma `state` | **Inchangé.** Le marqueur de complétion est la préférence UI existante (`store-runner-onboarding-v1`, moteur durable, hors `state`, hors sauvegarde JSON). Champs facultatifs ajoutés au marqueur : `startSkipped`, `generated`. |
-| Accueil | `home-refresh-v2.js` ne joue plus l'entrée de Runner V270 *sous* le guide ; elle est jouée à la fermeture du guide (événement `store-runner:first-run-closed`). Sans guide, comportement strictement inchangé. |
+| Accueil | `home-refresh-v2.js` ne joue plus l'entrée de Runner V270 *sous* le guide ; elle est jouée à la fermeture du guide (événement `store-runner:first-run-closed`). V271.1 prolonge la scène Home à 8 s et active sa présence ; le trajet du guide reste à 1 180 ms. Voir `RUNNER_PRESENCE_V271_1.md`. |
 
 ## Parcours (cinq étapes)
 

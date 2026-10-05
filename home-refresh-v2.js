@@ -5,7 +5,7 @@
   const DAY_MS=86400000;
   let busy=false,homeObserver=null,panelObserver=null,refreshTimer=null,contextTimer=null;
   const observedPanels=new WeakSet();
-  let homeRunner=null,homeRunnerArrived=false;
+  let homeRunner=null,homeRunnerArrived=false,homeReturnFrom='';
 
   /* V270 : le propriétaire de l'accueil fournit les ancres déjà affichées.
      Cette présence ne lit aucune donnée : une seule entrée par document, puis
@@ -13,7 +13,10 @@
   function releaseHomeRunner(){if(homeRunner){homeRunner.cancelMove();homeRunner.destroy();homeRunner=null}}
   function syncHomeRunner(){
     const panel=document.getElementById('homePanel'),slot=document.getElementById('homeRunnerV270');
-    if(!panel||!panel.classList.contains('active')){releaseHomeRunner();return}
+    if(!panel||!panel.classList.contains('active')){homeReturnFrom=activePanel()||'';releaseHomeRunner();return}
+    if(document.querySelector('#assistantPanel.open,#moreSheetV2.open')){homeReturnFrom=document.querySelector('#assistantPanel.open')?'assistant':'more';releaseHomeRunner();return}
+    const boot=window.StoreRunnerBoot;
+    if(boot&&typeof boot.settled==='function'&&!boot.settled())return;
     /* V271 : le guide de premier lancement couvre l'écran. L'entrée de Runner est gardée pour sa
        fermeture (store-runner:first-run-closed), sinon elle serait jouée sous le guide, sans témoin. */
     if(document.documentElement.classList.contains('srFirstRunOpen')){releaseHomeRunner();return}
@@ -25,7 +28,13 @@
     if(!homeRunner)return;
     const card=panel.querySelector('.phNextDay,.phTerrain,.phVisitCard');
     const origin=document.getElementById('homeRunnerOriginV270');
-    if(typeof homeRunner.moveTo==='function')homeRunner.moveTo(slot,{from:card&&origin,animate:!homeRunnerArrived&&!!card,duration:1180,entrance:'peek'});
+    if(typeof homeRunner.moveTo==='function')homeRunner.moveTo(slot,{from:card&&origin,animate:!homeRunnerArrived&&!!card,duration:8000,entrance:'peek'});
+    if(homeRunnerArrived&&homeReturnFrom&&typeof homeRunner.returnToRest==='function'){
+      const from=homeReturnFrom;
+      homeRunner.returnToRest({duration:from==='more'?1600:2400,offsetX:from==='planPanel'?-16:from==='storesPanel'?10:0,offsetY:from==='assistant'?4:0});
+    }
+    homeReturnFrom='';
+    if(typeof homeRunner.setPresence==='function')homeRunner.setPresence(true);
     homeRunnerArrived=true;
   }
 
@@ -522,7 +531,15 @@
   function run(){if(busy)return;busy=true;try{ensureCss();buildHome();rebuildBottomNav();installMoreSheet();setActive(activePanel()||'homePanel')}finally{busy=false}}
   function scheduleRun(delay){clearTimeout(refreshTimer);refreshTimer=setTimeout(run,delay==null?30:delay)}
   function observeHomeSignals(){if(homeObserver)return true;const targets=['homeKpis','homePriority','homeNext','terrainDay','terrainStore'].map(id=>document.getElementById(id)).filter(Boolean);if(!targets.length)return false;homeObserver=new MutationObserver(function(){scheduleRun(30)});targets.forEach(function(el){homeObserver.observe(el,{childList:true,subtree:true,characterData:true})});return true}
-  function observePanels(){if(!panelObserver)panelObserver=new MutationObserver(function(){setTimeout(function(){setActive(activePanel()||'homePanel')},0)});let found=false;document.querySelectorAll('.panel').forEach(function(panel){found=true;if(observedPanels.has(panel))return;panelObserver.observe(panel,{attributes:true,attributeFilter:['class']});observedPanels.add(panel)});return found}
+  function observePanels(){if(!panelObserver)panelObserver=new MutationObserver(function(records){
+    /* Les records gardent même un départ/retour dans la même tâche : aucun effet
+       de l'ancienne scène ne survit à une navigation rapide. */
+    for(const r of records){
+      if(r.target.id==='homePanel'&&/\bactive\b/.test(r.oldValue||'')){releaseHomeRunner();const left=records.find(x=>x.target.id!=='homePanel'&&x.target.classList.contains('panel')&&/\bactive\b/.test(x.oldValue||''));homeReturnFrom=activePanel()==='homePanel'?(left?left.target.id:'navigation'):activePanel()||''}
+      if((r.target.id==='assistantPanel'||r.target.id==='moreSheetV2')&&/\bopen\b/.test(r.oldValue||'')){releaseHomeRunner();homeReturnFrom=r.target.id==='assistantPanel'?'assistant':'more'}
+    }
+    setActive(activePanel()||'homePanel');
+  });let found=false;document.querySelectorAll('.panel,#assistantPanel,#moreSheetV2').forEach(function(panel){found=true;if(observedPanels.has(panel))return;panelObserver.observe(panel,{attributes:true,attributeFilter:['class'],attributeOldValue:true});observedPanels.add(panel)});return found}
   async function boot(){for(let i=0;i<60;i++){run();observeHomeSignals();observePanels();if(document.getElementById('homePanel')&&document.getElementById('bottomAppNav')&&homeObserver)break;await new Promise(r=>setTimeout(r,100))}run();observeHomeSignals();observePanels()}
   function refreshWhenVisible(){if(document.hidden)return;run();observeHomeSignals();observePanels()}
 
@@ -535,6 +552,8 @@
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,0);
   window.addEventListener('focus',refreshWhenVisible);
   window.addEventListener('pageshow',refreshWhenVisible);
+  window.addEventListener('load',()=>{window.requestAnimationFrame(()=>window.requestAnimationFrame(syncHomeRunner))},{once:true});
+  window.addEventListener('pagehide',releaseHomeRunner);
   document.addEventListener('visibilitychange',refreshWhenVisible);
   ['store-runner:data-restored','store-runner:planning-updated','store-runner:opportunities-updated','store-runner:visit-deleted','store-runner:first-run-closed'].forEach(name=>document.addEventListener(name,()=>scheduleRun(20)));
 })();

@@ -1,0 +1,112 @@
+{
+  "seconds": 180.362,
+  "taskSeconds": 9.354534,
+  "scriptSeconds": 0.132738,
+  "heapStart": 7112160,
+  "heapEnd": 4797900,
+  "samples": [
+    {
+      "at": 30,
+      "active": [
+        {
+          "id": "runner-idle",
+          "connected": true,
+          "duration": 3603.5696267124517,
+          "iterations": 1
+        },
+        {
+          "id": "runner-idle",
+          "connected": true,
+          "duration": 3603.5696267124517,
+          "iterations": 1
+        }
+      ]
+    },
+    {
+      "at": 60,
+      "active": [
+        {
+          "id": "runner-idle",
+          "connected": true,
+          "duration": 4428.994133748262,
+          "iterations": 1
+        },
+        {
+          "id": "runner-idle",
+          "connected": true,
+          "duration": 4428.994133748262,
+          "iterations": 1
+        }
+      ]
+    },
+    {
+      "at": 90,
+      "active": [
+        {
+          "id": "runner-idle",
+          "connected": true,
+          "duration": 3264.0126808135715,
+          "iterations": 1
+        },
+        {
+          "id": "runner-idle",
+          "connected": true,
+          "duration": 3264.0126808135715,
+          "iterations": 1
+        }
+      ]
+    },
+    {
+      "at": 120,
+      "active": [
+        {
+          "id": "runner-idle",
+          "connected": true,
+          "duration": 3154.2763279089913,
+          "iterations": 1
+        },
+        {
+          "id": "runner-idle",
+          "connected": true,
+          "duration": 3154.2763279089913,
+          "iterations": 1
+        }
+      ]
+    },
+    {
+      "at": 150,
+      "active": [
+        {
+          "id": "runner-idle",
+          "connected": true,
+          "duration": 2813.888550844551,
+          "iterations": 1
+        },
+        {
+          "id": "runner-idle",
+          "connected": true,
+          "duration": 2813.888550844551,
+          "iterations": 1
+        }
+      ]
+    },
+    {
+      "at": 180,
+      "active": [
+        {
+          "id": "runner-idle",
+          "connected": true,
+          "duration": 3385.889654700405,
+          "iterations": 1
+        },
+        {
+          "id": "runner-idle",
+          "connected": true,
+          "duration": 3385.889654700405,
+          "iterations": 1
+        }
+      ]
+    }
+  ],
+  "mutations": 0
+}

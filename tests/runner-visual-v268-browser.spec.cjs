@@ -36,6 +36,10 @@ async function bootApp(page) {
   page.on('pageerror', error => errors.push(String((error && error.message) || error)));
   await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.state && window.Runner && document.querySelector('#bottomAppNav[data-v2="1"]'));
+  /* V271.1 : la barre basse existe avant la levée du voile du shell, et l'Accueil ne monte Runner qu'une
+     fois le voile levé (sa grande entrée ne se jouerait sinon sous le voile, sans témoin). « Démarré »
+     veut donc dire : voile levé ET Runner de l'Accueil posé dans son emplacement. */
+  await page.waitForFunction(() => window.StoreRunnerBoot && window.StoreRunnerBoot.settled() && document.querySelector('#homeRunnerV270 .srRunner'));
   return errors;
 }
 

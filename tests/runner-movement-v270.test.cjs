@@ -199,3 +199,21 @@ for (const scenario of ['reduced', 'motion-off', 'animate-false', 'missing-origi
 }
 
 console.log('PASS: Runner movement V270 — host anchors, one finite FLIP, direct reduced motion, clean lifecycle, no data access');
+
+// Presence cancellation is idempotent even before first activation.
+{
+  const env = environment(), runner = env.Runner.mount(env.destination, { decorative: true });
+  runner.moveTo(env.destination, { from: env.origin, entrance: 'peek', duration: 8000 });
+  assert.equal(env.animations[0].options.duration, 8000);
+  assert.equal(env.animations[0].frames[2].transform, env.animations[0].frames[3].transform, 'real deliberate pause');
+  runner.showMessage('Test', { duration: 4000 });
+  runner.setPresence(false);
+  assert.equal(runner.isMoving(), false);
+  assert.equal(env.timers.size, 0);
+  assert.ok(env.animations.every(a=>a.canceled));
+  runner.returnToRest({duration:2400});
+  assert.equal(runner.isMoving(), true);
+  runner.setPresence(false);
+  assert.equal(runner.isMoving(), false);
+  runner.destroy();
+}
