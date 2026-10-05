@@ -507,17 +507,24 @@ function createInstance(doc,options){
     return true;
   }
 
-  /* Geste de présentation V272 : un clignement, sans trajet ni minuterie.
-     La promesse se termine aussi à l'annulation ; les états métier gardent la main. */
-  function react(){
+  /* Geste de présentation V272 : un clignement, sans trajet ni minuterie ; V273 y ajoute deux gestes génériques
+     (`'nod'`, `'look'` vers `{toward}` : un élément de l'hôte ou `'down'`). La promesse se termine aussi à
+     l'annulation ; les états métier gardent la main. */
+  function react(kind,opts){
     if(destroyed)return Promise.resolve(false);
     if(!watching&&!presence&&!doc.hidden){pageSuspended=false;host.removeAttribute('data-presence')}
     if(state!=='neutral'||!motionAllowed()||doc.hidden||pageSuspended)return Promise.resolve(false);
-    const eyes=figure.querySelector('.rnEyes');
-    if(!eyes||typeof eyes.animate!=='function')return Promise.resolve(false);
+    const head=figure.querySelector('.rnHead');
+    let part=figure.querySelector('.rnEyes'),frames=[{transform:'none'},{transform:'scaleY(.12)',offset:.42},{transform:'none'}],ms=240;
+    if(kind==='nod'&&head){part=head;frames=[{transform:'none'},{transform:'translateY(4px)',offset:.4},{transform:'none'}];ms=560}
+    else if(kind==='look'){
+      const t=opts&&opts.toward,r=t&&t.getBoundingClientRect?t.getBoundingClientRect():null,f=figure.getBoundingClientRect(),o=t==='down'?'translateY(4px)':'translateX('+(r&&r.left+r.width/2<f.left+f.width/2?-5:5)+'px)';
+      frames=[{transform:'none'},{transform:o,offset:.2},{transform:o,offset:.75},{transform:'none'}];ms=1400;
+    }
+    if(!part||typeof part.animate!=='function')return Promise.resolve(false);
     cancelMove(false);stopIdle();
     try{
-      const animation=eyes.animate([{transform:'none'},{transform:'scaleY(.12)',offset:.42},{transform:'none'}],{duration:240,easing:'ease-in-out',iterations:1,id:'runner-react'});
+      const animation=part.animate(frames,{duration:ms,easing:'ease-in-out',iterations:1,id:'runner-react'});
       moveAnimation=animation;moveEffects=[animation];watchEnvironment(true);
       animation.onfinish=animation.oncancel=()=>{if(moveAnimation===animation)cancelMove()};
       return animation.finished.then(()=>true,()=>false);

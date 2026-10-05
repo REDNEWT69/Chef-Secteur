@@ -156,6 +156,21 @@
     success:{title:'C’est fait !',text:'Action appliquée.'}
   };
   let runnerInstance=null,runnerSignature='';
+  /* V273 : le TITRE d'un état suit la personnalité choisie (StoreRunnerBehavior), le texte reste celui du chat. Sans module,
+     les titres V268 ci-dessus sont conservés. Une erreur technique peut recevoir une pointe (Taquin) : le message de
+     l'Assistant, qui porte le fait et l'action possible, s'affiche toujours dessous, tel quel. */
+  function behaviorTitle(stateName,fallback){
+    try{const b=window.StoreRunnerBehavior;return(b&&typeof b.controller==='function'&&b.controller().title('assistant',stateName))||fallback}catch(e){return fallback}
+  }
+  function behaviorIdle(){
+    try{const b=window.StoreRunnerBehavior;return!b||typeof b.controller!=='function'||b.controller().idle()!==false}catch(e){return true}
+  }
+  function behaviorTouch(){
+    try{
+      const b=window.StoreRunnerBehavior;
+      if(b&&typeof b.controller==='function'){const now=Date.now(),d=new Date(now);b.controller().touch({now:now,date:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})}
+    }catch(e){}
+  }
   function runnerLine(text,marker){
     const lines=String(text||'').split('\n').map(l=>l.trim()).filter(Boolean);
     return (marker&&lines.find(l=>l.indexOf(marker)!==-1))||lines[0]||'';
@@ -183,13 +198,14 @@
       runnerSignature='neutral|';
       if(!runnerInstance)return;
     }
+    behaviorTouch();
     const next=runnerStateOf(msgs,document.getElementById('assistantAIStatus'));
     const signature=next.state+'|'+(next.text||'');
-    if(signature===runnerSignature){runnerInstance.setPresence(true);return}
+    if(signature===runnerSignature){runnerInstance.setPresence(behaviorIdle());return}
     runnerSignature=signature;
     const copy=RUNNER_COPY[next.state];
-    runnerInstance.setState(next.state,{title:copy.title,message:next.text||copy.text,silent:next.state==='neutral'});
-    runnerInstance.setPresence(true);
+    runnerInstance.setState(next.state,{title:behaviorTitle(next.state,copy.title),message:next.text||copy.text,silent:next.state==='neutral'});
+    runnerInstance.setPresence(behaviorIdle());
   }
   function installRunnerPresence(){
     if(window.__assistantRunner||typeof MutationObserver==='undefined')return;

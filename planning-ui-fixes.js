@@ -211,16 +211,28 @@
     return facts;
   }
   function forgetForecast(){runnerForecastRead=null}
+  /* V273 : le TITRE d'un état métier suit la personnalité choisie (StoreRunnerBehavior) ; le corps du message reste celui de
+     son propriétaire. Sans module, le titre V271 d'origine est conservé. « Contrainte » (RDV, créneau, fin de journée) n'est
+     jamais plaisantée, quelle que soit la personnalité. */
+  function behaviorTitle(stateName,fallback){
+    try{const b=window.StoreRunnerBehavior;return(b&&typeof b.controller==='function'&&b.controller().title('planning',stateName))||fallback}catch(e){return fallback}
+  }
+  function behaviorIdle(){
+    try{const b=window.StoreRunnerBehavior;return!b||typeof b.controller!=='function'||b.controller().idle()!==false}catch(e){return true}
+  }
+  function behaviorTouch(){
+    try{const b=window.StoreRunnerBehavior;if(b&&typeof b.controller==='function'){const now=Date.now();b.controller().touch({now:now,date:localIso(new Date(now))})}}catch(e){}
+  }
   function generationBusy(){return !!document.querySelector('#planningToolsV2 [data-planning-generate="three-weeks"][disabled]')}
 
   /* Ce que Runner affiche pour le jour sélectionné, ou null s'il n'y a rien d'utile à dire. */
   function runnerView(){
     if(runnerDone){
       const left=runnerDone.until-Date.now();
-      if(left>=RUNNER_MIN_MS)return{state:'success',title:'C’est fait !',text:RUNNER_DONE[runnerDone.kind],resetAfter:left};
+      if(left>=RUNNER_MIN_MS)return{state:'success',title:behaviorTitle('success','C’est fait !'),text:RUNNER_DONE[runnerDone.kind],resetAfter:left};
       runnerDone=null;
     }
-    if(generationBusy())return{state:'analyzing',title:'Génération en cours…',text:'Je prépare tes 3 semaines.'};
+    if(generationBusy())return{state:'analyzing',title:behaviorTitle('analyzing','Génération en cours…'),text:'Je prépare tes 3 semaines.'};
     const date=selectedDayDate(),today=localIso(new Date());
     /* Le plan chargé doit être celui de la semaine du jour affiché : sinon on attend le rendu suivant. */
     if(mondayIso(date)!==mondayIso(weekMonday()))return null;
@@ -228,9 +240,9 @@
     /* Journée passée : un simple rappel, jamais de conseil ni d'alerte sur l'avenir. */
     if(localIso(date)<today)return route.length?{state:'neutral',title:'Journée passée',text:plural(route.length,'visite était prévue','visites étaient prévues')+' '+when+'.'}:null;
     const issues=runnerDayIssues(route,name);
-    if(issues.length)return{state:'alert',title:'Contrainte détectée',text:runnerCap(when)+' : '+issues.join(' · ')+'.'};
+    if(issues.length)return{state:'alert',title:behaviorTitle('alert','Contrainte détectée'),text:runnerCap(when)+' : '+issues.join(' · ')+'.'};
     const forecast=runnerForecast(today);
-    if(forecast&&forecast.constraints)return{state:'alert',title:'Contrainte détectée',text:plural(forecast.constraints,'rendez-vous ou jour posé tombe','rendez-vous ou jours posés tombent')+' sur un jour non travaillé ou bloqué, dans les 3 prochaines semaines.'};
+    if(forecast&&forecast.constraints)return{state:'alert',title:behaviorTitle('alert','Contrainte détectée'),text:plural(forecast.constraints,'rendez-vous ou jour posé tombe','rendez-vous ou jours posés tombent')+' sur un jour non travaillé ou bloqué, dans les 3 prochaines semaines.'};
     const watch=forecast&&forecast.watch?plural(forecast.watch,'magasin à surveiller','magasins à surveiller')+' sur les 3 prochaines semaines.':'';
     if(route.length)return{state:'neutral',title:'Ta journée',text:plural(route.length,'visite prévue','visites prévues')+' '+when+'. Premier arrêt : '+runnerStoreLabel(route[0])+'.'+(watch?' '+watch:'')};
     return watch?{state:'neutral',title:'Ta journée',text:'Aucune visite prévue '+when+'. '+watch}:null;
@@ -247,6 +259,7 @@
     if(runnerInstance&&!runnerInstance.isConnected()){runnerInstance.destroy();runnerInstance=null;runnerSignature=''}
     const panel=document.getElementById('planPanel'),slot=document.getElementById(RUNNER_SLOT_ID),api=window.StoreRunnerRunner;
     if(!panel||!slot||!api||!panel.classList.contains('active')||document.querySelector('#assistantPanel.open')){if(runnerInstance)runnerInstance.setPresence(false);return}
+    behaviorTouch();
     const view=runnerView();
     if(!view){if(runnerInstance)runnerInstance.setPresence(false);if(!slot.hidden)slot.hidden=true;return}
     /* Un rendu du Planning peut retirer l'emplacement : Runner est alors remonté, sans annonce. */
@@ -259,12 +272,12 @@
     }
     if(slot.hidden)slot.hidden=false;
     const signature=view.state+'|'+view.title+'|'+view.text;
-    if(signature===runnerSignature){if(view.resetAfter)runnerInstance.setState(view.state,{resetAfter:view.resetAfter,silent:true});runnerInstance.setPresence(true);return}
+    if(signature===runnerSignature){if(view.resetAfter)runnerInstance.setState(view.state,{resetAfter:view.resetAfter,silent:true});runnerInstance.setPresence(behaviorIdle());return}
     runnerSignature=signature;
     /* Le quotidien (neutre) ne s'annonce pas à voix haute ; une alerte, une analyse ou un succès qui
        APPARAISSENT pendant que le Planning est ouvert, si. */
     runnerInstance.setState(view.state,{title:view.title,message:view.text,silent:fresh||view.state==='neutral',resetAfter:view.resetAfter});
-    runnerInstance.setPresence(true);
+    runnerInstance.setPresence(behaviorIdle());
   }
   function celebrate(kind){
     const panel=document.getElementById('planPanel');

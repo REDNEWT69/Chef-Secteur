@@ -7,6 +7,7 @@
   const observedPanels=new WeakSet();
   let homeRunner=null,homeRunnerArrived=false,homeReturnFrom='';
   let appearanceRequest=0,appearancePending=false;
+  let homeFacts=null,homeLineText='',skipBehavior=false;
 
   /* V270 : le propriétaire de l'accueil fournit les ancres déjà affichées.
      Cette présence ne lit aucune donnée : une seule entrée par document, puis
@@ -14,14 +15,14 @@
   function releaseHomeRunner(){appearanceRequest++;appearancePending=false;if(homeRunner){homeRunner.cancelMove();homeRunner.destroy();homeRunner=null}}
   function syncHomeRunner(){
     const panel=document.getElementById('homePanel'),slot=document.getElementById('homeRunnerV270');
-    if(!panel||!panel.classList.contains('active')){homeReturnFrom=activePanel()||'';releaseHomeRunner();return}
-    if(document.querySelector('#assistantPanel.open,#moreSheetV2.open')){homeReturnFrom=document.querySelector('#assistantPanel.open')?'assistant':'more';releaseHomeRunner();return}
-    if(document.querySelector('#runnerAppearanceSheet[open]')){releaseHomeRunner();return}
+    if(!panel||!panel.classList.contains('active')){homeReturnFrom=activePanel()||'';releaseHomeRunner();clearHomeLine();return}
+    if(document.querySelector('#assistantPanel.open,#moreSheetV2.open')){homeReturnFrom=document.querySelector('#assistantPanel.open')?'assistant':'more';releaseHomeRunner();clearHomeLine();return}
+    if(document.querySelector('#runnerAppearanceSheet[open]')){skipBehavior=true;releaseHomeRunner();return}
     const boot=window.StoreRunnerBoot;
     if(boot&&typeof boot.settled==='function'&&!boot.settled())return;
     /* V271 : le guide de premier lancement couvre l'écran. L'entrée de Runner est gardée pour sa
        fermeture (store-runner:first-run-closed), sinon elle serait jouée sous le guide, sans témoin. */
-    if(document.documentElement.classList.contains('srFirstRunOpen')){releaseHomeRunner();return}
+    if(document.documentElement.classList.contains('srFirstRunOpen')){releaseHomeRunner();clearHomeLine();return}
     const api=window.StoreRunnerRunner;
     if(!slot||!api){releaseHomeRunner();return}
     if(homeRunner&&homeRunner.el.parentNode!==slot)releaseHomeRunner();
@@ -35,12 +36,70 @@
       const from=homeReturnFrom;
       homeRunner.returnToRest({duration:from==='more'?1600:2400,offsetX:from==='planPanel'?-16:from==='storesPanel'?10:0,offsetY:from==='assistant'?4:0});
     }
+    const returnedFrom=homeRunnerArrived?homeReturnFrom:'';
     homeReturnFrom='';
-    if(typeof homeRunner.setPresence==='function')homeRunner.setPresence(true);
+    if(typeof homeRunner.setPresence==='function')homeRunner.setPresence(behaviorIdle());
     homeRunnerArrived=true;
+    if(skipBehavior)skipBehavior=false;else applyBehavior(panel,returnedFrom);
   }
 
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]||c))}
+
+  /* V273 — voix de Runner sur l'Accueil. L'Accueil construit des FAITS à partir de ce que ses propriétaires ont déjà
+     calculé (tournée du jour, carte « À traiter maintenant », visites ouvertes, dernière visite réelle), les confie à
+     StoreRunnerBehavior (module pur, personnalité, budgets, cooldowns) et applique la réaction qu'il renvoie : une ligne
+     courte sous le résumé de la journée et un geste générique de Runner. Aucun calcul métier, aucune écriture dans
+     `state`, aucun timer ni écouteur : la décision se prend une fois par arrivée (montage de Runner). */
+  function behaviorApi(){const b=window.StoreRunnerBehavior;return b&&typeof b.controller==='function'?b:null}
+  function behaviorIdle(){try{const b=behaviorApi();return!b||b.controller().idle()!==false}catch(e){return true}}
+  function workdayToday(now){try{return((state.settings&&state.settings.days)||[]).includes(DAYS[(now.getDay()+6)%7])}catch(e){return null}}
+  function lastVisitDaysAgo(now){
+    try{
+      const api=metricsApi();if(!api||typeof api.completedVisitDays!=='function')return null;
+      let last='';for(const days of api.completedVisitDays(state).values())for(const day of days)if(day>last)last=day;
+      const a=dateOnly(last),b=dateOnly(isoLocal(now));
+      return a&&b?Math.max(0,Math.round((b-a)/DAY_MS)):null;
+    }catch(e){return null}
+  }
+  function homeAttention(now){
+    try{
+      const card=((homeFacts&&homeFacts.catalog)||[]).find(c=>c&&c.id==='action-now'&&!c.empty&&c.storeId&&c.importanceScore>=98);
+      if(card)return{kind:/action/i.test(card.sub)?'action-overdue':'late',key:card.storeId,label:card.value,reason:String(card.sub||'').split(' · ')[0]};
+      const today=isoLocal(now),open=(((state.businessV2||{}).visits)||[]).filter(v=>v&&v.status==='draft'&&v.storeId&&String(v.updatedAt||v.createdAt||'').slice(0,10)<today).sort((a,b)=>String(a.updatedAt||'').localeCompare(String(b.updatedAt||'')))[0];
+      return open?{kind:'visit-open',key:open.storeId,label:storeLabel(state,open.storeId),reason:'visite restée ouverte'}:null;
+    }catch(e){return null}
+  }
+  function homeView(){
+    const html=document.documentElement;
+    return{state:homeRunner.getState(),keyboard:html.getAttribute('data-sr-keyboard')==='open',firstRun:html.classList.contains('srFirstRunOpen'),
+      updating:!!document.getElementById('storeRunnerUpdateBanner'),overlay:!!document.querySelector('#homeCardsSheet[open],#runnerAppearanceSheet[open],#assistantPanel.open,#moreSheetV2.open')};
+  }
+  function paintHomeLine(){
+    const line=document.getElementById('homeRunnerLineV273');
+    if(!line)return;
+    line.textContent=homeLineText;line.hidden=!homeLineText;
+  }
+  function clearHomeLine(){if(homeLineText){homeLineText='';paintHomeLine()}}
+  function applyBehavior(panel,returnedFrom){
+    const behavior=behaviorApi();
+    if(!behavior||!homeRunner||!homeFacts)return;
+    try{
+      const controller=behavior.controller(),now=Date.now(),date=isoLocal(now),context=homeFacts.context,tour=homeFacts.tour;
+      controller.touch({now,date});
+      const reaction=controller.decide({surface:'home',trigger:'arrive',now,view:homeView(),facts:{
+        date,workday:workdayToday(new Date(now)),afterHours:!!(context&&context.afterHours),mode:context&&context.mode,
+        tour:tour?{total:tour.total,done:tour.done,finished:!!tour.finished}:null,attention:homeAttention(new Date(now)),lastVisitDaysAgo:lastVisitDaysAgo(new Date(now)),returnFrom:returnedFrom||null}});
+      if(!reaction)return;
+      controller.record(reaction,{now,date});
+      if(reaction.text){homeLineText=reaction.text;paintHomeLine()}
+      if(reaction.state==='success')homeRunner.setState('success',{resetAfter:reaction.messageMs,silent:true});
+      if(!reaction.gesture||homeRunner.isMoving())return;
+      const target=reaction.look==='card'?panel.querySelector('.phNextDay,.phTerrain,.phVisitCard'):reaction.look;
+      if(reaction.gesture==='acknowledge')homeRunner.react();
+      else if(reaction.gesture==='nod')homeRunner.react('nod');
+      else if(reaction.gesture==='lookToward')homeRunner.react('look',{toward:target||'down'});
+    }catch(e){}
+  }
   function text(v){return String(v==null?'':v).trim()}
   function numberOrNull(v){const n=Number(v);return Number.isFinite(n)?n:null}
   function icon(name){const paths={home:'<path d="m3 10 9-8 9 8v11h-6v-7H9v7H3Z" fill="currentColor"/>',calendar:'<rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8 2v6m8-6v6M4 11h16M8 15h2m4 0h2m-8 3h2"/>',store:'<path d="M3 10 5 3h14l2 7c0 4-5 4-6 1-1 3-5 3-6 0-1 3-6 3-6-1ZM5 14v7h14v-7"/>',pin:'<path d="M19 10c0 5-7 12-7 12S5 15 5 10a7 7 0 1 1 14 0Z"/><circle cx="12" cy="9" r="2"/>',navigation:'<path d="m3 11 18-8-7 18-3-8Z" fill="currentColor"/>',spark:'<path d="M12 1c-2 8-3 9-11 11 8 2 9 3 11 11 2-8 3-9 11-11-8-2-9-3-11-11Z" fill="currentColor" stroke="none"/>',chevron:'<path d="m9 4 8 8-8 8"/>',chart:'<rect x="3" y="12" width="4" height="9" rx="1" fill="currentColor" stroke="none"/><rect x="10" y="7" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="17" y="2" width="4" height="19" rx="1" fill="currentColor" stroke="none"/>',check:'<circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/>',alert:'<path d="M12 3 2 20h20Z"/><path d="M12 10v4m0 3h.01"/>',more:'<circle cx="4" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="20" cy="12" r="2" fill="currentColor"/>'};return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[name]||paths.spark)+'</svg>'}
@@ -509,6 +568,7 @@
 #homeCardsSheet h4{margin:14px 4px 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#6d7890}#homeCardsSheet .phSheetHint{margin:0 4px 4px;font-size:12px;line-height:1.4;color:#52627c}#homeCardsSheet .phSheetEmpty{margin:0 4px;font-size:12px;color:#8a93a6}#homeCardsSheet .phSheetEmpty svg{width:12px;height:12px;vertical-align:-1px}
 #homeCardsSheet .phEditList{list-style:none;margin:0;padding:0;display:grid;gap:6px}#homeCardsSheet .phEditRow{display:flex;align-items:center;gap:8px;min-height:56px;padding:6px 6px 6px 10px;border-radius:16px;background:#fff;border:1px solid #e4e9f1}#homeCardsSheet .phEditRow[data-placement="pinned"]{border-color:#9cc9ff}#homeCardsSheet .phEditIcon{display:grid;place-items:center;width:30px;height:30px;flex-shrink:0;border-radius:10px;background:#eef5ff;color:#1686ff}#homeCardsSheet .phEditIcon svg{width:17px;height:17px}#homeCardsSheet .phEditText{flex:1;min-width:0}#homeCardsSheet .phEditText b{display:block;font-size:14px;line-height:1.2}#homeCardsSheet .phEditText small{display:block;font-size:11px;color:#6d7890;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#homeCardsSheet .phEditTools{display:flex;gap:4px;flex-shrink:0}#homeCardsSheet .phTool{display:grid;place-items:center;min-width:40px;height:44px;padding:0 6px;border:0;border-radius:12px;background:#f0f3f8;color:#33405a;font-size:16px;font-weight:750}#homeCardsSheet .phTool svg{width:16px;height:16px}#homeCardsSheet .phTool.on{background:#1686ff;color:#fff}#homeCardsSheet .phTool:disabled{opacity:.35}#homeCardsSheet .phTool.phAdd{font-size:13px;color:#1686ff;padding:0 12px}
 #homeCardsSheet .phSheetReset{width:100%;min-height:48px;margin-top:16px;border:1px solid #d7deea;border-radius:16px;background:#fff;color:#c2410c;font-weight:750}#homeCardsSheet .phSheetReset:disabled{color:#9aa3b5}
+#premiumHomeV2 .phRunnerLine{margin:8px 0 0;padding:2px 0 2px 10px;border-left:3px solid var(--brand);font-size:14px;line-height:1.4;color:var(--ink);animation:srHomeLineIn .24s ease-out}#premiumHomeV2 .phRunnerLine[hidden]{display:none}@keyframes srHomeLineIn{from{opacity:0}to{opacity:1}}@media(prefers-reduced-motion:reduce){#premiumHomeV2 .phRunnerLine{animation:none}}
 #moreSheetV2{display:none;position:fixed;inset:0;z-index:190;background:rgba(20,24,32,.20);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}#moreSheetV2.open{display:block}.moreSheetCard{position:absolute;left:12px;right:12px;bottom:calc(82px + env(safe-area-inset-bottom));padding:10px;border-radius:28px;background:rgba(249,250,252,.94);border:1px solid rgba(255,255,255,.9);box-shadow:0 28px 80px rgba(20,25,35,.24)}.moreSheetCard>div:first-child{width:42px;height:5px;border-radius:999px;background:#d3d6dc;margin:2px auto 12px}.moreSheetGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.moreSheetGrid button{border:0;background:rgba(235,238,244,.76);border-radius:18px;min-height:58px;font-weight:720;color:#333941}.moreClose{width:100%;margin-top:8px;border:0;background:#111217;color:#fff;border-radius:18px;min-height:48px;font-weight:750}
 @media(max-width:700px){.top .tabs{display:none!important}.top{padding-bottom:10px!important}.phTop{margin-top:10px}.phTitle{font-size:48px}.phGrid{gap:10px}.phCard{min-height:166px;padding:17px;border-radius:24px}.phIcon{margin-bottom:22px;width:44px;height:44px}.phValue{font-size:31px}.phValue.phStoreValue{font-size:22px}.phWide{border-radius:26px;padding:19px}.phWideValue{font-size:38px}.bottomAppNav{grid-template-columns:repeat(5,1fr)!important}.bottomNavBtn{font-size:10px!important}.bottomNavBtn .bnIcon{font-size:22px!important}#premiumHomeV2 .phNextList li{grid-template-columns:26px minmax(0,1fr)}#premiumHomeV2 .phNextList small{grid-column:2;text-align:left;margin-top:-5px}}
 `;
@@ -519,7 +579,7 @@
     const panel=document.getElementById('homePanel');if(!panel)return false;
     let box=document.getElementById('premiumHomeV2');if(!box){box=document.createElement('div');box.id='premiumHomeV2';const install=document.getElementById('installCard');if(install&&install.parentNode===panel)panel.insertBefore(box,install.nextSibling);else panel.insertBefore(box,panel.firstChild)}
     const range=rangeInfo(),today=new Date(),catalog=runtimeActivityCatalog(today),prefs=readPrefs(),custom=isCustomPrefs(prefs),cards=composeHomeCards(catalog,prefs),tour=runtimeTodayTour(today),archive=archiveSnapshot(),context=buildHomeContext(state,today,tour,archive),showNext=context.mode==='next'&&context.next,terrain=showNext?'':runtimeTerrainCard(tour),nextCard=showNext?buildNextDayCard(context,state):'';let rangeHtml='Aucune période générée',rangeSub='Crée ton prochain planning';
-    lastCatalog=catalog;scheduleContextBoundary(today);
+    lastCatalog=catalog;homeFacts={tour,context,catalog};scheduleContextBoundary(today);
     if(range){rangeHtml=fmtDate(range.start)+' → '+fmtDate(range.end);rangeSub=(range.weeks||'')+(range.weeks?' semaines':'')+(range.uniqueStores?' · '+range.uniqueStores+' magasins distincts':'')}
     const day=DAYS[(today.getDay()+6)%7];let todayRoute=[];
     /* dateForDay n'est pas exposé hors du noyau : la tournée du jour vient de la même
@@ -531,12 +591,12 @@
     let daySummary=todayRoute.length?todayRoute.length+' magasin'+(todayRoute.length>1?'s':'')+' prévu'+(todayRoute.length>1?'s':'')+km+(estimate&&estimate.start?' · départ '+estimate.start:''):'Aucune visite prévue aujourd’hui';
     if(showNext){const nextEstimate=nextDayEstimate(context.next),parts=[plural(context.next.total,'magasin prévu','magasins prévus'),plural(context.next.credits,'crédit de visite','crédits de visite')];if(nextEstimate&&nextEstimate.start)parts.push('départ '+nextEstimate.start);if(context.pendingToday)parts.push(plural(context.pendingToday,'visite en attente aujourd’hui','visites en attente aujourd’hui'));daySummary=parts.join(' · ')}
     const sector=String((state.profile&&state.profile.sectorName)||'Mon secteur').replace(/^samsung\s*[·:–—-]?\s*/i,'').trim()||'Mon secteur';
-    const markup=`<div class="phTop"><div class="phBrandRow"><div class="phBrand"><div id="homeRunnerOriginV270" aria-hidden="true"></div><img class="srBrandLogo" src="./app-icon.svg" alt="S-RUNNER"><span class="srBrandName">Store Runner</span><span class="srBrandSignature">S-RUNNER By Red①</span></div><div class="phHeaderContext"><button class="phBase" type="button" onclick="openDepartureSettings()" aria-label="Modifier le point de départ">${icon('pin')}<span class="phDepartureCopy"><span>${/^(ma position(?: actuelle)?)$/i.test(baseName())?'Ma position actuelle':'Départ'}</span><span class="phDepartureAddress"></span></span></button><span class="phSector">${esc(sector)} · ${activeStores().length} magasins</span></div></div><div class="phDayHeading"><h2 class="phTitle">${esc(context.title)}</h2><button id="homeRunnerAppearanceButton" type="button" aria-label="Personnaliser Runner" aria-haspopup="dialog" aria-controls="runnerAppearanceSheet"><span id="homeRunnerV270" data-home-runner-target="${showNext?'next':(terrain?'today':'preparation')}" aria-hidden="true"></span><span class="phRunnerLabel">Runner</span></button></div><p class="phTagline">${esc(daySummary)}</p></div>
+    const markup=`<div class="phTop"><div class="phBrandRow"><div class="phBrand"><div id="homeRunnerOriginV270" aria-hidden="true"></div><img class="srBrandLogo" src="./app-icon.svg" alt="S-RUNNER"><span class="srBrandName">Store Runner</span><span class="srBrandSignature">S-RUNNER By Red①</span></div><div class="phHeaderContext"><button class="phBase" type="button" onclick="openDepartureSettings()" aria-label="Modifier le point de départ">${icon('pin')}<span class="phDepartureCopy"><span>${/^(ma position(?: actuelle)?)$/i.test(baseName())?'Ma position actuelle':'Départ'}</span><span class="phDepartureAddress"></span></span></button><span class="phSector">${esc(sector)} · ${activeStores().length} magasins</span></div></div><div class="phDayHeading"><h2 class="phTitle">${esc(context.title)}</h2><button id="homeRunnerAppearanceButton" type="button" aria-label="Personnaliser Runner" aria-haspopup="dialog" aria-controls="runnerAppearanceSheet"><span id="homeRunnerV270" data-home-runner-target="${showNext?'next':(terrain?'today':'preparation')}" aria-hidden="true"></span><span class="phRunnerLabel">Runner</span></button></div><p class="phTagline">${esc(daySummary)}</p><p class="phRunnerLine" id="homeRunnerLineV273" hidden></p></div>
     ${nextCard}${terrain}<section class="phVisitCard" aria-label="Vos visites">${showNext?'':(terrain?'':`<button class="phVisitLink" type="button" onclick="goTab('planPanel')"><span class="phVisitIcon">${icon('navigation')}</span><span class="phVisitText"><strong>${todayRoute.length?'Ta journée est prête':'Prépare ta journée'}</strong><span>${esc(summary)}</span></span><span class="phArrow">${icon('chevron')}</span></button>`)}<button class="phAssistant" type="button" onclick="toggleAssistant()"><span class="phSpark">${icon('spark')}</span><span>Tes magasins, tes priorités,<br>préparons ta prochaine tournée…</span>${icon('chevron')}</button></section>
     <div class="phActivityHeading" data-home-mode="${custom?'custom':'auto'}"><div><h3>Votre activité</h3>${custom?'<p>Personnalisée</p>':''}</div><div class="phActivityTools"><button type="button" data-home-customize>Personnaliser</button><button type="button" data-home-all>Voir tout ${icon('chevron')}</button></div></div>
     <div class="phGrid" data-home-cards="${cards.length}">${activityMarkup(cards)}</div>
     <div class="phRange"><div><b>Planning actif</b><span>${esc(rangeHtml)} · ${esc(rangeSub)}</span></div><button type="button" onclick="goTab('planPanel')">Voir</button></div>`;
-    if(box.__lastMarkup!==markup){releaseHomeRunner();box.innerHTML=markup;box.__lastMarkup=markup;document.dispatchEvent(new CustomEvent('store-runner:home-rendered'))}
+    if(box.__lastMarkup!==markup){releaseHomeRunner();box.innerHTML=markup;box.__lastMarkup=markup;paintHomeLine();document.dispatchEvent(new CustomEvent('store-runner:home-rendered'))}
     const sheet=document.getElementById('homeCardsSheet');if(sheet&&sheet.open)renderSheet();return true
   }
 
