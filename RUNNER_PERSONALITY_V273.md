@@ -1,17 +1,19 @@
-# Runner — Personnalité et comportements (V273) : fondation
+# Runner — Personnalité et comportements (V273)
 
-Issue #509. **État : fondation isolée, non intégrée au runtime, en attente de la fusion de V272 (#508).**
+Issue #509. **État : intégré au runtime (V273).** Base : `main` `e3eadaf` (V272, `BUILD_REV` `20261005-r51-appearance-272`). Version visible **273**, `BUILD_REV` `20261005-r52-behavior-273`.
 
-Base : `main` `04431e5` (V271.1, `BUILD_REV` `20261005-r49-runner-presence-271`, `displayVersion` 271). Rien de ce qui est décrit ici n'est chargé par l'application : `index.html`, `sw.js`, `BUILD_REV`, `displayVersion`, `version.json`, les budgets de scripts, `runner-visual.js`, `home-refresh-v2.js` et la bottom sheet de V272 ne sont pas modifiés. Aucun comportement visible n'existe tant que l'intégration (W1 à W4, plus bas) n'a pas été faite sur le `main` qui contient V272.
-
-Livré par cette fondation :
+Runner a désormais cinq personnalités (**Copilote** par défaut, **Complice**, **Coach**, **Taquin**, **Discret**), choisies dans la feuille Apparence de V272, et de courtes réactions utiles sur l'Accueil. Tout ce qui suit décrit le code livré.
 
 | Fichier | Rôle |
 | --- | --- |
-| `runner-behavior.js` | module pur `StoreRunnerBehavior` (non chargé) |
-| `tests/runner-behavior-v273.test.cjs` | suite unitaire Node (ajoutée à Reliability) |
-| `RUNNER_PERSONALITY_V273.md` | ce contrat |
-| `.github/workflows/reliability-checks.yml` | une ligne : la suite est exécutée (exigé par `tests/reliability-coverage.test.cjs`) |
+| `runner-behavior.js` | module pur `StoreRunnerBehavior` : personnalités (données), décision, anti-spam, registre, contrôleur partagé. 78ᵉ script de démarrage (D2) |
+| `home-refresh-v2.js` | l'Accueil donne ses faits, applique la réaction : une ligne `#homeRunnerLineV273` et un geste générique |
+| `navigation-controller.js` | propriétaire de la feuille Apparence : section « Personnalité », branchement du stockage durable |
+| `planning-ui-fixes.js`, `assistant-upgrade.js` | titres des états métier existants selon la personnalité (`title()`), `touch()`, présence idle |
+| `runner-visual.js` | deux gestes génériques ajoutés à `react()` : `'nod'` et `'look'` (présentation pure, 45 Kio inchangés) |
+| `tests/runner-behavior-v273.test.cjs`, `tests/runner-personality-v273-browser.spec.cjs` | suites Node et navigateur (390 / 360 px, iPhone émulé), exécutées par Reliability |
+
+**Périmètre.** Aucune donnée métier lue ou écrite par ce module, aucun changement du schéma de `state`, aucun planning intelligent, aucun quiz, aucune évolution ni gamification, aucun événement propriétaire nouveau. `touch.runner` (échelle de toucher) est préparé dans le module mais **non branché** : le toucher sur Runner de l'Accueil reste celui de V272 (réaction courte puis la feuille).
 
 ## Ce que c'est, ce que ce n'est pas
 
@@ -25,7 +27,7 @@ Livré par cette fondation :
 
 ### Nom du module
 
-Le global est **`StoreRunnerBehavior`** et non `StoreRunnerRunnerBehavior` (nom évoqué dans #509). Le détecteur de `tests/runner-visual-v269.test.cjs` (« liste exacte des fichiers qui branchent Runner ») cherche le texte `StoreRunnerRunner` ; le nom long fait prendre le module pour un hôte de Runner et fait échouer ce test (vérifié). Renommer en `StoreRunnerRunnerBehavior` demande d'affiner ce pin (`StoreRunnerRunner(?!Behavior)`) : à faire en W1, dans le `main` post-V272, pour ne pas entrer en collision avec V272 qui peut modifier ce même test. Le fichier s'appelle `runner-behavior.js`.
+Le global est **`StoreRunnerBehavior`** et non `StoreRunnerRunnerBehavior` (nom évoqué dans #509), décision validée dans #509 : le détecteur de `tests/runner-visual-v269.test.cjs` (« liste exacte des fichiers qui branchent Runner ») cherche le texte `StoreRunnerRunner`, et le nom long ferait prendre ce module pour un hôte de Runner. Le fichier s'appelle `runner-behavior.js`. Il est chargé juste avant `navigation-controller.js` (qui le relie au stockage durable) et précaché dans le shell obligatoire de `sw.js`.
 
 ## API publique
 
@@ -36,31 +38,30 @@ Le global est **`StoreRunnerBehavior`** et non `StoreRunnerRunnerBehavior` (nom 
 | `touch(registry, {now, date}, options?)` | `{ registry, dirty }` : « l'utilisateur est actif aujourd'hui » (chaque hôte, à son affichage) |
 | `setPersonality(registry, id, options?)` | `{ registry, dirty }` ; id inconnu : inchangé |
 | `title(personalityId, surface, state, options?)` | titre d'un état métier (`analyzing`, `alert`, `success`) pour `'planning'` ou `'assistant'` ; `null` sinon |
-| `listPersonalities(options?)` | métadonnées pour la future section de la sheet (sans le texte) |
+| `idleAllowed(personalityId, options?)` | `false` seulement pour Discret : les hôtes coupent alors la présence idle de Runner |
+| `listPersonalities(options?)` | métadonnées pour la section « Personnalité » de la feuille (sans le texte) |
 | `defaultRegistry()`, `normalizeRegistry(raw, ctx?, options?)` | registre par défaut ; lecture tolérante |
 | `serializeRegistry(registry, ctx?, options?)`, `parseRegistry(text, ctx?, options?)` | sérialisation bornée / lecture tolérante |
 | `loadRegistry(adapter, ctx?, options?)`, `saveRegistry(adapter, registry, ctx?, options?)` | persistance abstraite (adaptateur injecté) |
+| `createController(adapter, options?)`, `connect(adapter, options?)`, `controller()` | contrôleur partagé : registre en mémoire, relié paresseusement au stockage durable par son propriétaire (voir ci-dessous) |
 | constantes | `VERSION`, `STORAGE_KEY`, `DEFAULT_PERSONALITY`, `STATES`, `SURFACES`, `TRIGGERS`, `GESTURES`, `ATTENTION_KINDS`, `CONFIG`, `PERSONALITIES`, `REACTIONS` (toutes gelées) |
 
 `dirty` vaut `true` seulement si la **partie persistée** du registre a changé : l'hôte n'écrit que dans ce cas. `options` (facultatif) accepte `{ config, personalities }` pour remplacer des seuils ou le catalogue (tests, futures expériences) ; les valeurs invalides sont ignorées.
 
-### Séquence côté hôte (future)
+### Séquence côté hôte
+
+`navigation-controller.js` appelle `StoreRunnerBehavior.connect(adapter)` une fois (adaptateur autour du moteur durable : `getItem`, `setItem` + `flush` best-effort, `removeItem`). Le contrôleur lit la clé **paresseusement** au premier usage, garde le registre en mémoire et n'écrit que quand la partie persistée change. Chaque hôte partage le même contrôleur (`controller()`) et ne fait que :
 
 ```js
-const B = window.StoreRunnerBehavior;                    // chargé après l'intégration, pas avant
-let reg = B.loadRegistry(adapter, { now, date });        // adapter = { getItem, setItem, removeItem } fourni par l'hôte
-const reaction = B.decide({
-  surface: 'home', trigger: 'arrive', now, view: { state: 'neutral' },
-  facts: { date, workday, mode, tour, attention, lastVisitDaysAgo, returnFrom }
-}, reg);
-if (reaction) {
-  // l'hôte applique le descripteur avec l'API de présentation de Runner, sans que ce module la connaisse
-  const r = B.record(reg, reaction, { now, date });
-  reg = r.registry;
-  if (r.dirty) B.saveRegistry(adapter, reg, { now, date });
-}
-const t = B.touch(reg, { now, date }); reg = t.registry; if (t.dirty) B.saveRegistry(adapter, reg, { now, date });
+const c = StoreRunnerBehavior.controller();
+c.touch({ now, date });                                  // « actif aujourd'hui » (écriture bornée à 1 / 30 min)
+const reaction = c.decide({ surface: 'home', trigger: 'arrive', now, view, facts });
+if (reaction) { c.record(reaction, { now, date }); /* puis l'hôte l'applique avec l'API de présentation de Runner */ }
+c.title('planning', 'alert');                            // titre d'un état métier (repli sur le titre V271 sans module)
+c.idle();                                                // false pour Discret
 ```
+
+Sans module, sans stockage ou avec un stockage qui échoue, rien ne lève : Copilote, registre en mémoire pour la session, titres V271.
 
 ### Entrée de `decide`
 
@@ -95,20 +96,23 @@ Les faits sont des **primitives** que l'hôte tire de ce que ses propriétaires 
 
 ## Personnalités (données)
 
-Quatre personnalités, **noms provisoires** (⚖ à valider). Ce sont des données gelées dans `PERSONALITIES` ; la logique n'en dépend pas et les tests n'assertent aucun texte (invariants et gabarits seulement).
+Cinq personnalités, **noms et textes à valider par le produit (⚖)**. Ce sont des données gelées dans `PERSONALITIES` ; la logique n'en dépend pas et les tests n'assertent aucun texte (invariants et gabarits seulement).
 
 | `id` | Label | Ton | Proactivité | Textes ambiants / jour | Idle | Réactions permises |
 | --- | --- | --- | --- | --- | --- | --- |
 | `copilote` (défaut) | Copilote | factuel | 1 | 2 | oui | toutes |
-| `coequipier` | Coéquipier | chaleureux | 2 | 3 | oui | toutes |
+| `complice` | Complice | chaleureux | 2 | 3 | oui | toutes |
 | `coach` | Coach | énergique | 2 | 3 | oui | toutes |
+| `taquin` | Taquin | ironique | 2 | 3 | oui | toutes |
 | `discret` | Discret | minimal | 0 | **0** | **non** | `tour.finished` (état seul), `personality.changed` |
 
-Par personnalité : `label`, `blurb`, `tone`, `proactivity` (0 à 2, plafond d'attentions par jour), `textBudgetPerDay`, `idle` (l'hôte appelle `setPresence(false)` pour `false`), `titles` (par surface hôte), `reactions` (réaction permise = présente ; `copy` vide = geste ou état seul).
+Par personnalité : `label`, `blurb`, `tone`, `proactivity` (0 à 2, plafond d'attentions par jour), `textBudgetPerDay`, `idle`, `titles` (par surface hôte), `reactions` (réaction permise = présente ; `copy` vide = geste ou état seul).
 
 - **Un texte est un gabarit** : `{fait}` insère un fait fourni par l'hôte, `{fait:mot}` ajoute le mot (« 1 jour », « 6 jours »). Faits connus : `done`, `total`, `days`, `lastVisit`, `label`, `reason`. Une variante dont un fait manque est **inutilisable** (jamais de gabarit brut affiché) ; si aucune variante n'est utilisable et que la réaction vit du texte, elle n'a pas lieu.
 - **Le corps des messages métier reste celui du propriétaire** ; la personnalité ne fournit que les **titres** des états métier (`titles`), les lignes ambiantes et le budget. Aucun titre ne dit un fait métier.
-- **Copilote reprend exactement les titres V271** (Planning : « Génération en cours… », « Contrainte détectée », « C'est fait ! » ; Assistant : « Analyse en cours… », « Attention ! », « C'est fait ! »). Un test lit `planning-ui-fixes.js` et `assistant-upgrade.js` pour le prouver ; il devra être adapté à l'intégration (W2), quand les hôtes demanderont leurs titres à `title()`.
+- **Copilote reprend exactement les titres V271** (Planning : « Génération en cours… », « Contrainte détectée », « C'est fait ! » ; Assistant : « Analyse en cours… », « Attention ! », « C'est fait ! »). Les hôtes gardent ces mêmes textes en repli (`behaviorTitle(état, repli)`) ; un test le prouve.
+- **Règle Taquin** : l'humour ne vit que sur les **erreurs techniques** de l'Assistant (le titre change, le message technique reste exact dessous) ; une **contrainte métier du Planning** (rendez-vous, créneau, fin de journée, jour non travaillé) garde le titre « Contrainte détectée », quelle que soit la personnalité. Testé.
+- **Discret** : aucun texte ambiant, aucun geste ambiant, présence idle coupée ; Runner reste là, et le succès d'une tournée terminée garde son état visuel (sans texte).
 - **Lint de copy** (testé) : ≤ 90 caractères dans le pire cas (faits au maximum), un seul « ! », pas d'emoji, tutoiement, ponctuation finale, mots interdits (« optimal », « optimisé », « meilleur », « urgent », « vite »…), au moins deux variantes (sauf `discret`) et au moins deux variantes utilisables avec les seuls faits obligatoires.
 - Les noms, les textes et les titres se modifient sans toucher à la logique ; seules les assertions de gabarits et de lint les encadrent.
 
@@ -175,7 +179,7 @@ Les budgets par jour (2 / 3 / 3 / 0) et la proactivité sont des **données de p
 
 ## Registre et persistance
 
-Clé prévue : `store-runner-runner-v1`, dans le moteur durable de l'application (comme `store-runner-home-cards-v1` et `store-runner-onboarding-v1`), **hors `state`, hors sauvegarde JSON, hors `schemaVersion`**. Absence de clé = Copilote et aucun historique. **Cette fondation ne la connecte à rien** : `loadRegistry`/`saveRegistry` reçoivent un adaptateur fourni par l'hôte (`getItem`, `setItem`, `removeItem`) et ne touchent aucun stockage directement.
+Clé : `store-runner-runner-v1`, dans le moteur durable de l'application (comme `store-runner-home-cards-v1` et `store-runner-onboarding-v1`), **hors `state`, hors sauvegarde JSON, hors `schemaVersion`**. Absence de clé = Copilote et aucun historique. `loadRegistry`/`saveRegistry` reçoivent un adaptateur fourni par l'hôte (`getItem`, `setItem`, `removeItem`) et ne touchent aucun stockage directement ; en V273 c'est `navigation-controller.js` (propriétaire de la préférence d'apparence) qui le branche sur le moteur durable, comme pour `store-runner-appearance-v1`. Le registre n'est pas dans la sauvegarde JSON : un appareil restauré repart en Copilote sans historique, sans autre effet.
 
 Schéma (partie persistée) :
 
@@ -193,18 +197,24 @@ La mémoire de session (`session` : derniers gestes, touchers, retours, aperçu)
 - **Écritures** : `dirty` n'est vrai que si la partie persistée change ; un toucher, un retour animé ou une écriture de « dernière activité » de moins de `activeWriteGapMs` n'écrivent rien. `saveRegistry` retire la clé quand le registre est celui par défaut, ne lève jamais et renvoie `false` si l'écriture est refusée.
 - Aucun changement du schéma de `state`, aucune donnée métier, aucune suppression de données.
 
-## Vocabulaire de présentation (à fournir par Runner en W1)
+## Vocabulaire de présentation
 
-Ce module ne nomme que des gestes **génériques**, sous forme de données : `acknowledge`, `nod`, `lookToward`, `settle` (`GESTURES`). Il ne sait pas comment Runner les joue. `settle` existe déjà (`returnToRest`, V271.1) ; les autres n'existent pas encore dans `runner-visual.js`.
+Le module ne nomme que des gestes **génériques** (`GESTURES`) ; il ne sait pas comment Runner les joue. L'hôte les traduit en appels à l'API de présentation existante : `acknowledge` → `react()` (clignement V272), `nod` → `react('nod')`, `lookToward` → `react('look', { toward })` (la cible du regard est une ancre fournie par l'hôte : la carte du jour, ou « vers le bas »), `settle` → `returnToRest` (V271.1, déjà en place).
 
-Consigne D3 (#509) : plafond de 44 KiB conservé, et **un seul contrat générique de geste** plutôt que plusieurs API. L'intégration (W1) vise donc **un seul point d'entrée** côté Runner (par exemple `gesture(nom, options)`, avec `options` pour l'ancre du regard fournie par l'hôte), dont les noms ci-dessus sont les entrées d'une petite table de séquences : `transform`/`opacity` seulement, Web Animations finies et annulables, no-op sous `prefers-reduced-motion` et `motion:'off'`, aucun nom d'écran ni de réaction. La marge actuelle de `runner-visual.js` est de 1 013 octets (gzip 936) ; si cette API ne tient pas proprement, le sujet revient avec des chiffres avant tout relèvement. Rien de tout cela n'est écrit dans cette fondation.
+`runner-visual.js` n'a reçu que l'extension de `react()` (`'nod'` : signe de tête sur `.rnHead` ; `'look'` : regard `.rnEyes`), toutes deux en `transform` seulement, Web Animations finies, annulables et sans effet sous `prefers-reduced-motion`. Le fichier reste sous le plafond de V272 (45 Kio ; 14 Kio gzip). Runner ne connaît ni le module de comportement, ni les personnalités, ni aucun texte de réaction ; un test le vérifie.
+
+## Intégration livrée
+
+- **Accueil (`home-refresh-v2.js`)** : à chaque arrivée sur l'Accueil (montage de Runner, une fois par arrivée, jamais sur un simple rendu), l'Accueil construit des **faits** depuis ce que ses propriétaires ont déjà calculé (tournée du jour, carte « À traiter maintenant », visites restées ouvertes, dernière visite réelle, jour travaillé, retour depuis un autre écran) et les confie à `decide`. La réaction gagnante devient une ligne `#homeRunnerLineV273` posée **dans le flux** sous le résumé de la journée (texte brut via `textContent`, jamais flottante, sans bouton) et un geste générique. Elle reste affichée jusqu'à ce qu'on quitte l'Accueil, pour ne jamais décaler la mise en page. Aucun timer, aucun écouteur, aucune écriture de `state`. Pas de réaction ambiante par-dessus la scène d'entrée de Runner (`isMoving()`) ni au retour de la feuille Apparence. Le guide de premier lancement, le clavier, une mise à jour en cours et toute feuille ouverte la suppriment (`view`).
+- **Feuille Apparence (`navigation-controller.js`)** : une section « Personnalité » (cinq boutons, `aria-pressed`, cible ≥ 44 px, zone d'aperçu `role="status"`) s'ajoute **dans la feuille V272 existante**, avant « Rétablir » ; aucune seconde feuille, aucun bouton « Appliquer ». Un choix s'enregistre tout de suite (moteur durable) et Runner dit une ligne d'exemple (`personality.changed`, hors budget, un aperçu toutes les deux secondes au plus). Si l'enregistrement échoue, un message l'indique.
+- **Planning et Assistant** : les titres des états métier (`analyzing`, `alert`, `success`) viennent de `title()` avec le titre V271 en repli ; le corps des messages et l'ordre des états restent à leurs propriétaires. Chacun appelle `touch()` et coupe la présence idle pour Discret. Le Command Engine, les moteurs de planning, Forecast et Explorer Terrain ne connaissent rien de ce module.
 
 ## Tests
 
 `node tests/runner-behavior-v273.test.cjs` (Node, ajouté à Reliability) :
 
-- **Interdictions architecturales** (sur le code sans commentaires) : DOM, listeners, observers, timers, réseau, évaluation dynamique, aléa, horloge, stockage direct, référence à Runner, accès au `state`, accès au global, moteurs Planning/métier ; le module s'exécute dans un contexte vide ; il n'est nommé ni par `index.html` ni par `sw.js` ; le global ne déclenche pas le pin de câblage de `runner-visual-v269` ; taille bornée (brut et gzip).
-- **Données** : personnalités gelées, invariants, quatre voix distinctes, `discret` muet et sans idle, Copilote = titres V271, lint de copy.
+- **Interdictions architecturales** (sur le code sans commentaires) : DOM, listeners, observers, timers, réseau, évaluation dynamique, aléa, horloge, stockage direct, référence à Runner, accès au `state`, accès au global, moteurs Planning/métier ; le module s'exécute dans un contexte vide ; il est chargé une seule fois par `index.html` (avant `navigation-controller.js`) et précaché une seule fois dans le shell obligatoire de `sw.js` ; le global ne déclenche pas le pin de câblage de `runner-visual-v269` ; taille bornée (brut et gzip).
+- **Données** : personnalités gelées, invariants, cinq voix distinctes, `discret` muet et sans idle, Copilote = titres V271 (repli des hôtes), règle Taquin, lint de copy.
 - **Portes** : tout état ≠ `neutral`, clavier, guide, mise à jour, overlay, entrées invalides, dates invalides, entrées piégées.
 - **Priorité** : un gagnant, ordre des poids, absorption, budget par personnalité.
 - **Déterminisme et non-mutation** : 25 appels identiques, indépendance de l'ordre des clés, entrées **gelées et ordinaires** inchangées, sorties gelées.
@@ -213,36 +223,19 @@ Consigne D3 (#509) : plafond de 44 KiB conservé, et **un seul contrat génériq
 - **Toucher, retour, aperçu** : échelle, série, fenêtre, silence, rafale, Discret, aperçu hors budget.
 - **Registre** : défaut, 20 entrées hostiles, tolérance champ par champ, prototype, TTL, bornes, taille, aller-retour sans la session, adaptateur défaillant, horloge qui recule.
 - **Configuration** : valeurs invalides ignorées, et **chaque** clé de `CONFIG` exercée.
+- **Contrôleur partagé** : lecture paresseuse du stockage, persistance du choix et de `record`, aucune écriture par `decide`, stockage absent ou défaillant sans exception, `connect`/`controller`.
+- **Hôtes épinglés** : bloc Accueil sans écriture, timer, écouteur ni HTML injecté ; `controller.decide` puis `record` ; section dans la feuille V272 sans seconde feuille ; titres et présence idle des trois hôtes ; Runner ignore le module.
 
-La suite est indépendante du fuseau horaire (rejouée sous `UTC`, `Europe/Paris`, `America/Los_Angeles`, `Pacific/Auckland`, `Asia/Kolkata`).
+`node tests/runner-personality-v273-browser.spec.cjs` (Reliability, 390 / 360 px et iPhone 14 émulé sous Chromium) : ligne d'Accueil courte, dans le flux, sans débordement et sans donnée métier modifiée ; cinq choix tactiles dans la feuille, persistants après rechargement ; anti-spam (changer d'écran, recharger) ; Discret muet ; trois personnalités, trois voix ; retour après absence ; registre corrompu ; aucun timer / intervalle / écouteur créé par le module ; titre d'erreur technique de l'Assistant en Taquin ; module précaché et fonctionnel hors ligne.
 
-## Intégration prévue (après la fusion de V272, **pas avant**)
+La suite Node est indépendante du fuseau horaire (rejouée sous `UTC`, `Europe/Paris`, `America/Los_Angeles`, `Pacific/Auckland`, `Asia/Kolkata`).
 
-| Vague | Contenu |
-| --- | --- |
-| W0 | re-audit sur l'API réelle de V272 : bottom sheet, toucher sur Runner, tokens et CSS de bulle (mode sombre), persistance, pins de tests ; rebase de cette branche ; rapport des collisions |
-| W1 | chargement du module (78ᵉ script : `index.html`, `CORE_SHELL` de `sw.js`, budgets 77 → 78, bump `BUILD_REV`) ; primitives de présentation de Runner ; affinage du pin de câblage ; assertions « non chargé » de la suite de ce module à retourner en assertions « chargé et mis en cache » |
-| W2 | section « Personnalité » dans la sheet de V272 ; titres par personnalité sur les états métier existants (Planning, Assistant) via `title()` |
-| W3 | Accueil : `tour.finished`, `welcome.back`, `attention.notice`, `day.ready`, `day.empty` (et le slot de texte, décision D6) |
-| W4 | toucher sur Runner et aperçu de personnalité |
-| W5 | `day.loaded`, quand `planning-pro-plus.js` exposera son seuil (lot du propriétaire) |
+## Décisions de référence (#509)
 
-D1 (V272 livre le toucher et la sheet), D2 (78ᵉ script et `sw.js`) et D3 (plafond de `runner-visual.js` conservé) sont tranchées dans #509. **Ces autorisations ne valent qu'après la fusion de V272** : cette fondation n'y touche pas.
-
-## Points volontairement en attente de V272
-
-- l'API réelle de la bottom sheet et son point d'extension pour une section « Personnalité » ;
-- la façon dont Runner devient tactile sur l'Accueil (bouton posé par l'hôte, rappel) ;
-- le CSS final des bulles (mode sombre) avant d'écrire le moindre texte visible ;
-- la convention de préférence retenue par V272 (clé, moteur durable) ;
-- les pins de tests que V272 modifie (`#homeRunnerV270{pointer-events:none}`, liste des fichiers qui branchent Runner, budget de scripts) ;
-- le slot de texte de l'Accueil (D6) ;
-- tout fichier de build ou de cache : `index.html`, `sw.js`, `version.json`, `BUILD_REV`, `displayVersion`, budgets de scripts.
-
-## Décisions encore ouvertes
-
-D4 (convention de clé, hors `state` et hors sauvegarde), D5 (nouveaux comportements activés par défaut avec Copilote, à faible intensité), D6 (ligne de texte dans le flux de l'Accueil ou gestes seuls), D7 (noms et textes des personnalités), D8 (seuil d'absence et budgets), D9 (aucun événement propriétaire nouveau en V273), et le nom du global (`StoreRunnerBehavior` ou `StoreRunnerRunnerBehavior` avec affinage du pin).
+D1 (V272 livre le toucher et la feuille), D2 (78ᵉ script de démarrage et `sw.js`), D3 (plafond de `runner-visual.js` conservé : **45 Kio** après V272, inchangé ici) et le nom du global sont tranchées. Le texte de l'Accueil (D6) est une ligne dans le flux, sous le résumé de la journée. Les noms et textes (D7), le seuil d'absence et les budgets (D8) restent des **données** modifiables sans toucher à la logique.
 
 ## Ce qui n'est pas fait, volontairement
 
-Aucun branchement à l'application, aucun nouveau script de démarrage, aucune modification de `runner-visual.js`, de l'Accueil, du Planning, de l'Assistant, de la sheet de V272, de `index.html` ou de `sw.js`, aucun bump de `BUILD_REV` ni de `displayVersion`, aucun événement propriétaire nouveau, aucune IA en ligne pour décider des animations, aucune lecture de position ni de donnée métier.
+- **`day.loaded`** (journée chargée) : le seuil appartient à `planning-pro-plus.js` et n'est pas exposé ; il ne sera pas dupliqué.
+- **`touch.runner`** : l'échelle de toucher est prête dans le module mais non branchée ; le toucher sur Runner reste celui de V272.
+- Pas de réaction ambiante dans le Planning ni dans l'Assistant (titres seulement), pas de planning intelligent, pas de quiz, pas d'évolution ni de gamification, pas de son, pas de vibration, pas de notification, pas d'IA en ligne pour décider des animations, aucune lecture de position ni de donnée métier par ce module, aucun événement propriétaire nouveau.

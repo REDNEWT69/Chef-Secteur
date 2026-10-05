@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'273',
+      title:'Runner a du caractère',
+      items:[
+        'Choisis la personnalité de Runner : Copilote, Complice, Coach, Taquin ou Discret. Touche Runner sur l’Accueil, puis Personnalité.',
+        'Sur l’Accueil, Runner glisse parfois une ligne courte et utile : ta tournée du jour, un magasin à reprendre, ton retour après une absence.',
+        'Il reste sobre : peu de messages par jour, jamais de répétition, et rien quand il y a plus important à voir.',
+        'Les consignes du planning restent toujours sérieuses, quelle que soit la personnalité. Aucune de tes données n’est modifiée.'
+      ]
+    },
+    {
       version:'272',
       title:'Ton apparence, avec Runner',
       items:[

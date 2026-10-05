@@ -89,14 +89,14 @@ const PERSONALITIES=deepFreeze({
       'tour.finished':{copy:['Tournée terminée. Magasins visités : {done}.','Tournée terminée : {done} sur {total}.']},
       'attention.notice':{copy:['Un point à regarder : {label}.','Un point à regarder chez {label}.','À regarder : {label}, {reason}.']},
       'welcome.back':{copy:['De retour. Dernière visite il y a {lastVisit:jour}.','Content de te revoir. Dernière visite il y a {lastVisit:jour}.','De retour dans ton secteur.','Content de te revoir.']},
-      'day.ready':{copy:[]},
+      'day.ready':{copy:['Journée prête. Bonne route.','{total:visite} au programme. Bonne route.']},
       'day.empty':{copy:['Rien de prévu aujourd’hui.','Aucune visite prévue aujourd’hui.']},
       'home.return':{copy:[]},'touch.runner':{copy:[]},
       'personality.changed':{copy:['Je reste sobre et factuel.','Je te dis l’essentiel.']}}},
-  coequipier:{id:'coequipier',label:'Coéquipier',blurb:'Chaleureux : il t’accompagne et remarque ce qui compte.',tone:'chaleureux',proactivity:2,textBudgetPerDay:3,idle:true,
+  complice:{id:'complice',label:'Complice',blurb:'Chaleureux : plus vivant, avec de petites remarques sympathiques.',tone:'chaleureux',proactivity:2,textBudgetPerDay:3,idle:true,
     titles:{planning:{analyzing:'Je prépare ça…',alert:'Un point à vérifier',success:'Voilà, c’est fait.'},assistant:{analyzing:'Je regarde ça…',alert:'Un point à vérifier',success:'Voilà, c’est fait.'}},
     reactions:{
-      'tour.finished':{copy:['Belle tournée : {done} sur {total}.','Belle tournée. {done} sur {total}, c’est fait.']},
+      'tour.finished':{copy:['Belle tournée : {done} sur {total}. Tu peux souffler.','Belle tournée. {done} sur {total}, c’est fait.']},
       'attention.notice':{copy:['Un point pour {label} : {reason}.','J’ai repéré un point chez {label}.','Un point à regarder chez {label}.']},
       'welcome.back':{copy:['Content de te retrouver. Dernière visite il y a {lastVisit:jour}.','Te revoilà. Dernière visite il y a {lastVisit:jour}.','Content de te retrouver.','Te revoilà.']},
       'day.ready':{copy:['Bonne journée. {total:visite} au programme.','Au programme aujourd’hui : {total:visite}.']},
@@ -113,6 +113,19 @@ const PERSONALITIES=deepFreeze({
       'day.empty':{copy:['Journée libre aujourd’hui.','Pas de visite prévue aujourd’hui.']},
       'home.return':{copy:[]},'touch.runner':{copy:[]},
       'personality.changed':{copy:['On garde le rythme.','Un magasin après l’autre.']}}},
+  /* Taquin : humour sec, jamais sur ce qui est grave. Les titres d'alerte du Planning (contraintes métier) restent
+     clairs ; seule une erreur technique de l'Assistant peut recevoir une pointe, et le message du propriétaire,
+     qui porte le fait et l'action possible, est toujours affiché tel quel juste dessous. */
+  taquin:{id:'taquin',label:'Taquin',blurb:'Humour sec : il plaisante, mais reste utile.',tone:'ironique',proactivity:2,textBudgetPerDay:3,idle:true,
+    titles:{planning:{analyzing:'Je m’en occupe…',alert:'Contrainte détectée',success:'Voilà. C’était pas si dur.'},assistant:{analyzing:'Je cogite…',alert:'Bon. Ça, c’était pas dans le plan.',success:'Voilà, c’est réglé.'}},
+    reactions:{
+      'tour.finished':{copy:['Tournée bouclée : {done} sur {total}. Je dirai que c’était facile.','{done} sur {total}. Tu peux dire que c’était mon idée.']},
+      'attention.notice':{copy:['Un point à voir chez {label}. Il ne va pas se régler seul.','{label} : {reason}. Ça traîne.','{label} demande un peu d’attention.']},
+      'welcome.back':{copy:['Tiens, te revoilà. Dernière visite il y a {lastVisit:jour}.','Déjà {lastVisit:jour} sans visite. Je gardais ta place.','Tiens, te revoilà.','Je commençais à parler tout seul.']},
+      'day.ready':{copy:['{total:visite} aujourd’hui. On ne va pas se plaindre.','Journée prête. Les magasins ne se visitent pas seuls.']},
+      'day.empty':{copy:['Rien de prévu aujourd’hui. Étrange, mais je ne dis rien.','Aucune visite aujourd’hui. Je m’y habituerais presque.']},
+      'home.return':{copy:[]},'touch.runner':{copy:[]},
+      'personality.changed':{copy:['Je promets de rester utile. Et mordant.','Bon. On va s’amuser un peu.']}}},
   discret:{id:'discret',label:'Discret',blurb:'Presque muet : il ne réagit qu’à ce que tu fais.',tone:'minimal',proactivity:0,textBudgetPerDay:0,idle:false,
     titles:{planning:{analyzing:'En cours…',alert:'Contrainte',success:'Fait.'},assistant:{analyzing:'En cours…',alert:'Contrainte',success:'Fait.'}},
     reactions:{
@@ -460,16 +473,56 @@ function title(personalityId,surface,state,options){
   const t=p&&isObj(p.titles)&&has(p.titles,surface)&&isObj(p.titles[surface])?p.titles[surface][state]:null;
   return typeof t==='string'&&t?t:null;
 }
+function idleAllowed(personalityId,options){
+  const o=resolveOptions(options),p=typeof personalityId==='string'&&has(o.personalities,personalityId)?o.personalities[personalityId]:o.personalities[DEFAULT_PERSONALITY];
+  return!p||p.idle!==false;
+}
 function listPersonalities(options){
   const o=resolveOptions(options);
   return Object.freeze(Object.keys(o.personalities).map(id=>{const p=o.personalities[id];return Object.freeze({id:p.id,label:p.label,blurb:p.blurb,tone:p.tone,proactivity:p.proactivity,textBudgetPerDay:p.textBudgetPerDay,idle:p.idle})}));
 }
+
+/* Contrôleur de session : garde le registre en mémoire (source unique pour tous les écrans) et le persiste par
+   l'adaptateur que l'hôte lui a confié (`connect`). Sans adaptateur, il travaille en mémoire seule. Le contrôleur
+   ne lit ni n'écrit rien d'autre, n'a aucun timer ni écouteur, et ne lève jamais d'exception. */
+function createController(adapter,options){
+  let reg=defaultRegistry(),loaded=false;
+  const ctxOf=input=>({now:input&&num(input.now),date:input&&isoDate(input.date||(input.facts&&input.facts.date))});
+  const ensure=ctx=>{if(!loaded){reg=loadRegistry(adapter,ctx,options);loaded=true}return reg};
+  const persist=ctx=>{try{return saveRegistry(adapter,reg,ctx,options)}catch(e){return false}};
+  const api={
+    personality:()=>ensure(null).personality,
+    setPersonality(id){
+      const r=setPersonality(ensure(null),id,options);reg=r.registry;
+      return r.dirty?persist(null):r.registry.personality===id;
+    },
+    decide(input){return decide(input,ensure(ctxOf(input)),options)},
+    record(reaction,input){
+      const ctx=ctxOf(input),r=record(ensure(ctx),reaction,ctx,options);reg=r.registry;
+      if(r.dirty)persist(ctx);
+      return r.dirty;
+    },
+    touch(input){
+      const ctx=ctxOf(input),r=touch(ensure(ctx),ctx,options);reg=r.registry;
+      if(r.dirty)persist(ctx);
+      return r.dirty;
+    },
+    title(surface,state){return title(ensure(null).personality,surface,state,options)},
+    idle:()=>idleAllowed(ensure(null).personality,options),
+    registry:()=>ensure(null)
+  };
+  return Object.freeze(api);
+}
+let shared=null;
+function connect(adapter,options){shared=createController(adapter,options);return shared}
+function controller(){return shared||(shared=createController(null))}
 
 return{
   VERSION,STORAGE_KEY,DEFAULT_PERSONALITY,STATES,SURFACES,TRIGGERS,GESTURES,ATTENTION_KINDS,
   CONFIG,PERSONALITIES,REACTIONS,
   defaultRegistry,normalizeRegistry:(raw,ctx,options)=>{try{return normalizeRegistry(raw,ctx,resolveOptions(options),true)}catch(e){return defaultRegistry()}},
   serializeRegistry,parseRegistry,loadRegistry,saveRegistry,
-  decide,record,touch,setPersonality,title,listPersonalities
+  decide,record,touch,setPersonality,title,idleAllowed,listPersonalities,
+  createController,connect,controller
 };
 });

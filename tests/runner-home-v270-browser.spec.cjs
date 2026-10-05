@@ -272,7 +272,10 @@ test.describe('Replis et cycle de vie mobile', () => {
     const errors = await boot(page, { absent: true });
     await settle(page);
     await expect(page.locator(SLOT + ' .srRunnerFigure')).toBeVisible();
-    expect(await audit(page)).toEqual({ moves: 0, poses: 0, active: 0, timers: 0, intervals: 0, mounted: 1, nodes: 1 });
+    /* V273 : sans trajet d'entrée, Runner peut acquitter la ligne de l'Accueil d'un geste de regard (une seule pose, jamais un trajet). */
+    const quiet = await audit(page);
+    expect(quiet).toMatchObject({ moves: 0, timers: 0, intervals: 0, mounted: 1, nodes: 1 });
+    expect(quiet.poses, 'au plus une pose ambiante, aucun trajet').toBeLessThanOrEqual(1);
     expect(await page.locator(SLOT + ' .srRunner').evaluate(el => getComputedStyle(el).transform)).toBe('none');
     expect(errors).toEqual([]);
   });

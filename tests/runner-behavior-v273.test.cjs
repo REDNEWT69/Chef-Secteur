@@ -72,14 +72,20 @@ vm.runInNewContext(source, sandbox);
 assert.equal(typeof sandbox.StoreRunnerBehavior.decide, 'function', 'aucune dépendance cachée : le module tourne dans un contexte vide');
 assert.equal(typeof globalThis.document, 'undefined');
 
-// Non branché : aucun fichier servi ni mis en cache ne le nomme (à relever à l'intégration, après V272).
-for (const served of ['index.html', 'sw.js']) assert.doesNotMatch(read(served), /runner-behavior/, served + ' ne charge pas encore le module (fondation seule)');
+// Branché en V273 (D2 : 78e script de démarrage) : chargé avant navigation-controller.js (qui le connecte à son stockage)
+// et précaché dans le shell obligatoire de sw.js, une seule fois. Aucun autre fichier servi ne le charge.
+const indexHtml = read('index.html'), swJs = read('sw.js');
+assert.equal(indexHtml.split("'./runner-behavior.js'").length - 1, 1, 'index.html charge le module une seule fois');
+assert.match(indexHtml, /'\.\/route-polish\.js','\.\/runner-behavior\.js','\.\/navigation-controller\.js'/, 'chargé juste avant navigation-controller.js');
+assert.equal(swJs.split('"./runner-behavior.js"').length - 1, 1, 'sw.js précache le module une seule fois');
+assert.ok(swJs.indexOf('"./runner-behavior.js"') < swJs.indexOf('const OPTIONAL_SHELL'), 'shell obligatoire, pas facultatif');
+assert.ok(!/runner-behavior\.js/.test(read('runner-visual.js')), 'Runner (présentation) ne charge ni ne connaît le module de comportement');
 assert.ok(fs.readdirSync(ROOT).includes(FILE));
 assert.ok(Buffer.byteLength(source) < 40 * 1024, 'taille du module bornée (' + Buffer.byteLength(source) + ' o)');
 assert.ok(require('zlib').gzipSync(source).length < 12 * 1024, 'taille gzip bornée');
 
 /* 2. Contrat de personnalité : des données -------------------------------------------------- */
-assert.deepEqual(Object.keys(B.PERSONALITIES), ['copilote', 'coequipier', 'coach', 'discret']);
+assert.deepEqual(Object.keys(B.PERSONALITIES), ['copilote', 'complice', 'coach', 'taquin', 'discret']);
 assert.equal(B.DEFAULT_PERSONALITY, 'copilote');
 assert.equal(B.STORAGE_KEY, 'store-runner-runner-v1');
 assert.ok(Object.isFrozen(B.PERSONALITIES) && Object.isFrozen(B.PERSONALITIES.coach.reactions['tour.finished'].copy) && Object.isFrozen(B.CONFIG) && Object.isFrozen(B.CONFIG.touchLadder) && Object.isFrozen(B.REACTIONS));
@@ -102,17 +108,21 @@ const discret = B.PERSONALITIES.discret;
 assert.deepEqual([discret.proactivity, discret.textBudgetPerDay, discret.idle], [0, 0, false]);
 assert.deepEqual(Object.keys(discret.reactions).sort(), ['personality.changed', 'tour.finished']);
 assert.deepEqual(discret.reactions['tour.finished'].copy, []);
-// Les quatre voix diffèrent réellement (volume, proactivité, réactions permises, titres), sans dépendre des mots.
+// Les cinq voix diffèrent réellement (volume, proactivité, réactions permises, titres), sans dépendre des mots.
 const profile = p => json([p.proactivity, p.textBudgetPerDay, p.idle, Object.keys(p.reactions).sort(), p.titles]);
-assert.equal(new Set(Object.values(B.PERSONALITIES).map(profile)).size, 4);
-assert.equal(new Set(Object.values(B.PERSONALITIES).map(p => p.titles.planning.success)).size, 4);
+assert.equal(new Set(Object.values(B.PERSONALITIES).map(profile)).size, 5);
+assert.equal(new Set(Object.values(B.PERSONALITIES).map(p => p.titles.planning.success)).size, 5);
 assert.ok(B.PERSONALITIES.copilote.textBudgetPerDay < B.PERSONALITIES.coach.textBudgetPerDay && B.PERSONALITIES.copilote.proactivity < B.PERSONALITIES.coach.proactivity);
-// Copilote = comportement V271 tant que les hôtes portent leurs propres titres : ce test suit l'intégration (W2).
+// Copilote = comportement V271 : les titres du module sont exactement les titres que les hôtes gardent en repli.
 const planningSrc = read('planning-ui-fixes.js'), assistantSrc = read('assistant-upgrade.js');
 for (const state of ['analyzing', 'alert', 'success']) {
-  assert.ok(planningSrc.includes("title:'" + B.PERSONALITIES.copilote.titles.planning[state] + "'"), 'Copilote reprend le titre Planning V271 : ' + state);
+  assert.ok(planningSrc.includes("behaviorTitle('" + state + "','" + B.PERSONALITIES.copilote.titles.planning[state] + "')"), 'Copilote reprend le titre Planning V271 : ' + state);
   assert.ok(assistantSrc.includes("title:'" + B.PERSONALITIES.copilote.titles.assistant[state] + "'"), 'Copilote reprend le titre Assistant V271 : ' + state);
 }
+// Taquin : l'humour reste sur les erreurs techniques ; une contrainte métier du Planning garde un titre clair.
+assert.equal(B.title('taquin', 'planning', 'alert'), B.title('copilote', 'planning', 'alert'), 'alerte métier du Planning : jamais plaisantée');
+assert.notEqual(B.title('taquin', 'assistant', 'alert'), B.title('copilote', 'assistant', 'alert'), 'erreur technique de l’Assistant : pointe permise');
+for (const p of Object.values(B.PERSONALITIES)) assert.equal(p.titles.planning.alert.length <= 30, true, p.id + ' : titre d’alerte métier court et clair');
 assert.equal(B.title('copilote', 'planning', 'neutral'), null, 'le titre neutre appartient à l’hôte');
 assert.equal(B.title('copilote', 'home', 'alert'), null);
 assert.equal(B.title('inconnue', 'planning', 'alert'), B.title('copilote', 'planning', 'alert'), 'personnalité inconnue : Copilote');
@@ -209,7 +219,7 @@ assert.deepEqual(ambientWeights, ambientWeights.slice().sort((a, b) => b - a), '
   const x = B.decide(mk({ facts: { tour: TOUR_DONE } }), registry('coach'));
   assert.deepEqual([x.id, x.kind, x.surface, x.personality, x.state, x.silent, x.messageMs], ['tour.finished', 'ambient', 'home', 'coach', 'success', true, B.CONFIG.messageMs]);
   assert.ok(B.PERSONALITIES.coach.reactions['tour.finished'].copy.some(t => t.replace(PLACEHOLDER, (m, k) => ({ done: 3, total: 3 })[k]) === x.text), 'texte issu des données + faits');
-  assert.equal(B.decide(mk({ facts: { tour: TOUR_READY, workday: true, mode: 'today' } }), registry('copilote')).text, null, 'Copilote : geste seul pour day.ready');
+  assert.equal(typeof B.decide(mk({ facts: { tour: TOUR_READY, workday: true, mode: 'today' } }), registry('copilote')).text, 'string', 'Copilote : une ligne courte pour day.ready (D6)');
   assert.equal(B.decide(mk({ facts: { tour: TOUR_READY, workday: true, mode: 'today' } }), registry('copilote')).gesture, 'lookToward');
   assert.equal(B.decide(mk({ facts: { tour: TOUR_READY, workday: true, mode: 'today', afterHours: true } }), registry('coach')), null, 'après 20 h : pas de journée prête');
   assert.equal(B.decide(mk({ facts: { tour: TOUR_READY, workday: false, mode: 'today' } }), registry('coach')), null, 'jour non travaillé : rien');
@@ -531,4 +541,78 @@ const assertValid = (reg, label) => {
   assert.ok(numeric.every(k => typeof B.CONFIG[k] === 'number' || k === 'touchLadder'), 'CONFIG : nombres et échelle de toucher seulement');
 }
 
-console.log('PASS: Runner Behavior V273 — fondation pure testée (' + ids.length + ' réactions, ' + Object.keys(B.PERSONALITIES).length + ' personnalités, ' + Object.keys(B.CONFIG).length + ' seuils), non chargée par l’application.');
+/* 14. Contrôleur partagé : le registre en mémoire, relié au stockage durable par son propriétaire ------------ */
+{
+  const mkStore = (over) => { const store = new Map(), calls = []; return Object.assign({ store, calls, getItem: k => (calls.push(['get', k]), store.has(k) ? store.get(k) : null), setItem: (k, v) => { calls.push(['set', k]); store.set(k, String(v)); }, removeItem: k => { calls.push(['remove', k]); store.delete(k); } }, over); };
+  const a = mkStore(), c = B.createController(a);
+  assert.equal(a.calls.length, 0, 'aucune lecture du stockage avant le premier usage');
+  assert.equal(c.personality(), 'copilote'); assert.equal(a.calls.filter(x => x[0] === 'get').length, 1, 'une seule lecture, paresseuse');
+  assert.equal(c.personality(), 'copilote'); assert.equal(a.calls.filter(x => x[0] === 'get').length, 1, 'registre gardé en mémoire');
+  assert.equal(c.setPersonality('coach'), true); assert.equal(c.personality(), 'coach');
+  assert.equal(B.loadRegistry(a).personality, 'coach', 'le choix est écrit dans le stockage durable');
+  assert.equal(B.createController(a).personality(), 'coach', 'un autre contrôleur (prochaine ouverture) retrouve le choix');
+  assert.equal(c.setPersonality('inconnue'), false, 'personnalité inconnue refusée'); assert.equal(c.personality(), 'coach');
+  assert.equal(Object.isFrozen(c), true, 'API du contrôleur gelée');
+
+  // décider ne persiste rien ; enregistrer écrit une fois, puis l'anti-spam retient la même réaction
+  const sets = () => a.calls.filter(x => x[0] === 'set').length;
+  const input = mk({ facts: { tour: TOUR_DONE } }), before = sets();
+  const reaction = c.decide(input);
+  assert.ok(reaction && reaction.id, 'une réaction est proposée'); assert.equal(sets(), before, 'decide ne persiste rien');
+  assert.equal(c.record(reaction, input), true); assert.equal(sets(), before + 1, 'record persiste');
+  assert.equal(c.decide(mk({ now: NOW + 1000, facts: { tour: TOUR_DONE } })), null, 'même réaction juste après : retenue par l’anti-spam');
+  assert.equal(c.title('planning', 'alert'), B.title('coach', 'planning', 'alert'), 'titre selon la personnalité choisie');
+  // Présence idle : permise partout sauf Discret, qui laisse Runner immobile (les hôtes demandent, Runner ne sait rien de la personnalité)
+  assert.equal(c.idle(), true); assert.equal(B.idleAllowed('discret'), false); assert.equal(B.idleAllowed('inconnue'), true, 'inconnue : Copilote');
+  for (const id of ['copilote', 'complice', 'coach', 'taquin']) assert.equal(B.idleAllowed(id), true, id);
+  assert.equal(B.createController(mkStore()).idle(), true); const quiet = B.createController(mkStore()); quiet.setPersonality('discret'); assert.equal(quiet.idle(), false);
+
+  // un hôte qui ne reconnaît pas l'état neutre n'obtient rien
+  assert.equal(c.decide(mk({ view: { state: 'analyzing' }, facts: { tour: TOUR_DONE } })), null);
+
+  // stockage indisponible, absent ou qui échoue : jamais d'exception, comportement par défaut, rien d'écrit en dehors
+  for (const bad of [null, undefined, {}, { getItem() { throw new Error('refusé'); }, setItem() { throw new Error('quota'); } }]) {
+    const x = B.createController(bad);
+    assert.doesNotThrow(() => { assert.equal(x.personality(), 'copilote'); x.setPersonality('discret'); x.touch({ now: NOW, date: D }); x.record(x.decide(mk({ facts: { tour: TOUR_DONE } })), mk()); });
+    assert.equal(x.personality(), 'discret', 'le choix reste valable en mémoire pour la session');
+  }
+
+  // partage : connect() remplace le contrôleur partagé, controller() n'en crée jamais deux
+  const shared = B.controller(); assert.equal(B.controller(), shared, 'un seul contrôleur partagé');
+  const b = mkStore(); b.store.set('store-runner-runner-v1', B.serializeRegistry(B.setPersonality(B.defaultRegistry(), 'taquin').registry));
+  const connected = B.connect(b); assert.equal(B.controller(), connected); assert.equal(connected.personality(), 'taquin', 'connect relit la préférence du stockage durable');
+  B.connect(null);
+}
+
+/* 15. Hôtes : chacun garde sa propriété, le module reste la seule source de décision ---------------- */
+{
+  const home = read('home-refresh-v2.js'), nav = read('navigation-controller.js');
+  const from = home.indexOf("/* V273 — voix de Runner sur l'Accueil."), apply = home.indexOf('function applyBehavior');
+  const voice = home.slice(from, home.indexOf('\n  function ', apply + 20));
+  assert.ok(from > 0 && apply > from, 'bloc V273 de l’Accueil repéré'); assert.ok(voice.length > 1500);
+  assert.doesNotMatch(voice, /localStorage|sessionStorage|__chefStorage|indexedDB|\bsave\s*\(|generateWeek|renderAll|setTimeout|setInterval|addEventListener|MutationObserver|innerHTML|state\.[A-Za-z.]*\s*=[^=]/, 'l’Accueil lit des faits : aucune écriture, aucun timer, aucun écouteur, aucun HTML injecté');
+  assert.match(voice, /textContent=homeLineText/, 'le texte de Runner passe toujours par textContent');
+  assert.match(voice, /controller\.decide\(\{surface:'home',trigger:'arrive'/, 'l’Accueil confie la décision au module');
+  assert.match(voice, /controller\.record\(reaction/, 'toute réaction affichée est enregistrée (budget, écart)');
+  assert.match(voice, /returnFrom:returnedFrom\|\|null/, 'le retour depuis un autre écran est un fait de l’Accueil, jamais déduit du module');
+  assert.match(voice, /homeRunner\.isMoving\(\)/, 'aucun geste ambiant par-dessus la scène d’entrée');
+  assert.match(home, /if\(skipBehavior\)skipBehavior=false;else applyBehavior\(panel,returnedFrom\)/, 'retour de la feuille Apparence : aucune réaction supplémentaire');
+  assert.match(home, /homeRunnerLineV273/, 'ligne de l’Accueil réservée dans le flux de la page');
+  assert.doesNotMatch(read('runner-visual.js'), /StoreRunnerBehavior|runner-behavior/, 'la couche visuelle ignore le module de comportement');
+  assert.match(home, /setPresence\(behaviorIdle\(\)\)/, 'Accueil : Discret coupe la présence idle');
+  assert.doesNotMatch(home, /setPresence\(true\)/);
+  for (const f of ['planning-ui-fixes.js', 'assistant-upgrade.js']) {
+    const src = read(f);
+    assert.match(src, /StoreRunnerBehavior/, f + ' lit ses titres auprès du module');
+    assert.match(src, /runnerInstance\.setPresence\(behaviorIdle\(\)\)/, f + ' : Discret coupe la présence idle');
+    assert.doesNotMatch(src, /runnerInstance\.setPresence\(true\)/, f + ' : jamais de présence forcée');
+    assert.doesNotMatch(src.slice(src.indexOf('function behaviorTitle'), src.indexOf('function behaviorTitle') + 700), /\.decide\(|\.record\(|setPersonality|localStorage|__chefStorage|setTimeout/, f + ' : titres seulement, jamais de décision ni de persistance');
+  }
+  // personnalité : la feuille Apparence de V272 reste la seule feuille ; le stockage est branché par son propriétaire
+  assert.match(nav, /b\.connect\(db\?\{/, 'navigation-controller.js connecte le module à son stockage durable');
+  assert.match(nav, /data-runner-personality/, 'la section Personnalité vit dans la feuille Apparence existante');
+  assert.match(nav, /anchor\.parentNode\.insertBefore\(section,anchor\)/, 'la section s’insère dans la feuille Apparence de V272 (avant « Rétablir »), aucune seconde feuille')
+  assert.ok(!/localStorage|sessionStorage/.test(nav.slice(nav.indexOf('function connectBehavior'), nav.indexOf('async function set(value)'))), 'aucun stockage direct : moteur durable seulement');
+}
+
+console.log('PASS: Runner Behavior V273 — fondation pure testée (' + ids.length + ' réactions, ' + Object.keys(B.PERSONALITIES).length + ' personnalités, ' + Object.keys(B.CONFIG).length + ' seuils), contrôleur partagé et hôtes épinglés.');

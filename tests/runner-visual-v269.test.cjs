@@ -25,9 +25,9 @@ assert.match(index, /'\.\/store-explorer\.js','\.\/runner-visual\.js','\.\/weekl
   'Runner est chargé avant les derniers modules, sans déplacer mobile-ux-v262.js en dernier');
 assert.equal(sw.split('"./runner-visual.js"').length - 1, 1, 'sw.js précache runner-visual.js une seule fois (CORE_SHELL, obligatoire)');
 assert.ok(sw.indexOf('"./runner-visual.js"') < sw.indexOf('const OPTIONAL_SHELL'), 'runner-visual.js est dans le shell obligatoire, pas dans le facultatif');
-assert.equal(version.displayVersion, '272', 'Apparence de Runner : nouveauté visible V272');
-assert.match(version.latestBuild, /-272$/, 'le build se termine par la version visible 272');
-assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-272$/);
+assert.equal(version.displayVersion, '273', 'Personnalité de Runner : nouveauté visible V273');
+assert.match(version.latestBuild, /-273$/, 'le build se termine par la version visible 273');
+assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-273$/);
 assert.equal(index.match(/const BUILD_REV='([^']+)'/)[1], version.latestBuild);
 assert.equal(sw.match(/const BUILD_REV = "([^"]+)"/)[1], version.latestBuild);
 assert.ok(!fs.existsSync(path.join(__dirname, '..', 'runner-visual.css')), 'aucune feuille séparée : le style est injecté au premier mount');

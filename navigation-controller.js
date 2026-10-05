@@ -974,6 +974,56 @@
     status.textContent=statusText;status.hidden=!statusText;
     const reset=sheet.querySelector('[data-appearance-reset]');
     reset.disabled=preference.mode==='light'&&preference.accent==='blue';
+    syncPersonality();
+  }
+  /* V273 — personnalité de Runner : le choix, les réactions et le registre appartiennent au module pur
+     StoreRunnerBehavior ; ce propriétaire ne fait que lui confier le stockage durable et afficher la section. */
+  function behaviorApi(){const b=window.StoreRunnerBehavior;return b&&typeof b.controller==='function'&&typeof b.connect==='function'?b:null}
+  function localDate(ms){const d=new Date(ms);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+  function connectBehavior(){
+    const b=behaviorApi(),db=storage();
+    if(!b)return;
+    b.connect(db?{
+      getItem:key=>db.getItem(key),
+      removeItem:key=>db.removeItem(key),
+      setItem:(key,value)=>{db.setItem(key,value);try{const done=typeof db.flush==='function'&&db.flush();if(done&&typeof done.catch==='function')done.catch(()=>{})}catch(e){}}
+    }:null);
+  }
+  function syncPersonality(){
+    const b=behaviorApi();
+    if(!sheet||!b)return;
+    const id=b.controller().personality();
+    sheet.querySelectorAll('[data-runner-personality]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.runnerPersonality===id)));
+  }
+  function buildPersonalitySection(){
+    const b=behaviorApi(),anchor=sheet.querySelector('[data-appearance-reset]');
+    if(!b||!anchor)return;
+    const section=document.createElement('section'),title=document.createElement('h3'),list=document.createElement('div'),preview=document.createElement('p');
+    section.setAttribute('aria-labelledby','runnerPersonalityTitle');
+    title.id='runnerPersonalityTitle';title.textContent='Personnalité';
+    list.className='srPersonalityList';list.setAttribute('role','group');list.setAttribute('aria-label','Personnalité de Runner');
+    b.listPersonalities().forEach(p=>{
+      const button=document.createElement('button'),name=document.createElement('b'),blurb=document.createElement('span');
+      button.type='button';button.dataset.runnerPersonality=p.id;button.setAttribute('aria-pressed','false');
+      name.textContent=p.label;blurb.textContent=p.blurb;
+      button.append(name,blurb);list.appendChild(button);
+    });
+    preview.className='srPersonalityPreview';preview.setAttribute('data-runner-personality-preview','');preview.setAttribute('role','status');preview.setAttribute('aria-live','polite');
+    section.append(title,list,preview);
+    anchor.parentNode.insertBefore(section,anchor);
+  }
+  /* Choisir une personnalité l'enregistre tout de suite et laisse Runner dire une ligne d'exemple (action de
+     l'utilisateur : ni budget ni écart, mais un aperçu toutes les deux secondes au plus). */
+  function choosePersonality(id){
+    const b=behaviorApi();
+    if(!b)return;
+    const controller=b.controller(),now=Date.now(),date=localDate(now);
+    let saved=controller.setPersonality(id)&&window.__chefStorageMode!=='memory';
+    syncControls();
+    const reaction=controller.decide({surface:'sheet',trigger:'personality',now,view:{state:'neutral',overlay:true},facts:{date}});
+    const out=sheet&&sheet.querySelector('[data-runner-personality-preview]');
+    if(reaction&&out){out.textContent=reaction.text||'';controller.record(reaction,{now,date})}
+    if(!saved)setStatus('La personnalité est choisie, mais son enregistrement a échoué. Réessaie.');
   }
   async function set(value){
     preference=normalize(Object.assign({},get(),value&&typeof value==='object'?value:{}));
@@ -1035,6 +1085,12 @@
         #runnerAppearanceSheet button:disabled{opacity:.55;cursor:default}
         #runnerAppearanceSheet button:focus-visible{outline:3px solid var(--brand);outline-offset:3px}
         #runnerAppearanceSheet [data-appearance-status]{margin:12px 0 0;font-size:13px;line-height:1.45;color:var(--ink)}
+        #runnerAppearanceSheet .srPersonalityList{display:grid;gap:7px}
+        #runnerAppearanceSheet .srPersonalityList button{display:grid;gap:2px;justify-items:start;text-align:left;min-height:52px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--sr-surface-raised,var(--bg));color:var(--ink)}
+        #runnerAppearanceSheet .srPersonalityList b{font-size:15px}
+        #runnerAppearanceSheet .srPersonalityList span{font-size:13px;line-height:1.35;font-weight:500;color:var(--ink)}
+        #runnerAppearanceSheet .srPersonalityList button[aria-pressed="true"]{border-color:var(--brand);background:var(--brandSoft);box-shadow:inset 0 0 0 1px var(--brand)}
+        #runnerAppearanceSheet .srPersonalityPreview{margin:10px 0 0;min-height:20px;font-size:14px;line-height:1.4;color:var(--ink)}
         @media(prefers-reduced-motion:reduce){#runnerAppearanceSheet *{animation:none!important;transition:none!important}}
       `;
       document.head.appendChild(style);
@@ -1042,19 +1098,20 @@
     sheet=document.createElement('dialog');sheet.id='runnerAppearanceSheet';
     sheet.setAttribute('aria-labelledby','runnerAppearanceTitle');
     sheet.innerHTML='<div class="srAppearanceBody"><div class="srAppearanceHandle" aria-hidden="true"></div><div class="srAppearanceHead"><h2 id="runnerAppearanceTitle">Runner</h2><button type="button" class="srAppearanceClose" data-appearance-close aria-label="Fermer Runner">×</button></div><div class="srAppearancePreview"><div id="runnerAppearancePreview" aria-hidden="true"></div><div class="srAppearancePreviewCopy"><b>Store Runner</b><span>Aperçu en direct</span></div><span class="srAppearancePreviewDot" aria-hidden="true"></span></div><section aria-labelledby="runnerAppearanceModeTitle"><h3 id="runnerAppearanceModeTitle">Apparence</h3><div class="srAppearanceModes" role="group" aria-label="Apparence"><button type="button" data-appearance-mode="light" aria-pressed="false">Clair</button><button type="button" data-appearance-mode="dark" aria-pressed="false">Sombre</button><button type="button" data-appearance-mode="system" aria-pressed="false">Système</button></div></section><section aria-labelledby="runnerAppearanceAccentTitle"><h3 id="runnerAppearanceAccentTitle">Couleur d’accent</h3><div class="srAppearanceAccents" role="group" aria-label="Couleur d’accent"><button type="button" data-appearance-accent="blue" aria-pressed="false"><span class="srAppearanceSwatch" aria-hidden="true"></span>Bleu</button><button type="button" data-appearance-accent="indigo" aria-pressed="false"><span class="srAppearanceSwatch" aria-hidden="true"></span>Indigo</button><button type="button" data-appearance-accent="teal" aria-pressed="false"><span class="srAppearanceSwatch" aria-hidden="true"></span>Turquoise</button><button type="button" data-appearance-accent="rose" aria-pressed="false"><span class="srAppearanceSwatch" aria-hidden="true"></span>Rose</button></div></section><button type="button" class="srAppearanceReset" data-appearance-reset>Réinitialiser l’apparence</button><p data-appearance-status role="status" aria-live="polite" hidden></p></div>';
-    /* V273 ajoutera une section Personnalité dans cette même feuille ; aucune
-       préférence ni réaction comportementale ne fait partie du contrat V272. */
+    buildPersonalitySection();
     sheet.addEventListener('click',function(event){
       const button=event.target&&event.target.closest?event.target.closest('button'):null;
       if(!button){if(event.target===sheet)close();return}
       if(button.hasAttribute('data-appearance-close')){close();return}
       if(button.hasAttribute('data-appearance-reset')){reset();return}
+      if(button.dataset.runnerPersonality){choosePersonality(button.dataset.runnerPersonality);return}
       if(button.dataset.appearanceMode){set({mode:button.dataset.appearanceMode});return}
       if(button.dataset.appearanceAccent)set({accent:button.dataset.appearanceAccent});
     });
     sheet.addEventListener('close',function(){
       if(sheet.open)return; // un ancien événement close ne referme pas une réouverture
       destroyPreview();emit('store-runner:appearance-closed');
+      const sample=sheet.querySelector('[data-runner-personality-preview]');if(sample)sample.textContent='';
       const active=document.activeElement;
       if(active!==document.body&&!sheet.contains(active))return;
       const connected=returnFocus&&returnFocus.isConnected&&returnFocus.getClientRects().length;
@@ -1083,7 +1140,7 @@
   function install(){
     if(installed)return;installed=true;
     try{const db=storage();preference=normalize(db?JSON.parse(db.getItem(KEY)||'null'):null)}catch(e){preference=normalize(null)}
-    apply();syncSystem();
+    apply();syncSystem();connectBehavior();
     document.addEventListener('click',function(event){
       const button=event.target&&event.target.closest?event.target.closest('[data-runner-appearance]'):null;
       if(!button)return;

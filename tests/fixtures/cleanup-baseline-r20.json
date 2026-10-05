@@ -276,7 +276,7 @@
     ]
   },
   "runtimeInventory": {
-    "startupScriptResources": 77,
+    "startupScriptResources": 78,
     "cleanupAssertion": "non-increasing-and-no-duplicates",
     "test": "tests/boot-v234-browser.spec.cjs"
   },

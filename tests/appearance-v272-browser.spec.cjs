@@ -91,7 +91,7 @@ for (const [name, profile] of profiles) test.describe(name, () => {
     expect(reaction).toEqual([{ duration: 240, iterations: 1, state: 'neutral' }]);
     await expect(page.locator('#runnerAppearanceTitle')).toHaveText('Runner');
     await expect(page.locator('#runnerAppearancePreview .srRunner')).toHaveCount(1);
-    expect(await page.locator(SHEET).evaluate(el => ({ width: el.getBoundingClientRect().width, overflow: document.documentElement.scrollWidth-innerWidth, apply: /Appliquer|Personnalité/.test(el.innerText) }))).toMatchObject({ overflow: 0, apply: false });
+    expect(await page.locator(SHEET).evaluate(el => ({ width: el.getBoundingClientRect().width, overflow: document.documentElement.scrollWidth-innerWidth, apply: /Appliquer/.test(el.innerText) }))).toMatchObject({ overflow: 0, apply: false });
     for (const button of await page.locator(SHEET + ' button').all()) {
       const box = await button.boundingBox();
       expect(box.width).toBeGreaterThanOrEqual(44);
