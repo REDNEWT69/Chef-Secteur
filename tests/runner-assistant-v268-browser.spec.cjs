@@ -79,10 +79,10 @@ for (const [name, device] of [...ANDROID, ...IPHONE]) {
     test.use(device);
     const vw = device.viewport.width, vh = device.viewport.height;
 
-    test('dormant jusqu’à la première ouverture, puis monté une seule fois dans l’en-tête de l’Assistant', async ({ page }, testInfo) => {
+    test('Assistant dormant jusqu’à la première ouverture, puis monté une seule fois dans son en-tête', async ({ page }, testInfo) => {
       const errors = await boot(page);
       const before = await page.evaluate(() => ({ mounted: Runner.mounted(), css: !!document.getElementById('srRunnerCss'), slot: !!document.getElementById('srAssistantRunner'), nodes: document.querySelectorAll('.srRunner').length }));
-      expect(before, 'au démarrage et panneau fermé : aucun nœud, aucun style').toEqual({ mounted: 0, css: false, slot: false, nodes: 0 });
+      expect(before, 'au démarrage : Runner Accueil seul, aucun slot Assistant').toEqual({ mounted: 1, css: true, slot: false, nodes: 1 });
       await openAssistant(page);
       await settle(page);
       /* Statut de l'Assistant : Runner le reflète (l'environnement de test démarre en « IA en ligne indisponible · HTTP 404 »). */
@@ -98,13 +98,13 @@ for (const [name, device] of [...ANDROID, ...IPHONE]) {
         const slot = document.getElementById('srAssistantRunner');
         return { mounted: Runner.mounted(), css: !!document.getElementById('srRunnerCss'), inPanel: !!slot.closest('#assistantPanel'), prev: slot.previousElementSibling && slot.previousElementSibling.id, next: slot.nextElementSibling && slot.nextElementSibling.id, variant: slot.querySelector('.srRunner').getAttribute('data-variant'), size: Math.round(slot.querySelector('.srRunnerFigure').getBoundingClientRect().width) };
       });
-      expect(open).toEqual({ mounted: 1, css: true, inPanel: true, prev: 'assistantAIStatus', next: 'assistantMsgs', variant: 'sheet', size: 88 });
+      expect(open).toEqual({ mounted: 2, css: true, inPanel: true, prev: 'assistantAIStatus', next: 'assistantMsgs', variant: 'sheet', size: 88 });
       /* Fermer / rouvrir plusieurs fois : jamais de deuxième Runner. */
       for (let i = 0; i < 3; i++) {
         await page.evaluate(() => toggleAssistant()); await page.waitForTimeout(150);
         await page.evaluate(() => toggleAssistant()); await page.waitForTimeout(150);
       }
-      expect(await page.evaluate(() => [Runner.mounted(), document.querySelectorAll('.srRunner').length, document.querySelectorAll('#srAssistantRunner').length])).toEqual([1, 1, 1]);
+      expect(await page.evaluate(() => [Runner.mounted(), document.querySelectorAll('.srRunner').length, document.querySelectorAll('#srAssistantRunner .srRunner').length])).toEqual([2, 2, 1]);
       expect(await overflowX(page)).toBeLessThanOrEqual(1);
       expect(errors).toEqual([]);
     });
@@ -248,7 +248,7 @@ for (const [name, device] of [...ANDROID, ...IPHONE]) {
       await page.goBack();
       await expect(page.locator('#assistantPanel')).not.toHaveClass(/open/);
       const closed = await page.evaluate(() => ({ mounted: Runner.mounted(), state: document.querySelector('#srAssistantRunner .srRunner').getAttribute('data-state'), path: location.pathname }));
-      expect(closed, 'le retour ferme la feuille ; Runner ne l’intercepte pas').toEqual({ mounted: 1, state: 'analyzing', path: '/' });
+      expect(closed, 'le retour ferme la feuille ; Runner ne l’intercepte pas').toEqual({ mounted: 2, state: 'analyzing', path: '/' });
       await tapCenter(page, '#bottomAppNav .bottomNavBtn.ia');
       await page.waitForSelector('#assistantPanel.open');
       expect((await runnerView(page)).state, 'à la réouverture Runner reflète toujours l’attente en cours').toBe('analyzing');
@@ -405,7 +405,7 @@ test.describe('PWA — cache et hors ligne', () => {
     await tapCenter(page, '#bottomAppNav .bottomNavBtn.ia');
     await page.waitForSelector('#assistantPanel.open');
     await page.waitForSelector(SLOT + ' .srRunner');
-    expect(await page.evaluate(() => ({ online: navigator.onLine, mounted: Runner.mounted(), css: !!document.getElementById('srRunnerCss') }))).toEqual({ online: false, mounted: 1, css: true });
+    expect(await page.evaluate(() => ({ online: navigator.onLine, mounted: Runner.mounted(), css: !!document.getElementById('srRunnerCss') }))).toEqual({ online: false, mounted: 2, css: true });
     await context.setOffline(false);
     expect(errors.filter(e => !/Failed to fetch|NetworkError|net::/.test(e))).toEqual([]);
   });

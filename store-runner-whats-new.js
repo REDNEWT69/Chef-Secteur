@@ -25,6 +25,15 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'270',
+      title:'Runner prend vie sur l’Accueil',
+      items:[
+        'Runner apparaît près du logo puis rejoint la journée affichée sur ton Accueil.',
+        'Il se pose près de ta tournée, qu’elle soit prévue aujourd’hui ou demain.',
+        'Son passage reste discret et respecte le réglage « réduire les animations » de ton téléphone.'
+      ]
+    },
+    {
       version:'269',
       title:'Runner arrive dans ton Planning',
       items:[

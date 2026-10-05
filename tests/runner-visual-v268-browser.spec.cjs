@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test');
 
 // Runner Visual System V1 — vérifié dans un vrai Chromium, MOBILE uniquement : Android 390 px
 // (référence), Android 360 px (le plus petit téléphone courant) puis iPhone 390 px.
-// 1. dans la vraie application : Runner est présent mais dormant, il n'écrit aucune donnée et
+// 1. dans la vraie application : Runner est monté par l'Accueil, il n'écrit aucune donnée et
 //    sa feuille de style n'est pas altérée par celle de l'application ;
 // 2. sur la page d'aperçu de test (jamais servie par l'app) : états, variantes natives
 //    (bulle, en-tête de bottom sheet, carte teintée), Runner toujours dans le flux, actions de
@@ -62,7 +62,7 @@ async function openPreview(page) {
   return errors;
 }
 
-test('démarrage — Runner est présent mais dormant, il ne crée ni nœud, ni style, ni donnée', async ({ page }) => {
+test('démarrage — l’Accueil monte un seul Runner, l’Assistant reste dormant', async ({ page }) => {
   const errors = await bootApp(page);
   const dormant = await page.evaluate(() => ({
     sameObject: window.Runner === window.StoreRunnerRunner,
@@ -71,13 +71,14 @@ test('démarrage — Runner est présent mais dormant, il ne crée ni nœud, ni 
     style: !!document.getElementById('srRunnerCss'),
     states: Array.from(window.Runner.STATES),
     variants: Array.from(window.Runner.VARIANTS),
-    appliedWithoutInstance: [window.Runner.setState('alert'), window.Runner.showMessage('x'), window.Runner.reset()]
+    home: document.querySelectorAll('#homeRunnerV270 .srRunner').length,
+    assistant: document.querySelectorAll('#srAssistantRunner .srRunner').length
   }));
   expect(dormant).toEqual({
-    sameObject: true, mounted: 0, nodes: 0, style: false,
+    sameObject: true, mounted: 1, nodes: 1, style: true,
     states: ['neutral', 'analyzing', 'alert', 'success'],
     variants: ['bubble', 'sheet', 'panel'],
-    appliedWithoutInstance: [false, false, false]
+    home: 1, assistant: 0
   });
   const loaded = await page.evaluate(() => performance.getEntriesByType('resource')
     .filter(entry => entry.initiatorType === 'script').map(entry => new URL(entry.name).pathname.split('/').pop()));
@@ -164,8 +165,8 @@ for (const profile of PROFILES) {
       expect(after.state, 'state de l’application strictement inchangé').toBe(before.state);
       expect(after.keys, 'aucune clé de stockage créée').toEqual(before.keys);
       expect(after.storage).toBe(before.storage);
-      expect(after.mounted).toBe(0);
-      expect(after.nodes).toBe(0);
+      expect(after.mounted).toBe(1);
+      expect(after.nodes).toBe(1);
       expect(errors).toEqual([]);
     });
 

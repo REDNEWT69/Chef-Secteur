@@ -1,43 +1,6 @@
-/* Store Runner V1 — Runner Visual System V1 (`StoreRunnerRunner`, alias `Runner`).
-
-   Runner est le copilote VISUEL de Store Runner : un personnage, quatre états, une bulle.
-   Il est pensé MOBILE D'ABORD — Android en priorité, puis iPhone, à partir de 360 px — et n'a
-   aucune mise en page desktop : la feuille de style ne contient aucune requête de largeur.
-
-   Intégration native mobile uniquement, toujours DANS le flux de l'écran hôte :
-   - `bubble` (défaut) : Runner à côté d'une bulle contextuelle, dans une carte (conseil sur le
-     Planning, message de l'assistant) ;
-   - `sheet` : Runner et texte sans cadre, pour l'en-tête d'un bottom sheet (Assistant) ;
-   - `panel` : Runner au-dessus d'un bloc teinté pleine largeur (alerte de contrainte, succès).
-   Runner ne se positionne JAMAIS par rapport à l'écran : ni `fixed`, ni `sticky`, ni bouton
-   flottant. Il ne peut donc ni masquer une action principale, ni passer sous la barre
-   système, l'encoche ou la barre de gestes ; les marges de sécurité (`env(safe-area-inset-*)`)
-   des feuilles et barres restent à leur propriétaire. Il ne dessine aucun bouton : « Voir
-   détails », « Réorganiser », « Annuler » appartiennent à l'écran hôte, au style de l'app.
-
-   Couche de présentation pure :
-   - il ne lit ni n'écrit aucune donnée (`state`, stockage, IndexedDB, agenda, performance) ;
-   - il ne choisit aucun magasin, ne simule rien, n'appelle aucun moteur et n'est appelé par
-     aucun moteur : Planning, Forecast, Command Engine et Explorer Terrain ne le connaissent pas
-     encore. Les brancher est une décision séparée (voir RUNNER_VISUAL_SYSTEM.md) ;
-   - il ne remplace aucune fonction globale et ne s'accroche à aucun événement du document
-     (ni `focus`, ni `visibilitychange`, ni `resize`), sans `setInterval` ni observateur.
-
-   Au démarrage il ne fait strictement rien : aucun nœud, aucune feuille de style, aucun
-   écouteur. Le style n'est injecté qu'au premier `mount()`.
-
-   États : neutral (en attente), analyzing (il réfléchit), alert (une contrainte détectée),
-   success (tout est ok). Un état = un attribut `data-state` sur le conteneur ; tous les
-   calques du dessin sont déjà dans le SVG, le CSS n'en montre qu'un. Changer d'état ne
-   reconstruit donc rien.
-
-   Mouvement : transform/opacité uniquement. Une seule boucle existe — les trois points de
-   « analyzing » — et elle est bornée (≈ 22 s) pour qu'un état oublié ne tourne jamais en
-   continu. Alerte, succès et changement d'état jouent une seule fois. Avec
-   `prefers-reduced-motion: reduce` (ou `motion:'off'`) rien ne bouge : seuls les états changent.
-
-   Texte : toute bulle est écrite avec `textContent`, jamais en HTML. Un nom de magasin ou une
-   note utilisateur y est donc inoffensif. */
+/* Runner Visual System V1 : composant mobile dans le flux, présentation pure, sans donnée ni
+   écoute globale. Quatre états, trois variantes et une API de déplacement bornée. Aucun bouton,
+   positionnement flottant ou texte HTML. Reduced motion et motion:"off" désactivent tout geste. */
 (function(root,factory){
   const api=factory(root);
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
@@ -193,7 +156,8 @@ function artMarkup(){
     /* emblème : un « R » stylisé, bicolore (fût et panse bleu profond, jambe bleu clair), tracé en
        courbes et non en texte (aucune police) ; épais et légèrement incliné pour rester lisible dès 56 px */
     +'<g transform="translate(124 224) skewX(-8) translate(-124 -224)" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M114 237V211H125C132 211 135.5 214.5 135.5 220C135.5 225.5 132 229 125 229H114" stroke="#1558d6"/><path d="M124 229L133.5 237" stroke="#4da3ff"/></g>'
-    /* tête en goutte nacrée */
+    /* tête en goutte nacrée ; le groupe permet une pose expressive sans modifier le dessin */
+    +'<g class="rnHead">'
     +'<ellipse cx="26" cy="120" rx="14" ry="27" transform="rotate(-6 26 120)" fill="url(#rn{u}-blue)"/>'
     +'<ellipse cx="22" cy="118" rx="4.5" ry="12" transform="rotate(-6 22 118)" fill="#fff" opacity=".55"/>'
     +'<path d="M118 182C62 182 24 152 24 112C24 78 52 50 88 42C104 38 120 32 132 32C176 34 212 70 212 114C212 154 174 182 118 182Z" fill="url(#rn{u}-head)"/>'
@@ -209,10 +173,11 @@ function artMarkup(){
     +'<rect x="50" y="78" width="140" height="82" rx="40" fill="url(#rn{u}-glass)"/>'
     +'<rect x="49.5" y="77.5" width="141" height="83" rx="41" fill="none" stroke="#8db6ff" stroke-opacity=".35" stroke-width="1.2"/>'
     /* yeux : un jeu par état */
-    +'<g class="rnLayer" data-rn="neutral">'+eyesNeutral+'</g>'
-    +'<g class="rnLayer" data-rn="analyzing">'+eyesAnalyzing+'</g>'
-    +'<g class="rnLayer" data-rn="alert">'+eyesAlert+'</g>'
-    +'<g class="rnLayer" data-rn="success">'+eyesSuccess+'</g>'
+    +'<g class="rnLayer rnEyes" data-rn="neutral">'+eyesNeutral+'</g>'
+    +'<g class="rnLayer rnEyes" data-rn="analyzing">'+eyesAnalyzing+'</g>'
+    +'<g class="rnLayer rnEyes" data-rn="alert">'+eyesAlert+'</g>'
+    +'<g class="rnLayer rnEyes" data-rn="success">'+eyesSuccess+'</g>'
+    +'</g>'
     /* main au menton (analyzing) */
     +'<g class="rnLayer" data-rn="analyzing"><rect x="148" y="186" width="17" height="38" rx="8.5" transform="rotate(-16 156 204)" fill="url(#rn{u}-arm)"/>'
     +'<ellipse cx="152" cy="176" rx="17" ry="14" fill="url(#rn{u}-arm)" stroke="#bccae3" stroke-width="1.2"/><ellipse cx="138" cy="170" rx="6" ry="9" transform="rotate(24 138 170)" fill="url(#rn{u}-arm)" stroke="#bccae3" stroke-width="1"/><path d="M143 168C148 162 158 162 163 168" stroke="#fff" stroke-width="3" stroke-linecap="round" fill="none" opacity=".8"/></g>'
@@ -280,6 +245,7 @@ toneCss(),
 '@keyframes srRunnerBadge{0%,100%{transform:scale(1)}50%{transform:scale(1.14)}}',
 '@keyframes srRunnerSpark{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:none}}',
 '.srRunner .rnDots circle,.srRunner .rnBadge,.srRunner .rnSpark{transform-box:fill-box;transform-origin:center}',
+'.srRunner .rnHead,.srRunner .rnEyes{transform-box:fill-box;transform-origin:center}',
 '.srRunnerFigure.is-pop{animation:srRunnerPop .42s cubic-bezier(.2,.9,.3,1)}',
 '.srRunnerBubble.is-in{animation:srRunnerBubbleIn .22s ease-out}',
 '.srRunner[data-state="analyzing"] .rnDots circle{animation:srRunnerDot 1.4s ease-in-out 16;animation-delay:calc(var(--i)*.18s)}',
@@ -308,7 +274,7 @@ const ICONS='<span class="srRunnerIcon" aria-hidden="true">'
 /* Oublie les Runners dont l'écran hôte a retiré le conteneur : un écran qui se redessine à chaque
    rendu et rappelle `mount` ne laisse donc aucune instance orpheline derrière lui. */
 function prune(){
-  for(let i=instances.length-1;i>=0;i--)if(!instances[i].isConnected())instances.splice(i,1);
+  for(let i=instances.length-1;i>=0;i--)if(!instances[i].isConnected())instances[i].destroy();
 }
 function resolveContainer(doc,target){
   if(!target)return null;
@@ -320,6 +286,12 @@ function restart(el,className){
   /* Relire une mesure force le recalcul : sans cela le retrait puis l'ajout sont fusionnés. */
   void el.offsetWidth;
   el.classList.add(className);
+}
+/* Ancres de présentation fournies par l'hôte, jamais déduites de données métier. */
+function visualRect(el){
+  if(!el||!el.isConnected||typeof el.getBoundingClientRect!=='function')return null;
+  const r=el.getBoundingClientRect();
+  return r.width>0&&r.height>0&&[r.left,r.top,r.width,r.height].every(Number.isFinite)?r:null;
 }
 
 function createInstance(doc,options){
@@ -342,6 +314,82 @@ function createInstance(doc,options){
   let destroyed=false;
   let seen=false;
   let hideTimer=0,resetTimer=0,liveTimer=0;
+  let moveAnimation=null,moveEffects=[],moveTarget=null;
+
+  function cancelMove(){
+    if(!moveAnimation)return false;
+    const animation=moveAnimation,effects=moveEffects.slice();moveAnimation=null;moveEffects=[];
+    for(const effect of effects){effect.onfinish=null;effect.oncancel=null;try{effect.cancel()}catch(e){}}
+    return true;
+  }
+  /* FLIP : la place finale appartient au flux de l'hôte ; seul Runner est translaté depuis
+     l'ancre de départ. Un même conteneur ne rejoue pas le trajet. Aucun overlay ni timer. */
+  function moveTo(target,extra){
+    if(destroyed)return false;
+    return safe(()=>{
+      const o=extra&&typeof extra==='object'?extra:{};
+      const valid=el=>el&&el.isConnected&&el.ownerDocument===doc&&el!==host&&!host.contains(el);
+      let container=resolveContainer(doc,target);
+      if(!valid(container))container=resolveContainer(doc,o.fallback);
+      if(!valid(container)){cancelMove();return false}
+      host.style.pointerEvents='none';
+      const reduced=typeof root.matchMedia==='function'&&root.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const direct=o.animate===false||host.getAttribute('data-motion')==='off'||reduced;
+      if(host.parentNode===container&&moveTarget===container){if(direct)cancelMove();return true}
+      const start=visualRect(o.from?resolveContainer(doc,o.from):figure);
+      cancelMove();
+      if(host.parentNode!==container)container.appendChild(host);
+      moveTarget=container;
+      inst.isConnected();
+      const end=visualRect(figure);
+      if(direct||!start||!end||typeof host.animate!=='function')return true;
+      const x=start.left+start.width/2-end.left-end.width/2;
+      const y=start.top+start.height/2-end.top-end.height/2;
+      if(Math.abs(x)+Math.abs(y)<1)return true;
+      const shift='translate('+x+'px,'+y+'px)';
+      const expressive=o.entrance==='peek';
+      const side=x>=0?1:-1,slide=value=>' translateX('+(value*side)+'px)';
+      const n=Number(o.duration),duration=Number.isFinite(n)&&n>0?Math.max(240,Math.min(1400,n)):(expressive?1180:680);
+      try{
+        const frames=expressive?[
+          {transform:shift+slide(-8)+' scale(.94)',opacity:1},
+          {transform:shift+slide(-8)+' scale(.94)',opacity:1,offset:.06},
+          {transform:shift+slide(3)+' scale(.96)',opacity:1,offset:.18,easing:'cubic-bezier(.2,.85,.3,1)'},
+          {transform:shift+slide(4)+' rotate(-3deg)',opacity:1,offset:.32},
+          {transform:shift+slide(5)+' rotate(2deg)',opacity:1,offset:.44},
+          {transform:shift+slide(46),opacity:1,offset:.52,easing:'cubic-bezier(.22,.8,.3,1)'},
+          {transform:'none',opacity:1}
+        ]:[
+          {transform:shift,opacity:0},
+          {transform:shift,opacity:1,offset:.22,easing:'cubic-bezier(.22,.8,.3,1)'},
+          {transform:'none',opacity:1}
+        ];
+        const animation=host.animate(frames,{duration,easing:'linear',iterations:1});
+        moveAnimation=animation;moveEffects=[animation];
+        if(expressive){
+          const head=figure.querySelector('.rnHead'),eyes=figure.querySelector('.rnEyes');
+          if(head&&typeof head.animate==='function')moveEffects.push(head.animate([
+            {transform:'rotate(0deg)'},{transform:'rotate(0deg)',offset:.18},
+            {transform:'rotate(-7deg)',offset:.28,easing:'ease-out'},
+            {transform:'rotate(4deg)',offset:.40},{transform:'rotate(0deg)',offset:.52},
+            {transform:'rotate(0deg)'}
+          ],{duration,easing:'linear',iterations:1}));
+          if(eyes&&typeof eyes.animate==='function'){
+            const look=x>=0?5:-5;
+            moveEffects.push(eyes.animate([
+              {transform:'scaleY(1)'},{transform:'scaleY(1)',offset:.20},
+              {transform:'scaleY(.08)',offset:.23},{transform:'scaleY(1)',offset:.26},
+              {transform:'scaleY(1)',offset:.32},{transform:'scaleY(.08)',offset:.35},
+              {transform:'scaleY(1)',offset:.38},{transform:'translateX('+look+'px)',offset:.45},
+              {transform:'translateX('+look+'px)',offset:.52},{transform:'none'}
+            ],{duration,easing:'linear',iterations:1}));
+          }
+        }
+        animation.onfinish=animation.oncancel=()=>{if(moveAnimation===animation)cancelMove()};
+      }catch(e){cancelMove()}
+      return true;
+    },false);
+  }
 
   function clearTimer(timer){if(timer)root.clearTimeout(timer);return 0}
   function announce(text,assertive){
@@ -416,6 +464,8 @@ function createInstance(doc,options){
   }
   function destroy(){
     if(destroyed)return false;
+    cancelMove();
+    moveTarget=null;
     hideTimer=clearTimer(hideTimer);resetTimer=clearTimer(resetTimer);liveTimer=clearTimer(liveTimer);
     destroyed=true;
     const at=instances.indexOf(inst);if(at!==-1)instances.splice(at,1);
@@ -426,7 +476,8 @@ function createInstance(doc,options){
   const inst={
     id,el:host,variant,
     getState:()=>state,
-    setState,showMessage,hideMessage,reset,destroy,
+    setState,showMessage,hideMessage,reset,destroy,moveTo,cancelMove,
+    isMoving:()=>!!moveAnimation,
     /* Vrai tant que le Runner est dans le document, ou n'y a pas encore été posé ; faux dès
        qu'il en a été retiré (rendu de l'écran hôte) ou détruit. */
     isConnected:()=>{
@@ -483,6 +534,7 @@ return{
   VERSION,STATES,STATE_LABELS,VARIANTS,SIDES,SIZES,TONES,INK,SUBINK,
   isState,normalizeMessage,accessibleLabel,
   mount,unmount,
+  moveTo:(target,opts)=>safe(()=>{const p=primary();return p?p.moveTo(target,opts):false},false),
   setState:(state,opts)=>safe(()=>{const p=primary();return p?p.setState(state,opts):false},false),
   showMessage:(input,opts)=>safe(()=>{const p=primary();return p?p.showMessage(input,opts):false},false),
   hideMessage:()=>safe(()=>{const p=primary();return p?p.hideMessage():false},false),
