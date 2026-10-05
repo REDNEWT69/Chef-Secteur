@@ -137,6 +137,10 @@ assert.match(block, /touch-action:manipulation/, 'un double toucher rapide ne zo
 assert.match(block, /@media\(max-width:600px\)\{[^\n]*\.srfrActions\{position:sticky/, 'téléphone en portrait : actions collées en bas de la carte');
 assert.match(block, /@media\(max-height:480px\)\{[^\n]*\.srfrActions\{display:flex;flex-wrap:wrap;position:sticky/, 'écran court (paysage, fenêtre partagée) : actions collées en bas, côte à côte');
 assert.doesNotMatch(block, /:has\(/, 'aucun :has() (absent avant iOS 15.4) : une classe de mise en page suffit');
+/* Décision produit : le lien de sortie dit ce qu'il fait. Il ferme le guide pour de bon (marqueur « dismissed »). */
+assert.match(code, /data-srfr-dismiss'\+dis\+'>Passer<\/button>/, 'le lien de sortie du guide s’appelle « Passer »');
+assert.doesNotMatch(block, /Plus tard/, '« Plus tard » promettrait un retour que le guide ne propose pas');
+assert.match(code, /function dismissOnboarding\(\)\{\s*writeOnboardingMarker\('dismissed'/, 'sortie définitive : marqueur « dismissed »');
 
 /* 7. Textes : pas de promesse que personne ne fournit. Les commentaires sont retirés avant le test. */
 const strings = [...code.matchAll(/'((?:[^'\\\n]|\\.)*)'/g)].map(m => m[1]);

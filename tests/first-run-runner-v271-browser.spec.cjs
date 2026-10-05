@@ -128,6 +128,8 @@ async function reload(page) {
 const marker = page => page.evaluate(key => JSON.parse(__chefStorage.getItem(key) || 'null'), MARKER);
 const button = (page, name) => page.locator(GUIDE).getByRole('button', { name });
 const tap = (page, name) => button(page, name).tap();
+/* « Passer » ferme le guide ; « Passer cette étape » (étape du départ) contient le même mot : correspondance exacte. */
+const skipGuide = page => page.locator(GUIDE).getByRole('button', { name: 'Passer', exact: true });
 const geoCalls = page => page.evaluate(() => window.__geo.calls.length);
 /* Les captures attendent la fin des brèves animations d'entrée (pop de Runner, bulle) : un état posé, pas un état en route. */
 const shot = async (page, name) => { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await page.waitForTimeout(550); await page.screenshot({ path: path.join(SHOTS, name + '.png') }); } };
@@ -231,7 +233,7 @@ for (const [name, profile] of PROFILES) {
       let v = await view(page);
       expect(v).toMatchObject({ hidden: false, eyebrow: 'Étape 1 sur 5', title: 'Bienvenue dans Store Runner', bubbleTitle: 'Je suis Runner, ton copilote terrain.', state: 'neutral', stores: 0 });
       expect(v.bubbleText).toBe('Je t’aide à préparer ton secteur et tes tournées.');
-      expect(v.buttons.map(b => b.text)).toEqual(['Commencer', 'J’ai déjà une sauvegarde', 'Plus tard']);
+      expect(v.buttons.map(b => b.text)).toEqual(['Commencer', 'J’ai déjà une sauvegarde', 'Passer']);
       expect(await marker(page)).toMatchObject({ version: 1, status: 'in-progress', step: 0 });
       expect((await marker(page)).startedAt).toBeTruthy();
       expect(await page.evaluate(() => state.stores.filter(s => s.source === 'Secteur de démonstration' || /^Ville-Test \d{2}$/.test(String(s.ville || ''))).length)).toBe(0);
@@ -256,7 +258,7 @@ for (const [name, profile] of PROFILES) {
       await expect(page.locator(GUIDE + ' #srfrTitle')).toHaveText('Ton secteur');
       v = await view(page);
       expect(v).toMatchObject({ eyebrow: 'Étape 2 sur 5', bubbleTitle: 'Commençons par ton secteur.', state: 'neutral', stores: 0 });
-      expect(v.buttons.map(b => b.text)).toEqual(['Ajouter mes magasins', 'Importer mes données', '‹ Retour', 'Plus tard']);
+      expect(v.buttons.map(b => b.text)).toEqual(['Ajouter mes magasins', 'Importer mes données', '‹ Retour', 'Passer']);
       expect(await page.locator(GUIDE + ' [data-srfr-store-count]').textContent()).toBe('0');
       expect(await marker(page)).toMatchObject({ status: 'in-progress', step: 1 });
       await expectFits(page, name + ' · secteur vide');
@@ -282,7 +284,7 @@ for (const [name, profile] of PROFILES) {
       await expect(page.locator(GUIDE + ' [data-srfr-store-count]')).toHaveText('12');
       v = await view(page);
       expect(v).toMatchObject({ bubbleTitle: '12 magasins dans ton secteur.', bubbleText: 'Tu peux en ajouter d’autres ou continuer.', state: 'success', stores: 12 });
-      expect(v.buttons.map(b => b.text)).toEqual(['Continuer', '+ Ajouter des magasins', '‹ Retour', 'Plus tard']);
+      expect(v.buttons.map(b => b.text)).toEqual(['Continuer', '+ Ajouter des magasins', '‹ Retour', 'Passer']);
       expect((await guideNodes(page)).guideRunners, 'le secteur ajouté ne remonte pas un second Runner').toBe(1);
       expect(await page.evaluate(() => window.__audit.moves.length), 'aucun rejeu de la sortie de derrière le logo').toBe(1);
       expect(await geoCalls(page)).toBe(0);
@@ -294,7 +296,7 @@ for (const [name, profile] of PROFILES) {
       await expect(page.locator(GUIDE + ' #srfrTitle')).toHaveText('Ton point de départ');
       v = await view(page);
       expect(v).toMatchObject({ eyebrow: 'Étape 3 sur 5', bubbleTitle: 'D’où pars-tu ?', state: 'neutral' });
-      expect(v.buttons.map(b => b.text)).toEqual(['Utiliser ma position', 'Saisir une adresse', '‹ Retour', 'Passer cette étape', 'Plus tard']);
+      expect(v.buttons.map(b => b.text)).toEqual(['Utiliser ma position', 'Saisir une adresse', '‹ Retour', 'Passer cette étape', 'Passer']);
       expect(await geoCalls(page), 'pas de position avant le tap').toBe(0);
       await expectFits(page, name + ' · départ');
       await shot(page, `v271-${key}-4-depart`);
@@ -314,7 +316,7 @@ for (const [name, profile] of PROFILES) {
       await expect(page.locator(GUIDE + ' #srfrTitle')).toHaveText('Ton planning');
       v = await view(page);
       expect(v).toMatchObject({ eyebrow: 'Étape 4 sur 5', bubbleTitle: 'Ton secteur est prêt.', bubbleText: 'Générons tes 3 prochaines semaines.', state: 'neutral' });
-      expect(v.buttons.map(b => b.text)).toEqual(['Générer mes 3 semaines', '‹ Retour', 'Plus tard']);
+      expect(v.buttons.map(b => b.text)).toEqual(['Générer mes 3 semaines', '‹ Retour', 'Passer']);
       expect(await page.evaluate(() => Object.values(state.plan).flat().length), 'rien n’est généré tant que l’utilisateur ne l’a pas demandé').toBe(0);
       expect(await geoCalls(page)).toBe(1);
       await expectFits(page, name + ' · planning');
@@ -430,7 +432,7 @@ test('reprise : « Passer cette étape » est mémorisé, un ancien marqueur se 
   await tap(page, 'Passer cette étape');
   await expect(page.locator(GUIDE + ' #srfrTitle')).toHaveText('Ton planning');
   expect(await marker(page)).toMatchObject({ status: 'in-progress', step: 3, startSkipped: true });
-  expect((await view(page)).buttons.map(b => b.text)).toEqual(['Générer mes 3 semaines', '‹ Retour', 'Plus tard']);
+  expect((await view(page)).buttons.map(b => b.text)).toEqual(['Générer mes 3 semaines', '‹ Retour', 'Passer']);
   await expect(page.locator(GUIDE + ' .srfrHint')).toHaveText('Ta position te sera demandée au moment de générer.');
   await reload(page); await guideReady(page);
   expect((await view(page)).eyebrow, 'le départ passé n’est pas redemandé').toBe('Étape 4 sur 5');
@@ -503,12 +505,12 @@ test.describe('utilisateurs existants protégés', () => {
   });
 });
 
-test('« Plus tard » ferme le guide pour de bon, sans donnée, et rend l’entrée de Runner à l’Accueil', async ({ page }) => {
+test('« Passer » ferme le guide pour de bon, sans donnée, et rend l’entrée de Runner à l’Accueil', async ({ page }) => {
   const errors = await boot(page);
   await guideReady(page);
   expect((await guideNodes(page)).homeRunners, 'l’Accueil attend la fermeture du guide').toBe(0);
   const before = await page.evaluate(() => JSON.stringify(state));
-  await tap(page, 'Plus tard');
+  await skipGuide(page).tap();
   await expect(page.locator(GUIDE)).toBeHidden();
   expect(await marker(page)).toMatchObject({ status: 'dismissed', step: 0 });
   await page.waitForSelector('#homeRunnerV270 .srRunner');
@@ -541,7 +543,7 @@ test('position refusée puis indisponible, départ passé, génération refusée
   expect(v).toMatchObject({ bubbleTitle: 'Position indisponible.', bubbleText: 'Tu peux réessayer ou saisir une adresse.' });
   expect(v.note).toMatchObject({ kind: 'alert', role: 'alert' });
   expect(v.note.text).toMatch(/Localisation refusée/);
-  expect(v.buttons.map(b => b.text)).toEqual(['Utiliser ma position', 'Saisir une adresse', '‹ Retour', 'Passer cette étape', 'Plus tard']);
+  expect(v.buttons.map(b => b.text)).toEqual(['Utiliser ma position', 'Saisir une adresse', '‹ Retour', 'Passer cette étape', 'Passer']);
   expect(await geoCalls(page)).toBe(1);
   expect(await page.evaluate(() => JSON.stringify(state)), 'un refus n’écrit rien').toBe(before);
   expect(await page.evaluate(() => storeRunnerHasValidBase())).toBe(false);
@@ -567,7 +569,7 @@ test('position refusée puis indisponible, départ passé, génération refusée
   expect(v).toMatchObject({ bubbleTitle: 'La génération n’a pas abouti.', bubbleText: 'Tu peux réessayer ou modifier ton point de départ.' });
   expect(v.note).toMatchObject({ kind: 'alert', role: 'alert' });
   expect(v.note.text, 'le message est celui du propriétaire de la génération').toMatch(/localisation/i);
-  expect(v.buttons.map(b => b.text)).toEqual(['Réessayer', 'Modifier mon point de départ', '‹ Retour', 'Plus tard']);
+  expect(v.buttons.map(b => b.text)).toEqual(['Réessayer', 'Modifier mon point de départ', '‹ Retour', 'Passer']);
   expect(await geoCalls(page), 'la position n’a été demandée qu’au clic de génération').toBe(3);
   expect(await page.evaluate(() => JSON.stringify({ plan: state.plan, range: __chefStorage.getItem('chef_sector_range_v1'), archive: __chefStorage.getItem('chef_sector_plan_archive_v1') })), 'un échec n’écrit aucun planning').toBe(planBefore);
   expect((await marker(page)).generated, 'le guide ne se croit pas terminé').toBeUndefined();
@@ -815,12 +817,12 @@ test('accessibilité : dialogue nommé, focus sur le titre, tabulation bouclée,
   /* La voix de Runner est le contenu du guide : un lecteur d'écran l'entend (sa bulle visuelle est masquée). */
   const live = () => page.evaluate(() => document.querySelector('#storeRunnerFirstRun .srRunnerLive').textContent);
   await expect.poll(live).toMatch(/^Je suis Runner, ton copilote terrain\.+ Je t’aide à préparer ton secteur et tes tournées\.$/);
-  /* Tabulation : Commencer, J'ai déjà une sauvegarde, Plus tard, puis retour au début. */
+  /* Tabulation : Commencer, J'ai déjà une sauvegarde, Passer, puis retour au début. */
   const order = [];
   for (let i = 0; i < 4; i++) { await page.keyboard.press('Tab'); order.push(await page.evaluate(() => document.activeElement.textContent.trim())); }
-  expect(order).toEqual(['Commencer', 'J’ai déjà une sauvegarde', 'Plus tard', 'Commencer']);
+  expect(order).toEqual(['Commencer', 'J’ai déjà une sauvegarde', 'Passer', 'Commencer']);
   await page.keyboard.press('Shift+Tab');
-  expect(await page.evaluate(() => document.activeElement.textContent.trim())).toBe('Plus tard');
+  expect(await page.evaluate(() => document.activeElement.textContent.trim())).toBe('Passer');
   /* Entrée sur le bouton actif : l'étape change, le focus suit le titre. */
   await page.keyboard.press('Shift+Tab'); await page.keyboard.press('Shift+Tab');
   await page.keyboard.press('Enter');

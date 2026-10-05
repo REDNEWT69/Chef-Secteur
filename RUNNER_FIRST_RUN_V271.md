@@ -19,7 +19,7 @@ Un premier lancement existe déjà dans `navigation-controller.js` (depuis V234)
 
 ## Parcours (cinq étapes)
 
-Une action principale par étape, un bouton Retour quand il a un sens, « Plus tard » ferme le guide (marqueur `dismissed`, comme avant).
+Une action principale par étape, un bouton Retour quand il a un sens, « Passer » ferme le guide pour de bon (marqueur `dismissed`, comme avant) : le libellé dit ce que fait l'action, rien ne promet un retour. Sur l'étape du point de départ, « Passer cette étape » ne passe que cette étape ; « Passer » quitte tout le guide.
 
 | # | Étape | Runner | Action principale | Propriétaire appelé | Fait réel lu |
 | --- | --- | --- | --- | --- | --- |
@@ -149,15 +149,20 @@ Les captures sont régénérées par `RUNNER_SHOTS_DIR=/chemin node tools/run-br
 | Syntaxe de tous les modules et scripts inline | passe |
 | CI de la PR (Reliability `verify`, `mobile browser 390px`, Planning benchmark) | voir la PR |
 
+### Décisions produit validées (2026-10-05)
+
+- **Libellé de sortie : « Passer »** (et non « Plus tard »), parce que l'action ferme définitivement le guide. Le marqueur reste `dismissed`.
+- **Aucune reprise depuis Plus / Paramètres dans V271.** Après « Passer », le guide ne revient pas ; `StoreRunnerNavigation.openFirstRun()` reste l'API de support.
+- **Carte ancrée en bas sur fond neutre**, sur téléphone ; centrée sur écran large.
+- **Ancien formulaire supprimé** du premier lancement (nom du secteur, prénom, capacité, objectif) : valeurs par défaut inchangées, modifiables dans Secteur / réglages du planning.
+- **iPhone physique : non bloquant pour la fusion.** Il reste à contrôler en test terrain PWA.
+
 ### Ce qui reste ouvert
 
-- **iPhone réel / WebKit** : validé uniquement sous émulation Chromium (profil iPhone 14, `Emulation.setSafeAreaInsetsOverride`). Le harnais du dépôt n'installe que Chromium. Une vérification sur un vrai iPhone reste à faire en test terrain PWA.
-- **Ancien formulaire du premier lancement** (nom du secteur, prénom, capacité, objectif) : retiré du premier lancement ; les valeurs par défaut sont inchangées et se règlent dans Secteur / réglages du planning.
-- **« Plus tard »** ferme le guide pour de bon (marqueur `dismissed`, comme avant V271). Il ne se rouvre que par `StoreRunnerNavigation.openFirstRun()`.
+- **iPhone réel / WebKit** : validé uniquement sous émulation Chromium (profil iPhone 14, `Emulation.setSafeAreaInsetsOverride`). Le harnais du dépôt n'installe que Chromium. Une vérification sur un vrai iPhone reste à faire en test terrain PWA (non bloquante pour la fusion).
 - **Bouton Retour d'Android** : pendant que le guide est ouvert, il garde son comportement standard (sortie de l'application, reprise au lancement suivant) — `mobile-ux-v262.js` reste seul propriétaire de l'historique et le guide ne lui ajoute aucune entrée. Depuis l'écran Données ou point de départ, Retour ramène à l'Accueil et le guide reprend. Le guide a son propre bouton Retour entre ses étapes.
 - **Toasts** : pendant que le guide est ouvert, les toasts passagers de l'application et l'annonce « mise à jour installée » du premier lancement sont masqués par une règle CSS limitée au guide ; une bannière qui attend une réponse reste visible.
 - **Fenêtre minuscule** : si l'application est tuée entre la réussite de la génération et l'écriture du marqueur, le guide se termine en silence au lancement suivant (`setup-complete`) au lieu d'afficher l'écran de fin.
-- **Mise en page** : sur téléphone, la carte du guide est ancrée en bas (actions sous le pouce) sur un fond neutre opaque ; sur écran large, elle est centrée. Point à valider visuellement.
 - **Attente du propriétaire** : pendant la recherche de position ou la génération, le guide attend la réponse du propriétaire sans délai propre — il n'invente jamais un échec ; les délais sont ceux de `StoreRunnerProfile` et du générateur. Les boutons restent désactivés tant qu'elle n'est pas arrivée.
 - Annonce vocale : la voix de Runner (titre + texte) est annoncée à chaque changement d'étape ou d'état, l'alerte se tait au profit de la note `role="alert"` ; la composition titre + texte produit un « .. » inoffensif à la lecture.
 - Playwright local 1.56.1 (CI : 1.55.0) ; l'option de contexte `reducedMotion` n'est pas appliquée localement, le test utilise `page.emulateMedia`.

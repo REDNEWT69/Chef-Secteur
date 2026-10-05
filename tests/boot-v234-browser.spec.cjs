@@ -120,7 +120,7 @@ test('V234 — un seul voile de démarrage couvre tout le montage, sans flash de
   // d'abord qu'il est bien l'unique surface interactive puis on le ferme pour tester la nav.
   const onboarding = page.locator('#storeRunnerFirstRun');
   if (await onboarding.isVisible().catch(() => false)) {
-    await onboarding.getByRole('button', { name: 'Plus tard' }).click();
+    await onboarding.getByRole('button', { name: 'Passer', exact: true }).click();
     await expect(onboarding).toBeHidden();
   }
 
@@ -154,7 +154,7 @@ test('V234 — si l’accueil moderne ne monte jamais, le voile ne séquestre pa
   expect(final.drapeau, 'le drapeau de démarrage doit être levé, sinon l’accueil resterait amputé').toBe(false);
 
   const onboarding = page.locator('#storeRunnerFirstRun');
-  if (await onboarding.isVisible().catch(() => false)) await onboarding.getByRole('button', { name: 'Plus tard' }).click();
+  if (await onboarding.isVisible().catch(() => false)) await onboarding.getByRole('button', { name: 'Passer', exact: true }).click();
 
   const bouton = page.locator('#bottomAppNav .bottomNavBtn[data-panel="planPanel"]').first();
   await expect(bouton).toBeVisible();
@@ -223,8 +223,8 @@ test('Premier lancement — secteur vide, restauration accessible, ajout par V26
   await page.evaluate(() => StoreRunnerStoreAdd.close());
   await expect(page.locator('#storeAddDlg')).toBeHidden();
 
-  // « Plus tard » ferme le guide pour de bon : il ne revient pas au redémarrage.
-  await onboarding.getByRole('button', { name: 'Plus tard' }).click();
+  // « Passer » ferme le guide pour de bon : il ne revient pas au redémarrage.
+  await onboarding.getByRole('button', { name: 'Passer', exact: true }).click();
   await expect(onboarding).toBeHidden();
   expect(await page.evaluate(() => state.stores.length), 'fermer le guide ne crée aucune donnée').toBe(0);
 

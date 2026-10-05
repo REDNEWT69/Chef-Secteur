@@ -437,24 +437,24 @@
   function actionsHtml(step,f){
     const busy=!!guideBusy,dis=busy?' disabled':'';
     const back='<button class="srfrLink" type="button" data-srfr-back aria-label="Retour"'+dis+'>‹ Retour</button>';
-    const later='<button class="srfrLink" type="button" data-srfr-dismiss'+dis+'>Plus tard</button>';
+    const skipGuide='<button class="srfrLink" type="button" data-srfr-dismiss'+dis+'>Passer</button>';
     const primary=function(attr,label){return '<button class="srfrPrimary" type="button" '+attr+dis+'>'+label+'</button>'};
     const secondary=function(attr,label){return '<button class="srfrSecondary" type="button" '+attr+dis+'>'+label+'</button>'};
-    if(step===0)return primary('data-srfr-next','Commencer')+secondary('data-srfr-import','J’ai déjà une sauvegarde')+'<div class="srfrFoot solo">'+later+'</div>';
+    if(step===0)return primary('data-srfr-next','Commencer')+secondary('data-srfr-import','J’ai déjà une sauvegarde')+'<div class="srfrFoot solo">'+skipGuide+'</div>';
     if(step===1){
       return (f.stores?primary('data-srfr-next','Continuer')+secondary('data-srfr-add-store','+ Ajouter des magasins')
         :primary('data-srfr-add-store','Ajouter mes magasins')+secondary('data-srfr-import','Importer mes données'))
-        +'<div class="srfrFoot">'+back+later+'</div>';
+        +'<div class="srfrFoot">'+back+skipGuide+'</div>';
     }
     if(step===2){
-      if(f.hasStart)return primary('data-srfr-next','Continuer')+secondary('data-srfr-address','Modifier mon point de départ')+'<div class="srfrFoot">'+back+later+'</div>';
+      if(f.hasStart)return primary('data-srfr-next','Continuer')+secondary('data-srfr-address','Modifier mon point de départ')+'<div class="srfrFoot">'+back+skipGuide+'</div>';
       return primary('data-srfr-position',guideBusy==='position'?'Recherche en cours…':'Utiliser ma position')+secondary('data-srfr-address','Saisir une adresse')
-        +'<div class="srfrFoot">'+back+'<button class="srfrLink" type="button" data-srfr-skip'+dis+'>Passer cette étape</button>'+later+'</div>';
+        +'<div class="srfrFoot">'+back+'<button class="srfrLink" type="button" data-srfr-skip'+dis+'>Passer cette étape</button>'+skipGuide+'</div>';
     }
     if(step===3){
       const failed=!!(noteFor(3)&&noteFor(3).kind==='alert');
       return primary('data-srfr-generate',guideBusy==='generate'?'Génération en cours…':(failed?'Réessayer':'Générer mes 3 semaines'))
-        +(failed?secondary('data-srfr-start','Modifier mon point de départ'):'')+'<div class="srfrFoot">'+back+later+'</div>';
+        +(failed?secondary('data-srfr-start','Modifier mon point de départ'):'')+'<div class="srfrFoot">'+back+skipGuide+'</div>';
     }
     return primary('data-srfr-finish','Ouvrir mon accueil');
   }
