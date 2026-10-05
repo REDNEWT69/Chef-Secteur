@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'271',
+      title:'Runner te guide au premier lancement',
+      items:[
+        'À la toute première ouverture, Runner te guide pas à pas : ton secteur, ton point de départ, puis tes 3 premières semaines.',
+        'Tu ajoutes tes magasins ou tu importes tes données, et Runner suit ce qui se passe pour te proposer l’étape suivante.',
+        'Ta position n’est demandée que si tu choisis de l’utiliser, et la génération du planning reste un geste de ta part.',
+        'Si tu as déjà un secteur ou un planning, rien ne change : le guide ne s’affiche pas et tes données restent intactes.'
+      ]
+    },
+    {
       version:'270',
       title:'Runner prend vie sur l’Accueil',
       items:[

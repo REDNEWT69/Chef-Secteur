@@ -2,7 +2,8 @@
 // Runner est une présentation pure, pensée MOBILE d'abord (Android puis iPhone) : il ne lit ni
 // n'écrit aucune donnée, n'appelle aucun moteur, et ne se positionne jamais par rapport à
 // l'écran (ni fixed, ni sticky). Depuis la V269 il est branché dans l'Assistant (V268) et dans le
-// Planning (V269), puis sur l’Accueil (V270), par leurs propriétaires. Le comportement réel (états,
+// Planning (V269), sur l’Accueil (V270), puis dans le premier lancement guidé (V271), par leurs
+// propriétaires. Le comportement réel (états,
 // variantes, bulles, mouvement, safe areas, 360/390 px) est vérifié dans un vrai Chromium par
 // runner-visual-v268-browser.spec.cjs, runner-assistant-v268-browser.spec.cjs et
 // runner-planning-v269-browser.spec.cjs.
@@ -24,9 +25,9 @@ assert.match(index, /'\.\/store-explorer\.js','\.\/runner-visual\.js','\.\/weekl
   'Runner est chargé avant les derniers modules, sans déplacer mobile-ux-v262.js en dernier');
 assert.equal(sw.split('"./runner-visual.js"').length - 1, 1, 'sw.js précache runner-visual.js une seule fois (CORE_SHELL, obligatoire)');
 assert.ok(sw.indexOf('"./runner-visual.js"') < sw.indexOf('const OPTIONAL_SHELL'), 'runner-visual.js est dans le shell obligatoire, pas dans le facultatif');
-assert.equal(version.displayVersion, '270', 'Runner sur l’Accueil est une nouveauté visible : V270');
-assert.match(version.latestBuild, /-270$/, 'le build se termine par la version visible 270');
-assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-270$/);
+assert.equal(version.displayVersion, '271', 'Runner guide le premier lancement : nouveauté visible V271');
+assert.match(version.latestBuild, /-271$/, 'le build se termine par la version visible 271');
+assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-271$/);
 assert.equal(index.match(/const BUILD_REV='([^']+)'/)[1], version.latestBuild);
 assert.equal(sw.match(/const BUILD_REV = "([^"]+)"/)[1], version.latestBuild);
 assert.ok(!fs.existsSync(path.join(__dirname, '..', 'runner-visual.css')), 'aucune feuille séparée : le style est injecté au premier mount');
@@ -179,10 +180,10 @@ vm.runInNewContext(mod, ctxTaken);
 assert.equal(ctxTaken.Runner, existing, 'un global Runner déjà présent n’est jamais écrasé');
 assert.equal(typeof ctxTaken.StoreRunnerRunner.setState, 'function', 'le nom canonique reste disponible');
 
-/* 10. Surfaces branchées par leur propriétaire : Assistant, Planning, Accueil. */
+/* 10. Surfaces branchées par leur propriétaire : Assistant, Planning, Accueil, premier lancement. */
 const consumers = fs.readdirSync(path.join(__dirname, '..')).filter(f => f.endsWith('.js') && f !== 'runner-visual.js');
 const wired = consumers.filter(f => /StoreRunnerRunner|\bRunner\.(setState|showMessage|mount|reset|unmount|getState)\b|window\.Runner\b/.test(read(f)));
-assert.deepEqual(wired.sort(), ['assistant-upgrade.js', 'home-refresh-v2.js', 'planning-ui-fixes.js'], 'Runner est branché par les propriétaires Assistant, Accueil et Planning : ' + wired.join(', '));
+assert.deepEqual(wired.sort(), ['assistant-upgrade.js', 'home-refresh-v2.js', 'navigation-controller.js', 'planning-ui-fixes.js'], 'Runner est branché par les propriétaires Assistant, Accueil, premier lancement (navigation-controller.js) et Planning : ' + wired.join(', '));
 assert.doesNotMatch(read('src/chef-secteur.html'), /StoreRunnerRunner|\bRunner\.(setState|showMessage|mount|reset)\b|srRunner/, 'le noyau ne branche pas Runner');
 for (const owner of ['planning-command-engine.js', 'store-explorer.js', 'visit-coverage.js', 'planning-generation-controller.js', 'sector-pilotage.js', 'terrain-planning-v1.js', 'planning-cascade-v181.js', 'range-planner-v2.js', 'store-opening-hours.js', 'planning-pro-plus.js', 'period-day-slider.js'])
   assert.doesNotMatch(read(owner), /StoreRunnerRunner|window\.Runner\b|(?<![A-Za-z])Runner\.(mount|unmount|setState|showMessage|hideMessage|reset|getState)\b|srRunner|srAssistantRunner|planningRunnerV269/, owner + ' ne connaît pas Runner (ni moteur, ni Forecast, ni Command Engine, ni Explorer Terrain)');
@@ -266,7 +267,7 @@ assert.ok(whatsNew.indexOf("version:'269'") < whatsNew.indexOf("version:'268'") 
 const entry = whatsNew.slice(whatsNew.indexOf("version:'269'"), whatsNew.indexOf("version:'268'"));
 assert.match(entry, /Planning/); assert.match(entry, /résume ta journée/); assert.match(entry, /ne modifie jamais ton planning/, 'dit qu’il ne modifie rien tout seul');
 
-console.log('PASS: Runner Visual System V1 — présentation pure, Assistant, Planning et Accueil, mouvement borné, texte inerte');
+console.log('PASS: Runner Visual System V1 — présentation pure, Assistant, Planning, Accueil et premier lancement, mouvement borné, texte inerte');
 
 /* V270 : adaptateur Accueil limité à la présence, pas à la tournée. */
 const home = read('home-refresh-v2.js');
