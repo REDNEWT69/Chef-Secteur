@@ -107,7 +107,7 @@
     const date=parse(target.dataset.date);if(!date)return false;
     return loadDate(date);
   }
-  function isInteractiveTarget(el){return !!(el&&el.closest&&el.closest('button,a,input,select,textarea,[role="button"],#dayTabs,.periodDayTab,.dayTab,.assist-fab,#assistFab,.bottomNavBtn'))}
+  function isInteractiveTarget(el){return !!(el&&el.closest&&el.closest('button,a,input,select,textarea,[role="button"],#dayTabs,.periodDayTab,.dayTab,.assist-fab,#assistFab,.bottomNavBtn,#freeRouteMap,.leaflet-container'))}
   function bindListSwipe(container){
     if(!container||container.dataset.listSwipeBound==='1')return false;
     container.dataset.listSwipeBound='1';
