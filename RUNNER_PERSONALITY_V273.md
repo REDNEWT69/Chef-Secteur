@@ -195,7 +195,9 @@ La mémoire de session (`session` : derniers gestes, touchers, retours, aperçu)
 
 ## Vocabulaire de présentation (à fournir par Runner en W1)
 
-Ce module ne nomme que des gestes **génériques** : `acknowledge`, `nod`, `lookToward`, `settle`. `settle` existe (`returnToRest`, V271.1) ; `acknowledge`, `nod` et `lookToward` n'existent pas encore et seront ajoutés à `runner-visual.js` en W1, en `transform`/`opacity`, Web Animations finies, no-op sous `prefers-reduced-motion` et `motion:'off'`, sans nom d'écran ni de réaction. Le plafond de 44 KiB de `runner-visual.js` est conservé (D3) ; si les trois gestes ne tiennent pas dans la marge, le sujet revient avec des chiffres avant tout relèvement.
+Ce module ne nomme que des gestes **génériques**, sous forme de données : `acknowledge`, `nod`, `lookToward`, `settle` (`GESTURES`). Il ne sait pas comment Runner les joue. `settle` existe déjà (`returnToRest`, V271.1) ; les autres n'existent pas encore dans `runner-visual.js`.
+
+Consigne D3 (#509) : plafond de 44 KiB conservé, et **un seul contrat générique de geste** plutôt que plusieurs API. L'intégration (W1) vise donc **un seul point d'entrée** côté Runner (par exemple `gesture(nom, options)`, avec `options` pour l'ancre du regard fournie par l'hôte), dont les noms ci-dessus sont les entrées d'une petite table de séquences : `transform`/`opacity` seulement, Web Animations finies et annulables, no-op sous `prefers-reduced-motion` et `motion:'off'`, aucun nom d'écran ni de réaction. La marge actuelle de `runner-visual.js` est de 1 013 octets (gzip 936) ; si cette API ne tient pas proprement, le sujet revient avec des chiffres avant tout relèvement. Rien de tout cela n'est écrit dans cette fondation.
 
 ## Tests
 
