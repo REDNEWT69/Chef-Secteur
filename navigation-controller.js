@@ -145,7 +145,8 @@
      propriétaires existants (ajout de magasins, écran Données, profil/GPS, génération
      3 semaines) et laisse Runner traduire leur résultat réel en état visuel :
      aucune donnée écrite par le guide, aucune visite choisie ou simulée, aucun
-     timer, aucun observer. Le marqueur du moteur durable n'est qu'un indice : l'étape
+     timer, aucun observer permanent (un seul observer borné, au renvoi vers un écran
+     existant : watchHomeReturn). Le marqueur du moteur durable n'est qu'un indice : l'étape
      se déduit toujours de l'état réel (deriveStep). Le schéma de `state` n'est pas
      touché.
      ========================================================================== */
@@ -351,14 +352,17 @@
       R+' .srfrMain.is-in{animation:srfrIn .22s ease-out}',
       '@keyframes srfrIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}',
       R+' .srfrActions{display:grid;gap:9px;margin-top:18px}',
-      R+' button{min-height:48px;border:0;border-radius:15px;padding:11px 15px;font:inherit;font-size:15px;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent}',
+      /* touch-action : un double toucher rapide ne zoome pas la page (génération, « Continuer »). */
+      R+' button{min-height:48px;border:0;border-radius:15px;padding:11px 15px;font:inherit;font-size:15px;font-weight:800;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}',
       R+' button:disabled{opacity:.55;cursor:default}',
       R+' .srfrPrimary{background:#1428a0;color:#fff}',
       R+' .srfrSecondary{background:#eef1f6;color:#242932}',
       R+' .srfrFoot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px}',
-      R+' .srfrFoot:has(:only-child){justify-content:center}',
+      R+' .srfrFoot.solo{justify-content:center}',
       R+' .srfrLink{min-height:44px;padding:8px 8px;background:transparent;color:#5b6472;font-size:14px;font-weight:700}',
       '@media(max-width:600px){'+R+'{place-items:end center;padding:10px 10px calc(10px + env(safe-area-inset-bottom))}'+R+' .srfrCard{width:100%;max-height:min(92dvh,760px);border-radius:28px;padding:18px 18px 12px}'+R+' h2{font-size:24px}'+R+' .srfrActions{position:sticky;bottom:-12px;margin:14px -18px -12px;padding:12px 18px 12px;background:linear-gradient(180deg,rgba(255,255,255,.88),#fff 30%);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}}',
+      /* Écran court (téléphone en paysage, fenêtre partagée) : la carte se resserre et les actions, collées en bas, passent côte à côte pour que l'action principale reste toujours à portée du pouce. */
+      '@media(max-height:480px){'+R+' .srfrCard{padding:14px 18px 10px}'+R+' .srfrStage{min-height:0;margin:10px 0 0}'+R+' .srfrEyebrow{margin-top:8px}'+R+' h2{font-size:22px}'+R+' .srfrActions{display:flex;flex-wrap:wrap;position:sticky;bottom:-10px;margin:12px -18px -10px;padding:10px 18px;background:linear-gradient(180deg,rgba(255,255,255,.88),#fff 30%);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}'+R+' .srfrActions>button{flex:1 1 150px}'+R+' .srfrActions>.srfrFoot{flex:1 1 100%}}',
       /* Le guide est la surface de retour : les toasts passagers de l'application (génération, mise à jour installée) ne s'empilent pas dessus. Une bannière qui attend une réponse (data-sticky) reste visible. */
       'html.srFirstRunOpen .storeRunnerToast,html.srFirstRunOpen #storeRunnerUpdateBanner:not([data-sticky]){display:none!important}',
       '@media (prefers-reduced-motion:reduce){'+R+' *{animation:none!important;transition:none!important}}'
@@ -436,7 +440,7 @@
     const later='<button class="srfrLink" type="button" data-srfr-dismiss'+dis+'>Plus tard</button>';
     const primary=function(attr,label){return '<button class="srfrPrimary" type="button" '+attr+dis+'>'+label+'</button>'};
     const secondary=function(attr,label){return '<button class="srfrSecondary" type="button" '+attr+dis+'>'+label+'</button>'};
-    if(step===0)return primary('data-srfr-next','Commencer')+secondary('data-srfr-import','J’ai déjà une sauvegarde')+'<div class="srfrFoot">'+later+'</div>';
+    if(step===0)return primary('data-srfr-next','Commencer')+secondary('data-srfr-import','J’ai déjà une sauvegarde')+'<div class="srfrFoot solo">'+later+'</div>';
     if(step===1){
       return (f.stores?primary('data-srfr-next','Continuer')+secondary('data-srfr-add-store','+ Ajouter des magasins')
         :primary('data-srfr-add-store','Ajouter mes magasins')+secondary('data-srfr-import','Importer mes données'))
@@ -608,11 +612,32 @@
     releaseGuideRunner();
     document.documentElement.classList.remove('srFirstRunOpen');
   }
+  /* Renvoi vers un écran existant (Données, point de départ) : si l'utilisateur en revient sans l'avoir
+     terminé (bouton Retour d'Android, onglet Accueil), le guide reprend là où il en était au lieu de le
+     laisser sur un Accueil vide. Un seul observer, sur la classe d'un seul élément : créé au renvoi,
+     déconnecté à la reprise et à la fin du guide. Un rendu de l'Accueil en arrière-plan ne reprend rien. */
+  let homeWatch=null;
+  function stopWatchingHome(){
+    if(homeWatch){homeWatch.disconnect();homeWatch=null}
+  }
+  function watchHomeReturn(){
+    stopWatchingHome();
+    const home=document.getElementById('homePanel');
+    if(!home||typeof MutationObserver!=='function')return;
+    /* Le renvoi n'a pas eu lieu (l'Accueil est encore l'écran actif) : rien à attendre, le guide reprend. */
+    if(home.classList.contains('active')){resumeFromRealState();return}
+    homeWatch=new MutationObserver(function(){
+      if(guideAwaiting&&!onboardingOpen&&home.classList.contains('active'))resumeFromRealState();
+    });
+    homeWatch.observe(home,{attributes:true,attributeFilter:['class']});
+  }
+
   /* Fin définitive (terminé, reporté ou fermé par l'API) : plus aucun écouteur, et l'Accueil peut
      jouer l'entrée de Runner qu'il a gardée pour ce moment. */
   function closeGuide(status){
     hideGuide();
     guideAwaiting=null;
+    stopWatchingHome();
     disarmGuide();
     try{document.dispatchEvent(new CustomEvent('store-runner:first-run-closed',{detail:{status:String(status||'hidden')}}))}catch(e){}
   }
@@ -652,6 +677,7 @@
     guideAwaiting='import';
     hideGuide();
     goTo('importPanel');
+    watchHomeReturn();
   }
 
   function openDepartureScreen(){
@@ -660,6 +686,7 @@
     hideGuide();
     if(typeof window.openDepartureSettings==='function')window.openDepartureSettings();
     else goTo('profilePanel');
+    watchHomeReturn();
   }
 
   /* La position n'est lue qu'au tap, par le propriétaire du profil et du GPS. */
@@ -733,6 +760,7 @@
 
   /* ------------------------------------------------- réactions à l'état réel */
   function resumeFromRealState(){
+    stopWatchingHome();
     guideAwaiting=null;
     guideNote=null;
     onboardingStep=deriveStep(guideFacts(),readOnboardingMarker());
@@ -777,7 +805,9 @@
         writeOnboardingMarker('complete',3,{reason:'restored-data'});
         return false;
       }
-      marker=null;
+      /* Rien n'est arrivé pendant l'absence : même reprise qu'un guide en cours, à l'étape où l'import a été demandé. */
+      writeOnboardingMarker('in-progress',marker.step);
+      marker=readOnboardingMarker();
     }
     if(marker&&marker.status==='in-progress'){
       /* Même promesse qu'au premier écran : jamais de faux magasins, y compris à la reprise. */

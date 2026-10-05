@@ -60,7 +60,16 @@ assert.deepEqual([...code.matchAll(/\bs\.stores=\[\]/g)].length, 1, 'seule écri
 
 /* 3. Aucun écouteur, timer ni observer permanent ; aucune position, aucun réseau. */
 assert.doesNotMatch(nav, /setTimeout\s*\(/, 'navigation-controller.js : aucun setTimeout (navigation-architecture.test.cjs)');
-assert.doesNotMatch(code, /setInterval|MutationObserver|ResizeObserver|IntersectionObserver|visibilitychange|addEventListener\('focus'/, 'aucune surveillance permanente');
+assert.doesNotMatch(code, /setInterval|ResizeObserver|IntersectionObserver|visibilitychange|addEventListener\('focus'/, 'aucune surveillance permanente');
+/* Le seul observer : borné à un renvoi vers un écran existant (Données, point de départ), sur la classe d'un seul
+   élément, déconnecté à la reprise et à la fin du guide. Un observer permanent serait une régression. */
+assert.equal([...code.matchAll(/new MutationObserver/g)].length, 1, 'un seul observer dans le guide');
+assert.match(code, /homeWatch\.observe\(home,\{attributes:true,attributeFilter:\['class'\]\}\)/, 'il ne regarde que la classe de #homePanel');
+assert.match(code, /function stopWatchingHome\(\)\{\s*if\(homeWatch\)\{homeWatch\.disconnect\(\)/, 'il se déconnecte');
+assert.match(code, /function resumeFromRealState\(\)\{\s*stopWatchingHome\(\)/, 'la reprise le déconnecte');
+assert.match(code, /function closeGuide\(status\)\{[\s\S]*?stopWatchingHome\(\)/, 'la fin du guide le déconnecte');
+assert.match(code, /function openImportScreen\(\)\{[\s\S]*?watchHomeReturn\(\)/, 'créé au renvoi vers l’écran Données');
+assert.match(code, /function openDepartureScreen\(\)\{[\s\S]*?watchHomeReturn\(\)/, 'créé au renvoi vers l’écran du point de départ');
 assert.doesNotMatch(code, /geolocation|getCurrentPosition|watchPosition|navigator\./, 'aucune lecture de position dans le guide : tout passe par StoreRunnerProfile');
 assert.doesNotMatch(code, /\bfetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket|\beval\s*\(|new Function/, 'aucun réseau, aucune évaluation dynamique');
 /* Les écouteurs d'événements métier ne sont posés qu'à l'ouverture du guide et retirés à sa fin. */
@@ -71,7 +80,7 @@ assert.deepEqual([...armed[1].matchAll(/'(store-runner:[a-z-]+)'/g)].map(m => m[
 assert.match(code, /function armGuide\(\)\{[\s\S]*?addEventListener[\s\S]*?\}/);
 assert.match(code, /function disarmGuide\(\)\{[\s\S]*?removeEventListener[\s\S]*?\}/);
 assert.match(code, /function closeGuide\(status\)\{[\s\S]*?disarmGuide\(\)/, 'la fin du guide retire ses écouteurs');
-assert.doesNotMatch(nav.slice(END), /armGuide|GUIDE_EVENTS/, 'install() n’arme rien pour un utilisateur installé');
+assert.doesNotMatch(nav.slice(END), /armGuide|GUIDE_EVENTS|watchHomeReturn|MutationObserver/, 'install() n’arme rien et n’observe rien pour un utilisateur installé');
 assert.match(code, /function installFirstRunOnboarding\(\)\{\s*prepareFirstRun\(false\);\s*\}/, 'au démarrage : une décision, aucun écouteur');
 
 /* 4. Propriétaires réutilisés, jamais contournés. */
@@ -124,6 +133,10 @@ assert.match(block, /env\(safe-area-inset-bottom\)/, 'marge basse du système re
 assert.doesNotMatch(code, /<input|<textarea|<select/, 'aucun champ de saisie : ni clavier virtuel ni zoom automatique iOS');
 assert.match(block, /srFirstRunOpen \.storeRunnerToast/, 'les toasts passagers ne s’empilent pas sur le guide');
 assert.match(block, /#storeRunnerUpdateBanner:not\(\[data-sticky\]\)/, 'une bannière qui attend une réponse reste visible');
+assert.match(block, /touch-action:manipulation/, 'un double toucher rapide ne zoome pas la page');
+assert.match(block, /@media\(max-width:600px\)\{[^\n]*\.srfrActions\{position:sticky/, 'téléphone en portrait : actions collées en bas de la carte');
+assert.match(block, /@media\(max-height:480px\)\{[^\n]*\.srfrActions\{display:flex;flex-wrap:wrap;position:sticky/, 'écran court (paysage, fenêtre partagée) : actions collées en bas, côte à côte');
+assert.doesNotMatch(block, /:has\(/, 'aucun :has() (absent avant iOS 15.4) : une classe de mise en page suffit');
 
 /* 7. Textes : pas de promesse que personne ne fournit. Les commentaires sont retirés avant le test. */
 const strings = [...code.matchAll(/'((?:[^'\\\n]|\\.)*)'/g)].map(m => m[1]);

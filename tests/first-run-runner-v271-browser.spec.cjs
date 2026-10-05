@@ -63,7 +63,18 @@ function geoScript(mode) {
 /* Observe, sans rien modifier : les trajets de Runner (guide et accueil). Le prototype survit au
    document.open() du shell ; un écouteur posé ici, lui, serait effacé (voir watchEvents). */
 function auditScript() {
-  const audit = window.__audit = { moves: [], poses: [], homeMoves: [], events: [], closedAt: null };
+  const audit = window.__audit = { moves: [], poses: [], homeMoves: [], events: [], closedAt: null, homeObservers: [], trackObservers: false };
+  /* Les observers posés sur #homePanel quand le test le demande (renvoi du guide vers un écran existant) :
+     combien sont encore vivants. Les observers de l'application, créés au démarrage, ne sont pas comptés. */
+  const observe = MutationObserver.prototype.observe, disconnect = MutationObserver.prototype.disconnect;
+  MutationObserver.prototype.observe = function (target, options) {
+    if (audit.trackObservers && target && target.id === 'homePanel') audit.homeObservers.push({ observer: this, live: true });
+    return observe.call(this, target, options);
+  };
+  MutationObserver.prototype.disconnect = function () {
+    for (const entry of audit.homeObservers) if (entry.observer === this) entry.live = false;
+    return disconnect.call(this);
+  };
   const animate = Element.prototype.animate;
   Element.prototype.animate = function (frames, options) {
     const animation = animate.call(this, frames, options);
@@ -434,6 +445,29 @@ test('reprise : le marqueur de l’ancien parcours en quatre écrans est relu pa
   expect((await marker(page)).startedAt).toBe('2026-10-01T08:00:00.000Z');
 });
 
+/* L'application est fermée pendant un renvoi vers l'écran Données (marqueur « importing ») : la réouverture lit l'état réel. */
+test.describe('reprise : un import interrompu', () => {
+  const asked = step => ({ version: 1, status: 'importing', step, at: '2026-10-05T07:00:00.000Z', startedAt: '2026-10-05T07:00:00.000Z' });
+  test('demandé depuis le secteur, rien reçu : le guide reprend au secteur', async ({ page }) => {
+    await boot(page, { marker: asked(1), seed: { schemaVersion: 5 } });
+    await guideReady(page);
+    expect(await view(page)).toMatchObject({ eyebrow: 'Étape 2 sur 5', title: 'Ton secteur', stores: 0 });
+    expect(await marker(page)).toMatchObject({ status: 'in-progress', step: 1, startedAt: '2026-10-05T07:00:00.000Z' });
+  });
+  test('demandé depuis la présentation, rien reçu : le guide reprend à la présentation', async ({ page }) => {
+    await boot(page, { marker: asked(0), seed: { schemaVersion: 5 } });
+    await guideReady(page);
+    expect(await view(page)).toMatchObject({ eyebrow: 'Étape 1 sur 5', title: 'Bienvenue dans Store Runner', stores: 0 });
+    expect(await marker(page)).toMatchObject({ status: 'in-progress', step: 0 });
+  });
+  test('des données sont arrivées pendant l’absence : aucun guide, marqueur terminé', async ({ page }) => {
+    await boot(page, { marker: asked(1), seed: existingUser() });
+    await page.waitForSelector('#premiumHomeV2 .phTop');
+    expect(await page.evaluate(() => ({ root: !!document.getElementById('storeRunnerFirstRun'), open: document.documentElement.classList.contains('srFirstRunOpen'), stores: state.stores.length }))).toEqual({ root: false, open: false, stores: 2 });
+    expect(await marker(page)).toMatchObject({ status: 'complete', reason: 'restored-data' });
+  });
+});
+
 /* ------------------------------------------------------------ 3. utilisateurs existants */
 test.describe('utilisateurs existants protégés', () => {
   test('secteur et planning déjà présents, aucun marqueur : aucun guide, Runner de l’Accueil intact', async ({ page }) => {
@@ -592,6 +626,57 @@ test('import de secteur et départ par adresse : les écrans existants, puis la 
   expect(await marker(page)).toMatchObject({ status: 'in-progress', step: 3 });
   expect(await geoCalls(page), 'saisir une adresse ne lit jamais la position').toBe(0);
   expect((await guideNodes(page)).guideRunners).toBe(1);
+  expect(errors.filter(e => !/Failed to fetch|NetworkError|net::/.test(e))).toEqual([]);
+});
+
+test('renvoi vers Données ou point de départ : revenir sans terminer reprend le guide, un rendu d’arrière-plan ne le rouvre pas', async ({ page }) => {
+  test.setTimeout(90000);
+  const errors = await boot(page);
+  await guideReady(page);
+  const liveObservers = () => page.evaluate(() => window.__audit.homeObservers.filter(o => o.live).length);
+  await tap(page, 'Commencer');
+
+  /* Données : le guide se range ; le bouton Retour d'Android ramène à l'Accueil et le guide reprend à la même étape. */
+  await page.evaluate(() => { window.__audit.homeObservers = []; window.__audit.trackObservers = true; });
+  await tap(page, 'Importer mes données');
+  await expect(page.locator(GUIDE)).toBeHidden();
+  await expect(page.locator('#importPanel')).toHaveClass(/\bactive\b/);
+  expect(await liveObservers(), 'un seul observer, créé au renvoi').toBe(1);
+  await page.evaluate(() => { document.dispatchEvent(new CustomEvent('store-runner:home-rendered')); renderAll(); });
+  await page.waitForTimeout(250);
+  await expect(page.locator(GUIDE), 'un rendu de l’Accueil en arrière-plan ne rouvre rien').toBeHidden();
+  await page.goBack();
+  await expect(page.locator('#homePanel')).toHaveClass(/\bactive\b/);
+  await page.waitForSelector(GUIDE + ':not([hidden]) .srRunner', { timeout: 10000 });
+  expect(await view(page)).toMatchObject({ eyebrow: 'Étape 2 sur 5', title: 'Ton secteur', stores: 0 });
+  expect(await marker(page)).toMatchObject({ status: 'in-progress', step: 1 });
+  expect(await liveObservers(), 'l’observer est déconnecté à la reprise').toBe(0);
+  expect(await guideNodes(page)).toMatchObject({ roots: 1, guideRunners: 1, open: true });
+  expect(await page.evaluate(() => window.__audit.moves.length), 'aucun rejeu de la sortie de derrière le logo').toBe(1);
+  expect(await geoCalls(page)).toBe(0);
+
+  /* Point de départ : l'onglet Accueil ramène au guide, à l'étape du départ. */
+  await addStores(page, 6);
+  await tap(page, 'Continuer');
+  await tap(page, 'Saisir une adresse');
+  await expect(page.locator(GUIDE)).toBeHidden();
+  await expect(page.locator('#profilePanel')).toHaveClass(/\bactive\b/);
+  expect(await liveObservers()).toBe(1);
+  await page.evaluate(() => goTab('homePanel'));
+  await page.waitForSelector(GUIDE + ':not([hidden]) .srRunner', { timeout: 10000 });
+  expect(await view(page)).toMatchObject({ eyebrow: 'Étape 3 sur 5', title: 'Ton point de départ', stores: 6 });
+  expect(await liveObservers()).toBe(0);
+  expect(await geoCalls(page), 'revenir sans terminer ne lit jamais la position').toBe(0);
+
+  /* Fin du guide pendant un renvoi : plus d'observer, plus de reprise. */
+  await tap(page, 'Saisir une adresse');
+  await expect(page.locator(GUIDE)).toBeHidden();
+  expect(await liveObservers()).toBe(1);
+  await page.evaluate(() => StoreRunnerNavigation.closeFirstRun());
+  expect(await liveObservers(), 'la fin du guide déconnecte l’observer').toBe(0);
+  await page.evaluate(() => { goTab('homePanel'); });
+  await page.waitForTimeout(250);
+  await expect(page.locator(GUIDE)).toBeHidden();
   expect(errors.filter(e => !/Failed to fetch|NetworkError|net::/.test(e))).toEqual([]);
 });
 
@@ -792,7 +877,89 @@ test.describe('PWA — le guide fonctionne hors ligne, du premier écran à la g
   });
 });
 
-/* ------------------------------------------------ 10. captures de la sortie de derrière le logo */
+/* ------------------------------------- 10. petits écrans, paysage, texte agrandi, tablette */
+/* Ce que le guide garantit quand l'écran manque de place : la carte reste dans l'écran, chaque bouton
+   reste visible sans défiler (les actions sont collées au bas de la carte), Runner reste visible et
+   rien ne déborde à l'horizontale. Un téléphone en paysage (écran court) passe les actions côte à côte. */
+const SMALL_SCREENS = [
+  ['iPhone SE 320×568', strip(devices['iPhone SE']), 1],
+  ['iPhone SE paysage 568×320', strip(devices['iPhone SE landscape']), 1],
+  ['iPhone 14 paysage', strip(devices['iPhone 14 landscape']), 1],
+  ['Galaxy Note II 360×640, texte agrandi à 140 %', strip(devices['Galaxy Note II']), 1.4],
+  ['iPad Mini 768×1024', strip(devices['iPad Mini']), 1]
+];
+async function expectReachable(page, label, textScale = 1) {
+  const g = await page.evaluate(scale => {
+    const root = document.getElementById('storeRunnerFirstRun'), card = root.querySelector('.srfrCard');
+    /* Texte agrandi comme le réglage de taille de police d'Android : seules les tailles de texte changent, pas les boîtes.
+       Deux passes (lire toutes les tailles, puis les poser en px) : un élément qui hérite de son parent n'est pas agrandi deux fois. */
+    if (scale !== 1) {
+      const sized = [...root.querySelectorAll('*')].filter(el => !el.closest('svg') && !el.dataset.zoomed).map(el => [el, parseFloat(getComputedStyle(el).fontSize)]);
+      for (const [el, px] of sized) if (px) { el.style.fontSize = px * scale + 'px'; el.dataset.zoomed = '1'; }
+    }
+    card.scrollTop = 0;
+    const box = el => { const r = el.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom }; };
+    const c = box(card);
+    const reachable = r => r.t >= c.t - 1 && r.b <= c.b + 1 && r.l >= c.l - 1 && r.r <= c.r + 1 && r.t >= -1 && r.b <= innerHeight + 1 && r.l >= -1 && r.r <= innerWidth + 1;
+    const buttons = [...root.querySelectorAll('button')], figure = root.querySelector('.srRunnerFigure');
+    return {
+      vw: innerWidth, vh: innerHeight, card: c, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      hidden: buttons.filter(b => !reachable(box(b))).map(b => b.textContent.trim()), primary: buttons[0].getBoundingClientRect().height,
+      figure: !!figure && reachable(box(figure)), instances: root.querySelectorAll('.srRunner').length
+    };
+  }, textScale);
+  expect(g.overflow, label + ' : aucun défilement horizontal').toBeLessThanOrEqual(1);
+  expect(g.card.l, label + ' : carte dans l’écran').toBeGreaterThanOrEqual(-1);
+  expect(g.card.r, label + ' : carte dans l’écran').toBeLessThanOrEqual(g.vw + 1);
+  expect(g.card.t, label + ' : carte dans l’écran').toBeGreaterThanOrEqual(-1);
+  expect(g.card.b, label + ' : carte dans l’écran').toBeLessThanOrEqual(g.vh + 1);
+  expect(g.hidden, label + ' : chaque bouton reste visible sans défiler').toEqual([]);
+  expect(g.primary, label + ' : action principale ≥ 48 px').toBeGreaterThanOrEqual(47.5);
+  expect(g.figure, label + ' : Runner visible').toBe(true);
+  expect(g.instances, label + ' : un seul Runner').toBe(1);
+}
+test.describe('petits écrans, paysage, texte agrandi, tablette', () => {
+  for (const [name, profile, textScale] of SMALL_SCREENS) {
+    test.describe(name, () => {
+      test.use(profile);
+      test('chaque étape garde son action principale et tous ses boutons à portée', async ({ page }) => {
+        test.setTimeout(90000);
+        const errors = await boot(page);
+        await guideReady(page);
+        const settled = () => page.waitForFunction(() => window.__audit.moves.length >= 1 && window.__audit.moves.every(m => ['finished', 'idle'].includes(m.animation.playState)), null, { timeout: 15000 });
+        await settled();
+        await expectReachable(page, name + ' · présentation', textScale);
+        await tap(page, 'Commencer');
+        await expect(page.locator(GUIDE + ' #srfrTitle')).toHaveText('Ton secteur');
+        await expectReachable(page, name + ' · secteur vide', textScale);
+        expect(await addStores(page, 12)).toBe(12);
+        await expect(page.locator(GUIDE + ' [data-srfr-store-count]')).toHaveText('12');
+        await expectReachable(page, name + ' · secteur prêt', textScale);
+        await tap(page, 'Continuer');
+        await expect(page.locator(GUIDE + ' #srfrTitle')).toHaveText('Ton point de départ');
+        await expectReachable(page, name + ' · départ', textScale);
+        await tap(page, 'Passer cette étape');
+        await expect(page.locator(GUIDE + ' #srfrTitle')).toHaveText('Ton planning');
+        await expectReachable(page, name + ' · planning', textScale);
+        /* La fin : le marqueur « généré » tel que le guide l'écrit après une génération réussie, puis reprise. */
+        await page.evaluate(async key => {
+          const m = JSON.parse(__chefStorage.getItem(key) || '{}');
+          __chefStorage.setItem(key, JSON.stringify({ ...m, status: 'in-progress', step: 4, generated: { visits: 11, stores: 11, at: new Date().toISOString() } }));
+          await __chefStorage.flush();
+        }, MARKER);
+        await reload(page);
+        await guideReady(page);
+        await settled();
+        await expect(page.locator(GUIDE + ' #srfrTitle')).toHaveText('Tout est en place');
+        await expectReachable(page, name + ' · fin', textScale);
+        expect(await geoCalls(page), 'aucune position lue sur ce parcours').toBe(0);
+        expect(errors.filter(e => !/Failed to fetch|NetworkError|net::/.test(e))).toEqual([]);
+      });
+    });
+  }
+});
+
+/* ------------------------------------------------ 11. captures de la sortie de derrière le logo */
 test('captures : Runner sort de derrière le logo (images figées du trajet V270)', async ({ page }) => {
   test.skip(!SHOTS, 'RUNNER_SHOTS_DIR non défini : captures non demandées');
   await boot(page);
