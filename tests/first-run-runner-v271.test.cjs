@@ -39,8 +39,8 @@ assert.doesNotMatch(sw, moduleLike, 'sw.js ne cache aucun module de premier lanc
 assert.match(index, /'\.\/navigation-controller\.js'/, 'navigation-controller.js reste chargé au démarrage');
 assert.match(sw, /"\.\/navigation-controller\.js"/, 'navigation-controller.js reste dans le shell obligatoire');
 assert.match(sw, /"\.\/runner-visual\.js"/, 'Runner reste dans le shell obligatoire');
-assert.equal(version.displayVersion, '271', 'version visible V271');
-assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-271$/, 'BUILD_REV V271');
+assert.equal(version.displayVersion, '272', 'version visible V272, guide V271 conservé');
+assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-272$/, 'BUILD_REV V272');
 assert.equal(index.match(/const BUILD_REV='([^']+)'/)[1], version.latestBuild);
 assert.equal(sw.match(/const BUILD_REV = "([^"]+)"/)[1], version.latestBuild);
 assert.match(read('store-runner-whats-new.js'), /version:'271',\s*title:'Runner te guide au premier lancement'/, 'Quoi de neuf V271');
@@ -95,7 +95,7 @@ assert.match(code, /window\.storeRunnerGenerateThreeWeeks/, 'génération : plan
 assert.doesNotMatch(code, /generateWeek\b|saveProfile|useCurrentLocation|StoreRunnerTerrainPlanningV1|generateThreeWeekSnail|RegionStores|StoreRunnerManualPlanning|StoreRunnerPlanningCommandEngine|StoreRunnerVisitCoverage|ChefReliability|syncGoogleCalendar/,
   'aucun moteur, aucun écrivain de planning ni de magasins appelé directement');
 assert.doesNotMatch(code, /\bwindow\.[A-Za-z_$][\w$]*\s*=(?!=)/, 'aucun global posé hors StoreRunnerNavigation');
-assert.deepEqual(nav.match(/\bwindow\.[A-Za-z_$][\w$]*\s*=(?!=)/g).sort(), ['window.StoreRunnerNavigation=', 'window.openStoreQuick='], 'aucune fonction globale remplacée');
+assert.deepEqual(nav.match(/\bwindow\.[A-Za-z_$][\w$]*\s*=(?!=)/g).sort(), ['window.StoreRunnerAppearance=', 'window.StoreRunnerNavigation=', 'window.openStoreQuick='], 'seuls les propriétaires Navigation et Apparence sont exposés, aucune fonction globale remplacée');
 
 /* 5. Runner : le composant existant, dans le flux, avec le mouvement V270. */
 assert.match(code, /window\.StoreRunnerRunner/);

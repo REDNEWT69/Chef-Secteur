@@ -507,6 +507,23 @@ function createInstance(doc,options){
     return true;
   }
 
+  /* Geste de présentation V272 : un clignement, sans trajet ni minuterie.
+     La promesse se termine aussi à l'annulation ; les états métier gardent la main. */
+  function react(){
+    if(destroyed)return Promise.resolve(false);
+    if(!watching&&!presence&&!doc.hidden){pageSuspended=false;host.removeAttribute('data-presence')}
+    if(state!=='neutral'||!motionAllowed()||doc.hidden||pageSuspended)return Promise.resolve(false);
+    const eyes=figure.querySelector('.rnEyes');
+    if(!eyes||typeof eyes.animate!=='function')return Promise.resolve(false);
+    cancelMove(false);stopIdle();
+    try{
+      const animation=eyes.animate([{transform:'none'},{transform:'scaleY(.12)',offset:.42},{transform:'none'}],{duration:240,easing:'ease-in-out',iterations:1,id:'runner-react'});
+      moveAnimation=animation;moveEffects=[animation];watchEnvironment(true);
+      animation.onfinish=animation.oncancel=()=>{if(moveAnimation===animation)cancelMove()};
+      return animation.finished.then(()=>true,()=>false);
+    }catch(e){cancelMove();return Promise.resolve(false)}
+  }
+
   function clearTimer(timer){if(timer)root.clearTimeout(timer);return 0}
   function announce(text,assertive){
     liveTimer=clearTimer(liveTimer);
@@ -594,7 +611,7 @@ function createInstance(doc,options){
   const inst={
     id,el:host,variant,
     getState:()=>state,
-    setState,showMessage,hideMessage,reset,destroy,moveTo,cancelMove,setPresence,returnToRest,
+    setState,showMessage,hideMessage,reset,destroy,moveTo,cancelMove,setPresence,returnToRest,react,
     isIdle:()=>idleEffects.length>0,
     isMoving:()=>!!moveAnimation,
     /* Vrai tant que le Runner est dans le document, ou n'y a pas encore été posé ; faux dès

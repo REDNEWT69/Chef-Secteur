@@ -114,15 +114,21 @@ async function shot(page, testInfo, name) {
   if (SHOTS_DIR) { fs.mkdirSync(SHOTS_DIR, { recursive: true }); fs.writeFileSync(path.join(SHOTS_DIR, name.replace(/[^\w-]+/g, '_') + '.png'), body); }
 }
 async function scrollToRunner(page) {
-  await page.evaluate(() => { const slot = document.getElementById('planningRunnerV269'); if (slot) slot.scrollIntoView({ block: 'center' }); });
+  // Coordinates must be sampled after positioning: the shell's smooth scroll
+  // otherwise moves the underlying hours button beneath the synthetic finger.
+  await page.evaluate(() => { const slot = document.getElementById('planningRunnerV269'); if (slot) slot.scrollIntoView({ block: 'center', behavior: 'instant' }); });
   await page.clock.runFor(300);
 }
 /* Un vrai glissement du doigt (événements tactiles du navigateur, comme sur Android). */
 async function swipe(page, x, y, dy) {
   const client = await page.context().newCDPSession(page);
   await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  // Virtual frames do not pace native touch input in the compositor.
+  // Ease out so the following tap tests a settled scroll rather than braking it.
   for (let step = 1; step <= 12; step++) {
-    await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + dy * step / 12 }] });
+    const progress = 1 - Math.pow(1 - step / 12, 2);
+    await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + dy * progress }] });
+    await new Promise(resolve => setTimeout(resolve, 16));
     await page.clock.runFor(16);
   }
   await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
@@ -376,20 +382,29 @@ test.describe('tactile', () => {
     await page.clock.runFor(500);
     expect(await page.evaluate(() => JSON.stringify({ state: window.state, sheet: !!document.querySelector('#storeQuickSheet.open'), day: window.selectedPlanningDay, rn: document.querySelector('#planningRunnerV269 .srRunner').dataset.state }))).toBe(before);
     /* Un balayage commencé sur Runner fait défiler la page. */
-    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
     await scrollToRunner(page);
     const pos = await page.evaluate(() => { const f = document.querySelector('#planningRunnerV269 .srRunnerFigure').getBoundingClientRect(); return { x: f.left + f.width / 2, y: f.top + f.height / 2, scroll: scrollY }; });
     await swipe(page, pos.x, pos.y, -150);
     expect(await page.evaluate(() => scrollY), 'le doigt posé sur Runner fait défiler la page').toBeGreaterThan(pos.scroll + 40);
+    // Wait for native inertia before the next tap, as in the Home gesture suite.
+    let previousScroll=-1, stableScrollSamples=0;
+    await expect.poll(async () => {
+      const current=await page.evaluate(() => scrollY);
+      stableScrollSamples=current===previousScroll?stableScrollSamples+1:0;previousScroll=current;
+      return stableScrollSamples;
+    }, { intervals:[100] }).toBeGreaterThanOrEqual(3);
     /* Les jours se changent au doigt, et Runner suit. */
-    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
     await page.clock.runFor(300);
     await page.locator('#dayTabs .periodDayTab[data-date="2026-10-08"]').tap();
     await page.clock.runFor(900);
+    await expect.poll(async () => (await read(page)).text).toBe('1 visite prévue jeudi 8. Premier arrêt : Conforama Metz Ouest. 2 magasins à surveiller sur les 3 prochaines semaines.');
     let r = await read(page);
     expect(r.text).toBe('1 visite prévue jeudi 8. Premier arrêt : Conforama Metz Ouest. 2 magasins à surveiller sur les 3 prochaines semaines.');
     await page.locator('#dayTabs .periodDayTab[data-date="2026-10-07"]').tap();
     await page.clock.runFor(900);
+    await expect.poll(async () => (await read(page)).text).toBe(DAY_WITH_VISITS);
     expect((await read(page)).text).toBe(DAY_WITH_VISITS);
     /* Une carte de visite, sous Runner, s'ouvre au toucher comme avant. */
     await page.evaluate(() => { window.__opened = []; const o = window.openStoreQuick; if (typeof o === 'function') window.openStoreQuick = function (id) { window.__opened.push(String(id)); return o.apply(this, arguments); }; });
@@ -485,6 +500,29 @@ test.describe('données et état', () => {
     const r = await read(page);
     expect(r.text).toContain(hostile);
     expect(await page.evaluate(() => ({ xss: window.__xss === 1, imgs: document.querySelectorAll('#planningRunnerV269 img').length }))).toEqual({ xss: false, imgs: 0 });
+    /* Le chargement réseau et le fondu Leaflet ne sont pas du repos. Une frame par
+       sondage laisse finir le fondu avant de mesurer tout le Planning, carte comprise.
+       Les tuiles courantes hors cadre appartiennent aussi au DOM observé. */
+    await expect.poll(async () => {
+      await page.clock.runFor(16);
+      return page.evaluate(() => {
+        const map = document.getElementById('freeRouteMap');
+        if (!map) return 'carte absente';
+        const bounds = map.getBoundingClientRect();
+        if (!bounds.width || !bounds.height) return 'carte non affichée';
+        const tiles = [...map.querySelectorAll('.leaflet-tile')];
+        const visible = tiles.some(tile => {
+          const rect = tile.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && rect.right > bounds.left && rect.left < bounds.right
+            && rect.bottom > bounds.top && rect.top < bounds.bottom;
+        });
+        if (!visible) return 'aucune tuile visible';
+        const loading = tiles.filter(tile => !tile.complete || !tile.naturalWidth || !tile.classList.contains('leaflet-tile-loaded')).length;
+        if (loading) return loading + ' tuile(s) courante(s) non chargée(s)';
+        const fading = tiles.filter(tile => Number(getComputedStyle(tile).opacity) !== 1).length;
+        return fading ? fading + ' tuile(s) courante(s) en cours de fondu' : 'stable';
+      });
+    }, { intervals: [16], message: 'Les tuiles courantes doivent être chargées et leur fondu terminé avant la mesure du repos.' }).toBe('stable');
     /* Au repos : aucune mutation du Planning et aucun événement de planning provoqués par Runner. */
     await page.evaluate(() => {
       window.__idle = { mutations: 0, events: 0 };

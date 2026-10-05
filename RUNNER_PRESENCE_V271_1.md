@@ -1,6 +1,6 @@
 # Runner Presence System — V271.1
 
-Issue #506 ; base main V271 `6c23591`. Branche `feat/runner-presence-v271-1`. Build `20261005-r49-runner-presence-271`, **displayVersion 271**. PR **Draft — ne pas fusionner avant validation visuelle humaine**.
+Issue #506 ; base main V271 `6c23591`. Branche `feat/runner-presence-v271-1`. Build `20261005-r49`, **displayVersion 271**. PR **Draft — ne pas fusionner avant validation visuelle humaine**.
 
 ## Rythme perceptuel
 
