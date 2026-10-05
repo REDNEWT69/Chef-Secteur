@@ -109,6 +109,7 @@ jobs:
       - run: node tests/three-week-forecast-v263-6.test.cjs
       - run: node tests/period-day-slider.test.cjs
       - run: node tests/store-explorer-v266.test.cjs
+      - run: node tests/runner-behavior-v273.test.cjs
       - run: node tests/runner-visual-v269.test.cjs
       - run: node tests/runner-movement-v270.test.cjs
       - run: node tests/first-run-runner-v271.test.cjs
