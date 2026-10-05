@@ -467,8 +467,7 @@
     if(!el)return;
     try{el.focus({preventScroll:true})}catch(e){try{el.focus()}catch(err){}}
   }
-  /* Le focus ne bouge qu'à un changement d'étape : une mise à jour de la même étape
-     (un magasin ajouté, un retour de position) ne le ramène pas sur le titre. */
+  /* Le guide est modal : la tabulation tourne dans sa carte au lieu de sortir vers l'application dessous. */
   function onOnboardingKeydown(e){
     if(!e||e.key!=='Tab')return;
     const root=document.getElementById(ONBOARDING_ID);
@@ -505,13 +504,18 @@
   function whenAppVisible(fn){
     const boot=window.StoreRunnerBoot;
     if(!boot||typeof boot.settled!=='function'||boot.settled()){fn();return}
+    const twoFrames=function(){
+      if(typeof window.requestAnimationFrame==='function')window.requestAnimationFrame(function(){window.requestAnimationFrame(fn)});else fn();
+    };
+    /* Page déjà chargée : plus de `load` à attendre, le voile se lève dans les deux images qui viennent. */
+    if(document.readyState==='complete'){twoFrames();return}
     let done=false;
     const go=function(){
       if(done)return;
       done=true;
       document.removeEventListener('store-runner:home-rendered',go);
       window.removeEventListener('load',go);
-      if(typeof window.requestAnimationFrame==='function')window.requestAnimationFrame(function(){window.requestAnimationFrame(fn)});else fn();
+      twoFrames();
     };
     document.addEventListener('store-runner:home-rendered',go);
     window.addEventListener('load',go);
@@ -588,6 +592,8 @@
       void main.offsetWidth;
       main.classList.add('is-in');
     }
+    /* Le focus ne bouge qu'à un changement d'étape : une mise à jour de la même étape (un magasin
+       ajouté, un retour de position) ne le ramène pas sur le titre. */
     if(changed||reopened)focusElement(main.querySelector('#srfrTitle'));
     else if(previousFocus)focusElement(root.querySelector('['+previousFocus+']:not([disabled])'));
     renderedStep=step;

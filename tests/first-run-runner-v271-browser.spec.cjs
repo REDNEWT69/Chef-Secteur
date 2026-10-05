@@ -118,7 +118,8 @@ const marker = page => page.evaluate(key => JSON.parse(__chefStorage.getItem(key
 const button = (page, name) => page.locator(GUIDE).getByRole('button', { name });
 const tap = (page, name) => button(page, name).tap();
 const geoCalls = page => page.evaluate(() => window.__geo.calls.length);
-const shot = async (page, name) => { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await page.screenshot({ path: path.join(SHOTS, name + '.png') }); } };
+/* Les captures attendent la fin des brèves animations d'entrée (pop de Runner, bulle) : un état posé, pas un état en route. */
+const shot = async (page, name) => { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await page.waitForTimeout(550); await page.screenshot({ path: path.join(SHOTS, name + '.png') }); } };
 
 /* Ce que le guide montre à l'écran : étape, texte de Runner, état, faits lus dans l'état réel. */
 const view = page => page.evaluate(() => {
