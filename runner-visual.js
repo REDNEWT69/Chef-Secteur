@@ -426,13 +426,15 @@ function createInstance(doc,options){
       const expressive=o.entrance==='peek';
       const n=Number(o.duration),slow=expressive&&n>=7000,duration=Number.isFinite(n)&&n>0?Math.max(240,Math.min(expressive?9000:1400,n)):(expressive?1180:680);
       const side=slow?(x>=0?-1:1):(x>=0?1:-1),slide=value=>' translateX('+(value*side)+'px)';
+      /* Trajet et retour de la tête partagent une seule courbe : la vitesse décroît jusqu'à zéro à 8 s,
+         sans arrêt intermédiaire ni reprise, et la tête n'arrive jamais avant le corps. */
+      const arrive='cubic-bezier(.42,0,.25,1)';
       try{
         const frames=slow?[
           {transform:shift+slide(-24)+' scale(.94)',opacity:1},
           {transform:shift+slide(-24)+' scale(.94)',opacity:1,offset:.1875,easing:'cubic-bezier(.4,0,.35,1)'},
           {transform:shift+slide(0),opacity:1,offset:.375},
-          {transform:shift+slide(0),opacity:1,offset:.75,easing:'cubic-bezier(.42,0,.28,1)'},
-          {transform:'translate('+(x*.03)+'px,'+(y*.03)+'px)',opacity:1,offset:.94,easing:'ease-out'},
+          {transform:shift+slide(0),opacity:1,offset:.75,easing:arrive},
           {transform:'none',opacity:1}
         ]:expressive?[
           {transform:shift+slide(-8)+' scale(.94)',opacity:1},
@@ -456,7 +458,7 @@ function createInstance(doc,options){
             {transform:'none'},{transform:'none',offset:.1875,easing:'ease-in-out'},
             {transform:'translateX(45px)',offset:.375},{transform:'translateX(45px)',offset:.5,easing:'ease-in-out'},
             {transform:'translateX(45px) rotate(-5deg)',offset:.555},{transform:'translateX(45px) rotate(-5deg)',offset:.59},
-            {transform:'translateX(45px)',offset:.625},{transform:'translateX(45px)',offset:.75},{transform:'none',offset:.94},{transform:'none'}
+            {transform:'translateX(45px)',offset:.625},{transform:'translateX(45px)',offset:.75,easing:arrive},{transform:'none'}
           ]:[
             {transform:'rotate(0deg)'},{transform:'rotate(0deg)',offset:.18},
             {transform:'rotate(-7deg)',offset:.28,easing:'ease-out'},

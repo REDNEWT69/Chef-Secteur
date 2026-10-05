@@ -130,7 +130,10 @@ async function expectOneJourney(page) {
   expect(move.options).toMatchObject({ duration: 8000, iterations: 1 });
   expect(move.options.easing).toBe('linear');
   expect(move.frames[1]).toMatchObject({ offset: .1875, easing: 'cubic-bezier(.4,0,.35,1)' });
-  expect(move.frames[3]).toMatchObject({ offset: .75, easing: 'cubic-bezier(.42,0,.28,1)' });
+  expect(move.frames[3]).toMatchObject({ offset: .75, easing: 'cubic-bezier(.42,0,.25,1)' });
+  /* Un seul trajet d'arrivée de 6 s à 8 s : aucun palier intermédiaire, donc aucun arrêt puis reprise. */
+  expect(move.frames, 'cache, sortie, pause, trajet unique').toHaveLength(5);
+  expect(move.frames[4].transform).toBe('none');
   expect(move.frames[2].transform).toBe(move.frames[3].transform);
   expect(move.frames.every(frame => frame.opacity === 1), 'aucun fade ne délave Runner pendant la sortie').toBe(true);
   for (const frame of move.frames) {

@@ -88,6 +88,42 @@ for (const [name, device] of profiles) test.describe(name,()=>{
     expect(await page.locator(HOME+' .rnArt').count()).toBe(1);
     expect(await page.locator(HOME).evaluate(el=>getComputedStyle(el).pointerEvents)).toBe('none');
   });
+  test('arrivée : le trajet ralentit sans s’arrêter puis repartir, la tête voyage avec le corps',async({page})=>{
+    await boot(page);
+    // Échantillonnage de la timeline réelle (10 ms), pas un calcul de courbe : c'est ce que l'œil suit.
+    const run=await page.evaluate(()=>{
+      const scene=target=>__presenceAudit.effects.find(x=>x.options.id==='runner-scene'&&x.target.matches(target));
+      const host=scene('.srRunner'),head=scene('.rnHead');
+      host.effect.pause();head.effect.pause();
+      const matrix=el=>{const t=getComputedStyle(el).transform;return t==='none'?new DOMMatrix():new DOMMatrix(t)};
+      const out=[];
+      for(let t=6000;t<=8000;t+=10){
+        host.effect.currentTime=t;head.effect.currentTime=t;
+        const h=matrix(host.target),g=matrix(head.target);
+        out.push({t,left:Math.hypot(h.e,h.f),headX:g.e});
+      }
+      return out;
+    });
+    const speed=run.slice(1).map((s,i)=>Math.abs(run[i].left-s.left)/0.01);
+    const peak=speed.indexOf(Math.max(...speed));
+    // 1. jamais de recul, et le trajet va bien jusqu'à la place finale.
+    expect(run.every((s,i)=>i===0||s.left<=run[i-1].left+0.01),'jamais de recul').toBe(true);
+    expect(run.at(-1).left,'arrive exactement à sa place').toBeLessThan(0.5);
+    // 2. après la pointe, la vitesse ne fait que baisser : pas d'arrêt suivi d'une reprise.
+    const reaccel=speed.slice(peak+1).map((v,i)=>v-speed[peak+i]).filter(d=>d>2);
+    expect(reaccel,'aucune reprise de vitesse après la pointe').toEqual([]);
+    // 3. mouvement doux : pas de saut de vitesse d'une mesure à l'autre, pointe bornée, arrêt à zéro.
+    const jump=Math.max(...speed.slice(1).map((v,i)=>Math.abs(v-speed[i])));
+    expect(jump,'aucun à-coup de vitesse en 10 ms').toBeLessThan(14);
+    expect(speed[peak],'pointe calme : sous 1,4 fois la distance par seconde').toBeLessThan(1.4*run[0].left);
+    expect(speed.slice(-5).every(v=>v<6),'stabilisation : vitesse nulle à l’arrivée').toBe(true);
+    // 4. la tête revient sur le corps pendant le même trajet, avec la même douceur, et s'arrête avec lui.
+    const headSpeed=run.slice(1).map((s,i)=>Math.abs(s.headX-run[i].headX)/0.01);
+    expect(Math.max(...headSpeed.slice(0,10)),'la tête ne part pas d’un coup à 6 s').toBeLessThan(10);
+    expect(Math.max(...headSpeed.slice(-60)),'la tête ne s’arrête pas net avant le corps').toBeLessThan(headSpeed.reduce((a,b)=>Math.max(a,b),0));
+    expect(Math.abs(run.at(-1).headX),'la tête est revenue sur le corps').toBeLessThan(0.5);
+    expect(Math.max(...headSpeed.slice(1).map((v,i)=>Math.abs(v-headSpeed[i]))),'aucun à-coup sur la tête').toBeLessThan(12);
+  });
   test('idle variable, états prioritaires, reprise neutre et cancellation exhaustive',async({page})=>{
     await boot(page); await finishScene(page);
     const before=await snapshot(page);
