@@ -123,8 +123,12 @@ async function scrollToRunner(page) {
 async function swipe(page, x, y, dy) {
   const client = await page.context().newCDPSession(page);
   await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  // Virtual frames do not pace native touch input in the compositor.
+  // Ease out so the following tap tests a settled scroll rather than braking it.
   for (let step = 1; step <= 12; step++) {
-    await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + dy * step / 12 }] });
+    const progress = 1 - Math.pow(1 - step / 12, 2);
+    await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + dy * progress }] });
+    await new Promise(resolve => setTimeout(resolve, 16));
     await page.clock.runFor(16);
   }
   await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
@@ -496,6 +500,29 @@ test.describe('données et état', () => {
     const r = await read(page);
     expect(r.text).toContain(hostile);
     expect(await page.evaluate(() => ({ xss: window.__xss === 1, imgs: document.querySelectorAll('#planningRunnerV269 img').length }))).toEqual({ xss: false, imgs: 0 });
+    /* Le chargement réseau et le fondu Leaflet ne sont pas du repos. Une frame par
+       sondage laisse finir le fondu avant de mesurer tout le Planning, carte comprise.
+       Les tuiles courantes hors cadre appartiennent aussi au DOM observé. */
+    await expect.poll(async () => {
+      await page.clock.runFor(16);
+      return page.evaluate(() => {
+        const map = document.getElementById('freeRouteMap');
+        if (!map) return 'carte absente';
+        const bounds = map.getBoundingClientRect();
+        if (!bounds.width || !bounds.height) return 'carte non affichée';
+        const tiles = [...map.querySelectorAll('.leaflet-tile')];
+        const visible = tiles.some(tile => {
+          const rect = tile.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && rect.right > bounds.left && rect.left < bounds.right
+            && rect.bottom > bounds.top && rect.top < bounds.bottom;
+        });
+        if (!visible) return 'aucune tuile visible';
+        const loading = tiles.filter(tile => !tile.complete || !tile.naturalWidth || !tile.classList.contains('leaflet-tile-loaded')).length;
+        if (loading) return loading + ' tuile(s) courante(s) non chargée(s)';
+        const fading = tiles.filter(tile => Number(getComputedStyle(tile).opacity) !== 1).length;
+        return fading ? fading + ' tuile(s) courante(s) en cours de fondu' : 'stable';
+      });
+    }, { intervals: [16], message: 'Les tuiles courantes doivent être chargées et leur fondu terminé avant la mesure du repos.' }).toBe('stable');
     /* Au repos : aucune mutation du Planning et aucun événement de planning provoqués par Runner. */
     await page.evaluate(() => {
       window.__idle = { mutations: 0, events: 0 };

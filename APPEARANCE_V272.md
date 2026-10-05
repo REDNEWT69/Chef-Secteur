@@ -1,6 +1,6 @@
 # Apparence & personnalisation visuelle — V272
 
-Issue #508. Base imposée et vérifiée : main `04431e55720f533980a9f0d6514f455df1df36d0`.
+Issue #508. Base initiale : main `04431e55720f533980a9f0d6514f455df1df36d0`. Branche existante rebasée sur main `49539e5aa27900445e62bacf81148aa2eb1b06c5`, qui contient le hotfix carte #513 / #511 validé sur iPhone. Résolution limitée au build r51 et à l'union des tests Reliability ; runtime et test du hotfix conservés à l'identique.
 PR Draft, ne pas fusionner avant validation visuelle humaine.
 
 ## Audit avant modification
@@ -41,6 +41,7 @@ BUILD_REV `20261005-r51-appearance-272`, displayVersion `272`. Budget inchangé 
 
 - Les 177 commandes `verify` du workflow Reliability ont été exécutées. 176 passent localement après relance du catalogue Python en UTF-8 ; le contrôle restant du bit exécutable de `android/gradlew` est incompatible avec NTFS. Le mode Git est bien `100755`, identique au main, et aucun fichier Android n’est modifié.
 - Suite navigateur officielle lancée par `node tools/run-browser-tests.mjs`, même liste et Playwright 1.55.0 que la CI : 355 cas exécutés, dont 3 ignorés par leur configuration. Les échecs locaux et leurs rejeux sont détaillés dans la PR ; le workflow Reliability sur Linux reste la référence pour le résultat complet.
+- Les sept échecs initiaux ont passé en rejeu. Le harnais Planning attend les tuiles Leaflet chargées et opaques avant de mesurer le repos, puis conserve l'observation de tout le Planning et l'assertion zéro mutation/zéro événement. Son balayage natif est cadencé en temps réel et décéléré avant les taps suivants ; mêmes distances et assertions. La suite complète Runner Planning repasse : 19/19, dont hors ligne. Aucun comportement métier n'est modifié pour ces corrections du harnais.
 - Les 16 scénarios V272 couvrent Android 390, Android 360, profil iPhone, les trois modes, les quatre accents, les gestes réels, la sheet commune, les cibles tactiles, l’aperçu, le focus, la réinitialisation, les erreurs de stockage, le reload, le miroir périmé et le service worker réellement hors ligne. Les octets métier sont comparés avant/après.
 - WebKit/iPhone : 7 scénarios passent ; le scénario service worker hors ligne est volontairement réservé à Chromium. La capture iPhone est issue de WebKit.
 - Contraste : tous les textes actifs de la sheet sont contrôlés à au moins 4,5:1 dans les huit combinaisons explicites. Les 64 combinaisons état/variante de bulle/thème/accent de Runner et les bannières Assistant erreur/succès passent également 4,5:1. Une revue ciblée des cinq écrans vérifie les couleurs sémantiques indépendantes de l’accent ; elle ne constitue pas un audit WCAG exhaustif de l’application.
