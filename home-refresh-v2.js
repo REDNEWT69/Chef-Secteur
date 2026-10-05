@@ -14,6 +14,9 @@
   function syncHomeRunner(){
     const panel=document.getElementById('homePanel'),slot=document.getElementById('homeRunnerV270');
     if(!panel||!panel.classList.contains('active')){releaseHomeRunner();return}
+    /* V271 : le guide de premier lancement couvre l'écran. L'entrée de Runner est gardée pour sa
+       fermeture (store-runner:first-run-closed), sinon elle serait jouée sous le guide, sans témoin. */
+    if(document.documentElement.classList.contains('srFirstRunOpen')){releaseHomeRunner();return}
     const api=window.StoreRunnerRunner;
     if(!slot||!api){releaseHomeRunner();return}
     if(homeRunner&&homeRunner.el.parentNode!==slot)releaseHomeRunner();
@@ -533,5 +536,5 @@
   window.addEventListener('focus',refreshWhenVisible);
   window.addEventListener('pageshow',refreshWhenVisible);
   document.addEventListener('visibilitychange',refreshWhenVisible);
-  ['store-runner:data-restored','store-runner:planning-updated','store-runner:opportunities-updated','store-runner:visit-deleted'].forEach(name=>document.addEventListener(name,()=>scheduleRun(20)));
+  ['store-runner:data-restored','store-runner:planning-updated','store-runner:opportunities-updated','store-runner:visit-deleted','store-runner:first-run-closed'].forEach(name=>document.addEventListener(name,()=>scheduleRun(20)));
 })();

@@ -64,7 +64,7 @@ Un marqueur écrit par l'ancien parcours (étapes 0 à 3) est lu de la même fa�
 - Présentation : Runner sort de derrière le logo (`entrance: 'peek'`, 1 180 ms, V270) **une seule fois par document**. Retour à la présentation, nouveau rendu, changement d'étape : placement direct, aucun rejeu.
 - `prefers-reduced-motion` : aucun mouvement (Runner et transitions du guide). Placement direct, états toujours distincts par les yeux, les gestes et le texte.
 - Runner n'est jamais flottant, jamais focusable, `pointer-events:none` ; il est monté dans le flux de la carte du guide. Il est détruit à la fermeture.
-- Boîte de dialogue : titre d'étape en `h2`, focus placé dessus à chaque **changement** d'étape (pas aux mises à jour d'une même étape), annonce vocale de Runner seulement pour analyse, succès et alerte (le neutre est `silent`), tabulation bouclée dans la carte, cibles ≥ 48 px, aucun champ de saisie (donc pas de zoom automatique iOS).
+- Boîte de dialogue : titre d'étape en `h2`, focus placé dessus à chaque **changement** d'étape (pas aux mises à jour d'une même étape), voix de Runner annoncée à chaque changement d'étape ou d'état (sa bulle visuelle est masquée aux lecteurs d'écran : elle EST le contenu du guide), sauf l'alerte, dont la note `role="alert"` porte le message du propriétaire, tabulation bouclée dans la carte, cibles ≥ 48 px, aucun champ de saisie (donc pas de zoom automatique iOS).
 - Aucun `setTimeout`, `setInterval`, observer ou écouteur permanent ajouté : événements métier existants seulement, écoutés tant que le guide est en cours.
 
 ## Ce que le guide ne fait pas

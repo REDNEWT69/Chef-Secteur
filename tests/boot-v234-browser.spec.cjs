@@ -163,7 +163,7 @@ test('V234 — si l’accueil moderne ne monte jamais, le voile ne séquestre pa
   expect(erreurs).toEqual([]);
 });
 
-test('Premier lancement — secteur vide, restauration accessible, configuration et redémarrage durable', async ({ page }) => {
+test('Premier lancement — secteur vide, restauration accessible, ajout par V261 et redémarrage durable', async ({ page }) => {
   const erreurs = [];
   page.on('pageerror', e => erreurs.push(String((e && e.message) || e)));
   await page.goto(FIRST_RUN_URL, { waitUntil: 'domcontentloaded' });
@@ -172,6 +172,9 @@ test('Premier lancement — secteur vide, restauration accessible, configuration
   const onboarding = page.locator('#storeRunnerFirstRun');
   await expect(onboarding).toBeVisible();
   await expect(onboarding.getByRole('heading', { name: 'Bienvenue dans Store Runner' })).toBeVisible();
+  // V271 : Runner guide ce premier écran (parcours complet : first-run-runner-v271-browser.spec.cjs).
+  await expect(onboarding.locator('.srRunner')).toHaveCount(1);
+  await expect(onboarding.locator('.srRunnerBubbleTitle')).toHaveText('Je suis Runner, ton copilote terrain.');
 
   const initial = await page.evaluate(() => ({
     count: state.stores.length,
@@ -190,7 +193,7 @@ test('Premier lancement — secteur vide, restauration accessible, configuration
   await expect.poll(() => logo.evaluate(img => img.complete && img.naturalWidth > 0)).toBe(true);
   const logoInfo = await logo.evaluate(img => {
     const r = img.getBoundingClientRect();
-    return { src: img.getAttribute('src'), first: img.closest('.srfrCard').firstElementChild === img, w: r.width, h: r.height, bg: getComputedStyle(img).backgroundColor, rev: window.__STORE_RUNNER_BUILD_REV };
+    return { src: img.getAttribute('src'), first: img.closest('.srfrHead').firstElementChild === img, w: r.width, h: r.height, bg: getComputedStyle(img).backgroundColor, rev: window.__STORE_RUNNER_BUILD_REV };
   });
   expect(logoInfo.src).toBe('./app-icon.svg?rev=' + logoInfo.rev);
   expect(logoInfo.first, 'le logo reste en tête de carte').toBe(true);
@@ -209,32 +212,21 @@ test('Premier lancement — secteur vide, restauration accessible, configuration
   await expect(onboarding).toBeVisible();
   await expect(onboarding.getByRole('heading', { name: 'Bienvenue dans Store Runner' })).toBeVisible();
 
-  await onboarding.getByRole('button', { name: 'Configurer mon espace' }).click();
+  // Aucun champ de saisie : ni clavier virtuel ni zoom automatique iOS dans le guide.
+  await onboarding.getByRole('button', { name: 'Commencer' }).click();
   await expect(onboarding.getByRole('heading', { name: 'Ton secteur' })).toBeVisible();
-  await page.locator('#srfrSector').fill('Secteur test terrain');
-  await page.locator('#srfrRep').fill('Alex');
-  await page.locator('#srfrCapacity').fill('6');
-  await page.locator('#srfrTarget').fill('24');
-
-  const tailles = await onboarding.locator('input:visible').evaluateAll(nodes => nodes.map(n => parseFloat(getComputedStyle(n).fontSize)));
-  expect(tailles.length).toBeGreaterThan(0);
-  expect(Math.min(...tailles), 'aucun champ onboarding ne doit relancer l’auto-zoom iOS').toBeGreaterThanOrEqual(16);
-
-  await onboarding.getByRole('button', { name: 'Continuer' }).click();
-  await expect(onboarding.getByRole('heading', { name: 'Ajoute tes magasins' })).toBeVisible();
-  expect(await page.evaluate(() => ({ sector: state.profile.sectorName, rep: state.profile.repName, cap: state.settings.maxVisitsPerDay, target: state.settings.target })))
-    .toEqual({ sector: 'Secteur test terrain', rep: 'Alex', cap: 6, target: 24 });
+  await expect(onboarding.locator('input:visible, textarea:visible, select:visible')).toHaveCount(0);
 
   // Le CTA du parcours réutilise bien le composant V261, pas un second formulaire bricolé.
-  await onboarding.getByRole('button', { name: '+ Ajouter un magasin' }).click();
+  await onboarding.getByRole('button', { name: 'Ajouter mes magasins' }).click();
   await expect(page.locator('#storeAddDlg')).toBeVisible();
   await page.evaluate(() => StoreRunnerStoreAdd.close());
   await expect(page.locator('#storeAddDlg')).toBeHidden();
 
-  await onboarding.getByRole('button', { name: 'Continuer sans magasin' }).click();
-  await expect(onboarding.getByRole('heading', { name: 'Ton espace est prêt' })).toBeVisible();
-  await onboarding.getByRole('button', { name: 'Commencer' }).click();
+  // « Plus tard » ferme le guide pour de bon : il ne revient pas au redémarrage.
+  await onboarding.getByRole('button', { name: 'Plus tard' }).click();
   await expect(onboarding).toBeHidden();
+  expect(await page.evaluate(() => state.stores.length), 'fermer le guide ne crée aucune donnée').toBe(0);
 
   await page.evaluate(async () => { if (__chefStorage && __chefStorage.flush) await __chefStorage.flush(); });
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -242,14 +234,9 @@ test('Premier lancement — secteur vide, restauration accessible, configuration
   await expect(page.locator('#storeRunnerFirstRun')).toBeHidden();
   const reloaded = await page.evaluate(() => ({
     stores: state.stores.length,
-    sector: state.profile.sectorName,
-    rep: state.profile.repName,
-    cap: state.settings.maxVisitsPerDay,
-    target: state.settings.target,
     marker: JSON.parse(__chefStorage.getItem('store-runner-onboarding-v1') || 'null')
   }));
   expect(reloaded.stores).toBe(0);
-  expect(reloaded).toMatchObject({ sector: 'Secteur test terrain', rep: 'Alex', cap: 6, target: 24 });
-  expect(reloaded.marker).toMatchObject({ status: 'complete', step: 3 });
+  expect(reloaded.marker).toMatchObject({ status: 'dismissed' });
   expect(erreurs).toEqual([]);
 });
