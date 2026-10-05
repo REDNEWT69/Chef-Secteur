@@ -45,6 +45,7 @@ async function prepare(page, { tomorrow = false, absent = false } = {}) {
       const r = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { left: b.left, top: b.top, width: b.width, height: b.height }; };
       const source = home && r(document.getElementById('homeRunnerOriginV270')), figure = home && r(this.querySelector('.srRunnerFigure'));
       const animation = animate.call(this, frames, options);
+      if (options?.id === 'runner-idle' || options?.id === 'runner-return') return animation;
       if (home && this.matches('.srRunner')) {
         audit.moves.push({ frames, options, animation, el: this, source, figure });
       } else if (home && this.matches('.rnHead,.rnEyes')) {
@@ -84,7 +85,7 @@ async function boot(page, options) {
   return errors;
 }
 const ready = page => page.waitForFunction(() => window.Runner && window.StoreRunnerHomeV204 && window.__chefStorage && document.querySelector('#homeRunnerV270 .srRunner'));
-const settle = page => page.waitForFunction(() => document.querySelector('#homeRunnerV270 .srRunner')?.getAnimations({ subtree: true }).every(a => a.playState === 'finished' || a.playState === 'idle'));
+const settle = page => page.waitForFunction(() => document.querySelector('#homeRunnerV270 .srRunner')?.getAnimations().every(a => a.playState === 'finished' || a.playState === 'idle'));
 async function mobileBack(page) {
   // La coque pose sa sentinelle dans une tâche après le changement de classe.
   // Attendre son état observable évite de quitter le document entre ces deux tâches.
@@ -126,10 +127,11 @@ async function expectOneJourney(page) {
   const moves = await page.evaluate(() => __runnerHomeAudit.moves.map(m => ({ frames: m.frames, options: m.options, source: m.source, figure: m.figure })));
   expect(moves, 'un seul trajet créé par l’Accueil à la première entrée').toHaveLength(1);
   const move = moves[0];
-  expect(move.options).toMatchObject({ duration: 1180, iterations: 1 });
+  expect(move.options).toMatchObject({ duration: 8000, iterations: 1 });
   expect(move.options.easing).toBe('linear');
-  expect(move.frames[2]).toMatchObject({ offset: .18, easing: 'cubic-bezier(.2,.85,.3,1)' });
-  expect(move.frames[5]).toMatchObject({ offset: .52, easing: 'cubic-bezier(.22,.8,.3,1)' });
+  expect(move.frames[1]).toMatchObject({ offset: .1875, easing: 'cubic-bezier(.4,0,.35,1)' });
+  expect(move.frames[3]).toMatchObject({ offset: .75, easing: 'cubic-bezier(.42,0,.28,1)' });
+  expect(move.frames[2].transform).toBe(move.frames[3].transform);
   expect(move.frames.every(frame => frame.opacity === 1), 'aucun fade ne délave Runner pendant la sortie').toBe(true);
   for (const frame of move.frames) {
     expect(Object.keys(frame).filter(k => !['transform', 'opacity', 'offset', 'easing', 'composite'].includes(k))).toEqual([]);
@@ -147,12 +149,12 @@ async function expectOneJourney(page) {
   expect(move.source.left + move.source.width).toBeGreaterThan(logo.x + logo.width);
   const poses = await page.evaluate(() => __runnerHomeAudit.poses.map(p => ({ kind: p.kind, frames: p.frames, options: p.options })));
   expect(poses.map(p => p.kind).sort()).toEqual(['eyes', 'head']);
-  expect(poses.every(p => p.options.duration === 1180 && p.options.iterations === 1)).toBe(true);
+  expect(poses.every(p => p.options.duration === 8000 && p.options.iterations === 1)).toBe(true);
   const eyes = poses.find(p => p.kind === 'eyes');
-  expect(eyes.frames.filter(frame => frame.transform === 'scaleY(.08)')).toHaveLength(2);
+  expect(eyes.frames.filter(frame => frame.transform === 'scaleY(.08)' || frame.transform === 'scaleY(.12)')).toHaveLength(2);
   expect(eyes.frames.some(frame => /^translateX\((-?5)px\)$/.test(frame.transform))).toBe(true);
   const head = poses.find(p => p.kind === 'head');
-  expect(head.frames.some(frame => frame.transform === 'rotate(-7deg)')).toBe(true);
+  expect(head.frames.some(frame => frame.transform.includes('rotate(-5deg)'))).toBe(true);
 }
 
 for (const [name, device] of PROFILES) test.describe(name, () => {

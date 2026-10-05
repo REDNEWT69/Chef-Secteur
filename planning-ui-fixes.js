@@ -244,24 +244,27 @@
     return slot;
   }
   function syncRunner(){
+    if(runnerInstance&&!runnerInstance.isConnected()){runnerInstance.destroy();runnerInstance=null;runnerSignature=''}
     const panel=document.getElementById('planPanel'),slot=document.getElementById(RUNNER_SLOT_ID),api=window.StoreRunnerRunner;
-    if(!panel||!slot||!api||!panel.classList.contains('active'))return;
+    if(!panel||!slot||!api||!panel.classList.contains('active')||document.querySelector('#assistantPanel.open')){if(runnerInstance)runnerInstance.setPresence(false);return}
     const view=runnerView();
-    if(!view){if(!slot.hidden)slot.hidden=true;return}
+    if(!view){if(runnerInstance)runnerInstance.setPresence(false);if(!slot.hidden)slot.hidden=true;return}
     /* Un rendu du Planning peut retirer l'emplacement : Runner est alors remonté, sans annonce. */
     const fresh=!runnerInstance||!runnerInstance.isConnected()||runnerInstance.el.parentNode!==slot;
     if(fresh){
+      if(runnerInstance)runnerInstance.destroy();
       runnerInstance=api.mount(slot,{variant:'bubble',size:'sm',state:'neutral'});
       runnerSignature='';
       if(!runnerInstance){slot.hidden=true;return}
     }
     if(slot.hidden)slot.hidden=false;
     const signature=view.state+'|'+view.title+'|'+view.text;
-    if(signature===runnerSignature)return;
+    if(signature===runnerSignature){if(view.resetAfter)runnerInstance.setState(view.state,{resetAfter:view.resetAfter,silent:true});runnerInstance.setPresence(true);return}
     runnerSignature=signature;
     /* Le quotidien (neutre) ne s'annonce pas à voix haute ; une alerte, une analyse ou un succès qui
        APPARAISSENT pendant que le Planning est ouvert, si. */
     runnerInstance.setState(view.state,{title:view.title,message:view.text,silent:fresh||view.state==='neutral',resetAfter:view.resetAfter});
+    runnerInstance.setPresence(true);
   }
   function celebrate(kind){
     const panel=document.getElementById('planPanel');
@@ -388,7 +391,7 @@
   function run(){css();syncSmartBrief();if(isEditingLocked())return;reorderPlanning();compactSettings();restoreHotelStars();try{syncRunner()}catch(e){}}
   function schedule(){if(scheduled)return;scheduled=true;requestAnimationFrame(function(){scheduled=false;run()})}
   function observeDayTabs(){const tabs=document.getElementById('dayTabs');if(!tabs||tabs.__planningFixObserver)return;const observer=new MutationObserver(schedule);observer.observe(tabs,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});tabs.__planningFixObserver=observer}
-  function observePlanPanel(){const plan=document.getElementById('planPanel');if(!plan||plan.__planningActiveObserver)return;const observer=new MutationObserver(schedule);observer.observe(plan,{attributes:true,attributeFilter:['class']});plan.__planningActiveObserver=observer}
+  function observePlanPanel(){const plan=document.getElementById('planPanel');if(!plan||plan.__planningActiveObserver)return;const observer=new MutationObserver(()=>{if(runnerInstance)runnerInstance.setPresence(false);schedule()});observer.observe(plan,{attributes:true,attributeFilter:['class']});const assistant=document.getElementById('assistantPanel');if(assistant)observer.observe(assistant,{attributes:true,attributeFilter:['class']});plan.__planningActiveObserver=observer}
   function boot(){run();observeDayTabs();observePlanPanel();[120,500,900].forEach(function(delay){setTimeout(function(){run();observeDayTabs();observePlanPanel()},delay)})}
   document.addEventListener('click',e=>{if(e.target&&e.target.closest&&(e.target.closest('#dayTabs .dayTab')||e.target.closest('.tab')))setTimeout(schedule,60)},true);
   // Pose du verrou dès l'intention d'interagir (pointerdown/focusin), pas seulement au focus

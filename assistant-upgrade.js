@@ -173,8 +173,9 @@
     return{state:'neutral'};
   }
   function syncRunner(){
+    if(runnerInstance&&!runnerInstance.isConnected()){runnerInstance.destroy();runnerInstance=null;runnerSignature=''}
     const panel=document.getElementById('assistantPanel'),msgs=document.getElementById('assistantMsgs');
-    if(!panel||!msgs||!window.Runner||!panel.classList.contains('open'))return;
+    if(!panel||!msgs||!window.Runner||!panel.classList.contains('open')){if(runnerInstance)runnerInstance.setPresence(false);return}
     if(!runnerInstance||!runnerInstance.isConnected()){
       let slot=document.getElementById(RUNNER_SLOT_ID);
       if(!slot){slot=document.createElement('div');slot.id=RUNNER_SLOT_ID;slot.style.cssText='margin:6px 16px 4px;pointer-events:none';msgs.parentNode.insertBefore(slot,msgs)}
@@ -184,18 +185,19 @@
     }
     const next=runnerStateOf(msgs,document.getElementById('assistantAIStatus'));
     const signature=next.state+'|'+(next.text||'');
-    if(signature===runnerSignature)return;
+    if(signature===runnerSignature){runnerInstance.setPresence(true);return}
     runnerSignature=signature;
     const copy=RUNNER_COPY[next.state];
     runnerInstance.setState(next.state,{title:copy.title,message:next.text||copy.text,silent:next.state==='neutral'});
+    runnerInstance.setPresence(true);
   }
   function installRunnerPresence(){
     if(window.__assistantRunner||typeof MutationObserver==='undefined')return;
     const panel=document.getElementById('assistantPanel'),msgs=document.getElementById('assistantMsgs');
     if(!panel||!msgs)return;
     window.__assistantRunner=true;
-    const observer=new MutationObserver(syncRunner),status=document.getElementById('assistantAIStatus');
-    observer.observe(panel,{attributes:true,attributeFilter:['class']});
+    const observer=new MutationObserver(records=>{if(runnerInstance&&records.some(r=>r.target===panel&&/\bopen\b/.test(r.oldValue||'')))runnerInstance.setPresence(false);syncRunner()}),status=document.getElementById('assistantAIStatus');
+    observer.observe(panel,{attributes:true,attributeFilter:['class'],attributeOldValue:true});
     observer.observe(msgs,{childList:true});
     if(status)observer.observe(status,{childList:true,characterData:true,attributes:true,attributeFilter:['class']});
     syncRunner();

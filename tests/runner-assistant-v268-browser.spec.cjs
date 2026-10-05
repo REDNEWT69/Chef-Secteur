@@ -98,13 +98,13 @@ for (const [name, device] of [...ANDROID, ...IPHONE]) {
         const slot = document.getElementById('srAssistantRunner');
         return { mounted: Runner.mounted(), css: !!document.getElementById('srRunnerCss'), inPanel: !!slot.closest('#assistantPanel'), prev: slot.previousElementSibling && slot.previousElementSibling.id, next: slot.nextElementSibling && slot.nextElementSibling.id, variant: slot.querySelector('.srRunner').getAttribute('data-variant'), size: Math.round(slot.querySelector('.srRunnerFigure').getBoundingClientRect().width) };
       });
-      expect(open).toEqual({ mounted: 2, css: true, inPanel: true, prev: 'assistantAIStatus', next: 'assistantMsgs', variant: 'sheet', size: 88 });
+      expect(open).toEqual({ mounted: 1, css: true, inPanel: true, prev: 'assistantAIStatus', next: 'assistantMsgs', variant: 'sheet', size: 88 });
       /* Fermer / rouvrir plusieurs fois : jamais de deuxième Runner. */
       for (let i = 0; i < 3; i++) {
         await page.evaluate(() => toggleAssistant()); await page.waitForTimeout(150);
         await page.evaluate(() => toggleAssistant()); await page.waitForTimeout(150);
       }
-      expect(await page.evaluate(() => [Runner.mounted(), document.querySelectorAll('.srRunner').length, document.querySelectorAll('#srAssistantRunner .srRunner').length])).toEqual([2, 2, 1]);
+      expect(await page.evaluate(() => [Runner.mounted(), document.querySelectorAll('.srRunner').length, document.querySelectorAll('#srAssistantRunner .srRunner').length])).toEqual([1, 1, 1]);
       expect(await overflowX(page)).toBeLessThanOrEqual(1);
       expect(errors).toEqual([]);
     });
@@ -319,14 +319,15 @@ for (const [name, device] of [...ANDROID, ...IPHONE]) {
       await sendLocal(page, 'résume ma semaine');
       await page.waitForTimeout(1200);
       const running = () => page.evaluate(sel => document.querySelector(sel + ' .srRunner').getAnimations({ subtree: true }).filter(a => a.playState !== 'finished' && a.playState !== 'idle').map(a => [a.animationName, a.effect.getComputedTiming().iterations]), SLOT);
-      expect(await running(), 'au repos : aucune animation').toEqual([]);
+      expect((await running()).every(a=>a[1]===1), 'idle : séquences finies').toBe(true);
       await stubGateway(page, 'hang');
       await send(page, 'bonjour');
       await page.waitForTimeout(500);
       expect((await running()).filter(a => a[0] === 'srRunnerDot'), 'analyse : trois points, 16 passages chacun').toEqual([['srRunnerDot', 16], ['srRunnerDot', 16], ['srRunnerDot', 16]]);
       await page.evaluate(() => window.__gw.release(true, { text: 'Fini.', actions: [] }));
       await page.waitForTimeout(900);
-      expect(await running(), 'réponse reçue : le mouvement s’arrête').toEqual([]);
+      expect((await running()).every(a=>a[1]===1), 'réponse reçue : idle neutre fini, plus de points analyzing').toBe(true);
+      expect((await running()).some(a=>a[0]==='srRunnerDot')).toBe(false);
       expect(errors).toEqual([]);
     });
 
@@ -405,7 +406,7 @@ test.describe('PWA — cache et hors ligne', () => {
     await tapCenter(page, '#bottomAppNav .bottomNavBtn.ia');
     await page.waitForSelector('#assistantPanel.open');
     await page.waitForSelector(SLOT + ' .srRunner');
-    expect(await page.evaluate(() => ({ online: navigator.onLine, mounted: Runner.mounted(), css: !!document.getElementById('srRunnerCss') }))).toEqual({ online: false, mounted: 2, css: true });
+    expect(await page.evaluate(() => ({ online: navigator.onLine, mounted: Runner.mounted(), css: !!document.getElementById('srRunnerCss') }))).toEqual({ online: false, mounted: 1, css: true });
     await context.setOffline(false);
     expect(errors.filter(e => !/Failed to fetch|NetworkError|net::/.test(e))).toEqual([]);
   });
