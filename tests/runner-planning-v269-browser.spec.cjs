@@ -114,7 +114,9 @@ async function shot(page, testInfo, name) {
   if (SHOTS_DIR) { fs.mkdirSync(SHOTS_DIR, { recursive: true }); fs.writeFileSync(path.join(SHOTS_DIR, name.replace(/[^\w-]+/g, '_') + '.png'), body); }
 }
 async function scrollToRunner(page) {
-  await page.evaluate(() => { const slot = document.getElementById('planningRunnerV269'); if (slot) slot.scrollIntoView({ block: 'center' }); });
+  // Coordinates must be sampled after positioning: the shell's smooth scroll
+  // otherwise moves the underlying hours button beneath the synthetic finger.
+  await page.evaluate(() => { const slot = document.getElementById('planningRunnerV269'); if (slot) slot.scrollIntoView({ block: 'center', behavior: 'instant' }); });
   await page.clock.runFor(300);
 }
 /* Un vrai glissement du doigt (événements tactiles du navigateur, comme sur Android). */
@@ -376,20 +378,29 @@ test.describe('tactile', () => {
     await page.clock.runFor(500);
     expect(await page.evaluate(() => JSON.stringify({ state: window.state, sheet: !!document.querySelector('#storeQuickSheet.open'), day: window.selectedPlanningDay, rn: document.querySelector('#planningRunnerV269 .srRunner').dataset.state }))).toBe(before);
     /* Un balayage commencé sur Runner fait défiler la page. */
-    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
     await scrollToRunner(page);
     const pos = await page.evaluate(() => { const f = document.querySelector('#planningRunnerV269 .srRunnerFigure').getBoundingClientRect(); return { x: f.left + f.width / 2, y: f.top + f.height / 2, scroll: scrollY }; });
     await swipe(page, pos.x, pos.y, -150);
     expect(await page.evaluate(() => scrollY), 'le doigt posé sur Runner fait défiler la page').toBeGreaterThan(pos.scroll + 40);
+    // Wait for native inertia before the next tap, as in the Home gesture suite.
+    let previousScroll=-1, stableScrollSamples=0;
+    await expect.poll(async () => {
+      const current=await page.evaluate(() => scrollY);
+      stableScrollSamples=current===previousScroll?stableScrollSamples+1:0;previousScroll=current;
+      return stableScrollSamples;
+    }, { intervals:[100] }).toBeGreaterThanOrEqual(3);
     /* Les jours se changent au doigt, et Runner suit. */
-    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
     await page.clock.runFor(300);
     await page.locator('#dayTabs .periodDayTab[data-date="2026-10-08"]').tap();
     await page.clock.runFor(900);
+    await expect.poll(async () => (await read(page)).text).toBe('1 visite prévue jeudi 8. Premier arrêt : Conforama Metz Ouest. 2 magasins à surveiller sur les 3 prochaines semaines.');
     let r = await read(page);
     expect(r.text).toBe('1 visite prévue jeudi 8. Premier arrêt : Conforama Metz Ouest. 2 magasins à surveiller sur les 3 prochaines semaines.');
     await page.locator('#dayTabs .periodDayTab[data-date="2026-10-07"]').tap();
     await page.clock.runFor(900);
+    await expect.poll(async () => (await read(page)).text).toBe(DAY_WITH_VISITS);
     expect((await read(page)).text).toBe(DAY_WITH_VISITS);
     /* Une carte de visite, sous Runner, s'ouvre au toucher comme avant. */
     await page.evaluate(() => { window.__opened = []; const o = window.openStoreQuick; if (typeof o === 'function') window.openStoreQuick = function (id) { window.__opened.push(String(id)); return o.apply(this, arguments); }; });

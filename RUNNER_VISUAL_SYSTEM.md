@@ -4,7 +4,7 @@ Runner est le copilote **visuel** de Store Runner : un personnage, quatre états
 
 **Mobile uniquement, Android d'abord.** Store Runner est Android-first : Runner a été pensé et validé sur Android, puis adapté à l'iPhone. Il n'a aucune mise en page desktop : sa feuille de style ne contient aucune requête de largeur. Références : **Pixel 7 (412 px)** et **Galaxy S8 (360 px, Samsung)**, puis iPhone 14 ; 320 px sans défilement horizontal. L'application installée est verrouillée en portrait (`portrait-primary` dans le manifeste) : le paysage n'est pas un cas de conception, seulement de robustesse. En cas de doute entre desktop et mobile, c'est le mobile qui a été choisi.
 
-- Build `20261005-r49-runner-presence-271`, version visible **271** (« Quoi de neuf » : « Runner te guide au premier lancement » ; V270, V269 et V268 restent dessous).
+- Build courant `20261005-r51-appearance-272`, version visible **272** (« Quoi de neuf » : « Runner te guide au premier lancement » ; V270, V269 et V268 restent dessous).
 - Budget de démarrage **77 scripts** (inchangé en V269 : aucun script ajouté) et entrée de shell dans `sw.js` (posée en V268) : décisions explicitement validées.
 - Module : `runner-visual.js` (`StoreRunnerRunner`, alias `Runner`). Un seul fichier, aucune dépendance, aucune feuille séparée.
 
@@ -17,6 +17,10 @@ Runner est le copilote **visuel** de Store Runner : un personnage, quatre états
 ## Extension de présence V271.1
 
 Le contrat suivant évolue explicitement pour #506 : `setPresence(true)` active une présence neutre locale ; `setPresence(false)` annule idle, trajet/retour, effets CSS et timers de cette instance, puis retire ses écoutes. `returnToRest({duration,offsetX,offsetY})` joue un retour générique sans connaître un écran. Le montage par défaut reste statique. Les états analyzing/alert/success suspendent l'idle ; neutral le reprend avec un délai variable avant le prochain clignement. Les seuls abonnements de Runner sont bornés à une présence ou un trajet actif : préférence système, visibilité, pagehide/pageshow. Ils ne relisent ni ne rendent aucune donnée métier. Contrat détaillé et preuves : [Runner Presence System](RUNNER_PRESENCE_V271_1.md). Les descriptions historiques « aucun écouteur » et « aucune animation au repos » s'appliquent au montage statique, pas à la présence explicitement activée.
+
+## Apparence V272
+
+La feuille native Runner est ouverte par le bouton hôte de l’Accueil ou Plus → Apparence (`navigation-controller.js`). `instance.react()` joue un clignement neutre de 240 ms avant l’ouverture ; sa promesse se termine aussi à l’annulation. Aucun mouvement en mode réduit, aucune réaction qui remplace analyzing/alert/success. Le personnage et ses couleurs sémantiques restent identiques ; seule la surface de bulle suit le thème sombre. Contrat : `APPEARANCE_V272.md`. Personnalité V273 non implémentée.
 
 ## Direction visuelle
 
@@ -219,7 +223,7 @@ Tous les calques du dessin sont déjà dans le SVG ; `data-state` sur le contene
 - Animations en `transform` / `opacity` uniquement, pas de `will-change` permanent, **aucun filtre SVG** (les lueurs sont des formes translucides).
 - Montage statique : **aucune animation**. Présence explicitement activée V271.1 : idle en séquences Web Animations finies, variables et annulables (contrat ci-dessus). Changement d'état : une entrée de 0,42 s, jouée une fois. Bulle : une entrée de 0,22 s.
 - Une seule boucle existe, les trois points de `analyzing`, **bornée à 16 passages (≈ 22 s)** : un état oublié ne tourne jamais en continu sur la batterie d'un téléphone. Alerte : deux pulsations. Succès : une apparition des éclats.
-- Poids : `runner-visual.js` ≈ 44 Ko, ≈ 13,2 Ko compressé (budget testé 44 Kio / 14 Kio) ; SVG ≈ 11 Ko et 153 éléments par instance ; identifiants de dégradés uniques par instance (un Runner masqué ne prive jamais un autre de ses dégradés). Si plus de quelques Runners coexistent un jour, le dessin pourra passer en sprite partagé ; inutile pour un à deux Runners par écran.
+- Poids : `runner-visual.js` ≈ 44 Ko, ≈ 13,2 Ko compressé (budget testé 45 Kio / 14 Kio) ; SVG ≈ 11 Ko et 153 éléments par instance ; identifiants de dégradés uniques par instance (un Runner masqué ne prive jamais un autre de ses dégradés). Si plus de quelques Runners coexistent un jour, le dessin pourra passer en sprite partagé ; inutile pour un à deux Runners par écran.
 
 ## Chargement et budget de démarrage
 

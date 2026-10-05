@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'272',
+      title:'Ton apparence, avec Runner',
+      items:[
+        'Touche Runner sur l’Accueil pour personnaliser l’apparence de Store Runner.',
+        'Choisis Clair, Sombre ou Système, et une couleur d’accent parmi les quatre proposées.',
+        'Chaque choix se voit immédiatement et se conserve à la prochaine ouverture. Tu peux retrouver l’apparence par défaut en un geste.',
+        'Le même réglage reste accessible depuis Plus → Apparence.'
+      ]
+    },
+    {
       version:'271',
       title:'Runner te guide au premier lancement',
       items:[

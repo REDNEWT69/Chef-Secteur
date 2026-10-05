@@ -141,3 +141,123 @@ body.glassHome #premiumHomeV2 #calendarHomeStatus strong{font-size:11px;line-hei
 #premiumHomeV2 .phActivityHeading{order:4!important}
 #premiumHomeV2 .phGrid{order:5!important}
 #premiumHomeV2 .phRange{order:6!important}
+
+/* V272 — one appearance layer for the existing five surfaces. Attribute selectors
+   also outrank the historical :root families and their injected !important styles.
+   Semantic badges, warnings, errors and the Runner artwork keep their own colors. */
+html[data-sr-theme]{
+  --bg:#e8eef8;--card:rgba(255,255,255,.78);--ink:#080b17;--muted:#52627c;--line:#cad3e0;
+  --sr-surface-solid:#f8faff;--sr-surface-raised:#e9eef7;--sr-top:#f2f5fa;
+  --sr-glass-card:linear-gradient(128deg,#ffffffcf,#eff6ffab 60%,#ffffffb8);
+  --sr-page-background:radial-gradient(ellipse at 3% 15%,#fcfdff 0%,transparent 31%),radial-gradient(ellipse at 78% 6%,#c7e2ff 0%,transparent 32%),radial-gradient(ellipse at 96% 31%,#99b2ca 0%,transparent 23%),radial-gradient(ellipse at 5% 53%,#a8c9f3 0%,transparent 31%),radial-gradient(ellipse at 97% 65%,#b0c1d2 0%,transparent 28%),radial-gradient(ellipse at 24% 89%,#c4d9f6 0%,transparent 30%),linear-gradient(140deg,#e8eefb,#f8f9fc 44%,#dce4ef 80%,#f4f3f5);
+  --sr-glass-line:rgba(255,255,255,.9);--sr-glass-shadow:inset 0 1px 3px #fff9,0 8px 24px #3c537b20;
+  --brand:#075fca;--brand2:#075fca;--brandSoft:#e0ecff;--sr-accent-fill:#0963cd;
+  --apple-bg:var(--bg);--apple-card:var(--card);--apple-line:var(--line);--apple-text:var(--ink);--apple-muted:var(--muted);--apple-blue:var(--brand);
+  --ios-bg:var(--bg);--ios-card:var(--card);--ios-ink:var(--ink);--ios-muted:var(--muted);--ios-surface:var(--card);--ios-line:var(--line);--ios-blue:var(--brand);
+  color-scheme:light;
+}
+html[data-sr-theme="dark"]{
+  --bg:#101820;--card:rgba(27,39,56,.96);--ink:#edf2fa;--muted:#b7c3d6;--line:#42516a;
+  --sr-surface-solid:#151e2c;--sr-surface-raised:#233146;--sr-top:#151e2c;
+  --sr-glass-card:linear-gradient(128deg,#202f43,#172334);--sr-glass-line:#42516a;
+  --sr-page-background:radial-gradient(ellipse at 78% 6%,#233954 0%,transparent 42%),radial-gradient(ellipse at 5% 53%,#1a2d46 0%,transparent 40%),linear-gradient(140deg,#101820,#151e2c 70%,#101820);
+  --sr-glass-shadow:inset 0 1px 2px #ffffff0a,0 8px 24px #0004;
+  --brand:#85b9ff;--brand2:#85b9ff;--brandSoft:#243b5b;
+  color-scheme:dark;
+}
+html[data-sr-accent="indigo"]{--brand:#493ab5;--brand2:#493ab5;--brandSoft:#ebe7ff;--sr-accent-fill:#5141c9}
+html[data-sr-accent="teal"]{--brand:#006b63;--brand2:#006b63;--brandSoft:#d7f1ec;--sr-accent-fill:#007a6e}
+html[data-sr-accent="rose"]{--brand:#aa315c;--brand2:#aa315c;--brandSoft:#fae3ec;--sr-accent-fill:#b12f5d}
+html[data-sr-theme="dark"][data-sr-accent="indigo"]{--brand:#b8aeff;--brand2:#b8aeff;--brandSoft:#343052}
+html[data-sr-theme="dark"][data-sr-accent="teal"]{--brand:#7cdbcc;--brand2:#7cdbcc;--brandSoft:#183d3b}
+html[data-sr-theme="dark"][data-sr-accent="rose"]{--brand:#ffa3c3;--brand2:#ffa3c3;--brandSoft:#452b3e}
+html[data-sr-theme],html[data-sr-theme] body{background:var(--bg)!important;color:var(--ink)!important}
+html[data-sr-theme] body:before,html[data-sr-theme] body.glassHome:before{background:var(--sr-page-background)!important}
+html[data-sr-theme] body:after{background:transparent!important}
+html[data-sr-theme] .top{background:var(--sr-top)!important;border-color:var(--line)!important}
+html[data-sr-theme] :is(label,.top p,.toprow>div:last-child,.daycount,.daytools>span,.stopKm,.mapTitle span,.empty){color:var(--muted)!important}
+html[data-sr-theme] .stop:not(.visited) .meta{color:var(--muted)!important}
+html[data-sr-theme] :is(.card,.kpi,.planMetric,.day,.proCard,.calendarConnect,.appt,.historyRow,.quickStore,.checkitem,.settingsInner>div){background:var(--card)!important;border-color:var(--line)!important;color:var(--ink)}
+html[data-sr-theme] :is(input,select,textarea){background:var(--sr-surface-solid)!important;border-color:var(--line)!important;color:var(--ink)!important;-webkit-text-fill-color:var(--ink)!important;caret-color:var(--brand)!important;accent-color:var(--sr-accent-fill)}
+html[data-sr-theme] :is(input,select,textarea):focus{outline:2px solid var(--brand);outline-offset:2px}
+html[data-sr-theme] :is(.primary,.ainput button,.amsg.user,.tlChevron){background:var(--sr-accent-fill)!important;color:#fff!important}
+html[data-sr-theme] :is(.secondary:not(.danger):not([role="alert"]),.achips button,.sheetClose){background:var(--sr-surface-raised)!important;border-color:var(--line)!important;color:var(--brand)!important}
+html[data-sr-theme] :is(.actions button,.flags button):not(.danger):not(.ok):not(.bad):not(.warn):not(.warning):not([style]){background:var(--sr-surface-raised)!important;border-color:var(--line)!important;color:var(--ink)!important}
+html[data-sr-theme] :is(.tabs,.dayTabs,.periodDayTabs,.dayhead,.help,.suggestion,.summary span,.checkitem,.chip:not(.on),.stopNum,.apptType){background:var(--sr-surface-raised)!important;border-color:var(--line)!important;color:var(--muted)!important}
+html[data-sr-theme] :is(.tab.active,.chip.on,.dayTab.active,.periodDayTab.active){background:var(--brandSoft)!important;border-color:var(--brand)!important;color:var(--brand)!important}
+html[data-sr-theme] :is(.dayTab,.periodDayTab){color:var(--muted)!important}
+html[data-sr-theme] :is(.dayTab.active b,.periodDayTab.active b,.dayTab.active span,.dayTab.active small){color:var(--brand)!important}
+html[data-sr-theme] :is(.timelineRow,.stop:not(.visited),.proDay){background:var(--card)!important;border-color:var(--line)!important;color:var(--ink)!important}
+html[data-sr-theme] .tlTime{background:var(--brandSoft)!important;border-color:var(--line)!important;color:var(--brand)!important;box-shadow:none!important}
+html[data-sr-theme] :is(.tlName,.planMetric .pmValue){color:var(--ink)!important}
+html[data-sr-theme] :is(.tlMeta,.tlDuration,.finishTimeBadge,.planMetric .pmTop,.planMetric .pmSub,.day-time){color:var(--muted)!important}
+html[data-sr-theme] :is(.finishTimeBadge,.planMetric .pmIcon:not([style])){background:var(--sr-surface-raised)!important}
+html[data-sr-theme] .planMetric .pmIcon:not([style]){color:var(--brand)!important}
+html[data-sr-theme] .departureShortcut,html[data-sr-theme] .departureShortcut span{color:var(--muted)!important}
+html[data-sr-theme] #headerDeparture{color:var(--ink)!important}
+html[data-sr-theme] :is(.planningHeroDay,.periodWeekNavLabel b){color:var(--ink)!important}
+html[data-sr-theme] :is(.planningHeroPill,.planningHeroWeek,.planningHeroFull,.periodWeekNavLabel small){color:var(--muted)!important}
+html[data-sr-theme] :is(.planningHeroPill,.periodWeekNav button,.periodWeekNavPick){background:var(--sr-surface-raised)!important;border-color:var(--line)!important}
+html[data-sr-theme] .periodWeekNav button{color:var(--ink)!important}
+html[data-sr-theme] .periodWeekNav [data-week-nav="today"][aria-current="true"]{background:var(--brandSoft)!important;color:var(--brand)!important;border-color:var(--brand)!important}
+html[data-sr-theme] #dayTabs :is(.dayTab,.periodDayTab):not(.active) b{color:var(--ink)!important}
+html[data-sr-theme] #dayTabs :is(.dayTab,.periodDayTab):not(.active) :is(span:not(.hotelDayBadge),small){color:var(--muted)!important}
+html[data-sr-theme] :is(.cov263Card,.cov263Row,.cov263Month,.pmvSuggest,.pmvStore,.pmvDlgHead,.pmvFilters){background:var(--sr-surface-solid)!important;border-color:var(--line)!important;color:var(--ink)!important}
+html[data-sr-theme] :is(.cov263Title b,.cov263Month b,.cov263Row b,.cov263Section h4,.pmvSuggestName){color:var(--ink)!important}
+html[data-sr-theme] :is(.cov263Section h4 small,.cov263Hint,.cov263Row small,.cov263More,.pmvSuggestTitle,.pmvSuggestMeta,.pmvSuggestKm,.pmvStore small,.pmvDlgHead p){color:var(--muted)!important}
+html[data-sr-theme] :is(.cov263Link,.pmvAdd,.pmvSuggestAdd){background:var(--brandSoft)!important;border-color:var(--line)!important;color:var(--brand)!important}
+html[data-sr-theme] #planPanel .pmvHead span,html[data-sr-theme] #planPanel :is(.empty,.timelineEmpty){color:var(--muted)!important}
+html[data-sr-theme] .timelineRow.pmvSwipeReady .tlMain{background:transparent}
+html[data-sr-theme] :is(#planningSettings,.storeQuickSheet,dialog,.assist){background:var(--sr-surface-solid)!important;border-color:var(--line)!important;color:var(--ink)!important}
+html[data-sr-theme] #planningSettings.planningSettingsSheetOpen>.settingsInner{background:var(--sr-surface-solid)!important;border-color:var(--line)!important}
+html[data-sr-theme] #planningSettingsSheetHeader{background:var(--sr-surface-solid)!important}
+html[data-sr-theme] #planningSettingsSheetHeader .pssTitle{color:var(--ink)}
+html[data-sr-theme] #planningSettingsSheetHeader .pssSub{color:var(--muted)}
+html[data-sr-theme] #planningSettingsSheetHeader .pssClose{background:var(--sr-surface-raised);color:var(--ink)}
+html[data-sr-theme] :is(.sheetHead p,.sheetMeta,.sheetInfo small,.sheetInfo span){color:var(--muted)!important}
+html[data-sr-theme] :is(.sheetInfo,.sheetNote,.srXFact,.srXItem,.srXTl button,.srXTl div,#srStore360){background:var(--sr-surface-raised)!important;border-color:var(--line)!important;color:var(--ink)!important}
+html[data-sr-theme] :is(#srExplorerHead p,#storeList .srXRow,.srXForecast,.srXFact small,.srXItem span,.srXEmpty,.srXTl span,#srStore360 h3){color:var(--muted)!important}
+html[data-sr-theme] :is(.srXFilter,.srXOpen,.srXLinks button,.srXItem button.srXGo){background:var(--sr-surface-solid)!important;border-color:var(--line)!important;color:var(--brand)!important}
+html[data-sr-theme] .srXFilter[aria-pressed="true"]{background:var(--brandSoft)!important;color:var(--brand)!important;border-color:var(--brand)!important}
+html[data-sr-theme] .srXMore{color:var(--brand)!important}
+html[data-sr-theme] #storeChannelTabs{background:var(--sr-surface-raised)}
+html[data-sr-theme] #storeChannelTabs button{color:var(--muted)}
+html[data-sr-theme] #storeChannelTabs button[aria-pressed="true"]{background:var(--brandSoft);color:var(--brand);box-shadow:none}
+html[data-sr-theme] :is(.storeline,.ahead,.achips,.ainput,.storeQuickSheet){border-color:var(--line)!important}
+html[data-sr-theme] :is(.ahead,.amsgs,.achips,.ainput){background:var(--sr-surface-solid)!important;color:var(--ink)!important}
+html[data-sr-theme] :is(.ahead button,.amsg.bot){background:var(--sr-surface-raised)!important;border-color:var(--line)!important;color:var(--ink)!important}
+html[data-sr-theme] #assistantPanel .ai-modebar{background:var(--sr-surface-raised);border-color:var(--line);box-shadow:none}
+html[data-sr-theme] #assistantPanel .ai-modebar button{color:var(--muted)}
+html[data-sr-theme] #assistantPanel .ai-modebar button.on{background:var(--brandSoft);border-color:var(--line);color:var(--brand);box-shadow:none}
+html[data-sr-theme] #assistantPanel #assistantAIStatus:not(.ok):not(.bad){background:var(--sr-surface-raised)!important;color:var(--muted)}
+/* Opaque semantic surfaces preserve the existing red/green pairs in both themes;
+   the old translucent overlays lost contrast over a dark assistant sheet. */
+html[data-sr-theme] .ai-status.ok,html[data-sr-theme] #assistantPanel #assistantAIStatus.ok{background:#ecfdf3!important;color:#067647!important}
+html[data-sr-theme] .ai-status.bad,html[data-sr-theme] #assistantPanel #assistantAIStatus.bad{background:#fff1f0!important;color:#b42318!important}
+html[data-sr-theme] .status{background:var(--card)!important;color:var(--ink)!important}
+html[data-sr-theme] body #bottomAppNav{background:var(--sr-glass-card)!important;border-color:var(--sr-glass-line);box-shadow:var(--sr-glass-shadow)}
+html[data-sr-theme] body #bottomAppNav .bottomNavBtn{color:var(--muted)}
+html[data-sr-theme] body #bottomAppNav .bottomNavBtn.active{background:var(--brandSoft);color:var(--brand);box-shadow:none}
+html[data-sr-theme] body #bottomAppNav .bottomNavBtn.ia{background:var(--brandSoft);border-color:var(--line);color:var(--brand);box-shadow:none}
+html[data-sr-theme] body #bottomAppNav .ia svg{color:var(--brand)}
+html[data-sr-theme] #premiumHomeV2{color:var(--ink)}
+html[data-sr-theme] #premiumHomeV2 :is(.phCard,.phVisitCard){background:var(--sr-glass-card)!important;border-color:var(--sr-glass-line)!important;box-shadow:var(--sr-glass-shadow)!important}
+html[data-sr-theme] #premiumHomeV2 :is(.phBrand .srBrandName,.phTitle,.phVisitText strong,.phValue){color:var(--ink)}
+html[data-sr-theme] #premiumHomeV2 :is(.phBase,.phTagline,.phLabel,.phSub,.phVisitText>span,.phAssistant,.phActivityHeading p,.phActivityHeading button,.phBrand>span,.phHeaderContext .phSector){color:var(--muted)}
+html[data-sr-theme] #premiumHomeV2 :is(.phIcon,.phVisitIcon){background:var(--brandSoft);color:var(--brand);box-shadow:none}
+html[data-sr-theme] #premiumHomeV2 :is(.phBase svg,.phSpark,.phPinMark,.phActivityTools [data-home-customize]){color:var(--brand)}
+html[data-sr-theme] #premiumHomeV2 .phArrow{background:var(--sr-accent-fill);color:#fff;box-shadow:none}
+html[data-sr-theme] #premiumHomeV2 .phAssistant{background:var(--sr-surface-raised);box-shadow:none}
+html[data-sr-theme] body.glassHome #premiumHomeV2 #calendarHomeStatus :is(strong,button){color:var(--muted)}
+html[data-sr-theme] #moreSheetV2 .moreSheetCard{background:var(--sr-surface-solid);border-color:var(--line)}
+html[data-sr-theme] #moreSheetV2 .moreSheetGrid>button,html[data-sr-theme] #moreSheetV2 .moreClose{background:var(--sr-surface-raised)!important;border-color:var(--line)!important;color:var(--ink)!important}
+html[data-sr-theme] #moreSheetV2 .moreSheetGrid>:is([data-go="profilePanel"],[data-go="importPanel"],#storeRunnerUpdateMenuButton,#storeRunnerWhatsNewMenuButton){background:transparent!important;color:var(--muted)!important}
+html[data-sr-theme] :is(button,a):focus-visible{outline:3px solid var(--brand)!important;outline-offset:3px}
+/* The neutral appearance follows the app; business colors and SVG remain fixed. */
+html[data-sr-theme="dark"] .srRunner{--rn-ink:var(--ink);--rn-sub:var(--muted);--rn-bubble-line:var(--line)}
+html[data-sr-theme="dark"] .srRunner[data-variant="bubble"] .srRunnerBubble,html[data-sr-theme="dark"] .srRunner[data-variant="bubble"] .srRunnerBubble::before{background:var(--sr-surface-raised)}
+html[data-sr-theme="dark"] .srRunner[data-variant="panel"]{--rn-ink:#10224d;--rn-sub:#46567a}
+html[data-sr-theme="dark"] .stop.visited{color:#14593d}
+html[data-sr-theme="dark"] .storeline.excluded{color:#7d2720}
+html[data-sr-theme="dark"] .overnight{color:#7a4b00}
+@media(prefers-reduced-transparency:reduce){html[data-sr-theme] #premiumHomeV2 :is(.phCard,.phVisitCard),html[data-sr-theme] body #bottomAppNav{background:var(--sr-surface-solid)!important;backdrop-filter:none;-webkit-backdrop-filter:none}}

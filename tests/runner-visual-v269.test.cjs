@@ -25,9 +25,9 @@ assert.match(index, /'\.\/store-explorer\.js','\.\/runner-visual\.js','\.\/weekl
   'Runner est chargé avant les derniers modules, sans déplacer mobile-ux-v262.js en dernier');
 assert.equal(sw.split('"./runner-visual.js"').length - 1, 1, 'sw.js précache runner-visual.js une seule fois (CORE_SHELL, obligatoire)');
 assert.ok(sw.indexOf('"./runner-visual.js"') < sw.indexOf('const OPTIONAL_SHELL'), 'runner-visual.js est dans le shell obligatoire, pas dans le facultatif');
-assert.equal(version.displayVersion, '271', 'Runner guide le premier lancement : nouveauté visible V271');
-assert.match(version.latestBuild, /-271$/, 'le build se termine par la version visible 271');
-assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-271$/);
+assert.equal(version.displayVersion, '272', 'Apparence de Runner : nouveauté visible V272');
+assert.match(version.latestBuild, /-272$/, 'le build se termine par la version visible 272');
+assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-272$/);
 assert.equal(index.match(/const BUILD_REV='([^']+)'/)[1], version.latestBuild);
 assert.equal(sw.match(/const BUILD_REV = "([^"]+)"/)[1], version.latestBuild);
 assert.ok(!fs.existsSync(path.join(__dirname, '..', 'runner-visual.css')), 'aucune feuille séparée : le style est injecté au premier mount');
@@ -99,7 +99,8 @@ assert.match(css, /\.srRunnerFigure\{[^}]*pointer-events:none/);
 assert.doesNotMatch(mod, /\bxl\b/, 'plus de grande taille de type desktop');
 
 /* 7. Légèreté : un seul fichier, aucune dépendance, aucune image embarquée. */
-assert.ok(Buffer.byteLength(mod) < 44 * 1024, 'runner-visual.js reste sous 44 Ko, commentaires compris (' + Buffer.byteLength(mod) + ' octets)');
+// V272 adds one bounded, presentation-only react() API; gzip budget stays unchanged.
+assert.ok(Buffer.byteLength(mod) < 45 * 1024, 'runner-visual.js reste sous 45 Ko, commentaires compris (' + Buffer.byteLength(mod) + ' octets)');
 assert.ok(require('zlib').gzipSync(mod).length < 14 * 1024, 'runner-visual.js reste sous 14 Ko compressé');
 assert.doesNotMatch(mod, /data:image|<image\b|url\(['"]?https?:|@import|\brequire\s*\(|\bimport\s/, 'aucune image ni dépendance externe');
 

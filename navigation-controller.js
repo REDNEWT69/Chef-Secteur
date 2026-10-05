@@ -921,3 +921,179 @@
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 })();
+
+/* V272 — apparence UI isolée du profil et du schéma métier. Le shell possède
+   l'application des tokens avant peinture ; ce propriétaire possède la préférence
+   durable et l'unique feuille Runner ouverte depuis l'Accueil ou Plus. */
+(function(){
+  'use strict';
+  const KEY='store-runner-appearance-v1';
+  const MODES=['light','dark','system'];
+  const ACCENTS=['blue','indigo','teal','rose'];
+  let preference={mode:'light',accent:'blue'};
+  let sheet=null,previewRunner=null,systemQuery=null,suspended=false,returnFocus=null;
+  let writeSequence=0,statusText='',installed=false;
+
+  function boot(){return window.StoreRunnerAppearanceBoot||null}
+  function normalize(value){
+    const api=boot();
+    if(api&&typeof api.normalize==='function')return api.normalize(value);
+    const v=value&&typeof value==='object'?value:{};
+    return{mode:MODES.includes(v.mode)?v.mode:'light',accent:ACCENTS.includes(v.accent)?v.accent:'blue'};
+  }
+  function get(){return{mode:preference.mode,accent:preference.accent}}
+  function storage(){
+    const db=window.__chefStorage;
+    return db&&typeof db.getItem==='function'&&typeof db.setItem==='function'?db:null;
+  }
+  function apply(){
+    const api=boot();
+    if(api&&typeof api.apply==='function')api.apply(get());
+    syncControls();
+  }
+  function systemChanged(){apply()}
+  function stopSystem(){
+    if(!systemQuery)return;
+    if(typeof systemQuery.removeEventListener==='function')systemQuery.removeEventListener('change',systemChanged);
+    else if(typeof systemQuery.removeListener==='function')systemQuery.removeListener(systemChanged);
+    systemQuery=null;
+  }
+  function syncSystem(){
+    stopSystem();
+    if(suspended||preference.mode!=='system'||typeof window.matchMedia!=='function')return;
+    systemQuery=window.matchMedia('(prefers-color-scheme: dark)');
+    if(typeof systemQuery.addEventListener==='function')systemQuery.addEventListener('change',systemChanged);
+    else if(typeof systemQuery.addListener==='function')systemQuery.addListener(systemChanged);
+  }
+  function setStatus(text){statusText=text;syncControls()}
+  function syncControls(){
+    if(!sheet)return;
+    sheet.querySelectorAll('[data-appearance-mode]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.appearanceMode===preference.mode)));
+    sheet.querySelectorAll('[data-appearance-accent]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.appearanceAccent===preference.accent)));
+    const status=sheet.querySelector('[data-appearance-status]');
+    status.textContent=statusText;status.hidden=!statusText;
+    const reset=sheet.querySelector('[data-appearance-reset]');
+    reset.disabled=preference.mode==='light'&&preference.accent==='blue';
+  }
+  async function set(value){
+    preference=normalize(Object.assign({},get(),value&&typeof value==='object'?value:{}));
+    const sequence=++writeSequence;
+    apply();syncSystem();
+    setStatus('Enregistrement en cours…');
+    const db=storage();
+    try{
+      if(!db)throw new Error('Stockage indisponible');
+      db.setItem(KEY,JSON.stringify(get()));
+      if(typeof db.flush==='function')await db.flush();
+      if(window.__chefStorageMode==='memory')throw new Error('Stockage temporaire');
+      if(sequence===writeSequence)setStatus('');
+      return true;
+    }catch(e){
+      if(sequence===writeSequence)setStatus('L’apparence est affichée, mais son enregistrement a échoué. Réessaie.');
+      return false;
+    }
+  }
+  function reset(){return set({mode:'light',accent:'blue'})}
+  function emit(name){try{document.dispatchEvent(new CustomEvent(name))}catch(e){}}
+  function destroyPreview(){if(previewRunner){previewRunner.destroy();previewRunner=null}}
+  function ensureSheet(){
+    if(sheet)return sheet;
+    if(!document.getElementById('runnerAppearanceCss')){
+      const style=document.createElement('style');style.id='runnerAppearanceCss';
+      style.textContent=`
+        #runnerAppearanceSheet{width:min(480px,calc(100vw - 24px));max-width:none;max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));margin:auto auto calc(12px + env(safe-area-inset-bottom));padding:0;border:1px solid var(--line);border-radius:28px;color:var(--ink);background:var(--sr-surface-solid,var(--card));box-shadow:0 24px 72px rgba(0,0,0,.24);overflow:auto;overscroll-behavior:contain}
+        #runnerAppearanceSheet::backdrop{background:rgba(12,18,30,.36)}
+        #runnerAppearanceSheet .srAppearanceBody{padding:14px 18px 18px}
+        #runnerAppearanceSheet .srAppearanceHandle{width:42px;height:5px;margin:0 auto 12px;border-radius:99px;background:var(--line)}
+        #runnerAppearanceSheet .srAppearanceHead{display:flex;align-items:center;justify-content:space-between;gap:12px}
+        #runnerAppearanceSheet h2{margin:0;font-size:23px;letter-spacing:-.025em;color:var(--ink)}
+        #runnerAppearanceSheet button{font:inherit;touch-action:manipulation;cursor:pointer}
+        #runnerAppearanceSheet .srAppearanceClose{width:44px;height:44px;min-width:44px;padding:0;border:1px solid var(--line);border-radius:15px;background:var(--sr-surface-raised,var(--bg));color:var(--ink);font-size:25px;line-height:1}
+        #runnerAppearanceSheet .srAppearancePreview{display:flex;align-items:center;gap:12px;margin:14px 0 20px;padding:12px 14px;border:1px solid var(--line);border-radius:20px;background:var(--sr-surface-raised,var(--bg))}
+        #runnerAppearancePreview{flex:0 0 56px;min-height:56px;pointer-events:none}
+        #runnerAppearancePreview .srRunner{gap:0}
+        #runnerAppearanceSheet .srAppearancePreviewCopy{display:grid;gap:4px;min-width:0;flex:1}
+        #runnerAppearanceSheet .srAppearancePreviewCopy b{font-size:15px;color:var(--ink)}
+        #runnerAppearanceSheet .srAppearancePreviewCopy span{font-size:13px;color:var(--muted)}
+        #runnerAppearanceSheet .srAppearancePreviewDot{width:22px;height:22px;flex:0 0 22px;border-radius:50%;background:var(--sr-accent-fill,var(--brand));box-shadow:0 0 0 5px var(--brandSoft)}
+        #runnerAppearanceSheet section+section{margin-top:20px}
+        #runnerAppearanceSheet h3{margin:0 0 10px;font-size:15px;color:var(--ink)}
+        #runnerAppearanceSheet .srAppearanceModes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+        #runnerAppearanceSheet .srAppearanceModes button{min-height:46px;padding:9px 4px;border:1px solid var(--line);border-radius:14px;background:var(--sr-surface-raised,var(--bg));color:var(--ink);font-size:14px;font-weight:650}
+        #runnerAppearanceSheet .srAppearanceModes button[aria-pressed="true"]{border-color:var(--brand);background:var(--brandSoft);color:var(--brand);box-shadow:inset 0 0 0 1px var(--brand)}
+        #runnerAppearanceSheet .srAppearanceAccents{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+        #runnerAppearanceSheet .srAppearanceAccents button{display:grid;justify-items:center;gap:7px;min-height:72px;padding:10px 3px;border:1px solid var(--line);border-radius:15px;background:var(--sr-surface-raised,var(--bg));color:var(--ink);font-size:12px;font-weight:650}
+        #runnerAppearanceSheet .srAppearanceAccents button[aria-pressed="true"]{border-color:var(--brand);background:var(--brandSoft);box-shadow:inset 0 0 0 1px var(--brand)}
+        #runnerAppearanceSheet .srAppearanceSwatch{display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:var(--swatch);color:#fff;font-size:16px}
+        #runnerAppearanceSheet .srAppearanceSwatch::after{content:'✓';visibility:hidden}
+        #runnerAppearanceSheet [aria-pressed="true"] .srAppearanceSwatch::after{visibility:visible}
+        #runnerAppearanceSheet [data-appearance-accent="blue"]{--swatch:#0963cd}
+        #runnerAppearanceSheet [data-appearance-accent="indigo"]{--swatch:#5141c9}
+        #runnerAppearanceSheet [data-appearance-accent="teal"]{--swatch:#007a6e}
+        #runnerAppearanceSheet [data-appearance-accent="rose"]{--swatch:#b12f5d}
+        #runnerAppearanceSheet .srAppearanceReset{width:100%;min-height:46px;margin-top:22px;padding:10px;border:1px solid var(--line);border-radius:14px;background:transparent;color:var(--ink);font-size:13px;font-weight:650}
+        #runnerAppearanceSheet button:disabled{opacity:.55;cursor:default}
+        #runnerAppearanceSheet button:focus-visible{outline:3px solid var(--brand);outline-offset:3px}
+        #runnerAppearanceSheet [data-appearance-status]{margin:12px 0 0;font-size:13px;line-height:1.45;color:var(--ink)}
+        @media(prefers-reduced-motion:reduce){#runnerAppearanceSheet *{animation:none!important;transition:none!important}}
+      `;
+      document.head.appendChild(style);
+    }
+    sheet=document.createElement('dialog');sheet.id='runnerAppearanceSheet';
+    sheet.setAttribute('aria-labelledby','runnerAppearanceTitle');
+    sheet.innerHTML='<div class="srAppearanceBody"><div class="srAppearanceHandle" aria-hidden="true"></div><div class="srAppearanceHead"><h2 id="runnerAppearanceTitle">Runner</h2><button type="button" class="srAppearanceClose" data-appearance-close aria-label="Fermer Runner">×</button></div><div class="srAppearancePreview"><div id="runnerAppearancePreview" aria-hidden="true"></div><div class="srAppearancePreviewCopy"><b>Store Runner</b><span>Aperçu en direct</span></div><span class="srAppearancePreviewDot" aria-hidden="true"></span></div><section aria-labelledby="runnerAppearanceModeTitle"><h3 id="runnerAppearanceModeTitle">Apparence</h3><div class="srAppearanceModes" role="group" aria-label="Apparence"><button type="button" data-appearance-mode="light" aria-pressed="false">Clair</button><button type="button" data-appearance-mode="dark" aria-pressed="false">Sombre</button><button type="button" data-appearance-mode="system" aria-pressed="false">Système</button></div></section><section aria-labelledby="runnerAppearanceAccentTitle"><h3 id="runnerAppearanceAccentTitle">Couleur d’accent</h3><div class="srAppearanceAccents" role="group" aria-label="Couleur d’accent"><button type="button" data-appearance-accent="blue" aria-pressed="false"><span class="srAppearanceSwatch" aria-hidden="true"></span>Bleu</button><button type="button" data-appearance-accent="indigo" aria-pressed="false"><span class="srAppearanceSwatch" aria-hidden="true"></span>Indigo</button><button type="button" data-appearance-accent="teal" aria-pressed="false"><span class="srAppearanceSwatch" aria-hidden="true"></span>Turquoise</button><button type="button" data-appearance-accent="rose" aria-pressed="false"><span class="srAppearanceSwatch" aria-hidden="true"></span>Rose</button></div></section><button type="button" class="srAppearanceReset" data-appearance-reset>Réinitialiser l’apparence</button><p data-appearance-status role="status" aria-live="polite" hidden></p></div>';
+    /* V273 ajoutera une section Personnalité dans cette même feuille ; aucune
+       préférence ni réaction comportementale ne fait partie du contrat V272. */
+    sheet.addEventListener('click',function(event){
+      const button=event.target&&event.target.closest?event.target.closest('button'):null;
+      if(!button){if(event.target===sheet)close();return}
+      if(button.hasAttribute('data-appearance-close')){close();return}
+      if(button.hasAttribute('data-appearance-reset')){reset();return}
+      if(button.dataset.appearanceMode){set({mode:button.dataset.appearanceMode});return}
+      if(button.dataset.appearanceAccent)set({accent:button.dataset.appearanceAccent});
+    });
+    sheet.addEventListener('close',function(){
+      if(sheet.open)return; // un ancien événement close ne referme pas une réouverture
+      destroyPreview();emit('store-runner:appearance-closed');
+      const active=document.activeElement;
+      if(active!==document.body&&!sheet.contains(active))return;
+      const connected=returnFocus&&returnFocus.isConnected&&returnFocus.getClientRects().length;
+      const fromMore=returnFocus&&returnFocus.closest&&returnFocus.closest('#moreSheetV2');
+      const target=connected?returnFocus:document.querySelector(fromMore?'.bottomNavBtn[data-more]':'#homeRunnerAppearanceButton');
+      if(target&&typeof target.focus==='function')target.focus({preventScroll:true});
+    });
+    document.body.appendChild(sheet);syncControls();
+    return sheet;
+  }
+  function open(opener){
+    const dialog=ensureSheet();
+    if(dialog.open)return true;
+    returnFocus=opener&&opener.nodeType===1?opener:document.activeElement;
+    syncControls();
+    dialog.showModal();
+    const runner=window.StoreRunnerRunner;
+    if(runner&&typeof runner.mount==='function')previewRunner=runner.mount(document.getElementById('runnerAppearancePreview'),{variant:'sheet',size:'sm',state:'neutral',motion:'off',decorative:true});
+    emit('store-runner:appearance-opened');
+    return true;
+  }
+  function close(){
+    if(!sheet||!sheet.open)return false;
+    sheet.close();destroyPreview();return true;
+  }
+  function install(){
+    if(installed)return;installed=true;
+    try{const db=storage();preference=normalize(db?JSON.parse(db.getItem(KEY)||'null'):null)}catch(e){preference=normalize(null)}
+    apply();syncSystem();
+    document.addEventListener('click',function(event){
+      const button=event.target&&event.target.closest?event.target.closest('[data-runner-appearance]'):null;
+      if(!button)return;
+      const more=document.getElementById('moreSheetV2');
+      if(more)more.classList.remove('open');
+      open(button);
+    });
+    window.addEventListener('pagehide',function(){suspended=true;stopSystem();destroyPreview()});
+    window.addEventListener('pageshow',function(){suspended=false;apply();syncSystem();if(sheet&&sheet.open){const runner=window.StoreRunnerRunner;if(runner)previewRunner=runner.mount(document.getElementById('runnerAppearancePreview'),{variant:'sheet',size:'sm',state:'neutral',motion:'off',decorative:true})}});
+  }
+  window.StoreRunnerAppearance={open,close,get,set,reset};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
+})();

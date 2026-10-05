@@ -5,16 +5,43 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
   <title>Store Runner</title>
   <meta name="theme-color" content="#f2f5fa">
+  <script>
+  /* V272 — only appearance is mirrored before paint. Business data remains in the
+     durable engine; its appearance preference is re-read under the boot veil. */
+  (function(){
+    const KEY='store-runner-appearance-boot-v1';
+    function normalize(value){
+      if(typeof value==='string'){try{value=JSON.parse(value)}catch(e){value=null}}
+      const source=value&&typeof value==='object'?value:{};
+      return{mode:['light','dark','system'].includes(source.mode)?source.mode:'light',accent:['blue','indigo','teal','rose'].includes(source.accent)?source.accent:'blue'};
+    }
+    function apply(value){
+      const pref=normalize(value);
+      const dark=pref.mode==='dark'||(pref.mode==='system'&&typeof window.matchMedia==='function'&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+      const root=document.documentElement;
+      root.setAttribute('data-sr-mode',pref.mode);
+      root.setAttribute('data-sr-theme',dark?'dark':'light');
+      root.setAttribute('data-sr-accent',pref.accent);
+      const meta=document.querySelector('meta[name="theme-color"]');
+      if(meta)meta.setAttribute('content',dark?'#151e2c':'#f2f5fa');
+      try{window.localStorage.setItem(KEY,JSON.stringify(pref))}catch(e){}
+      return pref;
+    }
+    window.StoreRunnerAppearanceBoot={normalize:normalize,apply:apply};
+    let mirror=null;try{mirror=window.localStorage.getItem(KEY)}catch(e){}
+    apply(mirror);
+  })();
+  </script>
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Store Runner">
   <meta name="application-name" content="Store Runner">
-  <link rel="manifest" href="./manifest.webmanifest?rev=20261005-r50-map-swipe-guard-271">
-  <link rel="icon" href="./app-icon.svg?rev=20261005-r50-map-swipe-guard-271" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="./app-icon.svg?rev=20261005-r50-map-swipe-guard-271">
+  <link rel="manifest" href="./manifest.webmanifest?rev=20261005-r51-appearance-272">
+  <link rel="icon" href="./app-icon.svg?rev=20261005-r51-appearance-272" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./app-icon.svg?rev=20261005-r51-appearance-272">
   <style>
-    html,body{margin:0;min-height:100%;background:#fbfaf8;color:#111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+    html,body{margin:0;min-height:100%;background:var(--sr-boot-bg,#fbfaf8);color:var(--sr-boot-ink,#111);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
   </style>
   <!-- V234 — seule et unique définition visuelle de l'écran de chargement Store Runner.
        Le document runtime écrit par document.write() réutilise ce bloc tel quel : il
@@ -22,17 +49,19 @@
        `data-store-runner-booting` neutralise l'ancien accueil tant que le démarrage dure :
        même si le voile disparaissait trop tôt, l'interface historique ne peut pas s'afficher. -->
   <style id="srBootStyle">
-    html[data-store-runner-booting],html[data-store-runner-booting] body{background:#fbfaf8}
-    #storeRunnerBoot{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;padding:24px;background:#fbfaf8;text-align:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;transition:opacity .16s ease}
-    #storeRunnerBoot.srBootOut{opacity:0;pointer-events:none}#storeRunnerBoot .srBootInner{max-width:520px}#storeRunnerBoot img{display:block;width:min(220px,62vw);height:auto;margin:0 auto 16px;border-radius:22px;box-shadow:0 16px 42px rgba(25,42,80,.10)}#storeRunnerBoot strong{display:block;font-size:30px;letter-spacing:-.04em}#storeRunnerBoot .srBootSig{display:block;margin-top:5px;font-size:13px;color:#8b8b8b}#storeRunnerBoot .srBootText{display:block;margin-top:9px;color:#77716a;font-size:13px;line-height:1.45}#storeRunnerBoot .err{color:#b43a32;white-space:pre-wrap}
+    html[data-sr-theme="light"]{--sr-boot-bg:#fbfaf8;--sr-boot-ink:#111;--sr-boot-muted:#68635e;color-scheme:light}
+    html[data-sr-theme="dark"]{--sr-boot-bg:#101820;--sr-boot-ink:#edf2fa;--sr-boot-muted:#bbc6d8;color-scheme:dark}
+    html[data-store-runner-booting],html[data-store-runner-booting] body{background:var(--sr-boot-bg,#fbfaf8)!important;color:var(--sr-boot-ink,#111)!important}
+    #storeRunnerBoot{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;padding:24px;background:var(--sr-boot-bg,#fbfaf8);color:var(--sr-boot-ink,#111);text-align:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;transition:opacity .16s ease}
+    #storeRunnerBoot.srBootOut{opacity:0;pointer-events:none}#storeRunnerBoot .srBootInner{max-width:520px}#storeRunnerBoot img{display:block;width:min(220px,62vw);height:auto;margin:0 auto 16px;border-radius:22px;box-shadow:0 16px 42px rgba(25,42,80,.10)}#storeRunnerBoot strong{display:block;font-size:30px;letter-spacing:-.04em}#storeRunnerBoot .srBootSig{display:block;margin-top:5px;font-size:13px;color:var(--sr-boot-muted,#68635e)}#storeRunnerBoot .srBootText{display:block;margin-top:9px;color:var(--sr-boot-muted,#68635e);font-size:13px;line-height:1.45}#storeRunnerBoot .err{color:#b43a32;white-space:pre-wrap}
     html[data-store-runner-booting] .homeHero,html[data-store-runner-booting] #homeKpis,html[data-store-runner-booting] #homePriority,html[data-store-runner-booting] #homeNext,html[data-store-runner-booting] #homePanel>.sectionTitle{display:none!important}
   </style>
 </head>
 <body>
-  <div id="storeRunnerBoot" data-store-runner-boot role="status" aria-live="polite"><div class="srBootInner"><img src="./app-icon.svg?rev=20261005-r50-map-swipe-guard-271" alt="S-RUNNER"><strong>Store Runner</strong><span class="srBootSig">S-RUNNER By Red①</span><span id="bootText" class="srBootText" data-boot-text>Chargement de ton espace terrain…</span></div></div>
+  <div id="storeRunnerBoot" data-store-runner-boot role="status" aria-live="polite"><div class="srBootInner"><img src="./app-icon.svg?rev=20261005-r51-appearance-272" alt="S-RUNNER"><strong>Store Runner</strong><span class="srBootSig">S-RUNNER By Red①</span><span id="bootText" class="srBootText" data-boot-text>Chargement de ton espace terrain…</span></div></div>
   <script>
   (async function(){
-    const BUILD_REV='20261005-r50-map-swipe-guard-271';
+    const BUILD_REV='20261005-r51-appearance-272';
     const withRev=(path)=>path+'?rev='+BUILD_REV;
 
     /* V234 — un seul écran de chargement, du tout premier octet jusqu'à l'accueil final.
@@ -337,6 +366,7 @@
     try{
       if(navigator.storage&&navigator.storage.persist){navigator.storage.persist().catch(()=>{});}
       window.__chefStorage=await createStorageEngine(window);
+      window.StoreRunnerAppearanceBoot.apply(window.__chefStorage.getItem('store-runner-appearance-v1'));
 
       window.__STORE_RUNNER_BUILD_REV=BUILD_REV;
       document.documentElement.dataset.storeRunnerBuild=BUILD_REV;
@@ -395,7 +425,10 @@ if(document.readyState===\'loading\')document.addEventListener(\'DOMContentLoade
          peinture soit le voile : style en ligne d'abord, balisage du voile en tête de
          <body>, et seulement ensuite les scripts bloquants — qui gardent leur ordre
          relatif à l'application, aucun d'eux n'étant attendu par le <head> du noyau. */
-      const patchedHtml=html.replace(/<html\b/i,'<html data-store-runner-booting').replace('<head>','<head>'+runtimeBootStyle+runtimeScopeShim+assistantUiShim+styleTag('./glass-theme.css')).replace('<body>','<body>'+runtimeBootMarkup+scriptTag('./store-runner-visit-model.js')+scriptTag('./reliability-core.js')).replace('</body>',calendarOauthShim+v184RuntimeShim+connectionUi+regionUi+scriptTag('./reliability-ui.js')+styleTag('./store-runner-visits.css')+scriptTag('./store-runner-visit-store.js')+scriptTag('./store-runner-visits.js')+scriptTag('./store-runner-opportunities.js')+scriptTag('./note-proofreader-v221.js')+scriptTag('./visit-report-slack.js')+'</body>');
+      const appearanceAttrs=['data-sr-mode','data-sr-theme','data-sr-accent'].map(function(name){return ' '+name+'="'+document.documentElement.getAttribute(name)+'"'}).join('');
+      const runtimeTheme=document.documentElement.getAttribute('data-sr-theme')==='dark'?'#151e2c':'#f2f5fa';
+      html=html.replace(/(<meta\s+name="theme-color"\s+content=")[^"]+("\s*>)/,function(_,prefix,suffix){return prefix+runtimeTheme+suffix});
+      const patchedHtml=html.replace(/<html\b/i,'<html data-store-runner-booting').replace('<html data-store-runner-booting','<html data-store-runner-booting'+appearanceAttrs).replace('<head>','<head>'+runtimeBootStyle+runtimeScopeShim+assistantUiShim+styleTag('./glass-theme.css')).replace('<body>','<body>'+runtimeBootMarkup+scriptTag('./store-runner-visit-model.js')+scriptTag('./reliability-core.js')).replace('</body>',calendarOauthShim+v184RuntimeShim+connectionUi+regionUi+scriptTag('./reliability-ui.js')+styleTag('./store-runner-visits.css')+scriptTag('./store-runner-visit-store.js')+scriptTag('./store-runner-visits.js')+scriptTag('./store-runner-opportunities.js')+scriptTag('./note-proofreader-v221.js')+scriptTag('./visit-report-slack.js')+'</body>');
       document.open();
       document.write(patchedHtml);
       document.close();
