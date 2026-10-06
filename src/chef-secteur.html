@@ -588,7 +588,12 @@ window.appointmentFromQuick=function(){if(!quickStoreId)return;var id=quickStore
 // clic dans la liste RDV ouvre le magasin si l'utilisateur touche la partie texte
 var oldRA=renderAppointments;renderAppointments=function(){oldRA();var rows=document.querySelectorAll('#appointmentList .historyRow');var up=(state.appointments||[]).slice().sort(function(a,b){return (a.date+a.time).localeCompare(b.date+b.time)});for(var i=0;i<rows.length&&i<up.length;i++){rows[i].dataset.storeId=up[i].storeId;rows[i].onclick=function(e){if(e.target.closest('button'))return;openStoreQuick(this.dataset.storeId)}}};
 // Au boot actuel renderAll a déjà pu passer; re-décore
-setTimeout(function(){try{applyAppointmentsToPlan();save();renderAll();decorateWeek()}catch(e){showError(e.message||String(e))}},0);
+/* #505 : cette étape doit tourner APRÈS boot(), qui ouvre le stockage (load). Même condition que boot() (ligne du noyau
+   « readyState==='loading' ») : pendant l'analyse du document, on attend DOMContentLoaded — cet écouteur est posé après celui
+   de boot(), donc il passe après — puis une tâche ; sinon boot() a déjà tourné et on garde la tâche d'origine. Aucun délai
+   arbitraire, aucune erreur masquée : si le stockage est réellement inutilisable, save() lève et showError() l'affiche. */
+(function(){var deferred=function(){try{applyAppointmentsToPlan();save();renderAll();decorateWeek()}catch(e){showError(e.message||String(e))}};
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(deferred,0)},{once:true});else setTimeout(deferred,0)})();
 })();
 </script>\n
 <nav class="bottomAppNav" id="bottomAppNav">
