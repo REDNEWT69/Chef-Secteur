@@ -232,6 +232,60 @@ const MES_CUISINISTES=[
   assert.equal(fusion.history.length,4,'les deux historiques sont réunis sans perte ni doublon');
   assert(fusion.history.some(x=>x.note==='Note ancienne'),'l’historique de la clé de secours est conservé');
 
+  // --- V275. Contrat de groupement : parent + magasins + nouveaux libellés ------------
+  const MODERN_H=['Facturation','CHECK','SECTEUR','GROUPE','ENSEIGNE','VILLE CUISINISTE','GROUPEMENT','N° CLIENT','Client','DATE DÉBUT','DATE FIN','Mois Total','ANNEEMOIS DEBUT','ANNEEMOIS FIN','Statut Contrat','OBJECTIF CA','CA RÉALISÉ','MOIS','0-3 Mois <25%','4-6 Mois <50%','7-9 Mois <75%','10-12 Mois <100%','Progress','Mois restant','CA réalisé Y/N','% à facturer','€ à facturer','PORTEFEUILLE Mois en cours','PDT EXPO 1','PDT EXPO 2'];
+  function modernRow(values){const r=Array(MODERN_H.length).fill(null);for(const [k,v] of Object.entries(values)){const i=MODERN_H.indexOf(k);if(i>=0)r[i]=v}return r}
+  const groupName='GROUPE TEST MULTI';
+  const groupHit=[
+    [null,HIT[0],HIT[1]],
+    [null,'Secteur Gamma','SCH-VILLE GROUPE A FR-44444'],
+    [null,null,'SCH-VILLE GROUPE B FR-55555'],
+  ];
+  const groupRows=[MODERN_H,
+    modernRow({'GROUPEMENT':groupName,'DATE DÉBUT':45628,'DATE FIN':45991,'Statut Contrat':'Finalisé','OBJECTIF CA':9000,'CA RÉALISÉ':7800,'Progress':.8667,'Mois restant':'Fin','% à facturer':'25%','€ à facturer':225,'PORTEFEUILLE Mois en cours':900}),
+    modernRow({'SECTEUR':'Secteur Gamma','GROUPE':'SCHMIDT GROUPE','ENSEIGNE':'SCHMIDT','VILLE CUISINISTE':'VILLE GROUPE A','GROUPEMENT':groupName,'N° CLIENT':901,'Client':'SOCIETE TEST','DATE DÉBUT':45628,'DATE FIN':45991,'Statut Contrat':'Finalisé','CA RÉALISÉ':4000,'PORTEFEUILLE Mois en cours':300,'PDT EXPO 1':'OLDREF'}),
+    modernRow({'GROUPEMENT':groupName,'DATE DÉBUT':45992,'DATE FIN':46356,'Statut Contrat':'En cours','OBJECTIF CA':14124,'CA RÉALISÉ':13506,'Progress':.9562446899,'Mois restant':3,'% à facturer':'25%','€ à facturer':294.25,'PORTEFEUILLE Mois en cours':2644.45}),
+    modernRow({'SECTEUR':'Secteur Gamma','GROUPE':'SCHMIDT GROUPE','ENSEIGNE':'SCHMIDT','VILLE CUISINISTE':'VILLE GROUPE A','GROUPEMENT':groupName,'N° CLIENT':901,'Client':'SOCIETE TEST','DATE DÉBUT':45992,'DATE FIN':46356,'Statut Contrat':'En cours','CA RÉALISÉ':8154,'Mois restant':3,'PORTEFEUILLE Mois en cours':588.72,'PDT EXPO 1':'REF-A','PDT EXPO 2':'REF-B '}),
+    modernRow({'SECTEUR':'Secteur Gamma','GROUPE':'SCHMIDT GROUPE','ENSEIGNE':'SCHMIDT','VILLE CUISINISTE':'VILLE GROUPE B','GROUPEMENT':groupName,'N° CLIENT':902,'Client':'SOCIETE TEST','DATE DÉBUT':45992,'DATE FIN':46356,'Statut Contrat':'En cours','CA RÉALISÉ':5352,'Mois restant':3,'PORTEFEUILLE Mois en cours':2055.73,'PDT EXPO 1':'-'}),
+  ];
+  const GROUP_WB=workbook([{name:'Sites',rows:groupHit},{name:'Suivi septembre',rows:groupRows}]);
+  const oldStores=global.state.stores;
+  global.state.stores=[
+    {id:'ga',enseigne:'Schmidt',ville:'Ville Groupe A',cp:'44444',channel:'cuisiniste',clientNumber:'901'},
+    {id:'gb',enseigne:'Schmidt',ville:'Ville Groupe B',cp:'55555',channel:'cuisiniste',clientNumber:'902'},
+  ];
+  const grouped=await V193.parseTrackingWorkbook(GROUP_WB);
+  assert.equal(grouped.sites.length,2,'les deux magasins du contrat groupé sont lus');
+  const ga=grouped.sites.find(x=>x.city==='VILLE GROUPE A'),gb=grouped.sites.find(x=>x.city==='VILLE GROUPE B');
+  assert(ga&&gb,'les deux villes sont présentes');
+  assert.equal(ga.activeContract.objective,14124,'objectif du groupement conservé, jamais divisé par deux');
+  assert.equal(ga.activeContract.realized,13506,'CA réalisé du groupement conservé sur le contrat');
+  assert.equal(ga.activeContract.groupContract.name,groupName);
+  assert.equal(ga.activeContract.groupContract.memberCount,2,'deux magasins rattachés au même contrat groupement');
+  assert.equal(ga.activeContract.groupContract.toInvoice,294.25,'€ à facturer moderne est compris');
+  assert.equal(ga.activeContract.groupContract.closure,'25%','% à facturer moderne est compris');
+  assert.equal(ga.activeContract.storeMetrics.realized,8154,'CA propre au magasin reste séparé');
+  assert.equal(ga.activeContract.storeMetrics.portfolio,588.72,'portefeuille propre au magasin reste séparé');
+  assert.deepEqual(ga.activeContract.products,['REF-A','REF-B'],'références magasin conservées et nettoyées');
+  assert.equal(gb.activeContract.storeMetrics.realized,5352);
+  assert.deepEqual(gb.activeContract.products,[],'un tiret n’est pas une référence produit');
+  assert.equal(ga.history.length,2,'le contrat finalisé précédent reste dans l’historique');
+
+  // Deux fichiers sélectionnés : même contrat actualisé, la version la plus récente gagne
+  // sans dupliquer le contrat, tout en conservant l'historique précédent.
+  const updated=JSON.parse(JSON.stringify(grouped));
+  const uga=updated.sites.find(x=>x.city==='VILLE GROUPE A');
+  uga.activeContract.realized=14000;uga.activeContract.groupContract.realized=14000;uga.activeContract.storeMetrics.realized=8500;
+  const currentId=V193.contractIdentity(uga.activeContract);
+  uga.history=uga.history.map(c=>V193.contractIdentity(c)===currentId?uga.activeContract:c);
+  const merged=V193.mergeTrackingSnapshots([grouped,updated]);
+  const mga=merged.sites.find(x=>x.city==='VILLE GROUPE A');
+  assert.equal(merged.sourceCount,2,'deux fichiers sont reconnus comme un import groupé');
+  assert.equal(mga.activeContract.realized,14000,'le fichier le plus récent met à jour le contrat groupe');
+  assert.equal(mga.activeContract.storeMetrics.realized,8500,'le CA magasin récent gagne aussi');
+  assert.equal(mga.history.length,2,'le même contrat courant n’est pas dupliqué lors de la fusion');
+  global.state.stores=oldStores;
+
   // --- 23. Aucun magasin hors périmètre ajouté dans state.stores ---------------------
   assert.equal(global.state.stores.length,MES_CUISINISTES.length,'aucun magasin créé par l’import');
   assert(!global.state.stores.some(s=>/LOIN|AILLEURS/i.test(String(s.ville))),'aucun magasin d’un autre secteur ajouté');
