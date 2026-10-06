@@ -1,6 +1,7 @@
 /* Runner Visual System V1 : composant mobile dans le flux, présentation pure, sans donnée ni
    écoute globale. Quatre états, trois variantes et une API de déplacement bornée. Aucun bouton,
-   positionnement flottant ou texte HTML. Reduced motion et motion:"off" désactivent tout geste. */
+   positionnement flottant ou texte HTML (la couche ambiante de runner-ambient.js place SON acteur elle-même ;
+   ce fichier ne positionne jamais rien). Reduced motion et motion:"off" désactivent tout geste. */
 (function(root,factory){
   const api=factory(root);
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
@@ -14,6 +15,7 @@ const STATE_LABELS=Object.freeze({neutral:'En attente',analyzing:'Il réfléchit
 const ACCESSIBLE_NAME='Runner, copilote terrain';
 const VARIANTS=Object.freeze(['bubble','sheet','panel']);
 const SIDES=Object.freeze(['right','left']);
+const POSTURES=Object.freeze(['floating','seated']);
 /* Tailles pensées pour un téléphone : Runner reste discret. 120 px est la plus grande taille
    nommée (en-tête de bottom sheet) ; 144 px est le plafond d'une taille numérique. */
 const SIZES=Object.freeze({sm:56,md:88,lg:120});
@@ -106,6 +108,15 @@ function sparks(items,color){
     return '<path class="rnSpark" style="--i:'+i+'" d="M'+s[0]+' '+s[1]+'L'+s[2]+' '+s[3]+'" stroke="'+color+'" stroke-width="5.5" stroke-linecap="round" fill="none"/>';
   }).join('');
 }
+/* Jambes (V1 Ambient) : dessinées SOUS le corps, rentrées par défaut (posture « floating ») et sorties
+   seulement en posture « seated ». Même grammaire que les bras : membre blanc nacré, extrémité bleue. */
+function leg(x,side){
+  return '<g class="rnLeg" data-leg="'+side+'">'
+    +'<rect x="'+(x-10)+'" y="244" width="20" height="78" rx="10" fill="url(#rn{u}-arm)" stroke="#bccae3" stroke-width="1.4"/>'
+    +'<rect x="'+(x-4)+'" y="252" width="5" height="44" rx="2.5" fill="#fff" opacity=".7"/>'
+    +'<rect x="'+(x-14)+'" y="298" width="28" height="30" rx="13" fill="url(#rn{u}-blue)"/>'
+    +'</g>';
+}
 function artMarkup(){
   const defs=''
     +'<radialGradient id="rn{u}-head" cx=".36" cy=".2" r=".95"><stop offset="0" stop-color="#fff"/><stop offset=".5" stop-color="#f3f6fc"/><stop offset=".86" stop-color="#d8e1f1"/><stop offset="1" stop-color="#b6c4dd"/></radialGradient>'
@@ -138,13 +149,15 @@ function artMarkup(){
 
   return '<svg class="rnArt" viewBox="0 0 240 280" focusable="false" aria-hidden="true"><defs>'+defs+'</defs>'
     /* sol : ombre bleutée et halo de la plaque stationnaire */
-    +'<ellipse cx="120" cy="272" rx="58" ry="6" fill="#4a78d6" opacity=".16"/>'
-    +'<ellipse cx="119" cy="266" rx="34" ry="9" fill="url(#rn{u}-floor)"/>'
+    +'<ellipse class="rnFloor" cx="120" cy="272" rx="58" ry="6" fill="#4a78d6" opacity=".16"/>'
+    +'<ellipse class="rnFloor" cx="119" cy="266" rx="34" ry="9" fill="url(#rn{u}-floor)"/>'
     /* bras du fond */
     +'<g class="rnLayer" data-rn="neutral">'+armsNeutral+'</g>'
     +'<g class="rnLayer" data-rn="analyzing">'+armsAnalyzing+'</g>'
     +'<g class="rnLayer" data-rn="alert">'+armsAlert+'</g>'
     +'<g class="rnLayer" data-rn="success">'+armsSuccess+'</g>'
+    /* jambes : sous le corps, rentrées tant que Runner flotte */
+    +'<g class="rnLegs">'+leg(98,'l')+leg(140,'r')+'</g>'
     /* corps ovoïde, plaque bleue, épaulettes, anneau de cou */
     +'<path d="M118 170C152 170 176 196 176 224C176 252 152 266 118 266C84 266 60 252 60 224C60 196 84 170 118 170Z" fill="url(#rn{u}-body)"/>'
     +'<path d="M118 170C152 170 176 196 176 224C176 252 152 266 118 266C84 266 60 252 60 224C60 196 84 170 118 170Z" fill="url(#rn{u}-shade)" opacity=".7"/>'
@@ -248,6 +261,18 @@ toneCss(),
 '@keyframes srRunnerSpark{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:none}}',
 '.srRunner .rnDots circle,.srRunner .rnBadge,.srRunner .rnSpark{transform-box:fill-box;transform-origin:center}',
 '.srRunner .rnHead,.srRunner .rnEyes{transform-box:fill-box;transform-origin:center}',
+/* Postures : « floating » (défaut) garde les jambes rentrées et invisibles ; « seated » les sort, éteint le halo au sol
+   et, avec data-legs="swing", les balance trois fois (animation finie, jamais infinie). */
+'.srRunner .rnLegs{opacity:0;visibility:hidden;transition:opacity .18s ease,visibility 0s linear .3s}',
+'.srRunner .rnLeg{transform-box:fill-box;transform-origin:50% 0;transform:scaleY(.06);transition:transform .28s cubic-bezier(.3,.9,.3,1)}',
+'.srRunner .rnFloor{transition:opacity .2s ease}',
+'.srRunner[data-posture="seated"] .rnLegs{opacity:1;visibility:visible;transition:opacity .16s ease,visibility 0s}',
+'.srRunner[data-posture="seated"] .rnLeg{transform:none}',
+'.srRunner[data-posture="seated"] .rnFloor{opacity:0}',
+'@keyframes srRunnerLegL{0%,100%{transform:rotate(0)}50%{transform:rotate(13deg)}}',
+'@keyframes srRunnerLegR{0%,100%{transform:rotate(0)}50%{transform:rotate(-13deg)}}',
+'.srRunner[data-posture="seated"][data-legs="swing"] .rnLeg[data-leg="l"]{animation:srRunnerLegL .7s ease-in-out .2s 3}',
+'.srRunner[data-posture="seated"][data-legs="swing"] .rnLeg[data-leg="r"]{animation:srRunnerLegR .7s ease-in-out .4s 3}',
 '.srRunnerFigure.is-pop{animation:srRunnerPop .42s cubic-bezier(.2,.9,.3,1)}',
 '.srRunnerBubble.is-in{animation:srRunnerBubbleIn .22s ease-out}',
 '.srRunner[data-state="analyzing"] .rnDots circle{animation:srRunnerDot 1.4s ease-in-out 16;animation-delay:calc(var(--i)*.18s)}',
@@ -319,6 +344,7 @@ function createInstance(doc,options){
   let hideTimer=0,resetTimer=0,liveTimer=0;
   let moveAnimation=null,moveEffects=[],moveTarget=null;
   let presence=false,idleEffects=[],motionQuery=null,pageSuspended=false,watching=false;
+  let posture='floating';
 
   function releaseEffects(effects){
     for(const effect of effects){effect.onfinish=null;effect.oncancel=null;try{effect.cancel()}catch(e){}}
@@ -523,6 +549,11 @@ function createInstance(doc,options){
       const t=opts&&opts.toward,r=t&&t.getBoundingClientRect?t.getBoundingClientRect():null,f=figure.getBoundingClientRect(),o=t==='down'?'translateY(4px)':'translateX('+(r&&r.left+r.width/2<f.left+f.width/2?-5:5)+'px)';
       frames=[{transform:'none'},{transform:o,offset:.2},{transform:o,offset:.75},{transform:'none'}];ms=1400;
     }
+    /* V1 Ambient : inclinaison de la tête vers un élément de l'hôte (curiosité), `transform` seulement. */
+    else if(kind==='tilt'&&head){
+      const t=opts&&opts.toward,r=t&&t.getBoundingClientRect?t.getBoundingClientRect():null,f=figure.getBoundingClientRect(),o='rotate('+(r&&r.left+r.width/2<f.left+f.width/2?-9:9)+'deg)';
+      part=head;frames=[{transform:'none'},{transform:o,offset:.3},{transform:o,offset:.72},{transform:'none'}];ms=1500;
+    }
     if(!part||typeof part.animate!=='function')return Promise.resolve(false);
     cancelMove(false);stopIdle();
     try{
@@ -533,6 +564,15 @@ function createInstance(doc,options){
     }catch(e){cancelMove();return Promise.resolve(false)}
   }
 
+  /* Posture de présentation : « floating » (jambes rentrées, défaut) ou « seated » (jambes sorties, balancement fini
+     en option). Aucun mouvement du corps : le trajet et l'assise appartiennent à l'hôte. */
+  function setPosture(next,extra){
+    if(destroyed||POSTURES.indexOf(next)===-1)return false;
+    posture=next;host.setAttribute('data-posture',next);
+    host.removeAttribute('data-legs');
+    if(next==='seated'&&extra&&extra.swing===true){void host.offsetWidth;host.setAttribute('data-legs','swing')}
+    return true;
+  }
   function clearTimer(timer){if(timer)root.clearTimeout(timer);return 0}
   function announce(text,assertive){
     liveTimer=clearTimer(liveTimer);
@@ -619,8 +659,11 @@ function createInstance(doc,options){
 
   const inst={
     id,el:host,variant,
+    /* `detached` : instance satellite d'une couche ambiante, jamais comptée par `mounted()` ni « principale ». */
+    detached:opts.detached===true,
     getState:()=>state,
-    setState,showMessage,hideMessage,reset,destroy,moveTo,cancelMove,setPresence,returnToRest,react,
+    getPosture:()=>posture,
+    setState,showMessage,hideMessage,reset,destroy,moveTo,cancelMove,setPresence,returnToRest,react,setPosture,
     isIdle:()=>idleEffects.length>0,
     isMoving:()=>!!moveAnimation,
     /* Vrai tant que le Runner est dans le document, ou n'y a pas encore été posé ; faux dès
@@ -634,6 +677,7 @@ function createInstance(doc,options){
 
   host.setAttribute('data-motion',opts.motion==='off'?'off':'auto');
   host.setAttribute('data-variant',variant);
+  host.setAttribute('data-posture','floating');
   host.style.setProperty('--sr-runner-size',sizeFrom(opts.size,variant)+'px');
   applySide(opts.side);
   host.setAttribute('data-state',state);
@@ -665,7 +709,7 @@ function mount(target,options){
     const inst=createInstance(doc,options);
     container.appendChild(inst.el);
     inst.isConnected();
-    instances.push(inst);
+    if(!inst.detached)instances.push(inst);
     return inst;
   },null);
 }
@@ -676,7 +720,7 @@ function unmount(ref){
 }
 
 return{
-  VERSION,STATES,STATE_LABELS,VARIANTS,SIDES,SIZES,TONES,INK,SUBINK,
+  VERSION,STATES,STATE_LABELS,VARIANTS,SIDES,POSTURES,SIZES,TONES,INK,SUBINK,
   isState,normalizeMessage,accessibleLabel,
   mount,unmount,
   moveTo:(target,opts)=>safe(()=>{const p=primary();return p?p.moveTo(target,opts):false},false),

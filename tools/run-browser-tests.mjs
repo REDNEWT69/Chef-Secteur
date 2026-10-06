@@ -37,6 +37,7 @@ const HOST = process.env.STORE_RUNNER_E2E_HOST || '127.0.0.1';
 const PORT = Number(process.env.STORE_RUNNER_E2E_PORT || 4173);
 const WORKFLOW = path.join(ROOT, '.github/workflows/reliability-checks.yml');
 const ONBOARDING_MODE_PARAM = 'e2eOnboarding';
+const AMBIENT_MODE_PARAM = 'e2eAmbient';
 
 const TYPES = new Map(Object.entries({
   '.html': 'text/html; charset=utf-8',
@@ -97,10 +98,14 @@ function repondreVide(res, code, message) {
   res.end(corps);
 }
 
-async function indexAvecUtilisateurExistant(fichier) {
+async function indexE2E(fichier, { utilisateurExistant, ambiantEteint }) {
   const source = await fsp.readFile(fichier, 'utf8');
   const marker = JSON.stringify({version:1,status:'complete',step:3,reason:'e2e-fixture'});
-  const injection = `<script>try{localStorage.setItem('store-runner-onboarding-v1',${JSON.stringify(marker)})}catch(e){}</script>`;
+  let injection = '';
+  if (utilisateurExistant) injection += `<script>try{localStorage.setItem('store-runner-onboarding-v1',${JSON.stringify(marker)})}catch(e){}</script>`;
+  // Runner Ambient (scènes aléatoires toutes les 8 à 12 s) est éteint pendant la suite E2E : les specs existants mesurent
+  // des Runners, des timers et des mutations sur plusieurs dizaines de secondes. Les specs Ambient l'allument avec `?e2eAmbient=on`.
+  if (ambiantEteint) injection += `<script>window.__STORE_RUNNER_AMBIENT='off'</script>`;
   return Buffer.from(source.replace('<head>', '<head>'+injection));
 }
 
@@ -139,8 +144,10 @@ function creerServeur(options = {}) {
     // ayant déjà terminé l'accueil. `?e2eOnboarding=first-run` restitue l'index strictement
     // réel pour le scénario dédié. Le mode --serve n'injecte jamais ce marqueur.
     const scenarioPremierLancement = url.searchParams.get(ONBOARDING_MODE_PARAM) === 'first-run';
-    if (skipOnboardingParDefaut && !scenarioPremierLancement && path.basename(fichier) === 'index.html') {
-      const corps = await indexAvecUtilisateurExistant(fichier);
+    const ambiantDemande = url.searchParams.get(AMBIENT_MODE_PARAM) === 'on' || process.env.STORE_RUNNER_E2E_AMBIENT === 'on';
+    const ambiantEteint = skipOnboardingParDefaut && !ambiantDemande;
+    if (skipOnboardingParDefaut && (!scenarioPremierLancement || ambiantEteint) && path.basename(fichier) === 'index.html') {
+      const corps = await indexE2E(fichier, { utilisateurExistant: !scenarioPremierLancement, ambiantEteint });
       res.writeHead(200, {
         'Content-Type': typeDe(fichier),
         'Content-Length': corps.length,

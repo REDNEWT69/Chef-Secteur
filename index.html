@@ -37,9 +37,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Store Runner">
   <meta name="application-name" content="Store Runner">
-  <link rel="manifest" href="./manifest.webmanifest?rev=20261006-r60-runner-no-empty-six-276">
-  <link rel="icon" href="./app-icon.svg?rev=20261006-r60-runner-no-empty-six-276" type="image/svg+xml">
-  <link rel="apple-touch-icon" sizes="192x192" href="./app-icon-192.png?rev=20261006-r60-runner-no-empty-six-276">
+  <link rel="manifest" href="./manifest.webmanifest?rev=20261006-r61-runner-ambient-276">
+  <link rel="icon" href="./app-icon.svg?rev=20261006-r61-runner-ambient-276" type="image/svg+xml">
+  <link rel="apple-touch-icon" sizes="192x192" href="./app-icon-192.png?rev=20261006-r61-runner-ambient-276">
   <style>
     html,body{margin:0;min-height:100%;background:var(--sr-boot-bg,#fbfaf8);color:var(--sr-boot-ink,#111);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
   </style>
@@ -58,10 +58,10 @@
   </style>
 </head>
 <body>
-  <div id="storeRunnerBoot" data-store-runner-boot role="status" aria-live="polite"><div class="srBootInner"><img src="./app-icon.svg?rev=20261006-r60-runner-no-empty-six-276" alt="S-RUNNER"><strong>Store Runner</strong><span class="srBootSig">S-RUNNER By Red①</span><span id="bootText" class="srBootText" data-boot-text>Chargement de ton espace terrain…</span></div></div>
+  <div id="storeRunnerBoot" data-store-runner-boot role="status" aria-live="polite"><div class="srBootInner"><img src="./app-icon.svg?rev=20261006-r61-runner-ambient-276" alt="S-RUNNER"><strong>Store Runner</strong><span class="srBootSig">S-RUNNER By Red①</span><span id="bootText" class="srBootText" data-boot-text>Chargement de ton espace terrain…</span></div></div>
   <script>
   (async function(){
-    const BUILD_REV='20261006-r60-runner-no-empty-six-276';
+    const BUILD_REV='20261006-r61-runner-ambient-276';
     const withRev=(path)=>path+'?rev='+BUILD_REV;
 
     /* V234 — un seul écran de chargement, du tout premier octet jusqu'à l'accueil final.
@@ -407,7 +407,7 @@
       const scriptTag=(src)=>'<script src="'+withRev(src)+'"><\/script>';
       const styleTag=(href)=>'<link rel="stylesheet" href="'+withRev(href)+'">';
       const calendarOauthShim=[
-        './calendar-oauth.js','./planning-generation-controller.js','./planning-cascade-v181.js','./calendar-enhancements.js','./ui-polish.js','./route-polish.js','./runner-behavior.js','./navigation-controller.js','./profile-controller.js','./store-runner-branding.js','./planning-ui-fixes.js','./ai-gateway-config.js','./assistant-upgrade.js','./assistant-visit-context.js','./ai-context-limit.js','./assistant-store-lookup.js','./map-layer-fix.js','./timeline-end-times.js','./visit-counting.js','./visit-coverage.js','./planning-day-origin.js','./range-planner-v2.js','./store-opening-hours.js','./boulanger-default-hours.js','./store-photos.js','./terrain-planning-v1.js','./working-hours-end.js','./daily-capacity.js','./planning-pro-plus.js','./period-day-slider.js','./planning-manual-visits.js','./workdays-enforcer.js','./visit-history-delete.js','./assistant-sheet-drag.js','./visual-refresh-v1.js','./home-refresh-v2.js','./sector-pilotage.js','./v182-fixes.js','./planning-route-optimizer-v251.js','./auto-planning-fix.js','./planning-summary-v219.js','./performance-data-v190.js','./performance-ui-v190.js','./assistant-performance-context-v192.js','./visit-mobile-ux-v215.js','./visit-mobile-tabs-v216.js','./update-manager.js','./store-runner-whats-new.js','./planning-manual-hours.js','./planning-reorder-v254.js','./weekly-brief-v246.js','./weekly-brief-ui-v246.js','./planning-command-engine.js','./store-explorer.js','./runner-visual.js','./weekly-brief-import-v246b.js','./mobile-ux-v262.js'
+        './calendar-oauth.js','./planning-generation-controller.js','./planning-cascade-v181.js','./calendar-enhancements.js','./ui-polish.js','./route-polish.js','./runner-behavior.js','./navigation-controller.js','./profile-controller.js','./store-runner-branding.js','./planning-ui-fixes.js','./ai-gateway-config.js','./assistant-upgrade.js','./assistant-visit-context.js','./ai-context-limit.js','./runner-ambient.js','./assistant-store-lookup.js','./map-layer-fix.js','./timeline-end-times.js','./visit-counting.js','./visit-coverage.js','./planning-day-origin.js','./range-planner-v2.js','./store-opening-hours.js','./boulanger-default-hours.js','./store-photos.js','./terrain-planning-v1.js','./working-hours-end.js','./daily-capacity.js','./planning-pro-plus.js','./period-day-slider.js','./planning-manual-visits.js','./workdays-enforcer.js','./visit-history-delete.js','./assistant-sheet-drag.js','./visual-refresh-v1.js','./home-refresh-v2.js','./sector-pilotage.js','./v182-fixes.js','./planning-route-optimizer-v251.js','./auto-planning-fix.js','./planning-summary-v219.js','./performance-data-v190.js','./performance-ui-v190.js','./assistant-performance-context-v192.js','./visit-mobile-ux-v215.js','./visit-mobile-tabs-v216.js','./update-manager.js','./store-runner-whats-new.js','./planning-manual-hours.js','./planning-reorder-v254.js','./weekly-brief-v246.js','./weekly-brief-ui-v246.js','./planning-command-engine.js','./store-explorer.js','./runner-visual.js','./weekly-brief-import-v246b.js','./mobile-ux-v262.js'
       ].map(scriptTag).join('');
       const v184RuntimeShim='<script>(function(){\
 \'use strict\';\
