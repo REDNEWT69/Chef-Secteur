@@ -111,6 +111,7 @@ jobs:
       - run: node tests/period-day-slider.test.cjs
       - run: node tests/store-explorer-v266.test.cjs
       - run: node tests/runner-behavior-v273.test.cjs
+      - run: node tests/runner-intelligence-v276.test.cjs
       - run: node tests/boot-storage-race-505.test.cjs
       - run: node tests/planning-placement-why-v274.test.cjs
       - run: node tests/runner-visual-v269.test.cjs

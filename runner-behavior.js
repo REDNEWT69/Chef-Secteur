@@ -5,7 +5,11 @@
    les données métier : l'hôte lui passe des faits primitifs et applique le descripteur qu'il reçoit.
    Aucun timer, écouteur, observateur, réseau, aléa ni lecture de l'horloge : `now` et la date locale
    (`facts.date`, AAAA-MM-JJ) sont fournis par l'hôte. Les fonctions publiques ne modifient jamais leurs
-   arguments et ne lèvent jamais d'exception vers l'appelant. */
+   arguments et ne lèvent jamais d'exception vers l'appelant.
+   V276 — deux familles distinctes. DÉCORATIF (ambient, presence, social) : budgets, écarts, anti-spam, registre.
+   MÉTIER (kind « business », plus `signature`, `remarks`, `brief`) : lecture dérivée de faits lus chez leurs
+   propriétaires, jamais bloquée par un cooldown décoratif, ne consommant aucun budget décoratif, jamais
+   persistée : la même entrée donne la même sortie, donc rien de métier ne peut être périmé. */
 (function(root,factory){
   const api=factory();
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
@@ -46,6 +50,8 @@ const CONFIG=Object.freeze({
   registryMaxChars:2048,      // taille maximale du registre sérialisé
   labelMaxChars:32,           // longueur maximale d'un nom fourni par un propriétaire
   reasonMaxChars:40,
+  lineMaxChars:140,           // V276 : longueur maximale d'une remarque métier
+  briefMaxLines:3,            // V276 : lignes maximales du « point du jour » (tap sur Runner)
   messageMs:6000              // durée d'affichage d'un message ou d'un état de réaction
 });
 const NUMERIC_KEYS=Object.freeze(Object.keys(CONFIG).filter(k=>typeof CONFIG[k]==='number'));
@@ -83,7 +89,7 @@ function validKey(k){return typeof k==='string'&&/^[A-Za-z0-9._:-]{1,64}$/.test(
    état seul. `{nom}` est un fait fourni par l'hôte, `{nom:mot}` ajoute le mot (pluriel en « s »).
    Les titres ne concernent que les états métier, par surface hôte : Copilote reprend les titres V271. */
 const PERSONALITIES=deepFreeze({
-  copilote:{id:'copilote',label:'Copilote',blurb:'Calme et factuel : l’essentiel, sans détour.',tone:'factuel',proactivity:1,textBudgetPerDay:2,idle:true,
+  copilote:{id:'copilote',label:'Copilote',blurb:'Calme et factuel : l’essentiel, sans détour.',tone:'factuel',proactivity:1,textBudgetPerDay:2,remarkCap:2,idle:true,
     titles:{planning:{analyzing:'Génération en cours…',alert:'Contrainte détectée',success:'C’est fait !'},assistant:{analyzing:'Analyse en cours…',alert:'Attention !',success:'C’est fait !'}},
     reactions:{
       'tour.finished':{copy:['Tournée terminée. Magasins visités : {done}.','Tournée terminée : {done} sur {total}.']},
@@ -93,7 +99,7 @@ const PERSONALITIES=deepFreeze({
       'day.empty':{copy:['Rien de prévu aujourd’hui.','Aucune visite prévue aujourd’hui.']},
       'home.return':{copy:[]},'touch.runner':{copy:[]},
       'personality.changed':{copy:['Je reste sobre et factuel.','Je te dis l’essentiel.']}}},
-  complice:{id:'complice',label:'Complice',blurb:'Chaleureux : plus vivant, avec de petites remarques sympathiques.',tone:'chaleureux',proactivity:2,textBudgetPerDay:3,idle:true,
+  complice:{id:'complice',label:'Complice',blurb:'Chaleureux : plus vivant, avec de petites remarques sympathiques.',tone:'chaleureux',proactivity:2,textBudgetPerDay:3,remarkCap:2,idle:true,
     titles:{planning:{analyzing:'Je prépare ça…',alert:'Un point à vérifier',success:'Voilà, c’est fait.'},assistant:{analyzing:'Je regarde ça…',alert:'Un point à vérifier',success:'Voilà, c’est fait.'}},
     reactions:{
       'tour.finished':{copy:['Belle tournée : {done} sur {total}. Tu peux souffler.','Belle tournée. {done} sur {total}, c’est fait.']},
@@ -103,7 +109,7 @@ const PERSONALITIES=deepFreeze({
       'day.empty':{copy:['Rien au programme aujourd’hui.','Journée sans visite prévue.']},
       'home.return':{copy:[]},'touch.runner':{copy:[]},
       'personality.changed':{copy:['Je suis là pour t’accompagner.','On fait la tournée ensemble.']}}},
-  coach:{id:'coach',label:'Coach',blurb:'Énergique : il garde le rythme de ta tournée.',tone:'énergique',proactivity:2,textBudgetPerDay:3,idle:true,
+  coach:{id:'coach',label:'Coach',blurb:'Énergique : il garde le rythme de ta tournée.',tone:'énergique',proactivity:2,textBudgetPerDay:3,remarkCap:2,idle:true,
     titles:{planning:{analyzing:'Je prépare le plan…',alert:'À régler',success:'Validé.'},assistant:{analyzing:'Analyse…',alert:'À régler',success:'Validé.'}},
     reactions:{
       'tour.finished':{copy:['Tournée bouclée : {done} sur {total}.','Tournée bouclée. {done} sur {total}, bien joué.']},
@@ -116,7 +122,7 @@ const PERSONALITIES=deepFreeze({
   /* Taquin : humour sec, jamais sur ce qui est grave. Les titres d'alerte du Planning (contraintes métier) restent
      clairs ; seule une erreur technique de l'Assistant peut recevoir une pointe, et le message du propriétaire,
      qui porte le fait et l'action possible, est toujours affiché tel quel juste dessous. */
-  taquin:{id:'taquin',label:'Taquin',blurb:'Humour sec : il plaisante, mais reste utile.',tone:'ironique',proactivity:2,textBudgetPerDay:3,idle:true,
+  taquin:{id:'taquin',label:'Taquin',blurb:'Humour sec : il plaisante, mais reste utile.',tone:'ironique',proactivity:2,textBudgetPerDay:3,remarkCap:2,idle:true,
     titles:{planning:{analyzing:'Je m’en occupe…',alert:'Contrainte détectée',success:'Voilà. C’était pas si dur.'},assistant:{analyzing:'Je cogite…',alert:'Bon. Ça, c’était pas dans le plan.',success:'Voilà, c’est réglé.'}},
     reactions:{
       'tour.finished':{copy:['Tournée bouclée : {done} sur {total}. Je dirai que c’était facile.','{done} sur {total}. Tu peux dire que c’était mon idée.']},
@@ -126,7 +132,7 @@ const PERSONALITIES=deepFreeze({
       'day.empty':{copy:['Rien de prévu aujourd’hui. Étrange, mais je ne dis rien.','Aucune visite aujourd’hui. Je m’y habituerais presque.']},
       'home.return':{copy:[]},'touch.runner':{copy:[]},
       'personality.changed':{copy:['Je promets de rester utile. Et mordant.','Bon. On va s’amuser un peu.']}}},
-  discret:{id:'discret',label:'Discret',blurb:'Presque muet : il ne réagit qu’à ce que tu fais.',tone:'minimal',proactivity:0,textBudgetPerDay:0,idle:false,
+  discret:{id:'discret',label:'Discret',blurb:'Presque muet : il ne réagit qu’à ce que tu fais.',tone:'minimal',proactivity:0,textBudgetPerDay:0,remarkCap:1,idle:false,
     titles:{planning:{analyzing:'En cours…',alert:'Contrainte',success:'Fait.'},assistant:{analyzing:'En cours…',alert:'Contrainte',success:'Fait.'}},
     reactions:{
       'tour.finished':{copy:[]},
@@ -135,11 +141,12 @@ const PERSONALITIES=deepFreeze({
 
 /* ---------------------------------------------------------------- réactions */
 /* kind : ambient (parle ou regarde à l'arrivée), presence (geste de retour), social (toucher),
-   user (action explicite de l'utilisateur : aucun budget). `weight` ordonne les gagnants ; l'ordre du
+   user (action explicite de l'utilisateur : aucun budget), business (V276 : fait métier — une tournée
+   terminée n'attend ni l'écart de texte, ni le budget quotidien, ni la garde d'arrivée ; une fois par jour). `weight` ordonne les gagnants ; l'ordre du
    tableau départage. `stateOnlyOk` : l'état visuel suffit si le texte est refusé par le budget. */
 const REACTIONS=deepFreeze([
   {id:'personality.changed',kind:'user',weight:90,surfaces:['sheet'],triggers:['personality'],state:'neutral',gesture:'acknowledge',look:null,gestureMs:600},
-  {id:'tour.finished',kind:'ambient',weight:70,surfaces:['home'],triggers:['arrive','rerender'],state:'success',gesture:null,look:null,gestureMs:0,stateOnlyOk:true},
+  {id:'tour.finished',kind:'business',weight:70,surfaces:['home'],triggers:['arrive','rerender'],state:'success',gesture:null,look:null,gestureMs:0,stateOnlyOk:true},
   {id:'attention.notice',kind:'ambient',weight:60,surfaces:['home'],triggers:['arrive'],state:'neutral',gesture:'lookToward',look:'card',gestureMs:1400},
   {id:'welcome.back',kind:'ambient',weight:55,surfaces:['home'],triggers:['arrive'],state:'neutral',gesture:'acknowledge',look:'down',gestureMs:600,absorbs:['day.ready']},
   {id:'day.ready',kind:'ambient',weight:40,surfaces:['home'],triggers:['arrive'],state:'neutral',gesture:'lookToward',look:'card',gestureMs:1400},
@@ -376,7 +383,7 @@ const RULES={
 };
 
 function build(def,entry,hit,c){
-  const copy=Array.isArray(entry.copy)?entry.copy:[],f=c.inp.facts,now=c.inp.now,user=def.kind==='user';
+  const copy=Array.isArray(entry.copy)?entry.copy:[],f=c.inp.facts,now=c.inp.now,user=def.kind==='user'||def.kind==='business';
   let text=null,index=null,counted=false;
   if(copy.length){
     const used=c.reg.textDay.date===f.date?c.reg.textDay.n:0;
@@ -406,7 +413,8 @@ function decide(input,registry,options){
     let best=null;
     for(const def of REACTIONS){
       if(def.surfaces.indexOf(inp.surface)===-1||def.triggers.indexOf(inp.trigger)===-1||!has(p.reactions,def.id))continue;
-      if(def.kind==='ambient'&&(!inp.facts.date||elapsed(inp.now,reg.session.lastReaction[inp.surface])<o.cfg.arrivalGuardMs))continue;
+      if((def.kind==='ambient'||def.kind==='business')&&!inp.facts.date)continue;
+      if(def.kind==='ambient'&&elapsed(inp.now,reg.session.lastReaction[inp.surface])<o.cfg.arrivalGuardMs)continue;
       const hit=RULES[def.id](c);
       if(!hit)continue;
       const built=build(def,p.reactions[def.id],hit,c);
@@ -421,9 +429,14 @@ function decide(input,registry,options){
 function record(registry,reaction,input,options){
   const o=resolveOptions(options),cfg=o.cfg,i=isObj(input)?input:{},now=num(i.now),date=isoDate(i.date);
   const reg=normalizeRegistry(registry,{now,date},o,true),def=isObj(reaction)?reactionById(reaction.id):null;
-  if(!def||now===null||(def.kind==='ambient'&&!date))return{registry:reg,dirty:false};
+  if(!def||now===null||((def.kind==='ambient'||def.kind==='business')&&!date))return{registry:reg,dirty:false};
   const meta=isObj(reaction.meta)?reaction.meta:{},next=JSON.parse(JSON.stringify(reg));
   let dirty=false;
+  if(def.kind==='business'){
+    const key=validKey(meta.key)?meta.key:def.id;
+    next.shown[key]={d:date,t:now};
+    dirty=true;
+  }
   if(def.kind==='ambient'){
     const key=validKey(meta.key)?meta.key:def.id;
     next.shown[key]={d:date,t:now};
@@ -485,6 +498,88 @@ function listPersonalities(options){
 /* Contrôleur de session : garde le registre en mémoire (source unique pour tous les écrans) et le persiste par
    l'adaptateur que l'hôte lui a confié (`connect`). Sans adaptateur, il travaille en mémoire seule. Le contrôleur
    ne lit ni n'écrit rien d'autre, n'a aucun timer ni écouteur, et ne lève jamais d'exception. */
+/* ------------------------------------------------------------ V276 : métier */
+const REMARK_KINDS=Object.freeze(['inconsistency','overdue-action','recurring','regression','improved','trend','open-actions','revisit']);
+const REMARK_TONES=Object.freeze(['attention','positive','neutral']);
+function fr(n,one,many){return n+' '+(n>1?many:one)}
+
+/* signature : empreinte des faits dont dépend ce qu'une ligne ambiante affirme (tournée, point d'attention, dernière
+   visite, jour). L'hôte la garde avec la ligne affichée : dès qu'elle change, la ligne est retirée, jamais repeinte. */
+function signature(facts,options){
+  try{
+    const o=resolveOptions(options),inp=normalizeInput({surface:'home',trigger:'arrive',now:0,facts:isObj(facts)?facts:{}},o.cfg);
+    if(!inp)return '';
+    const f=inp.facts,t=f.tour,a=f.attention;
+    return [f.date||'',f.workday===null?'':f.workday?'1':'0',f.afterHours?'1':'0',f.mode||'',
+      t?t.total+'/'+t.done+(t.finished?'f':''):'-',a?a.kind+':'+a.key:'-',f.lastVisitDaysAgo===null?'':f.lastVisitDaysAgo,f.busy?'b':''].join('|');
+  }catch(e){return ''}
+}
+function cleanRemarks(items,cfg){
+  const out=[];
+  if(!Array.isArray(items))return out;
+  for(let i=0;i<items.length&&i<12;i++){
+    const it=items[i];
+    if(!isObj(it)||REMARK_KINDS.indexOf(it.kind)===-1)continue;
+    const text=clean(it.text,cfg.lineMaxChars);
+    if(!text)continue;
+    const sev=int(it.severity,0,3);
+    out.push({id:keyToken(it.id)||it.kind,kind:it.kind,severity:sev===null?1:sev,tone:REMARK_TONES.indexOf(it.tone)!==-1?it.tone:'neutral',text,order:i});
+  }
+  return out;
+}
+/* remarks : au plus 1 ou 2 remarques utiles (1 pour Discret), la plus grave d'abord, une par nature. Rien d'utile = aucune
+   ligne. Le texte est celui du propriétaire de l'analyse : ce module ne fait que choisir, jamais reformuler. */
+function remarks(input,options){
+  const none=()=>deepFreeze({lines:[],tone:'neutral',state:'neutral'});
+  try{
+    const o=resolveOptions(options),i=isObj(input)?input:{};
+    const p=o.personalities[has(o.personalities,i.personality)?i.personality:DEFAULT_PERSONALITY];
+    const cap=Math.min(int(i.max,1,2)||2,int(p.remarkCap,1,2)||2);
+    const list=cleanRemarks(i.items,o.cfg).sort((a,b)=>b.severity-a.severity||a.order-b.order);
+    const seen=new Set(),lines=[];
+    for(const r of list){if(lines.length>=cap)break;if(seen.has(r.kind))continue;seen.add(r.kind);lines.push(r)}
+    if(!lines.length)return none();
+    const first=lines[0],state=first.tone==='attention'&&first.severity>=2?'alert':first.tone==='positive'?'success':'neutral';
+    return deepFreeze({lines:lines.map(r=>({id:r.id,kind:r.kind,text:r.text})),tone:first.tone,state});
+  }catch(e){return none()}
+}
+function briefTour(raw,cfg){
+  if(!isObj(raw))return null;
+  const total=int(raw.total,0,999),done=int(raw.done,0,999);
+  if(total===null||done===null||total<1)return null;
+  let next=null;
+  if(isObj(raw.next)){const key=keyToken(raw.next.key),label=clean(raw.next.label,cfg.labelMaxChars);if(key&&label)next={key,label}}
+  return{total,done,finished:raw.finished===true,next};
+}
+/* brief : le « point du jour » ouvert par un tap sur Runner. Au plus briefMaxLines lignes : l'état de la tournée, puis la
+   lecture du dernier passage (remarques), puis le point d'attention. Des phrases factuelles, une action possible au plus par
+   ligne (ouvrir la fiche d'un magasin), exécutée par l'hôte chez le propriétaire. */
+function brief(input,options){
+  const empty=()=>deepFreeze({lines:[],empty:true});
+  try{
+    const o=resolveOptions(options),cfg=o.cfg,i=isObj(input)?input:{};
+    const t=briefTour(i.tour,cfg),mode=i.mode==='today'||i.mode==='next'?i.mode:null,lines=[];
+    if(t){
+      if(t.finished)lines.push({id:'day.finished',text:'Tournée terminée : '+t.done+' sur '+t.total+'.',action:null});
+      else if(mode==='next')lines.push({id:'day.next',text:'Prochaine tournée : '+fr(t.total,'visite','visites')+'.',action:null});
+      else{
+        const left=Math.max(0,t.total-t.done);
+        lines.push({id:'day.left',text:fr(left,'visite restante','visites restantes')+' aujourd’hui'+(t.next?' · prochaine : '+t.next.label:'')+'.',action:t.next?{type:'open-store',storeId:t.next.key}:null});
+      }
+    }else if(i.workday===true&&mode==='today'&&i.afterHours!==true)lines.push({id:'day.empty',text:'Rien de prévu aujourd’hui.',action:null});
+    const rem=cleanRemarks(isObj(i.remarks)?i.remarks.lines:null,cfg).slice(0,2);
+    for(const r of rem)lines.push({id:r.id,text:r.text,action:null});
+    let attention=null;
+    if(isObj(i.attention)&&ATTENTION_KINDS.indexOf(i.attention.kind)!==-1){
+      const key=keyToken(i.attention.key),label=clean(i.attention.label,cfg.labelMaxChars);
+      if(key&&label)attention={key,label,reason:clean(i.attention.reason,cfg.reasonMaxChars)};
+    }
+    if(attention&&!rem.some(r=>r.kind==='overdue-action'))lines.push({id:'attention',text:'À regarder : '+attention.label+(attention.reason?', '+attention.reason:'')+'.',action:{type:'open-store',storeId:attention.key}});
+    const out=lines.slice(0,cfg.briefMaxLines);
+    return deepFreeze({lines:out,empty:!out.length});
+  }catch(e){return empty()}
+}
+
 function createController(adapter,options){
   let reg=defaultRegistry(),loaded=false;
   const ctxOf=input=>({now:input&&num(input.now),date:input&&isoDate(input.date||(input.facts&&input.facts.date))});
@@ -508,6 +603,9 @@ function createController(adapter,options){
       return r.dirty;
     },
     title(surface,state){return title(ensure(null).personality,surface,state,options)},
+    remarks(input){return remarks(Object.assign({},isObj(input)?input:{},{personality:ensure(null).personality}),options)},
+    brief(input){return brief(input,options)},
+    signature(facts){return signature(facts,options)},
     idle:()=>idleAllowed(ensure(null).personality,options),
     registry:()=>ensure(null)
   };
@@ -523,6 +621,7 @@ return{
   defaultRegistry,normalizeRegistry:(raw,ctx,options)=>{try{return normalizeRegistry(raw,ctx,resolveOptions(options),true)}catch(e){return defaultRegistry()}},
   serializeRegistry,parseRegistry,loadRegistry,saveRegistry,
   decide,record,touch,setPersonality,title,idleAllowed,listPersonalities,
+  REMARK_KINDS,signature,remarks,brief,
   createController,connect,controller
 };
 });
