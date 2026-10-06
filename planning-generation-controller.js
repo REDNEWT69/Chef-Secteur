@@ -151,8 +151,8 @@
       generationStatus('Départ du cycle : semaine du '+humanDate(start)+' · acquisition de ta position actuelle…','busy',previousWeek);
       if(typeof window.storeRunnerPreparePlanningOrigin!=='function')throw new Error('La localisation n’est pas encore chargée. Réessaie dans un instant.');
       const origin=await window.storeRunnerPreparePlanningOrigin();
-      if(!origin||origin.ok!==true)throw new Error(origin&&origin.error||'Localisation indisponible. Enregistre un point de départ dans Mon activité.');
-      if(!hasValidBase())throw new Error('Point de départ incomplet. Enregistre une base dans Mon activité ou autorise la localisation.');
+      if(!origin||origin.ok!==true)throw new Error(origin&&origin.error||'Localisation indisponible. Enregistre un point de départ dans Mon secteur.');
+      if(!hasValidBase())throw new Error('Point de départ incomplet. Enregistre une base dans Mon secteur ou autorise la localisation.');
       const originMessage=origin.source==='saved_base'?(origin.message||'Localisation indisponible : utilisation de ta base enregistrée.')+' ':'';
       generationStatus(originMessage+'Génération de 3 semaines à partir du '+humanDate(start<today?today:start)+' · rotation géographique…','busy',previousWeek);
       const previousThreeWeekPlanningFlag=window.__storeRunnerPlanningGenerationActive;
@@ -194,7 +194,7 @@
        */
       generationStatus('Génération de la semaine · géographie + découché…','busy');
       if(!hasValidBase()){
-        const message='Point de départ incomplet. Dans Mon activité, saisis une ville ou une adresse (ex. Francheville), puis enregistre les réglages.';
+        const message='Point de départ incomplet. Dans Mon secteur, saisis une ville ou une adresse (ex. Francheville), puis enregistre les réglages.';
         generationStatus(message,'bad');
         return{ok:false,__storeRunnerRejectedEmpty:true,error:message};
       }
