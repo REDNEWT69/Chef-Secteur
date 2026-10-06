@@ -310,6 +310,13 @@ function linkGroupContracts(rows){
 function activeStatus(v){const n=norm(v);return !!n&&!/(finalis|termine|clotur|closed)/.test(n)}
 function latestByDate(rows){return rows.slice().sort((a,b)=>String(b.endDate||b.startDate||'').localeCompare(String(a.endDate||a.startDate||'')))[0]||null}
 function matchHitToContract(hit,c){if(!c)return false;if(norm(c.brand)!==norm(hit.brand))return false;const a=cityKey(c.city),b=hit.cityKey;if(a===b)return true;if(a.includes(b)||b.includes(a))return true;const at=a.split(' ').filter(x=>x.length>2),bt=b.split(' ').filter(x=>x.length>2);return bt.length>=2&&bt.filter(x=>at.includes(x)).length>=Math.min(2,bt.length)}
+/* Dès qu'une ville exacte existe, elle gagne : le repli historique par tokens ne doit pas
+   faire confondre deux magasins d'un même groupement qui partagent des mots génériques. */
+function contractsForSite(site,contracts){
+  const branded=(contracts||[]).filter(c=>norm(c&&c.brand)===norm(site&&site.brand));
+  const exact=branded.filter(c=>cityKey(c.city)===site.cityKey&&!!site.cityKey);
+  return exact.length?exact:branded.filter(c=>matchHitToContract(site,c));
+}
 /* Identité d'un groupe de contrats du suivi, indépendante de HITLIST. Le nom de société
    n'est JAMAIS une identité à lui seul : deux magasins distincts peuvent partager la même
    raison sociale. On retient enseigne normalisée + numéro client, et à défaut enseigne
@@ -360,7 +367,7 @@ function buildTrackingReserve(contracts,knownHitSites){
   const known=Array.isArray(knownHitSites)?knownHitSites:[];
   const list=Array.from(groups.values()),claimed=new Set();
   for(const site of known){
-    const hits=list.filter(g=>g.rows.some(c=>matchHitToContract(site,c)));
+    const hits=list.filter(g=>contractsForSite(site,g.rows).length>0);
     if(hits.length===1)claimed.add(hits[0]);
   }
   const out=[];
@@ -421,7 +428,7 @@ async function parseTrackingWorkbook(input,sector){
      quand la période ne désigne qu'un seul parent non ambigu. */
   for(let r=h.hr+1;r<rows.length;r++)parsed.push(contractFromRow(rows[r],h.idx));
   const all=linkGroupContracts(parsed);
-  const withContracts=site=>{const history=all.filter(c=>matchHitToContract(site,c));const active=latestByDate(history.filter(c=>activeStatus(c.status))),last=latestByDate(history);return Object.assign({},site,{activeContract:active||null,lastContract:last||null,history:history.slice().sort((a,b)=>String(b.endDate).localeCompare(String(a.endDate))).slice(0,12)})};
+  const withContracts=site=>{const history=contractsForSite(site,all);const active=latestByDate(history.filter(c=>activeStatus(c.status))),last=latestByDate(history);return Object.assign({},site,{activeContract:active||null,lastContract:last||null,history:history.slice().sort((a,b)=>String(b.endDate).localeCompare(String(a.endDate))).slice(0,12)})};
   const sites=hit.map(withContracts);
   /* Les sites du fichier hors périmètre au moment de l'import sont gardés en réserve, sans
      jamais être affichés ni comptés. C'est ce qui permet à un cuisiniste ajouté APRÈS
@@ -645,7 +652,7 @@ function attachObservers(){if(!root.document)return;if(!visitObserver){const d=r
 function install(){ensureStyle();ensureMenuEntry();attachObservers();renderStoreCard();queueVisitRender();return true}
 function scheduleInstall(){setTimeout(install,0);setTimeout(install,350);setTimeout(install,1200)}
 
-const api={STORE_KEY,HITLIST_COLUMNS,TRACKING_COLUMNS,MAX_RESERVE_SITES,buildTrackingReserve,trackingIdentity,siteIdentityLine,siteCompany,siteClient,sectorsIn,unzip,workbookSheets,sheetRows,readSheetByColumns,isCuisinisteStore,cuisinisteStores,matchSite,norm,cityKey,parseHitLabel,extractHitlist,contractIdentity,linkGroupContracts,mergeTrackingSnapshots,parseTrackingWorkbook,parseTariffWorkbook,saveTracking,saveTariff,latestTracking,latestTariff,readStore,writeStore,siteForStore,db,siteLabel,rememberMatch,resolveSites,appStoreScore,productInfo,urgency,briefingForStore,planningSignal,compactContext,answer,visitTips,open,install,importTracking,importTrackingFiles,importTariff,renderStoreCard,renderSheet,createBriefing};
+const api={STORE_KEY,HITLIST_COLUMNS,TRACKING_COLUMNS,MAX_RESERVE_SITES,buildTrackingReserve,trackingIdentity,siteIdentityLine,siteCompany,siteClient,sectorsIn,unzip,workbookSheets,sheetRows,readSheetByColumns,isCuisinisteStore,cuisinisteStores,matchSite,norm,cityKey,parseHitLabel,extractHitlist,contractsForSite,contractIdentity,linkGroupContracts,mergeTrackingSnapshots,parseTrackingWorkbook,parseTariffWorkbook,saveTracking,saveTariff,latestTracking,latestTariff,readStore,writeStore,siteForStore,db,siteLabel,rememberMatch,resolveSites,appStoreScore,productInfo,urgency,briefingForStore,planningSignal,compactContext,answer,visitTips,open,install,importTracking,importTrackingFiles,importTariff,renderStoreCard,renderSheet,createBriefing};
 root.StoreRunnerCuisinisteV193=api;
 if(typeof root.storeRunnerRegisterAssistantResolver==='function')root.storeRunnerRegisterAssistantResolver(answer,25);
 if(typeof root.storeRunnerRegisterAssistantContextTransform==='function')root.storeRunnerRegisterAssistantContextTransform(compactContext,75);
