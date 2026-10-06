@@ -21,6 +21,7 @@
 //   node tools/run-browser-tests.mjs               suite navigateur complète (liste CI)
 //   node tools/run-browser-tests.mjs <spec>...     seulement ces specs
 //   node tools/run-browser-tests.mjs --serve       sert l'application et reste ouvert
+//   STORE_RUNNER_E2E_SHARD=1/2 node tools/run-browser-tests.mjs <spec>...  partage la suite CI
 //
 // Sans liste de specs, elle est lue dans .github/workflows/reliability-checks.yml :
 // le workflow reste la seule source de vérité, donc le local exécute exactement la
@@ -37,6 +38,7 @@ const HOST = process.env.STORE_RUNNER_E2E_HOST || '127.0.0.1';
 const PORT = Number(process.env.STORE_RUNNER_E2E_PORT || 4173);
 const WORKFLOW = path.join(ROOT, '.github/workflows/reliability-checks.yml');
 const ONBOARDING_MODE_PARAM = 'e2eOnboarding';
+const AMBIENT_MODE_PARAM = 'e2eAmbient';
 
 const TYPES = new Map(Object.entries({
   '.html': 'text/html; charset=utf-8',
@@ -97,10 +99,14 @@ function repondreVide(res, code, message) {
   res.end(corps);
 }
 
-async function indexAvecUtilisateurExistant(fichier) {
+async function indexE2E(fichier, { utilisateurExistant, ambiantEteint }) {
   const source = await fsp.readFile(fichier, 'utf8');
   const marker = JSON.stringify({version:1,status:'complete',step:3,reason:'e2e-fixture'});
-  const injection = `<script>try{localStorage.setItem('store-runner-onboarding-v1',${JSON.stringify(marker)})}catch(e){}</script>`;
+  let injection = '';
+  if (utilisateurExistant) injection += `<script>try{localStorage.setItem('store-runner-onboarding-v1',${JSON.stringify(marker)})}catch(e){}</script>`;
+  // Runner Ambient (scènes aléatoires toutes les 8 à 12 s) est éteint pendant la suite E2E : les specs existants mesurent
+  // des Runners, des timers et des mutations sur plusieurs dizaines de secondes. Les specs Ambient l'allument avec `?e2eAmbient=on`.
+  if (ambiantEteint) injection += `<script>window.__STORE_RUNNER_AMBIENT='off'</script>`;
   return Buffer.from(source.replace('<head>', '<head>'+injection));
 }
 
@@ -139,8 +145,10 @@ function creerServeur(options = {}) {
     // ayant déjà terminé l'accueil. `?e2eOnboarding=first-run` restitue l'index strictement
     // réel pour le scénario dédié. Le mode --serve n'injecte jamais ce marqueur.
     const scenarioPremierLancement = url.searchParams.get(ONBOARDING_MODE_PARAM) === 'first-run';
-    if (skipOnboardingParDefaut && !scenarioPremierLancement && path.basename(fichier) === 'index.html') {
-      const corps = await indexAvecUtilisateurExistant(fichier);
+    const ambiantDemande = url.searchParams.get(AMBIENT_MODE_PARAM) === 'on' || process.env.STORE_RUNNER_E2E_AMBIENT === 'on';
+    const ambiantEteint = skipOnboardingParDefaut && !ambiantDemande;
+    if (skipOnboardingParDefaut && (!scenarioPremierLancement || ambiantEteint) && path.basename(fichier) === 'index.html') {
+      const corps = await indexE2E(fichier, { utilisateurExistant: !scenarioPremierLancement, ambiantEteint });
       res.writeHead(200, {
         'Content-Type': typeDe(fichier),
         'Content-Length': corps.length,
@@ -213,6 +221,17 @@ function lancerPlaywright(specs, baseUrl) {
     return Promise.resolve(1);
   }
   const args = [cli, 'test', ...specs, '--workers=1', '--reporter=line'];
+  const shard = String(process.env.STORE_RUNNER_E2E_SHARD || '').trim();
+  if (shard) {
+    const match = shard.match(/^(\d+)\/(\d+)$/);
+    const index = match ? Number(match[1]) : 0;
+    const total = match ? Number(match[2]) : 0;
+    if (!match || total < 1 || index < 1 || index > total) {
+      console.error(`STORE_RUNNER_E2E_SHARD invalide : "${shard}" (attendu : 1/2, 2/2, etc.)`);
+      return Promise.resolve(1);
+    }
+    args.push(`--shard=${shard}`);
+  }
   const enfant = spawn(process.execPath, args, {
     cwd: ROOT,
     stdio: 'inherit',

@@ -1,4 +1,4 @@
-const BUILD_REV = "20261006-r61-overnight-opportunity-276";
+const BUILD_REV = "20261006-r62-runner-ambient-276";
 /* V261.2 hotfix : même révision applicative, nouveau namespace de cache afin que les
    PWA déjà installées récupèrent le correctif de capacité à la source (visit-counting.js)
    sans mélanger ancien et nouveau shell. Le BUILD_REV reste V261 : aucune migration. */
@@ -30,7 +30,7 @@ const CORE_SHELL = [
   "./terrain-planning-v1.js", "./working-hours-end.js", "./daily-capacity.js",
   "./planning-pro-plus.js", "./planning-summary-v219.js", "./period-day-slider.js",
   "./planning-manual-visits.js", "./planning-reorder-v254.js", "./workdays-enforcer.js",
-  "./planning-command-engine.js", "./store-explorer.js", "./runner-visual.js", "./runner-behavior.js",
+  "./planning-command-engine.js", "./store-explorer.js", "./runner-visual.js", "./runner-behavior.js", "./runner-ambient.js",
   "./visit-history-delete.js", "./assistant-sheet-drag.js", "./visual-refresh-v1.js",
   "./home-refresh-v2.js", "./sector-pilotage.js", "./v182-fixes.js",
   "./planning-route-optimizer-v251.js", "./auto-planning-fix.js",

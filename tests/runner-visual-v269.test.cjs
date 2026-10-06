@@ -65,13 +65,15 @@ assert.doesNotMatch(mod, /\.install\s*\(|DOMContentLoaded|readyState/, 'aucun d�
 const css = (mod.match(/const CSS=\[([\s\S]*?)\]\.join\(''\)/) || [])[1] || '';
 assert.ok(css.length > 500, 'feuille de style trouvée');
 const keyframeBlocks = css.match(/@keyframes [^']+/g) || [];
-assert.equal(keyframeBlocks.length, 5, 'cinq animations déclarées : pop, bulle, points, pastille, étincelles');
+assert.equal(keyframeBlocks.length, 7, 'sept animations déclarées : pop, bulle, points, pastille, étincelles + balancement des deux jambes (V1 Ambient, posture assise)');
 for (const block of keyframeBlocks) {
   const properties = [...block.matchAll(/([a-z-]+)\s*:/g)].map(m => m[1]);
   for (const property of properties) assert.ok(['transform', 'opacity'].includes(property), 'animation limitée à transform/opacity : ' + property + ' dans ' + block.slice(0, 40));
 }
 assert.doesNotMatch(css, /infinite/, 'aucune animation infinie : un état oublié ne tourne jamais en continu');
-assert.match(css, /animation:srRunnerDot 1\.4s ease-in-out 16/, 'la seule boucle (points « analyzing ») est bornée à 16 passages');
+assert.match(css, /animation:srRunnerDot 1\.4s ease-in-out 16/, 'la boucle des points « analyzing » est bornée à 16 passages');
+assert.match(css, /animation:srRunnerLegL \.7s ease-in-out \.2s 3\}/, 'le balancement des jambes est borné à 3 passages');
+assert.match(css, /animation:srRunnerLegR \.7s ease-in-out \.4s 3\}/, 'le balancement de la 2e jambe est borné à 3 passages');
 assert.deepEqual([...css.matchAll(/'([^'{]+)\{[^}']*!important[^}']*\}'/g)].map(m => m[1]).filter(sel => !/prefers-reduced|data-motion|data-presence/.test(sel) && !/\*/.test(sel)),
   ['.srRunnerFigure .rnArt', '.srRunnerIcon svg', '.srRunner[data-state="alert"] .rnIconAlert,.srRunner[data-state="success"] .rnIconOk'],
   '!important réservé aux SVG de Runner, que les règles `#id svg` de l’application atteignent sinon');
@@ -99,9 +101,11 @@ assert.match(css, /\.srRunnerFigure\{[^}]*pointer-events:none/);
 assert.doesNotMatch(mod, /\bxl\b/, 'plus de grande taille de type desktop');
 
 /* 7. Légèreté : un seul fichier, aucune dépendance, aucune image embarquée. */
-// V272 adds one bounded, presentation-only react() API; gzip budget stays unchanged.
-assert.ok(Buffer.byteLength(mod) < 45 * 1024, 'runner-visual.js reste sous 45 Ko, commentaires compris (' + Buffer.byteLength(mod) + ' octets)');
-assert.ok(require('zlib').gzipSync(mod).length < 14 * 1024, 'runner-visual.js reste sous 14 Ko compressé');
+// V272 ajoutait react() ; le fichier atteignait alors 46 075 octets pour un plafond de 46 080. Runner Ambient V1 ajoute la
+// posture « assise » (jambes, halo au sol, balancement fini), le geste `tilt` et l'instance détachée : plafonds relevés
+// explicitement de 45 à 50 Ko (gzip 14 à 16 Ko), décision de la PR Ambient, jamais en silence.
+assert.ok(Buffer.byteLength(mod) < 50 * 1024, 'runner-visual.js reste sous 50 Ko, commentaires compris (' + Buffer.byteLength(mod) + ' octets)');
+assert.ok(require('zlib').gzipSync(mod).length < 16 * 1024, 'runner-visual.js reste sous 16 Ko compressé');
 assert.doesNotMatch(mod, /data:image|<image\b|url\(['"]?https?:|@import|\brequire\s*\(|\bimport\s/, 'aucune image ni dépendance externe');
 
 /* 8. API pure (sans DOM). */
@@ -186,7 +190,7 @@ assert.equal(typeof ctxTaken.StoreRunnerRunner.setState, 'function', 'le nom can
 /* 10. Surfaces branchées par leur propriétaire : Assistant, Planning, Accueil, premier lancement et, depuis V276, la remarque « À retenir » du rapport de visite clôturé. */
 const consumers = fs.readdirSync(path.join(__dirname, '..')).filter(f => f.endsWith('.js') && f !== 'runner-visual.js');
 const wired = consumers.filter(f => /StoreRunnerRunner|\bRunner\.(setState|showMessage|mount|reset|unmount|getState)\b|window\.Runner\b/.test(read(f)));
-assert.deepEqual(wired.sort(), ['assistant-upgrade.js', 'home-refresh-v2.js', 'navigation-controller.js', 'planning-ui-fixes.js', 'store-runner-visits.js'], 'Runner est branché par les propriétaires Assistant, Accueil, premier lancement (navigation-controller.js), Planning et rapport de visite clôturé (store-runner-visits.js, V276) : ' + wired.join(', '));
+assert.deepEqual(wired.sort(), ['assistant-upgrade.js', 'home-refresh-v2.js', 'navigation-controller.js', 'planning-ui-fixes.js', 'runner-ambient.js', 'store-runner-visits.js'], 'Runner est branché par les propriétaires Assistant, Accueil, premier lancement (navigation-controller.js), Planning et rapport de visite clôturé (store-runner-visits.js, V276) et, depuis Runner Ambient V1, sa couche ambiante (runner-ambient.js, acteur détaché) : ' + wired.join(', '));
 assert.doesNotMatch(read('src/chef-secteur.html'), /StoreRunnerRunner|\bRunner\.(setState|showMessage|mount|reset)\b|srRunner/, 'le noyau ne branche pas Runner');
 for (const owner of ['planning-command-engine.js', 'store-explorer.js', 'visit-coverage.js', 'planning-generation-controller.js', 'sector-pilotage.js', 'terrain-planning-v1.js', 'planning-cascade-v181.js', 'range-planner-v2.js', 'store-opening-hours.js', 'planning-pro-plus.js', 'period-day-slider.js'])
   assert.doesNotMatch(read(owner), /StoreRunnerRunner|window\.Runner\b|(?<![A-Za-z])Runner\.(mount|unmount|setState|showMessage|hideMessage|reset|getState)\b|srRunner|srAssistantRunner|planningRunnerV269/, owner + ' ne connaît pas Runner (ni moteur, ni Forecast, ni Command Engine, ni Explorer Terrain)');
