@@ -62,10 +62,12 @@ async function prepare(page, { reduced = false } = {}) {
     window.requestAnimationFrame = function (...args) { if (mine()) audit.raf++; return raf.apply(this, args); };
     EventTarget.prototype.addEventListener = function (type, ...rest) { if (mine()) audit.listeners.push(type); return add.call(this, type, ...rest); };
     /* Audit à la source des écritures DOM : tant que `watch` est vrai, tout appel d'écriture dont la pile passe par runner-ambient.js est
-       compté (`ops`) ; hors calque, <html data-sr-ambient>, <head> (feuille de style) et ajout du calque au <body>, il est « étranger ». */
+       compté (`ops`) ; hors calque, <html data-sr-ambient>, <head> (feuille de style) et ajout du calque au <body>, il est « étranger ».
+       Un nœud non connecté (acteur ou clone que Runner configure avant de le rattacher au calque) n'est pas encore dans le DOM de l'écran :
+       l'écrire ne peut rien changer à l'écran ; tout nœud CONNECTÉ hors calque reste compté. */
     audit.watch = false; audit.ops = 0; audit.foreign = [];
     const inLayer = n => { const e = n && n.nodeType === 1 ? n : n && n.parentElement; return !!(e && e.closest && e.closest('#srAmbientLayer')); };
-    const allowed = (n, key, args) => inLayer(n) || n === document.head || (n === document.documentElement && args[0] === 'data-sr-ambient')
+    const allowed = (n, key, args) => inLayer(n) || !n.isConnected || n === document.head || (n === document.documentElement && args[0] === 'data-sr-ambient')
       || (n === document.body && /Child|append/.test(key) && args[0] && args[0].id === 'srAmbientLayer');
     const guard = (proto, key) => {
       const original = proto[key];
