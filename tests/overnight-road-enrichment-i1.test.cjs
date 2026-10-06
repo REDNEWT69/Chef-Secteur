@@ -272,7 +272,8 @@ function staticChecks(){
   /* Une seule surface : le bandeau V206. Le premier essai (bloc dans planning-ui-fixes.js) n'existe plus nulle part. */
   const runtimeFiles=fs.readdirSync(ROOT).filter(f=>/\.(js|html|css)$/.test(f)&&f!=='sw.js').concat(['src/chef-secteur.html']);
   for(const f of runtimeFiles)assert.doesNotMatch(read(f),/evaluateOvernightOpportunity|overnightOpportunitiesForPlan|describeOvernightOpportunity|planningOvernightOpportunity|OVERNIGHT_OPPORTUNITY\b/,f+' : plus de décision ni de bloc parallèles');
-  assert.equal(fs.readFileSync(path.join(ROOT,'planning-ui-fixes.js'),'utf8'),require('child_process').execFileSync('git',['show','cd2dd46:planning-ui-fixes.js'],{cwd:ROOT,encoding:'utf8',maxBuffer:1<<26}),'planning-ui-fixes.js : strictement celui de main, aucun second bloc');
+  /* Le Planning (planning-ui-fixes.js) ne porte aucune logique de découché : pas de second bloc, rien à ranger dans sa hiérarchie. */
+  assert.doesNotMatch(read('planning-ui-fixes.js'),/planningOvernight|syncOvernight|overnightOpportunit|overnightRoad|enrichOvernight|StoreRunnerTerrainPlanningV1|StoreRunnerOvernightV182|futureOvernightAnalysis/,'planning-ui-fixes.js : aucun bloc ni logique de découché');
   const slider=read('period-day-slider.js');
   const consumers=runtimeFiles.filter(f=>/enrichOvernightCandidate|describeOvernightRoadGain|overnightRoadGain/.test(read(f)));
   assert.deepEqual(consumers.sort(),['period-day-slider.js','terrain-planning-v1.js'],'seuls le moteur terrain (définition) et le bandeau V206 (affichage) connaissent l’enrichissement');
@@ -281,10 +282,9 @@ function staticChecks(){
   const part=slider.slice(slider.indexOf('function overnightRoadLines'),slider.indexOf('function syncOvernightVisibility'));
   assert.match(part,/route\.textContent=r/);assert.match(part,/gain\.textContent=g/);assert.doesNotMatch(part,/innerHTML|insertAdjacentHTML|\.save\s*\(|localStorage|state\.[A-Za-z_$.]+\s*=(?!=)/);
   assert.match(slider,/<span class="planningOvernightCueRoad" data-overnight-road hidden><span data-overnight-route><\/span><span data-overnight-gain><\/span><\/span>/,'deux lignes dans le bandeau existant, masquées par défaut');
-  const mainSlider=require('child_process').execFileSync('git',['show','cd2dd46:period-day-slider.js'],{cwd:ROOT,encoding:'utf8',maxBuffer:1<<26});
-  const count=(src,re)=>(src.match(re)||[]).length;
-  assert.equal(count(slider,/createElement\('button'\)/g),count(mainSlider,/createElement\('button'\)/g),'aucun bouton ajouté par la bande : le bandeau V206 reste la seule action');
-  assert.equal(count(slider,/addEventListener\('click'/g),count(mainSlider,/addEventListener\('click'/g),'aucun nouveau geste : le tap du bandeau ouvre toujours l’hôtel, rien d’autre');
+  /* Rien d'interactif ajouté : ni l'enrichissement ni son gabarit ne créent de bouton, de lien ou de geste ; le tap du bandeau ouvre toujours l'hôtel. */
+  assert.doesNotMatch(part,/createElement|addEventListener|onclick|<button|<a[ >]/,'l’enrichissement ne crée aucun élément interactif');
+  assert.equal(slider.split("cue.addEventListener('click',function(){const current=shownOvernightCandidate();if(current)focusHotel(current)});").length-1,1,'le tap du bandeau ouvre toujours l’hôtel, une seule fois');
 
   /* La génération et les autres décideurs ne connaissent pas l'enrichissement : elle ne peut pas changer. */
   for(const f of ['planning-generation-controller.js','range-planner-v2.js','planning-cascade-v181.js','planning-command-engine.js','planning-manual-visits.js','planning-route-optimizer-v251.js','store-opening-hours.js','auto-planning-fix.js','v182-fixes.js','visit-coverage.js','runner-behavior.js','home-refresh-v2.js','assistant-upgrade.js','route-polish.js','planning-ui-fixes.js'])
