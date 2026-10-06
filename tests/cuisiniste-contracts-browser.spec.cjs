@@ -15,8 +15,8 @@ test('V193 affiche le contrat expo Secteur Test Nord à 390 px sans toucher au p
     const before=JSON.stringify(window.state.plan);
     A.saveTracking(db,{type:'tracking',sector:'Secteur Test Nord',importedAt:'2026-09-16T12:00:00Z',sites:[{
       key:'SCH-TEST-NORD FR-00001',brand:'SCHMIDT',city:'TEST-NORD',cityKey:'test nord',postal:'00001',label:'SCH-TEST-NORD FR-00001',
-      activeContract:{sector:'Zone Ancienne',brand:'SCHMIDT',city:'TEST-NORD',clientNumber:'111',startDate:'2026-03-01',endDate:'2027-02-28',status:'En cours',objective:7200,realized:6300,progress:.875,monthsRemaining:6,closure:'25%',toInvoice:150,portfolio:1200,products:['BRBTEST']},
-      lastContract:null,history:[]
+      activeContract:{sector:'Zone Ancienne',brand:'SCHMIDT',city:'TEST-NORD',clientNumber:'111',startDate:'2026-03-01',endDate:'2027-02-28',status:'En cours',objective:14400,realized:12600,progress:.875,monthsRemaining:6,closure:'25%',toInvoice:300,portfolio:1200,products:['BRBTEST'],groupContract:{key:'g|2026-03-01|2027-02-28',name:'GROUPE TEST',startDate:'2026-03-01',endDate:'2027-02-28',status:'En cours',objective:14400,realized:12600,progress:.875,monthsRemaining:6,closure:'25%',toInvoice:300,portfolio:2400,memberCount:2,members:[]},storeMetrics:{objective:null,realized:6300,portfolio:1200}},
+      lastContract:null,history:[{sector:'Zone Ancienne',brand:'SCHMIDT',city:'TEST-NORD',clientNumber:'111',startDate:'2025-03-01',endDate:'2026-02-28',status:'Finalisé',objective:7200,realized:6900,progress:.958,monthsRemaining:null,closure:'25%',toInvoice:180,portfolio:0,products:['OLDREF'],storeMetrics:{objective:7200,realized:6900,portfolio:0}}]
     }]});
     A.saveTariff(db,{type:'tariff',importedAt:'2026-09-16T12:00:00Z',products:[{family:'REF',segment:'COMBINE',refSchmidt:'BRBTEST0',refCommercial:'BRBTEST',refSap:'BRBTEST',description:'Combiné test',type:'BIP',purchasePrice:600,contractObjective:7200}]});
     const host=document.createElement('div');host.id='cuiV193E2E';host.style.width='100%';document.body.appendChild(host);
@@ -24,6 +24,6 @@ test('V193 affiche le contrat expo Secteur Test Nord à 390 px sans toucher au p
     const box=card.getBoundingClientRect();
     return{text:card.textContent,width:box.width,viewport:document.documentElement.clientWidth,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,planStable:before===JSON.stringify(window.state.plan),priority:store.priority,signal:A.planningSignal('cui-e2e')};
   });
-  expect(result.text).toContain('Contrat expo');expect(result.text).toContain('87,5 %');expect(result.text).toContain('6 mois');expect(result.text).toContain('BRBTEST');
+  expect(result.text).toContain('Contrat expo');expect(result.text).toContain('GROUPE TEST');expect(result.text).toContain('Objectif groupe');expect(result.text).toContain('14 400 €');expect(result.text).toContain('CA magasin');expect(result.text).toContain('6 300 €');expect(result.text).toContain('87,5 %');expect(result.text).toContain('6 mois');expect(result.text).toContain('BRBTEST');expect(result.text).toContain('Historique : 2 contrats retrouvés');
   expect(result.signal.source).toBe('Contrat expo');expect(result.width).toBeLessThanOrEqual(result.viewport);expect(result.overflow).toBeLessThanOrEqual(1);expect(result.planStable).toBe(true);expect(result.priority).toBe(4);expect(errors).toEqual([]);
 });
