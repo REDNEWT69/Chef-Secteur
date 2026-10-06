@@ -21,9 +21,12 @@ test('V193 affiche le contrat expo Secteur Test Nord à 390 px sans toucher au p
     A.saveTariff(db,{type:'tariff',importedAt:'2026-09-16T12:00:00Z',products:[{family:'REF',segment:'COMBINE',refSchmidt:'BRBTEST0',refCommercial:'BRBTEST',refSap:'BRBTEST',description:'Combiné test',type:'BIP',purchasePrice:600,contractObjective:7200}]});
     const host=document.createElement('div');host.id='cuiV193E2E';host.style.width='100%';document.body.appendChild(host);
     const card=A.createBriefing('cui-e2e');if(!card)throw new Error('Brief V193 non rendu');host.appendChild(card);
+    A.open();
+    const sheetText=document.getElementById('srCuisineSheet')?.textContent||'';
     const box=card.getBoundingClientRect();
-    return{text:card.textContent,width:box.width,viewport:document.documentElement.clientWidth,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,planStable:before===JSON.stringify(window.state.plan),priority:store.priority,signal:A.planningSignal('cui-e2e')};
+    return{text:card.textContent,sheetText,width:box.width,viewport:document.documentElement.clientWidth,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,planStable:before===JSON.stringify(window.state.plan),priority:store.priority,signal:A.planningSignal('cui-e2e')};
   });
   expect(result.text).toContain('Contrat expo');expect(result.text).toContain('GROUPE TEST');expect(result.text).toContain('Objectif groupe');expect(result.text).toContain('14 400 €');expect(result.text).toContain('CA magasin');expect(result.text).toContain('6 300 €');expect(result.text).toContain('87,5 %');expect(result.text).toContain('6 mois');expect(result.text).toContain('BRBTEST');expect(result.text).toContain('Historique : 2 contrats retrouvés');
+  expect(result.sheetText).toContain('Contrat groupement : GROUPE TEST · 2 magasins');expect(result.sheetText).toContain('Groupe · objectif 14 400 € · réalisé 12 600 €');expect(result.sheetText).toContain('Groupe · facturation 25%');expect(result.sheetText).toContain('Ce magasin · réalisé 6 300 € · portefeuille 1 200 €');expect(result.sheetText).toContain('Historique contrats');
   expect(result.signal.source).toBe('Contrat expo');expect(result.width).toBeLessThanOrEqual(result.viewport);expect(result.overflow).toBeLessThanOrEqual(1);expect(result.planStable).toBe(true);expect(result.priority).toBe(4);expect(errors).toEqual([]);
 });
