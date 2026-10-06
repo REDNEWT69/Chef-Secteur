@@ -206,8 +206,20 @@ function extractHitlist(rows,wanted){
   out.sector=sectors.join(' · ');
   return out;
 }
-function trackingHeader(rows){const hr=findHeaderRow(rows,TRACKING_COLUMNS);if(hr<0)throw new Error('Colonnes du suivi contrats introuvables.');const row=rows[hr],idx={};for(let i=0;i<row.length;i++)if(row[i]!=null)idx[norm(row[i])]=i;return{hr,idx}}
-function idxOf(idx,label){return idx[norm(label)]==null?-1:idx[norm(label)]}
+function headerExact(v){try{return text(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim()}catch(e){return text(v).toLowerCase()}}
+function trackingHeader(rows){
+  const hr=findHeaderRow(rows,TRACKING_COLUMNS);if(hr<0)throw new Error('Colonnes du suivi contrats introuvables.');
+  const row=rows[hr],idx={};
+  for(let i=0;i<row.length;i++)if(row[i]!=null){
+    idx['@'+headerExact(row[i])]=i;
+    const loose=norm(row[i]);if(idx[loose]==null)idx[loose]=i;
+  }
+  return{hr,idx};
+}
+function idxOf(idx,label){
+  const exact=idx['@'+headerExact(label)];if(exact!=null)return exact;
+  return idx[norm(label)]==null?-1:idx[norm(label)];
+}
 function rowValue(row,idx,label){const i=idxOf(idx,label);return i<0?null:row[i]}
 function rowValueAny(row,idx,labels){
   for(const label of labels||[]){const i=idxOf(idx,label);if(i>=0&&row[i]!=null&&text(row[i])!=='')return row[i]}
