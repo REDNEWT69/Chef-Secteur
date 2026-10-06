@@ -17,9 +17,10 @@
     const name=text(profile.baseName);
     const address=text(profile.baseAddress);
     const generic=/^(ma position(?: actuelle)?|maison|départ|base)$/i.test(name);
-    const place=(name&&!generic)?name:(address||name||'À définir');
+    let display=null;try{if(window.StoreRunnerProfile&&typeof window.StoreRunnerProfile.departureDisplay==='function')display=window.StoreRunnerProfile.departureDisplay(profile)}catch(e){}
+    const place=display&&display.title?display.title:((name&&!generic)?name:(address||name||'À définir'));
     const label=sector+' · '+storeCount()+' magasins';
-    return{sector:sector,name:name,address:address,place:place,label:label};
+    return{sector:sector,name:name,address:address,place:place,label:label,departureDisplay:display};
   }
   function storeCount(){
     try{
@@ -93,8 +94,7 @@
     if(!logo){logo=document.createElement('img');logo.className='srBrandLogo';logo.alt='S-RUNNER';brand.insertBefore(logo,brand.firstChild)}
     setAttr(logo,'src',LOGO);
     const header=brand.closest('.phBrandRow');
-    let sector=header.querySelector('.phSector');
-    if(!sector){sector=document.createElement('span');sector.className='phSector';header.querySelector('.phHeaderContext').appendChild(sector)}
+    const sector=header.querySelector('.phSector');if(sector)sector.remove();
     let name=brand.querySelector('.srBrandName');
     if(!name){name=document.createElement('span');name.className='srBrandName';brand.appendChild(name)}
     setText(name,APP_NAME);
@@ -102,13 +102,18 @@
     if(!signature){signature=document.createElement('span');signature.className='srBrandSignature';brand.appendChild(signature)}
     setText(signature,SIGNATURE);
     Array.from(brand.children).forEach(function(el){
-      if(el===logo||el===name||el===signature||el===sector)return;
+      if(el===logo||el===name||el===signature)return;
       if(el.tagName==='SPAN'||(el.tagName==='IMG'&&/samsung/i.test(el.getAttribute('alt')||'')))el.remove();
     });
-    setText(sector,context.sector+' · '+storeCount()+' magasins');
+    const departureTitle=header.querySelector('.phDepartureTitle');
     const departure=header.querySelector('.phDepartureAddress');
-    if(departure){
+    if(context.departureDisplay&&context.departureDisplay.kind==='gps'){
+      const line=context.departureDisplay.title+(context.departureDisplay.detail?' · '+context.departureDisplay.detail:'');
+      setText(departureTitle,line);
+      if(departure){setText(departure,'');setAttr(departure,'title',context.departureDisplay.address||line)}
+    }else if(departure){
       const repeatsPosition=!context.address&&/^(ma position(?: actuelle)?|départ)$/i.test(context.name);
+      setText(departureTitle,/^(ma position(?: actuelle)?)$/i.test(context.name)?'Ma position actuelle':'Départ');
       setText(departure,repeatsPosition?'':context.place);setAttr(departure,'title',context.address||context.place);
     }
     return true;
@@ -162,6 +167,7 @@
   document.addEventListener('store-runner:profile-saved',scheduleApply);
   document.addEventListener('store-runner:data-restored',scheduleApply);
   document.addEventListener('store-runner:planning-updated',scheduleApply);
+  document.addEventListener('store-runner:departure-display-updated',scheduleApply);
   window.addEventListener('focus',function(){setTimeout(scheduleApply,30)});
   document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(scheduleApply,30)});
 })();
