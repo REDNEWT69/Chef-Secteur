@@ -21,6 +21,7 @@
 //   node tools/run-browser-tests.mjs               suite navigateur complète (liste CI)
 //   node tools/run-browser-tests.mjs <spec>...     seulement ces specs
 //   node tools/run-browser-tests.mjs --serve       sert l'application et reste ouvert
+//   STORE_RUNNER_E2E_SHARD=1/2 node tools/run-browser-tests.mjs <spec>...  partage la suite CI
 //
 // Sans liste de specs, elle est lue dans .github/workflows/reliability-checks.yml :
 // le workflow reste la seule source de vérité, donc le local exécute exactement la
@@ -220,6 +221,17 @@ function lancerPlaywright(specs, baseUrl) {
     return Promise.resolve(1);
   }
   const args = [cli, 'test', ...specs, '--workers=1', '--reporter=line'];
+  const shard = String(process.env.STORE_RUNNER_E2E_SHARD || '').trim();
+  if (shard) {
+    const match = shard.match(/^(\d+)\/(\d+)$/);
+    const index = match ? Number(match[1]) : 0;
+    const total = match ? Number(match[2]) : 0;
+    if (!match || total < 1 || index < 1 || index > total) {
+      console.error(`STORE_RUNNER_E2E_SHARD invalide : "${shard}" (attendu : 1/2, 2/2, etc.)`);
+      return Promise.resolve(1);
+    }
+    args.push(`--shard=${shard}`);
+  }
   const enfant = spawn(process.execPath, args, {
     cwd: ROOT,
     stdio: 'inherit',
