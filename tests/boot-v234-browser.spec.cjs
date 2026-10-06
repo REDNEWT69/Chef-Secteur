@@ -106,6 +106,23 @@ test('V234 — un seul voile de démarrage couvre tout le montage, sans flash de
   expect(final).toMatchObject({ voiles: 0, ancienLoader: false, drapeau: false, pret: true });
   expect(final.debordement).toBeLessThanOrEqual(1);
 
+  // #522 : document.write ne doit pas effacer les icônes avant l'installation.
+  const icon = await page.evaluate(async () => {
+    const apple = document.querySelector('link[rel="apple-touch-icon"]');
+    const favicon = document.querySelector('link[rel="icon"]');
+    const logo = document.querySelector('.srBrandLogo');
+    if (logo) await logo.decode();
+    return {
+      apple: apple && apple.getAttribute('href'),
+      favicon: favicon && favicon.getAttribute('href'),
+      logoSize: logo && [logo.naturalWidth, logo.naturalHeight],
+      build: window.__STORE_RUNNER_BUILD_REV
+    };
+  });
+  expect(icon.apple).toBe('./app-icon-192.png?rev=' + icon.build);
+  expect(icon.favicon).toBe('./app-icon.svg?rev=' + icon.build);
+  expect(icon.logoSize).toEqual([512, 512]);
+
   // Mesure r20 lisible par machine. Une suppression legacy pourra réduire ce total,
   // mais aucun nettoyage ne doit le faire croître ni charger deux fois le même script.
   const scriptResources = await page.evaluate(() => performance.getEntriesByType('resource')
