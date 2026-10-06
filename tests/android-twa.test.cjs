@@ -114,6 +114,82 @@ const storeIcon = pngSize('android/store_icon.png');
 assert.deepEqual([storeIcon.width, storeIcon.height], [512, 512], 'icône Play Store 512 × 512');
 assert.deepEqual(pngSize('android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png'), { width: 192, height: 192 });
 assert.deepEqual(pngSize('android/app/src/main/res/mipmap-xxxhdpi/ic_maskable.png'), { width: 328, height: 328 });
+// Les ressources launcher doivent venir des icônes PWA approuvées (Runner bleu, PR #523),
+// pas de l'ancien logo : on compare la couleur moyenne du centre de chaque ressource à
+// celle de sa source (indépendant de la taille), et on exige les tailles Bubblewrap.
+function decodePng(relative) {
+  const data = fs.readFileSync(path.join(ROOT, relative));
+  const width = data.readUInt32BE(16), height = data.readUInt32BE(20), colorType = data[25];
+  assert.equal(data[24], 8, `${relative} : PNG 8 bits attendu`);
+  assert.ok(colorType === 2 || colorType === 6, `${relative} : PNG RGB ou RGBA attendu`);
+  assert.equal(data[28], 0, `${relative} : PNG non entrelacé attendu`);
+  const channels = colorType === 6 ? 4 : 3;
+  const parts = [];
+  for (let offset = 8; offset < data.length;) {
+    const length = data.readUInt32BE(offset);
+    if (data.toString('ascii', offset + 4, offset + 8) === 'IDAT') parts.push(data.subarray(offset + 8, offset + 8 + length));
+    offset += 12 + length;
+  }
+  const raw = require('zlib').inflateSync(Buffer.concat(parts));
+  const stride = width * channels;
+  const pixels = Buffer.alloc(stride * height);
+  const paeth = (a, b, c) => { const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c); return pa <= pb && pa <= pc ? a : pb <= pc ? b : c; };
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (stride + 1)], source = y * (stride + 1) + 1, target = y * stride;
+    for (let x = 0; x < stride; x++) {
+      const value = raw[source + x];
+      const left = x >= channels ? pixels[target + x - channels] : 0;
+      const up = y ? pixels[target - stride + x] : 0;
+      const upperLeft = y && x >= channels ? pixels[target - stride + x - channels] : 0;
+      pixels[target + x] = (value + (filter === 1 ? left : filter === 2 ? up : filter === 3 ? ((left + up) >> 1) : filter === 4 ? paeth(left, up, upperLeft) : 0)) & 255;
+    }
+  }
+  return { width, height, channels, pixels };
+}
+function centerMean(image, share) {
+  const from = Math.floor(image.width * (1 - share) / 2), to = Math.ceil(image.width * (1 + share) / 2);
+  const sum = [0, 0, 0];
+  let count = 0;
+  for (let y = from; y < to; y++) for (let x = from; x < to; x++) {
+    const offset = (y * image.width + x) * image.channels;
+    if (image.channels === 4 && image.pixels[offset + 3] < 255) continue;
+    for (let c = 0; c < 3; c++) sum[c] += image.pixels[offset + c];
+    count++;
+  }
+  assert.ok(count > 0, 'zone centrale vide');
+  return sum.map(value => value / count);
+}
+const colorGap = (a, b) => Math.max(...a.map((value, index) => Math.abs(value - b[index])));
+const alphaAt = (image, x, y) => image.pixels[(y * image.width + x) * 4 + 3];
+const DENSITIES = { mdpi: [48, 82, 300], hdpi: [72, 123, 450], xhdpi: [96, 164, 600], xxhdpi: [144, 246, 900], xxxhdpi: [192, 328, 1200] };
+const sourceStandard = decodePng(standardIcon);
+const sourceMaskable = decodePng(maskableIcon);
+const standardCenter = centerMean(sourceStandard, 0.4);
+const maskableCenter = centerMean(sourceMaskable, 0.4);
+const maskableAverage = centerMean(sourceMaskable, 1);
+for (const [density, [launcher, adaptive, splash]] of Object.entries(DENSITIES)) {
+  const res = `android/app/src/main/res/`;
+  assert.deepEqual(pngSize(`${res}mipmap-${density}/ic_launcher.png`), { width: launcher, height: launcher }, `ic_launcher ${density}`);
+  assert.deepEqual(pngSize(`${res}mipmap-${density}/ic_maskable.png`), { width: adaptive, height: adaptive }, `ic_maskable ${density}`);
+  assert.deepEqual(pngSize(`${res}drawable-${density}/splash.png`), { width: splash, height: splash }, `splash ${density}`);
+
+  const legacy = decodePng(`${res}mipmap-${density}/ic_launcher.png`);
+  assert.ok(colorGap(centerMean(legacy, 0.4), standardCenter) < 12, `ic_launcher ${density} ne reprend pas l'icône Runner bleue (${standardIcon})`);
+  assert.equal(alphaAt(legacy, 0, 0), 0, `ic_launcher ${density} : coins arrondis attendus`);
+
+  const layer = decodePng(`${res}mipmap-${density}/ic_maskable.png`);
+  assert.ok(colorGap(centerMean(layer, 0.4), maskableCenter) < 12, `ic_maskable ${density} ne reprend pas l'icône maskable (${maskableIcon})`);
+  assert.ok(colorGap(centerMean(layer, 1), maskableAverage) < 12, `ic_maskable ${density} : fond différent de l'icône maskable`);
+  for (const [x, y] of [[0, 0], [adaptive - 1, 0], [0, adaptive - 1], [adaptive - 1, adaptive - 1]]) {
+    assert.equal(alphaAt(layer, x, y), 255, `ic_maskable ${density} : fond plein jusqu'aux coins`);
+  }
+
+  const splashImage = decodePng(`${res}drawable-${density}/splash.png`);
+  assert.equal(alphaAt(splashImage, 0, 0), 0, `splash ${density} : fond transparent (couleur du thème derrière)`);
+  assert.ok(colorGap(centerMean(splashImage, 0.3), standardCenter) < 14, `splash ${density} ne reprend pas l'icône Runner bleue`);
+}
+const storeCenter = centerMean(decodePng('android/store_icon.png'), 0.4);
+assert.ok(colorGap(storeCenter, standardCenter) < 3, 'android/store_icon.png doit être l\'icône Runner bleue');
 assert.match(read('android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml'), /@mipmap\/ic_maskable/, 'icône adaptative Android = icône maskable');
 
 // 3. Conformité Google Play et versions figées.
@@ -123,7 +199,7 @@ const minSdk = gradleNumber(appGradle, 'minSdk');
 assert.ok(targetSdk >= PLAY_MIN_TARGET_SDK, `targetSdk ${targetSdk} < ${PLAY_MIN_TARGET_SDK} exigé par Google Play`);
 assert.ok(compileSdk >= targetSdk, 'compileSdk doit être ≥ targetSdk');
 assert.equal(minSdk, twa.minSdkVersion, 'minSdk : build.gradle et twa-manifest.json divergent');
-assert.ok(gradleNumber(appGradle, 'versionCode') >= 1);
+assert.ok(gradleNumber(appGradle, 'versionCode') >= 2, 'versionCode ≥ 2 : la 1.0.1 porte l\'icône Runner bleue (la Play Console refuse de réutiliser un versionCode)');
 assert.equal(gradleValue(appGradle, 'versionName'), twa.appVersion);
 assert.equal(gradleNumber(appGradle, 'versionCode'), twa.appVersionCode);
 const agp = rootGradle.match(/id 'com\.android\.application' version '(\d+)\.(\d+)\.(\d+)'/);
