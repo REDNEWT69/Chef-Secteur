@@ -39,8 +39,8 @@ assert.doesNotMatch(sw, moduleLike, 'sw.js ne cache aucun module de premier lanc
 assert.match(index, /'\.\/navigation-controller\.js'/, 'navigation-controller.js reste chargé au démarrage');
 assert.match(sw, /"\.\/navigation-controller\.js"/, 'navigation-controller.js reste dans le shell obligatoire');
 assert.match(sw, /"\.\/runner-visual\.js"/, 'Runner reste dans le shell obligatoire');
-assert.equal(version.displayVersion, '273', 'version visible V273, guide V271 conservé');
-assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-273$/, 'BUILD_REV V273');
+assert.equal(version.displayVersion, '274', 'version visible V274, guide V271 conservé');
+assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-274$/, 'BUILD_REV V274');
 assert.equal(index.match(/const BUILD_REV='([^']+)'/)[1], version.latestBuild);
 assert.equal(sw.match(/const BUILD_REV = "([^"]+)"/)[1], version.latestBuild);
 assert.match(read('store-runner-whats-new.js'), /version:'271',\s*title:'Runner te guide au premier lancement'/, 'Quoi de neuf V271');

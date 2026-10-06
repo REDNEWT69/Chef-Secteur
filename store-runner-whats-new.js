@@ -25,6 +25,16 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'274',
+      title:'Pourquoi ce magasin, ce jour-là',
+      items:[
+        'Touche un magasin dans ton planning : la fiche te dit maintenant pourquoi il est placé ce jour-là.',
+        'Tu y vois ce qui fixe le jour (rendez-vous, arrivée imposée, pose manuelle ou « Imposé »), sinon le besoin de visite à cette date : jamais visité, en retard, bientôt dû ou à jour.',
+        'Ce sont des faits que Store Runner connaît déjà : aucune raison n’est inventée et ton planning n’est pas modifié.',
+        'Pour un jour déjà passé, la fiche reste comme avant.'
+      ]
+    },
+    {
       version:'273',
       title:'Runner a du caractère',
       items:[
