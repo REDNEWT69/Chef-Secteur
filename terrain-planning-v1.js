@@ -835,116 +835,76 @@ function analyzeOvernightWeeks(weeks,state=root.state,distanceFn){
     return{weekKey,...overnightForPlan(plan,state,distanceFn,weekKey)};
   });
 }
-/* Découché — opportunité J1 → J2 (information seule).
-   Le contrat ci-dessus décide s'il existe une nuit « utile » ; ceci ne le remplace pas et ne le
-   modifie pas : c'est une lecture supplémentaire, en km ET en minutes de route, d'un enchaînement
-   précis de deux journées consécutives, avec de quoi l'expliquer à l'utilisateur.
+/* Découché — enrichissement routier d'une nuit DÉJÀ retenue (incrément 1, information seule).
+   Une seule autorité décide qu'une nuit est un découché : V189 (futureOvernightAnalysis, exposée
+   comme StoreRunnerOvernightV182.analyze), dont le contrat est repris ci-dessus. Ce qui suit ne
+   décide rien : il ne retient ni n'écarte aucune nuit et ne crée aucune recommandation. Pour la nuit
+   que V189 a retenue, il dit seulement ce que la ROUTE y gagne, afin que le bandeau V206 le montre.
      RETOUR BASE : dernière visite de J1 → base, puis base → première visite de J2
      DÉCOUCHAGE  : dernière visite de J1 → première visite de J2
      gain        : RETOUR BASE − DÉCOUCHAGE, en km et en minutes
    Aucune distance n'est calculée ici : le routage est injecté (au runtime, StoreRunnerRoadMatrixV248.leg,
-   la même source que le planning), et un trajet que le propriétaire ne sait pas donner rend « pas de
-   recommandation », jamais une valeur inventée. La base est celle du profil, strictement : sans base
-   enregistrée il n'y a rien à comparer (aucun point par défaut, aucun repli). Fonction pure et
-   déterministe : aucune écriture dans state, le plan, les rendez-vous ou les réservations d'hôtel. */
-/* Seuils produit initiaux, à modifier ici et nulle part ailleurs : recommandé si le gain atteint
-   l'un OU l'autre. Ils sont indépendants de profile.overnightMinSaving (seuil du mode Automatique
-   de V189, en km à vol d'oiseau) : cet incrément n'en change ni la décision ni le réglage. */
-const OVERNIGHT_OPPORTUNITY={minSavedKm:100,minSavedMinutes:75};
-/* Affichage « ≈ » : km et minutes arrondis à 5 près. La décision, elle, se prend sur les valeurs
-   arrondies à 0,1 km et à la minute que le résultat expose. */
+   la même source que le planning), et un trajet que le propriétaire ne sait pas donner rend null, jamais
+   une valeur inventée. La base est celle du profil, strictement : sans base enregistrée il n'y a rien à
+   comparer. Fonctions pures et déterministes : aucune écriture dans state, le plan, les rendez-vous ou
+   les réservations d'hôtel. Appelées à l'affichage seulement : la génération ne les connaît pas. */
+/* Référence pour l'incrément 2 (migration éventuelle de V189 vers une décision routière, après
+   validation terrain) : exposée comme `roadThresholdMet`, un diagnostic que rien n'affiche et qui ne
+   change aucune décision. Une nuit que V189 n'a pas retenue n'a jamais de ligne routière, quel que soit son gain. */
+const OVERNIGHT_ROAD_REFERENCE={minSavedKm:100,minSavedMinutes:75};
+/* Affichage « ≈ » : km et minutes arrondis à 5 près. */
 const OVERNIGHT_DISPLAY_STEP=5;
-const OVERNIGHT_OPPORTUNITY_REASON='retour à la base puis nouveau départ nettement moins efficace';
 /* Une position exploitable : deux nombres dans leurs bornes, et pas le (0, 0) que les points non
    renseignés prennent par défaut (même règle que StoreRunnerDayOrigin.located). */
-function opportunityPoint(p){
+function roadPoint(p){
   if(!p||p.lat==null||p.lon==null||String(p.lat).trim()===''||String(p.lon).trim()==='')return null;
   const lat=Number(p.lat),lon=Number(p.lon);
   if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)return null;
   return Math.abs(lat)<=0.01&&Math.abs(lon)<=0.01?null:{lat,lon};
 }
-function opportunityLeg(routing,a,b){
+function roadLeg(routing,a,b){
   let leg=null;try{leg=routing.leg(a,b)}catch(e){leg=null}
   /* De vrais nombres seulement : Number(null) vaut 0 et ferait d'une réponse absente un trajet gratuit. */
   const km=leg&&leg.distanceKm,minutes=leg&&leg.durationMinutes;
   return typeof km==='number'&&Number.isFinite(km)&&km>=0&&typeof minutes==='number'&&Number.isFinite(minutes)&&minutes>=0?{km,minutes,road:leg.source==='road'}:null;
 }
-function opportunityZone(store){return String(store&&(store.ville||store.enseigne)||'').trim()}
-function opportunityDayName(day){
-  if(DAYS.includes(day&&day.day))return day.day;
-  const d=parseISO(day&&day.date);return d?DAYS[(d.getDay()+6)%7]||'':'';
-}
-/* day1 / day2 : {date:'AAAA-MM-JJ', day:'Mardi', visits:[magasin…] dans l'ordre de passage,
-   blocked?:true quand la date est fériée, en absence ou bloquée par l'Agenda}.
-   base : {lat, lon}. routing : {leg(a,b) → {distanceKm, durationMinutes, source?}}.
-   options : {thresholds?, nightPlanned?:true quand une réservation d'hôtel couvre déjà cette nuit}.
-   `status` dit toujours pourquoi : recommended, below-threshold, no-day, no-visits, blocked-day,
-   already-planned, no-base, no-routing, incomplete-data. `reason` n'est rempli que si recommandé. */
-function evaluateOvernightOpportunity(day1,day2,base,routing,options){
-  const o=options||{},thresholds={...OVERNIGHT_OPPORTUNITY,...(o.thresholds||{})};
-  const out=(status,extra)=>({recommended:false,status,savedKm:null,savedMinutes:null,from:null,to:null,fromDate:String(day1&&day1.date||''),toDate:String(day2&&day2.date||''),fromDay:opportunityDayName(day1),toDay:opportunityDayName(day2),trigger:null,precision:null,thresholds,reason:'',...(extra||{})});
-  if(!day1||!day2)return out('no-day');
-  const first=Array.isArray(day1.visits)?day1.visits.filter(Boolean):[],second=Array.isArray(day2.visits)?day2.visits.filter(Boolean):[];
-  if(!first.length||!second.length)return out('no-visits');
-  if(day1.blocked===true||day2.blocked===true)return out('blocked-day');
-  if(o.nightPlanned===true)return out('already-planned');
-  const home=opportunityPoint(base);if(!home)return out('no-base');
-  if(!routing||typeof routing.leg!=='function')return out('no-routing');
-  const last=first[first.length-1],next=second[0],from=opportunityPoint(last),to=opportunityPoint(next);
-  if(!from||!to)return out('incomplete-data');
-  const backHome=opportunityLeg(routing,from,home),outAgain=opportunityLeg(routing,home,to),direct=opportunityLeg(routing,from,to);
-  if(!backHome||!outAgain||!direct)return out('incomplete-data');
+function roadZone(store){return String(store&&(store.ville||store.enseigne)||'').trim()}
+/* from : dernière visite de J1 ; to : première visite de J2 ; base : {lat, lon} ; routing : {leg(a,b) →
+   {distanceKm, durationMinutes, source?}}. Rend null si l'un des trois trajets ne peut pas être donné. */
+function overnightRoadGain(from,to,base,routing){
+  const home=roadPoint(base),a=roadPoint(from),b=roadPoint(to);
+  if(!home||!a||!b||!routing||typeof routing.leg!=='function')return null;
+  const backHome=roadLeg(routing,a,home),outAgain=roadLeg(routing,home,b),direct=roadLeg(routing,a,b);
+  if(!backHome||!outAgain||!direct)return null;
   const savedKm=Math.round((backHome.km+outAgain.km-direct.km)*10)/10,savedMinutes=Math.round(backHome.minutes+outAgain.minutes-direct.minutes);
-  const byKm=savedKm>=thresholds.minSavedKm,byMinutes=savedMinutes>=thresholds.minSavedMinutes;
-  const seen={savedKm,savedMinutes,from:{zone:opportunityZone(last),storeId:last.id==null?null:last.id},to:{zone:opportunityZone(next),storeId:next.id==null?null:next.id},precision:backHome.road&&outAgain.road&&direct.road?'road':'estimate'};
-  if(!byKm&&!byMinutes)return out('below-threshold',seen);
-  return out('recommended',{...seen,recommended:true,trigger:byKm&&byMinutes?'both':byKm?'km':'minutes',reason:OVERNIGHT_OPPORTUNITY_REASON});
+  return{savedKm,savedMinutes,
+    from:{zone:roadZone(from),storeId:from.id==null?null:from.id},to:{zone:roadZone(to),storeId:to.id==null?null:to.id},
+    precision:backHome.road&&outAgain.road&&direct.road?'road':'estimate',
+    roadThresholdMet:savedKm>=OVERNIGHT_ROAD_REFERENCE.minSavedKm||savedMinutes>=OVERNIGHT_ROAD_REFERENCE.minSavedMinutes};
 }
 /* Le routage du runtime : la matrice routière V248 (durées et distances réelles quand elle est
    amorcée, estimation du planning sinon). Absente, il n'y a pas de routage — pas de repli maison. */
-function opportunityRuntimeRouting(){
+function roadRuntimeRouting(){
   const api=root.StoreRunnerRoadMatrixV248;
   return api&&typeof api.leg==='function'?{leg:(a,b)=>api.leg(a,b)}:null;
 }
-/* Les paires de journées consécutives de la semaine : mêmes jours travaillés, même lecture « la nuit
-   relie deux dates à un jour d'écart, pas déjà passée » que le contrat V189. Chaque paire est
-   évaluée ; `best` est la plus au-dessus du seuil (rapport gain/seuil le plus fort, puis km, puis
-   la plus proche). Mode Jamais : rien. Une réservation d'hôtel déjà posée sur la nuit : rien à
-   conseiller. Journée fériée, en absence ou bloquée par l'Agenda (dateBlocked) : rien. */
-function overnightOpportunitiesForPlan(plan,state=root.state,options){
-  const o=options||{},profile=state&&state.profile||{},settings=state&&state.settings||{},mode=profile.overnightMode||'auto';
-  const mon=monday(overnightDate(o.weekKey)||overnightDate(settings.weekDate)||new Date()),weekKey=iso(mon);
-  if(mode==='never')return{weekKey,mode,opportunities:[],best:null};
-  const days=(Array.isArray(settings.days)&&settings.days.length?settings.days:DAYS.slice(0,5)).filter(d=>DAYS.includes(d)),source=plan||{},now=parseISO(o.today)?String(o.today):iso(new Date());
-  const base=opportunityPoint({lat:profile.baseLat,lon:profile.baseLon}),routing=o.routing||opportunityRuntimeRouting();
-  const blocked=typeof o.dateBlocked==='function'?o.dateBlocked:date=>dateBlocked(date,state||{});
-  const reservations=Object.values(state&&state.hotelReservations&&typeof state.hotelReservations==='object'?state.hotelReservations:{}).filter(Boolean);
-  const dayOf=(day,date)=>({date,day,blocked:!!blocked(date),visits:(Array.isArray(source[day])?source[day]:[]).map(planned=>canonicalStore(planned&&planned.id,state||{})||planned)});
-  const opportunities=[];
-  for(let i=0;i<days.length-1;i++){
-    const fromDay=days[i],toDay=days[i+1],fromDate=iso(addDays(mon,DAYS.indexOf(fromDay))),toDate=iso(addDays(mon,DAYS.indexOf(toDay)));
-    if(fromDate<now||Math.round((parseISO(toDate)-parseISO(fromDate))/86400000)!==1)continue;
-    const nightPlanned=reservations.some(r=>String(r.fromDate||'')===fromDate||String(r.toDate||'')===toDate);
-    opportunities.push(evaluateOvernightOpportunity(dayOf(fromDay,fromDate),dayOf(toDay,toDate),base,routing,{thresholds:o.thresholds,nightPlanned}));
-  }
-  const t={...OVERNIGHT_OPPORTUNITY,...(o.thresholds||{})},weight=r=>Math.max(r.savedKm/(t.minSavedKm||1),r.savedMinutes/(t.minSavedMinutes||1));
-  const best=opportunities.filter(r=>r.recommended).sort((a,b)=>weight(b)-weight(a)||b.savedKm-a.savedKm||a.fromDate.localeCompare(b.fromDate))[0]||null;
-  return{weekKey,mode,opportunities,best};
+/* candidate : la nuit retenue par V189 (ses `last` et `first`). Le magasin du secteur fait foi pour les
+   coordonnées, comme dans l'ordonnanceur ; la base est celle du profil, jamais baseObj() du noyau. */
+function enrichOvernightCandidate(candidate,state=root.state,options){
+  if(!candidate||!candidate.last||!candidate.first)return null;
+  const o=options||{},profile=state&&state.profile||{},canon=s=>canonicalStore(s&&s.id,state||{})||s;
+  return overnightRoadGain(canon(candidate.last),canon(candidate.first),{lat:profile.baseLat,lon:profile.baseLon},o.routing||roadRuntimeRouting());
 }
-/* Le texte, une ligne par information, sans décor : null quand il n'y a rien à dire. */
+/* Deux lignes pour le bandeau V206, sans décor ; null quand la route ne gagne rien de positif (le
+   bandeau reste alors tel que V189 le décide, sans chiffre). */
 function overnightDuration(minutes){const h=Math.floor(minutes/60),m=minutes%60;return h?h+' h'+(m?' '+pad(m):''):m+' min'}
-function describeOvernightOpportunity(op){
-  if(!op||op.recommended!==true)return null;
-  const step=OVERNIGHT_DISPLAY_STEP,km=Math.round(op.savedKm/step)*step,minutes=Math.round(op.savedMinutes/step)*step;
+function describeOvernightRoadGain(gain){
+  if(!gain||!Number.isFinite(gain.savedKm)||!Number.isFinite(gain.savedMinutes))return null;
+  const step=OVERNIGHT_DISPLAY_STEP,km=Math.round(gain.savedKm/step)*step,minutes=Math.round(gain.savedMinutes/step)*step;
   const parts=[];if(km>0)parts.push(km+' km');if(minutes>0)parts.push(overnightDuration(minutes));
-  const from=op.from&&op.from.zone,to=op.to&&op.to.zone,sameZone=!!from&&!!to&&norm(from)===norm(to);
-  const route=to?(from&&!sameZone?from+' → secteur '+to:'secteur '+to):from||'';
-  return{
-    title:'Découchage conseillé'+(op.fromDay&&op.toDay?' · '+op.fromDay+' → '+op.toDay:''),
-    route,
-    gain:parts.length?'≈ '+parts.join(' et ')+' de route évités':'',
-    reason:'Raison : '+op.reason+'.'
-  };
+  if(!parts.length)return null;
+  const from=gain.from&&gain.from.zone,to=gain.to&&gain.to.zone,sameZone=!!from&&!!to&&norm(from)===norm(to);
+  return{route:to?(from&&!sameZone?from+' → secteur '+to:'secteur '+to):from||'',gain:'≈ '+parts.join(' · ')+' de route évités'};
 }
 function summarizeOpeningHours(weeks,state=root.state,hoursApi=root.StoreOpeningHoursV1){
   const out={available:!!(hoursApi&&typeof hoursApi.intervalsFor==='function'),known:0,unknown:0,closed:0,uniqueUnknown:0};
@@ -1623,6 +1583,6 @@ function installStartButton(){
 }
 function install(){installThreeWeekReport();installStartButton()}
 function boot(){install();root.document&&root.document.addEventListener('store-runner:planning-updated',()=>{install();renderStoredInsights()});root.document&&root.document.addEventListener('store-runner:data-restored',()=>{install();renderStoredInsights()})}
-const api={coverageSummaryText,needOrdered,rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,orderedAdaptivePlacementDays,manualWeekInfo,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,simulateCommandWindow,generatedArchiveEntry,routeMetrics,optimizeThreeWeekCrossDay,evaluateDayRouteV264,completeProtectedWeek,rotationWindowWeeks,rotationMemory,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits,dateBlocked,overnightForPlan,analyzeOvernightWeeks,evaluateOvernightOpportunity,overnightOpportunitiesForPlan,describeOvernightOpportunity,OVERNIGHT_OPPORTUNITY,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={coverageSummaryText,needOrdered,rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,orderedAdaptivePlacementDays,manualWeekInfo,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,simulateCommandWindow,generatedArchiveEntry,routeMetrics,optimizeThreeWeekCrossDay,evaluateDayRouteV264,completeProtectedWeek,rotationWindowWeeks,rotationMemory,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits,dateBlocked,overnightForPlan,analyzeOvernightWeeks,overnightRoadGain,enrichOvernightCandidate,describeOvernightRoadGain,OVERNIGHT_ROAD_REFERENCE,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()}
 })(typeof window!=='undefined'?window:globalThis);

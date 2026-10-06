@@ -136,9 +136,6 @@
     const runnerSlot=ensureRunnerSlot();
     moveAfter(notice||tabs,tools);observeGenerateBusy(tools);
     let above=tools;if(coverage){moveAfter(tools,coverage);above=coverage}
-    /* Découché conseillé : une information sous la Couverture, ou rien (le bloc n'existe alors pas). */
-    const overnight=syncOvernightOpportunity();
-    if(overnight){moveAfter(above,overnight);above=overnight}
     if(runnerSlot){moveAfter(above,runnerSlot);above=runnerSlot}
     moveAfter(above,timeline);
     const monthly=document.querySelector('#planPanel #managerPlanningMonth, #planPanel .managerPlanningMonth, #planPanel .monthPlanning, #planPanel [data-planning-month]');let anchor=timeline;
@@ -294,39 +291,6 @@
     tools.__runnerBusyObserver=observer;
   }
 
-  /* Découché conseillé — incrément 1, information seule.
-     Ce module possède la hiérarchie du Planning : il pose l'emplacement et affiche ce que le moteur
-     terrain (StoreRunnerTerrainPlanningV1.overnightOpportunitiesForPlan) a calculé avec le routage de
-     l'application. Ici rien n'est décidé, calculé, persisté ni écrit : ni `state`, ni planning, ni
-     rendez-vous, ni réservation d'hôtel ; ni bouton, ni modal, ni toast. Sans opportunité (gain sous
-     les seuils, jour sans visite, base ou routage inconnus, nuit déjà réservée, mode Jamais), le bloc
-     n'existe pas : aucune trace. Texte toujours posé en `textContent`. */
-  const OVERNIGHT_SLOT_ID='planningOvernightOpportunity';
-  let overnightSignature='';
-  function overnightOpportunityLines(){
-    try{
-      const terrain=window.StoreRunnerTerrainPlanningV1;
-      if(!terrain||typeof terrain.overnightOpportunitiesForPlan!=='function'||typeof terrain.describeOvernightOpportunity!=='function')return null;
-      const week=terrain.overnightOpportunitiesForPlan(state.plan||{},state,{weekKey:localIso(weekMonday())});
-      return week&&week.best?terrain.describeOvernightOpportunity(week.best):null;
-    }catch(e){return null}
-  }
-  function syncOvernightOpportunity(){
-    let slot=document.getElementById(OVERNIGHT_SLOT_ID);
-    const lines=document.querySelector('#planPanel .applePlan')?overnightOpportunityLines():null;
-    if(!lines){if(slot)slot.remove();overnightSignature='';return null}
-    if(!slot){slot=document.createElement('div');slot.id=OVERNIGHT_SLOT_ID;slot.setAttribute('role','note');overnightSignature=''}
-    const signature=[lines.title,lines.route,lines.gain,lines.reason].join('|');
-    if(signature!==overnightSignature||!slot.firstElementChild){
-      while(slot.firstElementChild)slot.removeChild(slot.firstElementChild);
-      [['ovTitle',lines.title],['ovRoute',lines.route],['ovGain',lines.gain],['ovReason',lines.reason]].forEach(function(row){
-        if(!row[1])return;const el=document.createElement('div');el.className=row[0];el.textContent=row[1];slot.appendChild(el);
-      });
-      overnightSignature=signature;
-    }
-    return slot;
-  }
-
   function choiceSummary(boxId,type){
     const all=[...document.querySelectorAll('#'+boxId+' input[type="checkbox"]')],checked=all.filter(x=>x.checked);
     if(type==='days')return checked.length?checked.map(x=>SHORT[x.value]||x.value).join(', '):'Aucun jour';
@@ -433,8 +397,6 @@
        d'accueil et le détail d'activité : il est retiré de la vue, pas supprimé. */
     #planningProTop>.proTop{display:none!important}
     #planningRunnerV269{margin:0 0 12px;pointer-events:none}#planningRunnerV269[hidden]{display:none}
-    #planningOvernightOpportunity{margin:0 0 12px;padding:11px 14px;box-sizing:border-box;min-width:0;max-width:100%;background:var(--card,#fff);border:1px solid var(--line,#e1e5ed);border-radius:16px;color:var(--ink,#111827);font-size:13px;line-height:1.4;overflow-wrap:anywhere}
-    #planningOvernightOpportunity .ovTitle{font-size:13.5px;font-weight:800}#planningOvernightOpportunity .ovGain{font-weight:700}#planningOvernightOpportunity .ovReason{margin-top:2px;color:var(--muted,#667085);font-size:12px}
     #planningSettings{scroll-margin-top:72px}#planningSettings[open]>.settingsInner{display:block!important}.planningChoice{margin:10px 0;border:1px solid rgba(120,125,140,.15);border-radius:16px;background:rgba(255,255,255,.58);overflow:hidden}.planningChoice>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:12px 14px;cursor:pointer;font-weight:800;color:#1f2937}.planningChoice>summary::-webkit-details-marker{display:none}.planningChoice>summary:after{content:'＋';font-size:18px;color:#1674d9;margin-left:6px}.planningChoice[open]>summary:after{content:'−'}.planningChoice>summary small{margin-left:auto;color:#7a8290;font-size:11px;font-weight:650;white-space:nowrap;max-width:58%;overflow:hidden;text-overflow:ellipsis}.planningChoiceBody{padding:0 12px 13px}.planningChoiceBody>label:first-child{display:none}.planningChoiceBody .checkgrid{display:grid!important;grid-template-columns:1fr!important;gap:6px!important;max-height:170px;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2px}.planningChoiceBody .checkitem{min-height:42px;margin:0}#planningDaysDetails .planningChoiceBody #daysBox{max-height:none!important;overflow:visible!important;-webkit-overflow-scrolling:auto;touch-action:auto}.planningAdvancedDetails .premium-time{margin-top:6px}.planningCalendarDetails .calendarConnect{margin:0!important;border:0!important;box-shadow:none!important;background:transparent!important;padding:4px 0!important}.planningRangeDetails .formgrid{margin-top:4px}.planningDuplicateGenerate{display:none!important}.planningStoreCount{margin:6px 0 2px;color:#697386}.planningRangeDetails{order:20}
     @media(max-width:650px){.planningHeroV2{padding-top:2px}.planningHeroTop{align-items:flex-start}.planningHeroWeek{max-width:58%;line-height:1.3}.planningHeroDay{font-size:50px}.planningHeroFull{font-size:13px}.planningToolsV2{margin-bottom:10px}.planningToolsV2 button{flex:1 1 calc(50% - 4px);min-width:0;min-height:44px}.planningChoice{border-radius:15px}.planningChoice>summary{padding:11px 12px}.planningChoiceBody{padding:0 10px 11px}.planningChoiceBody .checkgrid{max-height:150px}#planningDaysDetails .planningChoiceBody #daysBox{max-height:none!important;overflow:visible!important}.planningAdvancedDetails .formgrid,.planningRangeDetails .formgrid{grid-template-columns:1fr!important}}
   `;document.head.appendChild(s)}
@@ -470,8 +432,6 @@
   document.addEventListener('focusout',e=>{if(editingLocked)return;if(e.target&&e.target.matches&&e.target.matches(SETTINGS_FIELD))setTimeout(schedule,80)},true);
   document.addEventListener('toggle',e=>{if(e.target&&e.target.id==='planningSettings'&&!e.target.open){editingLocked=false;schedule()}},true);
   document.addEventListener('store-runner:planning-updated',function(e){const d=e&&e.detail;if(!d||d.reason!=='period-date-loaded')forgetForecast();if(d&&d.source==='recalculatePlanningCascade')celebrate('cascade');schedule()});document.addEventListener('store-runner:data-restored',schedule);document.addEventListener('store-runner:calendar-updated',schedule);
-  /* Les données dont dépend le découché conseillé : une réservation d'hôtel, le mode (Jamais/Auto/Obligatoire) et le cache routier. */
-  ['store-runner:hotel-reservation-updated','store-runner:overnight-mode-changed','store-runner:road-cache-updated'].forEach(function(name){document.addEventListener(name,schedule)});
   /* Le forecast se relit quand une donnée dont il dépend change (changer de jour ne la change pas). */
   ['store-runner:data-restored','store-runner:calendar-updated','store-runner:visit-deleted','store-runner:store-added','store-runner:stores-added','store-runner:planning-user-opened','store-runner:planning-command-applied'].forEach(function(name){document.addEventListener(name,forgetForecast)});
   /* V269 : un succès de génération, de recalcul ou de commande est un moment, pas un état durable.
