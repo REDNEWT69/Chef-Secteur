@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   workflow_call:
 concurrency:
-  group: reliability-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: reliability-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 permissions:
   contents: read
