@@ -19,6 +19,12 @@
    déduite de l'optimisation (jamais « le plus court » ni « le meilleur »), aucune trace n'est écrite. Affiché en tête de
    la fiche 360 seulement quand elle est ouverte depuis une carte du planning (jour d'aujourd'hui ou à venir).
 
+   « À retenir » (V276) : `insightsFor` croise, en lecture seule, le rapport qui vient d'être clôturé avec les rapports précédents
+   du même magasin, ses actions, son historique, son planning et sa priorité, et en tire des CONSTATS structurés (tendance, point
+   récurrent, régression, amélioration, action ouverte ou en retard, incohérence, point à revoir). Il ne lit que des statuts, des
+   comptes et des dates — jamais le texte libre d'un rapport, donc jamais de paraphrase. C'est `StoreRunnerBehavior.remarks` qui
+   en retient 1 ou 2, et chaque hôte qui l'affiche garde la parole : ce module ne montre rien.
+
    Branchements : `renderStores` (noyau, seul propriétaire de #storeList) appelle `listContext`,
    `matches`, `compare`, `rowHtml` et `afterList` s'ils existent ; la fiche 360 est une section de
    `#storeQuickSheet`, remplie par un observateur borné à cette feuille (même schéma que V263). */
@@ -75,7 +81,7 @@ function contextFor(state,options){
   let park=o.priorities instanceof Map?o.priorities:new Map();
   if(!(o.priorities instanceof Map)&&C&&typeof C.performancePriorities==='function'){try{park=C.performancePriorities(state)}catch(e){park=new Map()}}
   let forecast=null,forecastById=new Map();
-  if(C&&typeof C.forecastThreeWeeks==='function')try{
+  if(o.forecast!==false&&C&&typeof C.forecastThreeWeeks==='function')try{
     forecast=C.forecastThreeWeeks(state,{today,archive,range:o.range,firstMonday:o.firstMonday,priorities:park,visitDays:o.visitDays,dayBlocked:o.dayBlocked,lockDayForWeek:o.lockDayForWeek});
     forecastById=new Map((forecast.rows||[]).map(row=>[String(row.id),row]));
   }catch(e){forecast=null;forecastById=new Map()}
@@ -244,6 +250,100 @@ function timelineFor(state,storeId,options,shared){
   up.sort((a,c)=>a.date.localeCompare(c.date)||order(a.kind)-order(c.kind)||String(a.time||'').localeCompare(String(c.time||'')));
   past.sort((a,c)=>c.date.localeCompare(a.date)||String(c.time||'').localeCompare(String(a.time||'')));
   return{upcoming:up.filter(e=>e.date),past:past.filter(e=>e.date).slice(0,TIMELINE_MAX)};
+}
+/* ---------------------------------------------------------------- V276 : « À retenir » */
+const SIX_STATUS=Object.freeze({ok:'ok',correct:'correct',opportunity:'opportunity'});
+function visitModel(){return root.StoreRunnerVisitModel||null}
+function sixOf(model){return model&&model.SIX_P&&typeof model.SIX_P==='object'?model.SIX_P:null}
+function sixLabel(six,key){
+  const parts=String(key).split(':'),sec=six&&six[parts[0]];if(!sec)return'';
+  const name=String((sec.items&&sec.items[Number(parts[1])])||'').trim(),area=String(sec.label||''),zone=area?area.charAt(0)+area.slice(1).toLowerCase():'';
+  return name?(zone?name+' ('+zone+')':name):zone;
+}
+/* Une phrase se termine par un seul point, même quand sa dernière date abrégée (« 30 oct. ») en porte déjà un. */
+function sentence(t){return String(t).replace(/\.+$/,'')+'.'}
+function labelList(keys,six){
+  const names=keys.map(k=>sixLabel(six,k)).filter(Boolean),shown=names.slice(0,2).join(', ');
+  return names.length>2?shown+' et '+(names.length-2)+' autre'+(names.length>3?'s':''):shown;
+}
+/* Lignes 6P renseignées d'une visite : clé « P:index » → statut et présence d'une action notée. */
+function sixRows(visit,six){
+  const out=new Map();
+  if(!six||!visit||!visit.sixP||typeof visit.sixP!=='object')return out;
+  for(const p of Object.keys(six)){
+    const rows=Array.isArray(visit.sixP[p])?visit.sixP[p]:[];
+    rows.forEach((row,i)=>{
+      if(!row||typeof row!=='object'||!SIX_STATUS[row.status])return;
+      out.set(p+':'+i,{status:row.status,hasAction:!!(row.actionId||String(row.action||'').trim())});
+    });
+  }
+  return out;
+}
+function keysWhere(rows,test){const out=[];for(const [k,r] of rows)if(test(r,k))out.push(k);return out}
+function completedOrder(a,c){return String(a.completedDate||'').localeCompare(String(c.completedDate||''))||String(a.completedAt||'').localeCompare(String(c.completedAt||''))||String(a.createdAt||'').localeCompare(String(c.createdAt||''))}
+function insightsFor(state,storeId,options){
+  let id='';try{id=String(storeId==null?'':storeId)}catch(e){id=''}
+  const o=options||{},none=()=>({storeId:id,visitId:'',date:'',priority:'',items:[]});
+  try{
+    const model=visitModel(),six=sixOf(model),b=(state&&state.businessV2)||{};
+    const done=(Array.isArray(b.visits)?b.visits:[]).filter(v=>v&&String(v.storeId)===id&&v.status==='completed').sort(completedOrder);
+    const cur=o.visitId!=null?done.find(v=>String(v.id)===String(o.visitId)):done[done.length-1];
+    if(!six||!cur)return none();
+    const ctx=o.shared||contextFor(state,Object.assign({},o,{forecast:false})),need=needFor(ctx,find(state,id)||{id}),today=ctx.today;
+    const prevVisits=done.slice(0,done.indexOf(cur)).reverse().slice(0,4),rows=sixRows(cur,six),prev=prevVisits.length?sixRows(prevVisits[0],six):null;
+    const prio=need&&(need.priority==='P1'||need.priority==='P2')?need.priority:'',boost=prio==='P1'?1:0,tag=prio==='P1'?'P1 · ':'';
+    const bump=n=>Math.min(3,n+boost),items=[];
+    const correct=keysWhere(rows,r=>r.status==='correct');
+
+    // Actions du magasin : en retard d'abord, sinon ouvertes (statuts et échéances du modèle, jamais leur texte)
+    const open=(Array.isArray(b.actions)?b.actions:[]).filter(a=>a&&String(a.storeId)===id&&!['done','cancelled'].includes(a.status));
+    const late=open.filter(a=>isoOf(a.dueDate)&&isoOf(a.dueDate)<today).sort((a,c)=>isoOf(a.dueDate).localeCompare(isoOf(c.dueDate)));
+    if(late.length)items.push({id:'overdue-action',kind:'overdue-action',severity:3,tone:'attention',text:tag+plural(late.length,'action en retard','actions en retard')+' sur ce magasin (échéance la plus ancienne : '+frDate(isoOf(late[0].dueDate),false)+').'});
+    else{
+      /* Celles que ce rapport vient de créer ne sont pas une information : seules comptent les actions des visites précédentes. */
+      const older=open.filter(a=>String(a.visitId)!==String(cur.id));
+      if(older.length){
+        const due=older.map(a=>isoOf(a.dueDate)).filter(Boolean).sort()[0];
+        items.push({id:'open-actions',kind:'open-actions',severity:bump(1),tone:'neutral',text:sentence(tag+plural(older.length,'action ouverte','actions ouvertes')+' des visites précédentes'+(due?' · prochaine échéance le '+frDate(due,false):''))});
+      }
+    }
+
+    // Points à corriger qui reviennent d'une visite à l'autre
+    const streaks=new Map();
+    for(const k of correct){
+      let n=1;
+      for(const v of prevVisits){const r=sixRows(v,six).get(k);if(r&&r.status==='correct')n++;else break}
+      if(n>=2)streaks.set(k,n);
+    }
+    if(streaks.size){
+      const ranked=[...streaks.entries()].sort((a,c)=>c[1]-a[1]),[topKey,topN]=ranked[0],more=ranked.length-1;
+      items.push({id:'recurring',kind:'recurring',severity:bump(2),tone:'attention',text:tag+sixLabel(six,topKey)+' : à corriger pour la '+topN+'ᵉ visite de suite'+(more?' (et '+more+' autre'+(more>1?'s':'')+' point'+(more>1?'s':'')+' récurrent'+(more>1?'s':'')+')':'')+'.'});
+    }
+
+    // Évolution depuis le dernier passage
+    let moved=false;
+    if(prev){
+      const worse=keysWhere(rows,(r,k)=>r.status==='correct'&&prev.has(k)&&prev.get(k).status==='ok');
+      const better=keysWhere(rows,(r,k)=>r.status==='ok'&&prev.has(k)&&prev.get(k).status==='correct');
+      if(worse.length){moved=true;items.push({id:'regression',kind:'regression',severity:bump(2),tone:'attention',text:tag+'Nouveau point à corriger : '+labelList(worse,six)+' (conforme au dernier passage).'})}
+      if(better.length){moved=true;items.push({id:'improved',kind:'improved',severity:1,tone:'positive',text:'Corrigé depuis le dernier passage : '+labelList(better,six)+'.'})}
+      const before=keysWhere(prev,r=>r.status==='correct').length;
+      if(!moved&&Math.abs(correct.length-before)>=2)items.push({id:'trend',kind:'trend',severity:1,tone:correct.length<before?'positive':'attention',text:plural(correct.length,'point à corriger','points à corriger')+', contre '+before+' au dernier passage.'});
+    }
+
+    // Incohérences : un point à corriger sans action notée ; une visite prioritaire clôturée sans aucun point renseigné
+    const loose=correct.filter(k=>!rows.get(k).hasAction);
+    if(loose.length)items.push({id:'inconsistency',kind:'inconsistency',severity:bump(2),tone:'attention',text:tag+plural(loose.length,'point à corriger','points à corriger')+' sans action notée : '+labelList(loose,six)+'.'});
+    else if(!rows.size&&prio)items.push({id:'inconsistency',kind:'inconsistency',severity:bump(1),tone:'attention',text:tag+'Visite d’un magasin prioritaire clôturée sans aucun point 6P renseigné.'});
+
+    // À revoir : les opportunités notées sans action, avec ce que dit le planning (jamais « le meilleur jour »)
+    const chances=keysWhere(rows,r=>r.status==='opportunity'&&!r.hasAction);
+    if(chances.length){
+      const planned=ctx.planned&&ctx.planned.get(id);
+      items.push({id:'revisit',kind:'revisit',severity:1,tone:'neutral',text:'À reprendre au prochain passage ('+(planned?'prévu le '+frDate(planned,false):'aucun passage planifié')+') : '+labelList(chances,six)+'.'});
+    }
+    return{storeId:id,visitId:String(cur.id),date:String(cur.completedDate||''),priority:prio,items};
+  }catch(e){return none()}
 }
 function photoEvents(rows){
   const days=new Map();
@@ -502,5 +602,5 @@ function install(win){
 }
 function resetFilters(){filter.priority='all';filter.status='all'}
 
-return{VERSION:1,DAYS,MODE_LABEL,filter,contextFor,constraintsFor,placementFor,placementHtml,timelineFor,photoEvents,mergePhotos,profileFor,contactsOf,guardUntil,listContext,matches,rowHtml,afterList,counts,rowOf,renderSection,sectionHtml,resetFilters,install};
+return{VERSION:1,DAYS,MODE_LABEL,filter,contextFor,constraintsFor,placementFor,placementHtml,insightsFor,timelineFor,photoEvents,mergePhotos,profileFor,contactsOf,guardUntil,listContext,matches,rowHtml,afterList,counts,rowOf,renderSection,sectionHtml,resetFilters,install};
 });
