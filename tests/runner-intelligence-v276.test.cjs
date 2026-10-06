@@ -159,6 +159,13 @@ for (const id of ['copilote', 'complice', 'coach', 'taquin']) { // même juste a
   const noRem = B.brief({ tour: { total: 3, done: 1, finished: false, next }, mode: 'today', attention: att });
   assert.deepEqual(noRem.lines.map(l => l.id), ['day.left', 'attention']);
   assert.equal(noRem.lines[1].text, 'À regarder : Darty Metz, action échue.'); assert.deepEqual(noRem.lines[1].action, { type: 'open-store', storeId: 's-c' });
+  // Le point d'attention porte sur le magasin de la prochaine visite : un seul bouton « fiche », celui de la première ligne.
+  const same = B.brief({ tour: { total: 3, done: 1, finished: false, next }, mode: 'today', attention: { kind: 'late', key: 's-b', label: 'Darty Bravo', reason: '40 jours sans passage' } });
+  assert.deepEqual(same.lines.map(l => l.id), ['day.left', 'attention']);
+  assert.deepEqual(same.lines[0].action, { type: 'open-store', storeId: 's-b' });
+  assert.equal(same.lines[1].action, null, 'pas de second bouton pour le même magasin');
+  assert.equal(same.lines[1].text, 'À regarder : Darty Bravo, 40 jours sans passage.', 'mais le constat reste dit');
+  assert.deepEqual(B.brief({ mode: 'today', attention: { kind: 'late', key: 's-b', label: 'Darty Bravo', reason: 'retard' } }).lines[0].action, { type: 'open-store', storeId: 's-b' }, 'sans prochaine visite le bouton revient au constat');
   const named = B.brief({ tour: { total: 3, done: 1, finished: false, next }, mode: 'today', remarks: { store: 'Darty Metz', lines: rem.lines } });
   assert.equal(named.lines[1].text, 'Darty Metz · ' + rem.lines[0].text, 'la première remarque nomme le magasin concerné');
   assert.equal(named.lines[2].text, rem.lines[1].text, 'les suivantes ne répètent pas son nom');

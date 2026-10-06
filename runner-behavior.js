@@ -576,7 +576,11 @@ function brief(input,options){
       const key=keyToken(i.attention.key),label=clean(i.attention.label,cfg.labelMaxChars);
       if(key&&label)attention={key,label,reason:clean(i.attention.reason,cfg.reasonMaxChars)};
     }
-    if(attention&&!rem.some(r=>r.kind==='overdue-action'))lines.push({id:'attention',text:'À regarder : '+attention.label+(attention.reason?', '+attention.reason:'')+'.',action:{type:'open-store',storeId:attention.key}});
+    if(attention&&!rem.some(r=>r.kind==='overdue-action')){
+      // Même magasin que la prochaine visite : le bouton de la première ligne ouvre déjà sa fiche, pas un second identique.
+      const sameStore=!!(t&&t.next&&t.next.key===attention.key);
+      lines.push({id:'attention',text:'À regarder : '+attention.label+(attention.reason?', '+attention.reason:'')+'.',action:sameStore?null:{type:'open-store',storeId:attention.key}});
+    }
     const out=lines.slice(0,cfg.briefMaxLines);
     return deepFreeze({lines:out,empty:!out.length});
   }catch(e){return empty()}
