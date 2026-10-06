@@ -419,7 +419,7 @@ function mergeTrackingSnapshots(snaps){
   return{type:'tracking',sector:sectors.join(' · '),sites,others,trackingReserve,
     scanned:list.reduce((n,x)=>n+(Number(x.scanned)||0),0),sectorScope:list.map(x=>text(x.sectorScope)).filter(Boolean).join(' · '),
     sectorsFound:found,needsSectorChoice:sites.length===0&&list.some(x=>x.needsSectorChoice),
-    sourceCount:list.length,importedAt:nowIso()};
+    sourceCount:list.reduce((n,x)=>n+(Number(x&&x.sourceCount)||1),0),importedAt:nowIso()};
 }
 async function parseTrackingWorkbook(input,sector){
   const files=await unzip(input),hit=extractHitlist(readSheetByColumns(files,HITLIST_COLUMNS,'cuisinisteHitlistSheet'),sector),rows=readSheetByColumns(files,TRACKING_COLUMNS,'cuisinisteTrackingSheet'),h=trackingHeader(rows),parsed=[];
@@ -594,15 +594,20 @@ async function importTrackingFiles(files,sector){
     status('Lecture locale de '+list.length+' fichier'+(list.length>1?'s':'')+' contrats…');
     const snaps=[];
     for(const file of list){const snap=await parseTrackingWorkbook(new Uint8Array(await file.arrayBuffer()),sector);snaps.push(snap)}
-    const snap=mergeTrackingSnapshots(snaps);
-    if(snap.needsSectorChoice){
+    const incoming=mergeTrackingSnapshots(snaps);
+    if(incoming.needsSectorChoice){
       /* Rien n'est enregistré tant que l'utilisateur n'a pas tranché : un import muet
          écraserait le suivi précédent par un périmètre vide. */
-      pendingSectors=snap.sectorsFound||[];pendingFiles=list;
+      pendingSectors=incoming.sectorsFound||[];pendingFiles=list;
       status('Aucun magasin des fichiers ne correspond à tes cuisinistes. Choisis ton secteur.',true);
       renderSheet();return false;
     }
     pendingSectors=null;pendingFiles=null;
+    /* Un import mensuel séparé enrichit l'historique existant au lieu de le remplacer.
+       Le nouveau fichier gagne uniquement quand il décrit le même contrat (même identité
+       magasin + même période) ; les anciens contrats restent consultables. */
+    const previous=latestTracking(db());
+    const snap=previous?mergeTrackingSnapshots([previous,incoming]):incoming;
     saveTracking(db(),snap);
     const sites=resolveSites(db(),stores());
     followupReconcile(sites);
