@@ -61,6 +61,25 @@ async function prepare(page, { reduced = false } = {}) {
     window.setInterval = function (...args) { if (mine()) audit.intervals++; return si.apply(this, args); };
     window.requestAnimationFrame = function (...args) { if (mine()) audit.raf++; return raf.apply(this, args); };
     EventTarget.prototype.addEventListener = function (type, ...rest) { if (mine()) audit.listeners.push(type); return add.call(this, type, ...rest); };
+    /* Audit à la source des écritures DOM : tant que `watch` est vrai, tout appel d'écriture dont la pile passe par runner-ambient.js est
+       compté (`ops`) ; hors calque, <html data-sr-ambient>, <head> (feuille de style) et ajout du calque au <body>, il est « étranger ». */
+    audit.watch = false; audit.ops = 0; audit.foreign = [];
+    const inLayer = n => { const e = n && n.nodeType === 1 ? n : n && n.parentElement; return !!(e && e.closest && e.closest('#srAmbientLayer')); };
+    const allowed = (n, key, args) => inLayer(n) || n === document.head || (n === document.documentElement && args[0] === 'data-sr-ambient')
+      || (n === document.body && /Child|append/.test(key) && args[0] && args[0].id === 'srAmbientLayer');
+    const guard = (proto, key) => {
+      const original = proto[key];
+      if (typeof original !== 'function') return;
+      proto[key] = function (...args) {
+        if (audit.watch && mine()) {
+          audit.ops++;
+          if (!allowed(this, key, args)) audit.foreign.push(key + ':' + (this.id || this.nodeName) + ':' + (typeof args[0] === 'string' ? args[0] : ''));
+        }
+        return original.apply(this, args);
+      };
+    };
+    for (const key of ['setAttribute', 'removeAttribute', 'toggleAttribute', 'remove', 'append', 'prepend', 'replaceChildren', 'before', 'after', 'insertAdjacentElement']) guard(Element.prototype, key);
+    for (const key of ['appendChild', 'insertBefore', 'removeChild', 'replaceChild']) guard(Node.prototype, key);
 
     const visibleFigure = el => {
       const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
@@ -127,13 +146,8 @@ async function openPlanning(page) {
   await page.waitForTimeout(600);
 }
 const snapshot = page => page.evaluate(main => ({ state: JSON.stringify(state), main: __chefStorage.getItem(main), archive: __chefStorage.getItem('chef_sector_plan_archive_v1'), local: JSON.stringify(Object.keys(localStorage).sort().map(k => [k, localStorage.getItem(k)])) }), MAIN);
-const watchDom = (page, selector) => page.evaluate(selector => {
-  window.__mut = [];
-  const root = document.querySelector(selector);
-  window.__mo = new MutationObserver(records => { for (const r of records) if (!(r.target.nodeType === 1 ? r.target : r.target.parentElement).closest('.srRunner')) window.__mut.push(r.type + ':' + (r.target.nodeName || '') + ':' + (r.attributeName || '')); });
-  window.__mo.observe(root, { subtree: true, childList: true, attributes: true, characterData: true });
-}, selector);
-const mutations = page => page.evaluate(() => { const r = window.__mo.takeRecords(); for (const x of r) if (!(x.target.nodeType === 1 ? x.target : x.target.parentElement).closest('.srRunner')) window.__mut.push(x.type); return window.__mut; });
+const auditOn = page => page.evaluate(() => { __ambientAudit.foreign.length = 0; __ambientAudit.ops = 0; __ambientAudit.watch = true; });
+const auditOff = page => page.evaluate(() => { __ambientAudit.watch = false; return { foreign: __ambientAudit.foreign.slice(), ops: __ambientAudit.ops }; });
 const keyRects = (page, selectors) => page.evaluate(selectors => Object.fromEntries(selectors.map(s => { const e = document.querySelector(s); return [s, e ? __amb.rect(e) : null]; })), selectors);
 const shot = async (page, name) => { if (SHOTS_DIR) { fs.mkdirSync(SHOTS_DIR, { recursive: true }); await page.screenshot({ path: path.join(SHOTS_DIR, name + '.png') }); } };
 
@@ -197,7 +211,7 @@ for (const [name, device] of PROFILES) {
       const geometry = ['#premiumHomeV2 .phTitle', '#premiumHomeV2 .phVisitCard', '#premiumHomeV2 .phTerrain', '#homeRunnerV270 .srRunnerFigure'];
       const rectsBefore = await keyRects(page, geometry);
       const heightBefore = await page.evaluate(() => document.documentElement.scrollHeight);
-      await watchDom(page, '#premiumHomeV2');
+      await auditOn(page);
       for (const id of scenes) {
         const result = await page.evaluate(id => __amb.run(id), id);
         const edge = id === 'sit-edge' || id === 'peek-behind';
@@ -217,7 +231,9 @@ for (const [name, device] of PROFILES) {
         await expectCalm(page, name + ' / Accueil / ' + id, mounted);
         await page.waitForTimeout(150);
       }
-      expect(await mutations(page), 'Ambient ne touche pas au DOM de l’Accueil (hors Runners)').toEqual([]);
+      const audited = await auditOff(page);
+      expect(audited.ops, 'témoin : l’audit voit bien le travail DOM d’Ambient').toBeGreaterThan(20);
+      expect(audited.foreign, 'Ambient n’écrit jamais dans le DOM de l’Accueil (hors son calque)').toEqual([]);
       expect(await page.locator('#premiumHomeV2 .phTitle').textContent()).toBe(title);
       expect(await keyRects(page, geometry)).toEqual(rectsBefore);
       expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(heightBefore);
@@ -236,7 +252,7 @@ for (const [name, device] of PROFILES) {
       const bubbleBefore = await page.locator('#planningRunnerV269 .srRunnerBubble').textContent();
       const geometry = ['#planningHeroV2', '#planningTerrainBtn', '#dayTabs', '#planningRunnerV269', '#planningCoverageV263'];
       const rectsBefore = await keyRects(page, geometry);
-      await watchDom(page, '#planPanel');
+      await auditOn(page);
       const played = [];
       for (const id of ['observe-card', 'sit-edge', 'peek-behind']) {
         const result = await page.evaluate(id => __amb.run(id), id);
@@ -251,7 +267,9 @@ for (const [name, device] of PROFILES) {
       }
       expect(played.length, 'au moins une scène du Planning joue : ' + played.join(',')).toBeGreaterThanOrEqual(1);
       if (name === 'Android 390') expect(played, 'référence Android 390 : observe-card et sit-edge jouent').toEqual(expect.arrayContaining(['observe-card', 'sit-edge']));
-      expect(await mutations(page), 'Ambient ne touche pas au DOM du Planning (hors Runners)').toEqual([]);
+      const audited = await auditOff(page);
+      expect(audited.ops, 'témoin : l’audit voit bien le travail DOM d’Ambient').toBeGreaterThan(20);
+      expect(audited.foreign, 'Ambient n’écrit jamais dans le DOM du Planning (hors son calque)').toEqual([]);
       expect(await page.locator('#planningRunnerV269 .srRunnerBubble').textContent(), 'la voix du Planning est intacte').toBe(bubbleBefore);
       expect(await keyRects(page, geometry)).toEqual(rectsBefore);
       expect(await snapshot(page)).toEqual(before);
