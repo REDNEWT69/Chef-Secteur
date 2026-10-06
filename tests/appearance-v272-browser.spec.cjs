@@ -57,6 +57,12 @@ async function attrs(page, mode, accent, theme = mode) {
   await expect(page.locator('html')).toHaveAttribute('data-sr-theme', theme);
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', theme === 'dark' ? '#151e2c' : '#f2f5fa');
 }
+// V276 : le tap sur Runner ouvre son point du jour ; la feuille Apparence s'ouvre par « Personnaliser Runner » (geste explicite).
+async function openAppearanceFromHome(page) {
+  await page.locator('#homeRunnerTapV276').tap();
+  await expect(page.locator('#homeRunnerBriefV276')).toBeVisible();
+  await page.locator('[data-home-brief-settings]').tap();
+}
 async function shot(page, name) {
   if (!process.env.APPEARANCE_SHOTS_DIR) return;
   fs.mkdirSync(process.env.APPEARANCE_SHOTS_DIR, { recursive: true });
@@ -84,11 +90,17 @@ for (const [name, profile] of profiles) test.describe(name, () => {
     await boot(page);
     const original = await business(page);
     if (name === 'Android390') await shot(page, 'android390-light-blue-home');
-    await expect(page.locator('#homeRunnerAppearanceButton')).toHaveAccessibleName(/Runner/);
-    await page.locator('#homeRunnerAppearanceButton').tap();
+    await expect(page.locator('#homeRunnerTapV276')).toHaveAccessibleName(/Runner/);
+    const reactions = () => page.evaluate(() => __appearanceEffects.filter(e => e.options.id === 'runner-react').map(e => ({ duration: e.options.duration, iterations: e.options.iterations, state: e.target.closest('.srRunner')?.dataset.state })));
+    // Le tap sur Runner n'ouvre plus les réglages : il ouvre le point du jour, avec la même réaction courte.
+    await page.locator('#homeRunnerTapV276').tap();
+    await expect(page.locator('#homeRunnerBriefV276')).toBeVisible();
+    await expect(page.locator(SHEET)).not.toBeVisible();
+    expect(await reactions()).toEqual([{ duration: 240, iterations: 1, state: 'neutral' }]);
+    // Le geste explicite « Personnaliser Runner » ouvre la feuille (une seule), après sa réaction courte.
+    await page.locator('[data-home-brief-settings]').tap();
     await expect(page.locator(SHEET)).toBeVisible();
-    const reaction = await page.evaluate(() => __appearanceEffects.filter(e => e.options.id === 'runner-react').map(e => ({ duration: e.options.duration, iterations: e.options.iterations, state: e.target.closest('.srRunner')?.dataset.state })));
-    expect(reaction).toEqual([{ duration: 240, iterations: 1, state: 'neutral' }]);
+    expect(await reactions()).toEqual([{ duration: 240, iterations: 1, state: 'neutral' }, { duration: 240, iterations: 1, state: 'neutral' }]);
     await expect(page.locator('#runnerAppearanceTitle')).toHaveText('Runner');
     await expect(page.locator('#runnerAppearancePreview .srRunner')).toHaveCount(1);
     expect(await page.locator(SHEET).evaluate(el => ({ width: el.getBoundingClientRect().width, overflow: document.documentElement.scrollWidth-innerWidth, apply: /Appliquer/.test(el.innerText) }))).toMatchObject({ overflow: 0, apply: false });
@@ -114,7 +126,7 @@ for (const [name, profile] of profiles) test.describe(name, () => {
     await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
     await boot(page);
     const original = await business(page);
-    await page.locator('#homeRunnerAppearanceButton').tap();
+    await openAppearanceFromHome(page);
     const colors = new Set();
     for (const mode of ['light','dark']) for (const accent of ['blue','indigo','teal','rose']) {
       await page.locator(`[data-appearance-mode="${mode}"]`).tap();
@@ -140,7 +152,7 @@ for (const [name, profile] of profiles) test.describe(name, () => {
     await page.evaluate(() => __chefStorage.flush());
     await page.reload({ waitUntil: 'domcontentloaded' }); await ready(page);
     await attrs(page, 'system', 'rose', 'dark');
-    await page.locator('#homeRunnerAppearanceButton').tap();
+    await openAppearanceFromHome(page);
     await page.locator('[data-appearance-reset]').tap();
     await attrs(page, 'light', 'blue');
     expect(await page.evaluate(() => StoreRunnerAppearance.get())).toEqual({ mode: 'light', accent: 'blue' });
@@ -196,7 +208,7 @@ for (const [name, profile] of profiles) test.describe(name, () => {
     await page.locator('.moreClose').tap();
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const count = await page.evaluate(() => __appearanceEffects.filter(e => e.options.id === 'runner-react').length);
-    await page.locator('#homeRunnerAppearanceButton').tap();
+    await openAppearanceFromHome(page);
     await expect(page.locator(SHEET)).toBeVisible();
     expect(await page.evaluate(() => __appearanceEffects.filter(e => e.options.id === 'runner-react').length)).toBe(count);
     expect(await page.locator('#runnerAppearancePreview .srRunner').evaluate(el => el.getAnimations({ subtree: true }).length)).toBe(0);
@@ -230,7 +242,9 @@ for (const [name, profile] of profiles) test.describe(name, () => {
       const resumed = await runner.react(); runner.destroy(); slot.remove(); return resumed;
     })).toBe(true);
     // The same event task leaves Home before its reaction completes: a stale callback must not open the sheet.
-    await page.evaluate(() => { document.querySelector('#homeRunnerAppearanceButton').click(); goTab('storesPanel'); });
+    await page.locator('#homeRunnerTapV276').tap();
+    await expect(page.locator('[data-home-brief-settings]')).toBeVisible();
+    await page.evaluate(() => { document.querySelector('[data-home-brief-settings]').click(); goTab('storesPanel'); });
     await expect(page.locator('#storesPanel')).toBeVisible();
     await page.waitForTimeout(350);
     await expect(page.locator(SHEET)).not.toBeVisible();
@@ -238,9 +252,11 @@ for (const [name, profile] of profiles) test.describe(name, () => {
     await page.emulateMedia({reducedMotion:'reduce'});
     for (const overlay of ['assistant','more']) {
       await page.evaluate(() => goTab('homePanel'));
-      await expect(page.locator('#homeRunnerAppearanceButton')).toBeVisible();
+      await expect(page.locator('#homeRunnerTapV276')).toBeVisible();
+      await page.locator('#homeRunnerTapV276').tap();
+      await expect(page.locator('[data-home-brief-settings]')).toBeVisible();
       await page.evaluate(overlay => {
-        document.querySelector('#homeRunnerAppearanceButton').click();
+        document.querySelector('[data-home-brief-settings]').click();
         if(overlay==='assistant')toggleAssistant();else document.querySelector('[data-more]').click();
       },overlay);
       await page.waitForTimeout(100);
@@ -323,7 +339,7 @@ test.describe('boot et PWA', () => {
     await context.setOffline(true);
     await page.reload({ waitUntil:'domcontentloaded' }); await ready(page);
     await attrs(page,'dark','indigo');
-    await page.locator('#homeRunnerAppearanceButton').tap();
+    await openAppearanceFromHome(page);
     await expect(page.locator(SHEET)).toBeVisible();
     await page.locator('[data-appearance-accent="teal"]').tap();
     await page.evaluate(() => __chefStorage.flush());

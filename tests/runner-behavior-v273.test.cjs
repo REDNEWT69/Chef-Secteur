@@ -81,8 +81,10 @@ assert.equal(swJs.split('"./runner-behavior.js"').length - 1, 1, 'sw.js précach
 assert.ok(swJs.indexOf('"./runner-behavior.js"') < swJs.indexOf('const OPTIONAL_SHELL'), 'shell obligatoire, pas facultatif');
 assert.ok(!/runner-behavior\.js/.test(read('runner-visual.js')), 'Runner (présentation) ne charge ni ne connaît le module de comportement');
 assert.ok(fs.readdirSync(ROOT).includes(FILE));
-assert.ok(Buffer.byteLength(source) < 40 * 1024, 'taille du module bornée (' + Buffer.byteLength(source) + ' o)');
-assert.ok(require('zlib').gzipSync(source).length < 12 * 1024, 'taille gzip bornée');
+// V276 : la couche « métier » pure (signature, remarques, point du jour) ajoute ~6,4 Kio ; plafonds révisés de 40 à 48 Kio
+// et de 12 à 14 Kio gzip (même niveau que runner-visual.js). Une décision de budget explicite, pas une dérive.
+assert.ok(Buffer.byteLength(source) < 48 * 1024, 'taille du module bornée (' + Buffer.byteLength(source) + ' o)');
+assert.ok(require('zlib').gzipSync(source).length < 14 * 1024, 'taille gzip bornée');
 
 /* 2. Contrat de personnalité : des données -------------------------------------------------- */
 assert.deepEqual(Object.keys(B.PERSONALITIES), ['copilote', 'complice', 'coach', 'taquin', 'discret']);
@@ -168,7 +170,8 @@ for (const state of ['analyzing', 'alert', 'success', 'inconnu', '', null, undef
 }
 assert.equal(B.decide(Object.assign(mk({ facts: FULL }), { view: {} }), R0), null, 'état absent = fermé');
 assert.equal(B.decide({ surface: 'home', trigger: 'arrive', now: NOW, facts: { date: D } }, R0), null, 'vue absente = fermé');
-for (const flag of ['keyboard', 'firstRun', 'updating', 'overlay']) assert.equal(B.decide(mk({ view: { state: 'neutral', [flag]: true }, facts: FULL }), R0), null, 'bloqué : ' + flag);
+// V276 : la bannière de mise à jour ne fait taire que le décoratif (la tournée terminée, fait métier, passe : voir runner-intelligence-v276)
+for (const flag of ['keyboard', 'firstRun', 'updating', 'overlay']) assert.equal(B.decide(mk({ view: { state: 'neutral', [flag]: true }, facts: flag === 'updating' ? Object.assign({}, FULL, { tour: null }) : FULL }), R0), null, 'bloqué : ' + flag);
 assert.ok(B.decide(mk({ surface: 'sheet', trigger: 'personality', view: { state: 'neutral', overlay: true } }), R0), 'la sheet est elle-même une surface en overlay');
 assert.equal(B.decide(mk({ surface: 'sheet', trigger: 'personality', view: { state: 'neutral', keyboard: true } }), R0), null);
 for (const surface of ['planning', 'assistant']) for (const trigger of ['arrive', 'rerender', 'touch', 'personality']) assert.equal(B.decide(mk({ surface, trigger, facts: FULL }), R0), null, surface + ' : aucune réaction ambiante en V273');
@@ -188,7 +191,7 @@ assert.doesNotThrow(() => B.decide(mk({ facts: FULL }), { get personality() { th
 
 /* 5. Priorité : une seule réaction gagnante, ordre des poids ------------------------------- */
 assert.deepEqual(ids, ['personality.changed', 'tour.finished', 'attention.notice', 'welcome.back', 'day.ready', 'day.empty', 'home.return', 'touch.runner']);
-assert.ok(B.REACTIONS.every(r => ['ambient', 'presence', 'social', 'user'].includes(r.kind)));
+assert.ok(B.REACTIONS.every(r => ['ambient', 'presence', 'social', 'user', 'business'].includes(r.kind)), 'V276 : la famille « business » (métier) s’ajoute aux réactions décoratives');
 const ambientWeights = B.REACTIONS.filter(r => r.kind === 'ambient').map(r => r.weight);
 assert.deepEqual(ambientWeights, ambientWeights.slice().sort((a, b) => b - a), 'poids décroissants dans l’ordre du catalogue');
 {
@@ -196,10 +199,11 @@ assert.deepEqual(ambientWeights, ambientWeights.slice().sort((a, b) => b - a), '
   const facts = { tour: TOUR_DONE, attention: ATT('s1'), workday: true, mode: 'today', lastVisitDaysAgo: 6 };
   for (let i = 0; i < 5; i++) { const s = step(r, { facts, now: NOW + i * H }, FREE); assert.ok(!Array.isArray(s.x)); seq.push(s.x && s.x.id); r = s.r; }
   assert.deepEqual(seq, ['tour.finished', 'attention.notice', 'welcome.back', null, null], 'un gagnant à la fois, du plus fort au plus faible, puis le budget ferme');
-  // Copilote : budget de 2 textes, la troisième réaction textuelle est refusée.
+  // Copilote : budget de 2 textes DÉCORATIFS ; la tournée terminée (fait métier, V276) n'en consomme aucun,
+  // donc attention + retour passent, et la troisième réaction décorative est refusée.
   r = registry('copilote', { lastActiveDate: '2026-09-20' }); seq = [];
   for (let i = 0; i < 4; i++) { const s = step(r, { facts, now: NOW + i * H }, FREE); seq.push(s.x && s.x.id); r = s.r; }
-  assert.deepEqual(seq, ['tour.finished', 'attention.notice', null, null], 'budget Copilote : 2 textes par jour');
+  assert.deepEqual(seq, ['tour.finished', 'attention.notice', 'welcome.back', null], 'budget Copilote : 2 textes décoratifs par jour, hors fait métier');
 }
 { // welcome.back absorbe day.ready : un seul message, et day.ready ne revient pas le même jour.
   let r = registry('coach', { lastActiveDate: '2026-09-20' });
@@ -217,7 +221,7 @@ assert.deepEqual(ambientWeights, ambientWeights.slice().sort((a, b) => b - a), '
 }
 { // descripteur : forme, silence, état de réussite de la tournée
   const x = B.decide(mk({ facts: { tour: TOUR_DONE } }), registry('coach'));
-  assert.deepEqual([x.id, x.kind, x.surface, x.personality, x.state, x.silent, x.messageMs], ['tour.finished', 'ambient', 'home', 'coach', 'success', true, B.CONFIG.messageMs]);
+  assert.deepEqual([x.id, x.kind, x.surface, x.personality, x.state, x.silent, x.messageMs], ['tour.finished', 'business', 'home', 'coach', 'success', true, B.CONFIG.messageMs]);
   assert.ok(B.PERSONALITIES.coach.reactions['tour.finished'].copy.some(t => t.replace(PLACEHOLDER, (m, k) => ({ done: 3, total: 3 })[k]) === x.text), 'texte issu des données + faits');
   assert.equal(typeof B.decide(mk({ facts: { tour: TOUR_READY, workday: true, mode: 'today' } }), registry('copilote')).text, 'string', 'Copilote : une ligne courte pour day.ready (D6)');
   assert.equal(B.decide(mk({ facts: { tour: TOUR_READY, workday: true, mode: 'today' } }), registry('copilote')).gesture, 'lookToward');
@@ -262,17 +266,22 @@ assert.deepEqual(ambientWeights, ambientWeights.slice().sort((a, b) => b - a), '
   assert.equal(B.decide(mk({ facts: { tour: TOUR_DONE }, now: Date.UTC(2026, 9, 5, 21, 56) }), s.r), null, 'même date : une seule fois');
   assert.equal(B.decide(mk({ facts: { tour: TOUR_DONE, date: iso(6) }, now: Date.UTC(2026, 9, 5, 22, 10) }), s.r).id, 'tour.finished', 'minuit passé et écart respecté : de nouveau permis');
   const early = B.decide(mk({ facts: { tour: TOUR_DONE, date: iso(6) }, now: Date.UTC(2026, 9, 5, 22, 0) }), s.r);
-  assert.deepEqual([early.id, early.text, early.state, early.meta.textCounted], ['tour.finished', null, 'success', false], 'écart de texte non atteint : l’état de réussite seul, sans consommer le budget');
+  // V276 : l'écart de texte est un cooldown DÉCORATIF ; un fait métier (tournée terminée) ne s'y heurte plus.
+  assert.deepEqual([early.id, early.state, early.meta.textCounted], ['tour.finished', 'success', false]);
+  assert.ok(early.text, 'le texte du fait métier est conservé malgré l’écart décoratif');
   const rec = B.record(s.r, early, { now: Date.UTC(2026, 9, 5, 22, 0), date: iso(6) });
-  assert.equal(rec.registry.textDay.date, D, 'un état sans texte ne compte pas dans le budget du jour');
+  assert.deepEqual(rec.registry.textDay, { date: null, n: 0 }, 'un texte métier ne compte jamais dans le budget décoratif du jour');
+  assert.equal(rec.registry.lastTextAt, s.r.lastTextAt, 'ni dans l’écart de texte décoratif');
 }
 { // budget par personnalité, remise à zéro à la date suivante
   const facts = { tour: TOUR_DONE, attention: ATT('s1'), lastVisitDaysAgo: 3 };
   let r = registry('coach', { lastActiveDate: '2026-09-01' });
   for (const rid of ['tour.finished', 'attention.notice', 'welcome.back']) { const s = step(r, { facts }, FREE); assert.equal(s.x.id, rid); r = s.r; }
-  assert.deepEqual([r.textDay.date, r.textDay.n], [D, 3]);
-  assert.equal(step(r, { facts: { attention: ATT('s2') } }, FREE).x, null, 'quatrième texte refusé');
-  const next = step(r, { facts: { attention: ATT('s2'), date: iso(6) }, now: NOW + 24 * H }, FREE);
+  assert.deepEqual([r.textDay.date, r.textDay.n], [D, 2], 'V276 : la tournée terminée (fait métier) ne compte pas dans le budget décoratif');
+  const third = step(r, { facts: { attention: ATT('s2') } }, FREE); assert.equal(third.x.id, 'attention.notice'); r = third.r;
+  assert.equal(r.textDay.n, 3);
+  assert.equal(step(r, { facts: { workday: true, mode: 'today' } }, FREE).x, null, 'quatrième texte décoratif refusé');
+  const next = step(r, { facts: { attention: ATT('s3'), date: iso(6) }, now: NOW + 24 * H }, FREE);
   assert.equal(next.x.id, 'attention.notice', 'nouveau jour, nouveau budget'); assert.equal(next.r.textDay.n, 1);
 }
 { // Discret : jamais de texte ambiant, jamais de geste ambiant ; la tournée terminée reste un état sans texte
@@ -288,10 +297,10 @@ assert.deepEqual(ambientWeights, ambientWeights.slice().sort((a, b) => b - a), '
   assert.equal(B.decide(mk({ trigger: 'touch' }), r, FREE), null, 'pas de toucher');
   assert.equal(B.listPersonalities().find(p => p.id === 'discret').idle, false);
 }
-{ // écart entre deux textes, bornes exactes
-  const facts = { tour: TOUR_DONE, attention: ATT('s1') };
-  const a = step(registry('coach'), { facts });
-  assert.equal(a.x.id, 'tour.finished');
+{ // écart entre deux textes décoratifs, bornes exactes (V276 : la tournée terminée, fait métier, ne l'ouvre ni ne le subit)
+  const facts = { attention: ATT('s1') };
+  const a = step(registry('coach'), { facts: { workday: true, mode: 'today' } });
+  assert.equal(a.x.id, 'day.empty');
   for (const [dt, expect] of [[5000, null], [10 * MIN - 1, null], [10 * MIN, 'attention.notice']]) {
     const x = B.decide(mk({ facts, now: NOW + dt }), a.r); assert.equal(x && x.id, expect, 'écart de texte ' + dt);
   }
@@ -529,6 +538,13 @@ const assertValid = (reg, label) => {
 }
 
 /* 13. Configuration : aucun seuil caché ----------------------------------------------------- */
+{ // V276 — seuils de la couche métier (remarques et point du jour)
+  const r1 = B.remarks({ items: [{ kind: 'trend', text: 'x'.repeat(200) }] }, cfg('lineMaxChars', 20));
+  assert.equal(Array.from(r1.lines[0].text).length, 20, 'longueur d’une remarque pilotée par CONFIG');
+  const brief = { tour: { total: 3, done: 1, finished: false, next: { key: 'a', label: 'b' } }, mode: 'today', attention: ATT('s1'), remarks: { lines: [{ kind: 'trend', text: 't' }] } };
+  assert.equal(B.brief(brief, cfg('briefMaxLines', 1)).lines.length, 1, 'nombre de lignes du point du jour piloté par CONFIG');
+  assert.equal(B.brief(brief).lines.length, 3);
+}
 {
   assert.equal(B.decide(mk({ facts: { tour: TOUR_DONE } }), registry('coach'), cfg('messageMs', 1500)).messageMs, 1500, 'durée pilotée par CONFIG');
   const ignored = { config: { absenceDays: -1, textGapMs: NaN, gestureGapMs: '5', arrivalGuardMs: null, unknown: 9, touchLadder: 'x' } };
@@ -592,11 +608,11 @@ const assertValid = (reg, label) => {
   assert.ok(from > 0 && apply > from, 'bloc V273 de l’Accueil repéré'); assert.ok(voice.length > 1500);
   assert.doesNotMatch(voice, /localStorage|sessionStorage|__chefStorage|indexedDB|\bsave\s*\(|generateWeek|renderAll|setTimeout|setInterval|addEventListener|MutationObserver|innerHTML|state\.[A-Za-z.]*\s*=[^=]/, 'l’Accueil lit des faits : aucune écriture, aucun timer, aucun écouteur, aucun HTML injecté');
   assert.match(voice, /textContent=homeLineText/, 'le texte de Runner passe toujours par textContent');
-  assert.match(voice, /controller\.decide\(\{surface:'home',trigger:'arrive'/, 'l’Accueil confie la décision au module');
+  assert.match(voice, /controller\.decide\(\{surface:'home',trigger:trigger\|\|'arrive'/, 'l’Accueil confie la décision au module (V276 : arrive ou rerender)');
   assert.match(voice, /controller\.record\(reaction/, 'toute réaction affichée est enregistrée (budget, écart)');
   assert.match(voice, /returnFrom:returnedFrom\|\|null/, 'le retour depuis un autre écran est un fait de l’Accueil, jamais déduit du module');
   assert.match(voice, /homeRunner\.isMoving\(\)/, 'aucun geste ambiant par-dessus la scène d’entrée');
-  assert.match(home, /if\(skipBehavior\)skipBehavior=false;else applyBehavior\(panel,returnedFrom\)/, 'retour de la feuille Apparence : aucune réaction supplémentaire');
+  assert.match(home, /if\(skipBehavior\)skipBehavior=false;else applyBehavior\(panel,returnedFrom,trigger\)/, 'retour de la feuille Apparence : aucune réaction supplémentaire');
   assert.match(home, /homeRunnerLineV273/, 'ligne de l’Accueil réservée dans le flux de la page');
   assert.doesNotMatch(read('runner-visual.js'), /StoreRunnerBehavior|runner-behavior/, 'la couche visuelle ignore le module de comportement');
   assert.match(home, /setPresence\(behaviorIdle\(\)\)/, 'Accueil : Discret coupe la présence idle');

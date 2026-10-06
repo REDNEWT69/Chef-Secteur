@@ -25,9 +25,9 @@ assert.match(index, /'\.\/store-explorer\.js','\.\/runner-visual\.js','\.\/weekl
   'Runner est chargé avant les derniers modules, sans déplacer mobile-ux-v262.js en dernier');
 assert.equal(sw.split('"./runner-visual.js"').length - 1, 1, 'sw.js précache runner-visual.js une seule fois (CORE_SHELL, obligatoire)');
 assert.ok(sw.indexOf('"./runner-visual.js"') < sw.indexOf('const OPTIONAL_SHELL'), 'runner-visual.js est dans le shell obligatoire, pas dans le facultatif');
-assert.equal(version.displayVersion, '275', 'Contrats cuisinistes par groupement : nouveauté visible V275');
-assert.match(version.latestBuild, /-275$/, 'le build se termine par la version visible 275');
-assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-275$/);
+assert.equal(version.displayVersion, '276', 'Intelligence Runner : nouveauté visible V276');
+assert.match(version.latestBuild, /-276$/, 'le build se termine par la version visible 276');
+assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-276$/);
 assert.equal(index.match(/const BUILD_REV='([^']+)'/)[1], version.latestBuild);
 assert.equal(sw.match(/const BUILD_REV = "([^"]+)"/)[1], version.latestBuild);
 assert.ok(!fs.existsSync(path.join(__dirname, '..', 'runner-visual.css')), 'aucune feuille séparée : le style est injecté au premier mount');
@@ -183,10 +183,10 @@ vm.runInNewContext(mod, ctxTaken);
 assert.equal(ctxTaken.Runner, existing, 'un global Runner déjà présent n’est jamais écrasé');
 assert.equal(typeof ctxTaken.StoreRunnerRunner.setState, 'function', 'le nom canonique reste disponible');
 
-/* 10. Surfaces branchées par leur propriétaire : Assistant, Planning, Accueil, premier lancement. */
+/* 10. Surfaces branchées par leur propriétaire : Assistant, Planning, Accueil, premier lancement et, depuis V276, la remarque « À retenir » du rapport de visite clôturé. */
 const consumers = fs.readdirSync(path.join(__dirname, '..')).filter(f => f.endsWith('.js') && f !== 'runner-visual.js');
 const wired = consumers.filter(f => /StoreRunnerRunner|\bRunner\.(setState|showMessage|mount|reset|unmount|getState)\b|window\.Runner\b/.test(read(f)));
-assert.deepEqual(wired.sort(), ['assistant-upgrade.js', 'home-refresh-v2.js', 'navigation-controller.js', 'planning-ui-fixes.js'], 'Runner est branché par les propriétaires Assistant, Accueil, premier lancement (navigation-controller.js) et Planning : ' + wired.join(', '));
+assert.deepEqual(wired.sort(), ['assistant-upgrade.js', 'home-refresh-v2.js', 'navigation-controller.js', 'planning-ui-fixes.js', 'store-runner-visits.js'], 'Runner est branché par les propriétaires Assistant, Accueil, premier lancement (navigation-controller.js), Planning et rapport de visite clôturé (store-runner-visits.js, V276) : ' + wired.join(', '));
 assert.doesNotMatch(read('src/chef-secteur.html'), /StoreRunnerRunner|\bRunner\.(setState|showMessage|mount|reset)\b|srRunner/, 'le noyau ne branche pas Runner');
 for (const owner of ['planning-command-engine.js', 'store-explorer.js', 'visit-coverage.js', 'planning-generation-controller.js', 'sector-pilotage.js', 'terrain-planning-v1.js', 'planning-cascade-v181.js', 'range-planner-v2.js', 'store-opening-hours.js', 'planning-pro-plus.js', 'period-day-slider.js'])
   assert.doesNotMatch(read(owner), /StoreRunnerRunner|window\.Runner\b|(?<![A-Za-z])Runner\.(mount|unmount|setState|showMessage|hideMessage|reset|getState)\b|srRunner|srAssistantRunner|planningRunnerV269/, owner + ' ne connaît pas Runner (ni moteur, ni Forecast, ni Command Engine, ni Explorer Terrain)');

@@ -74,6 +74,32 @@ function lastPromise(v,family){
 /* V255 — la galerie s'ouvre sur les photos de CETTE visite, et la prochaine photo prend la
    famille affichée ici (BRUN ou BLANC) : aucun classement manuel à faire. */
 function openPhotos(v){const api=window.StorePhotosV1;if(!api||typeof api.open!=='function'){message('Photos indisponibles sur cet appareil.',true);return}api.open(v.storeId,{visitId:v.id,family:shownFamily(v)}).catch(e=>message('Photos indisponibles : '+(e.message||String(e)),true))}
+/* V276 — « À retenir » : Runner croise ce rapport avec les précédents du magasin, ses actions, son planning et sa priorité
+   (StoreRunnerStoreExplorer.insightsFor) et n'en dit que 1 ou 2 (StoreRunnerBehavior.remarks), la plus grave d'abord. Rien d'utile :
+   rien n'est affiché, pas même un cadre vide. Jamais de paraphrase : des statuts, des comptes, des dates. Dans le flux de l'écran,
+   pas de bouton, pas de position flottante ; il ne parle que pour la dernière visite terminée du magasin. */
+let remarkRunner=null;
+function releaseRunner(){if(remarkRunner){try{remarkRunner.destroy()}catch(e){}remarkRunner=null}}
+function runnerRemark(host,v){
+ try{
+  const X=window.StoreRunnerStoreExplorer,B=window.StoreRunnerBehavior;
+  if(!X||typeof X.insightsFor!=='function'||!B||typeof B.controller!=='function')return;
+  const latest=X.insightsFor(window.state,v.storeId,{});
+  if(latest.visitId!==String(v.id))return;
+  const said=B.controller().remarks({items:latest.items});
+  if(!said.lines.length)return;
+  const box=element('section',undefined,'sr-runnerRemark'),slot=element('span',undefined,'sr-runnerSlot'),list=element('div',undefined,'sr-runnerLines');
+  box.setAttribute('aria-label','À retenir, par Runner');slot.setAttribute('aria-hidden','true');
+  list.append(element('b','À retenir'));
+  for(const line of said.lines)list.append(element('p',line.text));
+  box.append(slot,list);host.append(box);
+  const api=window.StoreRunnerRunner;
+  if(api&&typeof api.mount==='function'){
+   remarkRunner=api.mount(slot,{variant:'bubble',size:'sm',decorative:true});
+   if(remarkRunner&&said.state!=='neutral'&&typeof remarkRunner.setState==='function')remarkRunner.setState(said.state,{resetAfter:B.CONFIG.messageMs,silent:true});
+  }
+ }catch(e){}
+}
 function report(host,v){
  const data=M.reportOf(v),family=shownFamily(v),families=visitFamilies(v),block=data[family];
  const promise=lastPromise(v,family);
@@ -96,6 +122,7 @@ function report(host,v){
   const finish=button('Terminer la visite',()=>completeVisit(v),'primary');finish.dataset.srCompleteVisit=v.id;host.append(finish)
  }else{
   host.append(element('p','Visite terminée le '+v.completedDate,'sr-completed'));
+  runnerRemark(host,v);
   if(v.completedDate===localDay()){const reopen=button('↩ Réouvrir cette visite',()=>reopenVisit(v,true),'secondary');reopen.dataset.srReopenVisit=v.id;host.append(reopen)}
   dangerZone(host,v);
  }
@@ -122,6 +149,9 @@ function deletionSummary(result){
  return parts.join(' ');
 }
 function announceDeletion(detail){try{document.dispatchEvent(new CustomEvent('store-runner:visit-deleted',{detail}))}catch(e){}}
+/* V276 : la clôture et la réouverture sont annoncées par leur propriétaire, comme la suppression. Les hôtes qui affirment quelque
+   chose du métier (l'Accueil de Runner) se rafraîchissent sur ces événements au lieu de deviner : ils lisent alors la source la plus récente. */
+function announceVisit(kind,v){try{document.dispatchEvent(new CustomEvent('store-runner:visit-'+kind,{detail:{visitId:String(v&&v.id||''),storeId:String(v&&v.storeId||''),date:localDay()}}))}catch(e){}}
 /* Garde-fou V231 — les photos ne vivent pas dans `state` : elles sont dans IndexedDB,
    hors de l'écriture atomique qui supprime une visite. Supprimer la visite sans elles
    les abandonnerait sur leur magasin actuel — le mauvais magasin dans le cas qui a
@@ -185,7 +215,7 @@ async function deleteLegacyDay(storeId,day){
 function completionText(v){const d=M.reportOf(v),choices=[d.brun.team,d.blanc.team,d.brun.training,d.blanc.training,d.shared.context];return choices.map(x=>String(x||'').trim()).find(Boolean)||'Visite terrain enregistrée'}
 async function completeVisit(v){
  if(!window.confirm('Terminer cette visite maintenant ?\n\nElle passera dans l’historique et deviendra en lecture seule.')){message('Visite conservée en cours.');return false}
- return save(s=>{const live=M.getVisit(s,v.id);if(!String(live.conclusion||'').trim())M.editVisit(s,v.id,'conclusion',null,completionText(live).slice(0,500));M.complete(s,v.id,localDay())},()=>{viewStep=3;render();if(typeof window.renderAll==='function')window.renderAll();renderQuickMemory();message('Visite terminée et enregistrée dans l’historique.')})
+ return save(s=>{const live=M.getVisit(s,v.id);if(!String(live.conclusion||'').trim())M.editVisit(s,v.id,'conclusion',null,completionText(live).slice(0,500));M.complete(s,v.id,localDay())},()=>{viewStep=3;render();if(typeof window.renderAll==='function')window.renderAll();renderQuickMemory();message('Visite terminée et enregistrée dans l’historique.');announceVisit('completed',v)})
 }
 async function reopenVisit(v,ask){
  if(!v||v.status!=='completed')return false;
@@ -200,7 +230,7 @@ async function reopenVisit(v,ask){
   const otherSameDay=(s.businessV2&&s.businessV2.visits||[]).some(x=>x.id!==live.id&&String(x.storeId)===storeId&&x.status==='completed'&&x.completedDate===day);
   const legacy=s.visits&&s.visits[storeId];
   if(legacy&&Array.isArray(legacy.history)&&!otherSameDay){legacy.history=legacy.history.filter(x=>x!==day);legacy.history.sort();legacy.lastVisit=legacy.history[legacy.history.length-1]||''}
- },()=>{activeId=visitId;previewFamily=activeFamily(current());viewStep=3;render();if(typeof window.renderAll==='function')window.renderAll();renderQuickMemory();message('Visite réouverte · tu peux continuer la saisie.')})
+ },()=>{activeId=visitId;previewFamily=activeFamily(current());viewStep=3;render();if(typeof window.renderAll==='function')window.renderAll();renderQuickMemory();message('Visite réouverte · tu peux continuer la saisie.');announceVisit('reopened',v)})
 }
 /* Le parcours terrain n'a plus qu'une étape : l'ancien onglet Suivi ne pouvait plus rien
    afficher, aucun chemin ne créant plus d'action. Les actions encore ouvertes restent
@@ -212,7 +242,7 @@ function steps(host,v){
  for(const i of VISIBLE_STEPS){const b=button(STEP_LABELS[i],async()=>{if(v.status==='draft')await save(s=>M.editVisit(s,v.id,'step',null,i),()=>{render();dialog.scrollTop=0});else{viewStep=i;render();dialog.scrollTop=0}});b.setAttribute('aria-current',step===i?'step':'false');nav.append(b)}
  host.append(nav)
 }
-function render(){const v=current();if(!v){hub();return}body.replaceChildren();title.textContent=name(v.storeId)+' · '+(v.status==='draft'?'Visite en cours':'Visite terminée');steps(body,v);familySwitch(body,v);report(body,v)}
+function render(){releaseRunner();const v=current();if(!v){hub();return}body.replaceChildren();title.textContent=name(v.storeId)+' · '+(v.status==='draft'?'Visite en cours':'Visite terminée');steps(body,v);familySwitch(body,v);report(body,v)}
 function hub(){activeId=null;title.textContent='Visites';body.replaceChildren();const rows=domain().visits.slice().sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));if(!rows.length)body.append(element('p','Démarre une visite depuis une fiche magasin, le planning ou la tournée.'));for(const v of rows){const box=element('section',undefined,'sr-item');box.append(element('h3',name(v.storeId)),element('p',v.status==='draft'?'Visite en cours':('Terminée le '+v.completedDate)),button(v.status==='draft'?'Reprendre la visite':'Consulter la visite',()=>{activeId=v.id;previewFamily=activeFamily(v);viewStep=3;render()}));body.append(box)}}
 function show(){if(!dialog.open){opener=document.activeElement;dialog.showModal()}}
 /* V233 — une visite terminée aujourd'hui est consultée par défaut.
@@ -234,7 +264,7 @@ async function start(storeId){
 }
 function openVisit(visitId){const v=domain().visits.find(x=>x.id===String(visitId));if(!v)return false;show();activeId=v.id;previewFamily=activeFamily(v);viewStep=3;render();if(v.status==='draft'&&v.activeFamily!==activeFamily(v))save(s=>normalizeVisitFamily(s,M.getVisit(s,v.id)),()=>{previewFamily=activeFamily(current());render()});return true}
 function openHub(){show();save(undefined,hub);return true}
-async function close(){if(!await save())return;dialog.close();if(opener&&opener.isConnected)opener.focus();if(typeof window.renderAll==='function')window.renderAll()}
+async function close(){if(!await save())return;releaseRunner();dialog.close();if(opener&&opener.isConnected)opener.focus();if(typeof window.renderAll==='function')window.renderAll()}
 function memoryFor(storeId){const id=String(storeId||''),b=domain();const visits=(b.visits||[]).filter(v=>String(v.storeId)===id&&v.status==='completed').slice().sort((a,b)=>String(b.completedAt||b.completedDate||'').localeCompare(String(a.completedAt||a.completedDate||'')));const actions=(b.actions||[]).filter(a=>String(a.storeId)===id&&!['done','cancelled'].includes(a.status)).slice().sort((a,b)=>String(a.dueDate||'9999-12-31').localeCompare(String(b.dueDate||'9999-12-31'))||String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));return{visits,actions}}
 function ensureMemoryStyle(){if(document.getElementById('sr-store-memory-style'))return;const s=element('style');s.id='sr-store-memory-style';s.textContent='#srStoreMemory{margin:14px 0 4px;padding:14px;border:1px solid #e5e7eb;border-radius:18px;background:#f8fafc}#srStoreMemory .sr-memoryHead{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:9px}#srStoreMemory h3{margin:0;font-size:15px}#srStoreMemory .sr-memoryMeta{font-size:11px;color:#667085;margin-top:3px}#srStoreMemory .sr-memoryList{display:grid;gap:7px}#srStoreMemory .sr-memoryRow{width:100%;min-height:44px;text-align:left;border:1px solid #dde3ec;border-radius:13px;background:#fff;padding:9px 10px;display:block;color:#1d2939}#srStoreMemory .sr-memoryRow b{display:block;font-size:12px;margin-bottom:2px}#srStoreMemory .sr-memoryRow span{display:block;font-size:11px;line-height:1.35;color:#667085;white-space:normal}#srStoreMemory .sr-memoryActions{margin-top:12px;padding-top:10px;border-top:1px solid #e5e7eb}#srStoreMemory .sr-memoryToggle{width:100%;min-height:44px;margin-top:8px;border:0;border-radius:12px;background:#eef4ff;color:#1456c4;font-weight:800}';document.head.appendChild(s)}
 function ensureMemoryHost(){const sheet=document.getElementById('storeQuickSheet');if(!sheet)return null;let host=document.getElementById('srStoreMemory');if(host)return host;host=element('section');host.id='srStoreMemory';host.setAttribute('aria-label','Mémoire terrain du magasin');const bottom=sheet.querySelector('.sheetBottom');if(bottom)sheet.insertBefore(host,bottom);else sheet.appendChild(host);return host}

@@ -25,6 +25,17 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'276',
+      title:'Runner suit ce que tu viens de faire',
+      items:[
+        'Runner ne te dit plus qu’il reste une visite quand tu viens de la terminer : ce qu’il affiche suit ta tournée.',
+        'Quand tu termines une visite, il compare le rapport aux passages précédents du magasin et te signale, au plus deux fois, ce qui mérite ton attention : un point qui revient, une action encore ouverte, un point à revoir au prochain passage.',
+        'Quand il n’a rien d’utile à dire, il se tait.',
+        'Touche Runner sur l’Accueil : tu vois le point du jour de ta tournée. Ses réglages restent dans « Personnaliser Runner » et dans Plus → Apparence.',
+        'Générer mes 3 semaines demande toujours ta position actuelle avant de calculer. Si elle est indisponible, seule la base que tu as enregistrée dans Mon secteur est utilisée, sinon la génération s’arrête avec un message clair.'
+      ]
+    },
+    {
       version:'275',
       title:'Runner prend sa place, les contrats deviennent lisibles',
       items:[

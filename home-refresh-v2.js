@@ -7,7 +7,7 @@
   const observedPanels=new WeakSet();
   let homeRunner=null,homeRunnerArrived=false,homeReturnFrom='';
   let appearanceRequest=0,appearancePending=false;
-  let homeFacts=null,homeLineText='',skipBehavior=false;
+  let homeFacts=null,homeLineText='',homeLineSig='',skipBehavior=false,briefOpen=false,briefSig='';
 
   /* V270 : le propriétaire de l'accueil fournit les ancres déjà affichées.
      Cette présence ne lit aucune donnée : une seule entrée par document, puis
@@ -15,14 +15,14 @@
   function releaseHomeRunner(){appearanceRequest++;appearancePending=false;if(homeRunner){homeRunner.cancelMove();homeRunner.destroy();homeRunner=null}}
   function syncHomeRunner(){
     const panel=document.getElementById('homePanel'),slot=document.getElementById('homeRunnerV270');
-    if(!panel||!panel.classList.contains('active')){homeReturnFrom=activePanel()||'';releaseHomeRunner();clearHomeLine();return}
-    if(document.querySelector('#assistantPanel.open,#moreSheetV2.open')){homeReturnFrom=document.querySelector('#assistantPanel.open')?'assistant':'more';releaseHomeRunner();clearHomeLine();return}
+    if(!panel||!panel.classList.contains('active')){homeReturnFrom=activePanel()||'';releaseHomeRunner();clearHomeLine();closeBrief();return}
+    if(document.querySelector('#assistantPanel.open,#moreSheetV2.open')){homeReturnFrom=document.querySelector('#assistantPanel.open')?'assistant':'more';releaseHomeRunner();clearHomeLine();closeBrief();return}
     if(document.querySelector('#runnerAppearanceSheet[open]')){skipBehavior=true;releaseHomeRunner();return}
     const boot=window.StoreRunnerBoot;
     if(boot&&typeof boot.settled==='function'&&!boot.settled())return;
     /* V271 : le guide de premier lancement couvre l'écran. L'entrée de Runner est gardée pour sa
        fermeture (store-runner:first-run-closed), sinon elle serait jouée sous le guide, sans témoin. */
-    if(document.documentElement.classList.contains('srFirstRunOpen')){releaseHomeRunner();clearHomeLine();return}
+    if(document.documentElement.classList.contains('srFirstRunOpen')){releaseHomeRunner();clearHomeLine();closeBrief();return}
     const api=window.StoreRunnerRunner;
     if(!slot||!api){releaseHomeRunner();return}
     if(homeRunner&&homeRunner.el.parentNode!==slot)releaseHomeRunner();
@@ -37,10 +37,13 @@
       homeRunner.returnToRest({duration:from==='more'?1600:2400,offsetX:from==='planPanel'?-16:from==='storesPanel'?10:0,offsetY:from==='assistant'?4:0});
     }
     const returnedFrom=homeRunnerArrived?homeReturnFrom:'';
+    /* V276 : un nouveau montage sur le même écran (rendu provoqué par un changement de données) est un « rerender » : seuls les faits
+       métier peuvent alors parler, jamais le décor. Une vraie arrivée (premier affichage, retour d'un autre écran) reste « arrive ». */
+    const trigger=homeRunnerArrived&&!returnedFrom?'rerender':'arrive';
     homeReturnFrom='';
     if(typeof homeRunner.setPresence==='function')homeRunner.setPresence(behaviorIdle());
     homeRunnerArrived=true;
-    if(skipBehavior)skipBehavior=false;else applyBehavior(panel,returnedFrom);
+    if(skipBehavior)skipBehavior=false;else applyBehavior(panel,returnedFrom,trigger);
   }
 
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]||c))}
@@ -69,6 +72,22 @@
       return open?{kind:'visit-open',key:open.storeId,label:storeLabel(state,open.storeId),reason:'visite restée ouverte'}:null;
     }catch(e){return null}
   }
+  /* V276 — les faits que Runner lit sur l'Accueil sont construits UNE fois, chez leurs propriétaires, et servent la décision, la
+     signature de la ligne affichée et le point du jour. */
+  function behaviorFacts(now,returnedFrom){
+    const t=new Date(now),context=homeFacts&&homeFacts.context,tour=homeFacts&&homeFacts.tour;
+    return{date:isoLocal(t),workday:workdayToday(t),afterHours:!!(context&&context.afterHours),mode:context&&context.mode,
+      tour:tour?{total:tour.total,done:tour.done,finished:!!tour.finished}:null,attention:homeAttention(t),lastVisitDaysAgo:lastVisitDaysAgo(t),returnFrom:returnedFrom||null};
+  }
+  function factsSignature(now){try{const b=behaviorApi();return b?b.controller().signature(behaviorFacts(now,'')):''}catch(e){return''}}
+  /* Une ligne ambiante n'est vraie que pour les faits dont elle est née. Dès qu'ils changent (visite clôturée ou rouverte, point
+     d'attention traité, jour suivant) elle est retirée : jamais repeinte telle quelle dans un nouveau rendu, même si la nouvelle
+     décision se tait (cooldown, budget). */
+  function dropStaleLine(){
+    if(!homeLineText)return;
+    const sig=factsSignature(Date.now());
+    if(!sig||sig!==homeLineSig){homeLineText='';homeLineSig='';paintHomeLine()}
+  }
   function homeView(){
     const html=document.documentElement;
     return{state:homeRunner.getState(),keyboard:html.getAttribute('data-sr-keyboard')==='open',firstRun:html.classList.contains('srFirstRunOpen'),
@@ -80,18 +99,16 @@
     line.textContent=homeLineText;line.hidden=!homeLineText;
   }
   function clearHomeLine(){if(homeLineText){homeLineText='';paintHomeLine()}}
-  function applyBehavior(panel,returnedFrom){
+  function applyBehavior(panel,returnedFrom,trigger){
     const behavior=behaviorApi();
     if(!behavior||!homeRunner||!homeFacts)return;
     try{
-      const controller=behavior.controller(),now=Date.now(),date=isoLocal(now),context=homeFacts.context,tour=homeFacts.tour;
+      const controller=behavior.controller(),now=Date.now(),date=isoLocal(now),facts=behaviorFacts(now,returnedFrom);
       controller.touch({now,date});
-      const reaction=controller.decide({surface:'home',trigger:'arrive',now,view:homeView(),facts:{
-        date,workday:workdayToday(new Date(now)),afterHours:!!(context&&context.afterHours),mode:context&&context.mode,
-        tour:tour?{total:tour.total,done:tour.done,finished:!!tour.finished}:null,attention:homeAttention(new Date(now)),lastVisitDaysAgo:lastVisitDaysAgo(new Date(now)),returnFrom:returnedFrom||null}});
+      const reaction=controller.decide({surface:'home',trigger:trigger||'arrive',now,view:homeView(),facts});
       if(!reaction)return;
       controller.record(reaction,{now,date});
-      if(reaction.text){homeLineText=reaction.text;paintHomeLine()}
+      if(reaction.text){homeLineText=reaction.text;homeLineSig=controller.signature(facts);paintHomeLine()}
       if(reaction.state==='success')homeRunner.setState('success',{resetAfter:reaction.messageMs,silent:true});
       if(!reaction.gesture||homeRunner.isMoving())return;
       const target=reaction.look==='card'?panel.querySelector('.phNextDay,.phTerrain,.phVisitCard'):reaction.look;
@@ -531,9 +548,74 @@
     if(ds.homeUnpin){const id=ds.homeUnpin;updatePrefs(p=>prefsOps.unpin(p,id));return}
     if(ds.homeMove){const id=ds.cardId,delta=Number(ds.homeMove);updatePrefs(p=>prefsOps.move(p,id,delta));return}
   }
+  /* V276 — le tap sur Runner ouvre son POINT DU JOUR (l'état de la tournée, la lecture du dernier passage, le point d'attention),
+     recalculé sur les faits à chaque rendu : il ne peut pas être périmé. Les réglages et la personnalité ne sont plus l'effet
+     du tap : ils restent à un geste explicite, « Personnaliser Runner » dans cette carte, ou Plus → Apparence. */
+  function closeBrief(){if(briefOpen){briefOpen=false;paintBrief()}}
+  function toggleBrief(){
+    if(homeRunner&&typeof homeRunner.react==='function')try{homeRunner.react()}catch(e){}
+    briefOpen=!briefOpen;briefSig='';paintBrief();
+    const host=document.getElementById('homeRunnerBriefV276');
+    if(briefOpen&&host&&typeof host.scrollIntoView==='function')try{host.scrollIntoView({block:'nearest'})}catch(e){}
+  }
+  function lastVisitRemarks(now){
+    try{
+      const X=window.StoreRunnerStoreExplorer,b=behaviorApi();
+      if(!X||typeof X.insightsFor!=='function'||!b)return null;
+      const today=isoLocal(now),yesterday=isoLocal(now-DAY_MS);
+      const done=(((state.businessV2||{}).visits)||[]).filter(v=>v&&v.status==='completed'&&(v.completedDate===today||v.completedDate===yesterday))
+        .sort((a,c)=>String(c.completedAt||c.completedDate).localeCompare(String(a.completedAt||a.completedDate)));
+      for(const v of done){
+        const found=X.insightsFor(state,v.storeId,{});
+        if(found.visitId!==String(v.id))continue;
+        const said=b.controller().remarks({items:found.items});
+        if(said.lines.length)return{lines:said.lines,store:storeLabel(state,v.storeId)};
+      }
+    }catch(e){}
+    return null;
+  }
+  function briefFacts(now){
+    const facts=behaviorFacts(now,''),context=homeFacts&&homeFacts.context,tour=homeFacts&&homeFacts.tour;
+    if(context&&context.mode==='next'&&context.next&&Array.isArray(context.next.route)&&context.next.route.length)facts.tour={total:context.next.route.length,done:0,finished:false,next:null};
+    else if(tour){const cur=tour.current;facts.tour={total:tour.total,done:tour.done,finished:!!tour.finished,next:cur&&cur.id!=null?{key:String(cur.id),label:storeLabel(state,cur.id,cur)}:null}}
+    facts.remarks=lastVisitRemarks(now);
+    return facts;
+  }
+  function paintBrief(){
+    const host=document.getElementById('homeRunnerBriefV276'),tap=document.getElementById('homeRunnerTapV276');
+    if(tap)tap.setAttribute('aria-expanded',briefOpen?'true':'false');
+    if(!host)return;
+    if(!briefOpen){host.hidden=true;host.replaceChildren();briefSig='';return}
+    const b=behaviorApi(),said=b?b.controller().brief(briefFacts(Date.now())):{lines:[]},sig=JSON.stringify(said.lines);
+    if(sig===briefSig&&!host.hidden)return; // même contenu : on ne touche pas au DOM (un tap en cours ne doit pas perdre son bouton)
+    briefSig=sig;host.replaceChildren();
+    const head=document.createElement('div'),title=document.createElement('b'),close=document.createElement('button');
+    head.className='phBriefHead';title.textContent='Runner';
+    close.type='button';close.setAttribute('data-home-brief-close','');close.setAttribute('aria-label','Fermer le point du jour');close.textContent='×';
+    head.append(title,close);host.append(head);
+    const list=document.createElement('ul');list.className='phBriefList';
+    for(const line of said.lines){
+      const li=document.createElement('li'),span=document.createElement('span');span.textContent=line.text;li.append(span);
+      if(line.action&&line.action.type==='open-store'){
+        const go=document.createElement('button');go.type='button';go.setAttribute('data-home-brief-store',line.action.storeId);go.textContent='Voir la fiche';li.append(go);
+      }
+      list.append(li);
+    }
+    if(!said.lines.length){const li=document.createElement('li');li.className='phBriefEmpty';li.textContent='Rien à signaler pour le moment.';list.append(li)}
+    host.append(list);
+    const settings=document.createElement('button');
+    settings.type='button';settings.className='phBriefSettings';settings.setAttribute('data-home-brief-settings','');
+    settings.setAttribute('aria-haspopup','dialog');settings.setAttribute('aria-controls','runnerAppearanceSheet');settings.textContent='Personnaliser Runner';
+    host.append(settings);host.hidden=false;
+  }
   function onHomeClick(e){
-    const runnerButton=e.target&&e.target.closest?e.target.closest('#homeRunnerAppearanceButton'):null;
-    if(runnerButton){openRunnerAppearance(runnerButton);return}
+    const target=e.target&&e.target.closest?e.target:null;
+    if(target&&target.closest('#homeRunnerTapV276')){toggleBrief();return}
+    if(target&&target.closest('[data-home-brief-close]')){closeBrief();return}
+    const settingsButton=target&&target.closest('[data-home-brief-settings]');
+    if(settingsButton){openRunnerAppearance(settingsButton);return}
+    const storeButton=target&&target.closest('[data-home-brief-store]');
+    if(storeButton){const id=storeButton.getAttribute('data-home-brief-store');closeBrief();if(id&&typeof window.openStoreQuick==='function')window.openStoreQuick(id);return}
     const t=e.target&&e.target.closest?e.target.closest('#premiumHomeV2 [data-home-customize],#premiumHomeV2 [data-home-all],#premiumHomeV2 .phCard[data-home-card]'):null;if(!t)return;
     if(t.dataset.homeCustomize!==undefined){openSheet('edit');return}
     if(t.dataset.homeAll!==undefined){openSheet('all');return}
@@ -555,7 +637,7 @@
 
   function ensureCss(){if(document.getElementById('home-refresh-v2-css'))return;const s=document.createElement('style');s.id='home-refresh-v2-css';s.textContent=`
 #homePanel{max-width:980px;margin:0 auto}.homeHero,#homeKpis,#homePriority,#homeNext,#homePanel>.sectionTitle{display:none!important}
-#premiumHomeV2 .phBrand{position:relative}#premiumHomeV2 .srBrandLogo{position:relative;z-index:1}#homeRunnerOriginV270{position:absolute;left:calc(min(112px,28vw) - 38px);top:22px;width:56px;height:56px;pointer-events:none}#premiumHomeV2 .phDayHeading{display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px}#homeRunnerAppearanceButton{display:flex;flex-direction:column;align-items:center;flex:0 0 64px;min-width:64px;min-height:56px;padding:0;border:0;background:transparent;color:var(--muted);touch-action:manipulation}#homeRunnerV270{display:block;flex:0 0 56px;width:56px;min-height:56px;pointer-events:none}#moreSheetV2 [data-runner-appearance]{order:30}#homeRunnerV270 .srRunner{gap:0;pointer-events:none}#premiumHomeV2 .phDayHeading .phTitle{min-width:0;font-size:clamp(34px,11vw,72px)}@media(max-width:700px){#homeRunnerOriginV270{left:calc(min(88px,24vw) - 38px);top:16px}#premiumHomeV2 .phDayHeading .phTitle{font-size:clamp(34px,11vw,48px)}}
+#premiumHomeV2 .phBrand{position:relative}#premiumHomeV2 .srBrandLogo{position:relative;z-index:1}#homeRunnerOriginV270{position:absolute;left:calc(min(112px,28vw) - 38px);top:22px;width:56px;height:56px;pointer-events:none}#premiumHomeV2 .phDayHeading{display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px}#homeRunnerTapV276{display:flex;flex-direction:column;align-items:center;flex:0 0 64px;min-width:64px;min-height:56px;padding:0;border:0;background:transparent;color:var(--muted);touch-action:manipulation}#homeRunnerV270{display:block;flex:0 0 56px;width:56px;min-height:56px;pointer-events:none}#moreSheetV2 [data-runner-appearance]{order:30}#homeRunnerV270 .srRunner{gap:0;pointer-events:none}#premiumHomeV2 .phDayHeading .phTitle{min-width:0;font-size:clamp(34px,11vw,72px)}@media(max-width:700px){#homeRunnerOriginV270{left:calc(min(88px,24vw) - 38px);top:16px}#premiumHomeV2 .phDayHeading .phTitle{font-size:clamp(34px,11vw,48px)}}
 #premiumHomeV2{display:block}.phTop{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin:2px 0 22px}.phEyebrow{font-size:14px;color:#858991}.phTitle{font-size:clamp(42px,7vw,72px);line-height:.98;letter-spacing:-.065em;margin:7px 0 0;font-weight:820}.phBase{border:0;background:transparent;color:#777c85;font-size:14px;padding:2px 0}.phGrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.phCard{box-sizing:border-box;width:100%;min-width:0;min-height:184px;padding:20px;border:1px solid rgba(255,255,255,.84);border-radius:28px;background:rgba(255,255,255,.72);box-shadow:0 14px 42px rgba(35,40,55,.08);backdrop-filter:blur(24px) saturate(1.15);-webkit-backdrop-filter:blur(24px) saturate(1.15);display:flex;flex-direction:column;align-items:flex-start;text-align:left;overflow:hidden;color:inherit}.phIcon{width:48px;height:48px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(195,224,255,.82),rgba(228,239,251,.66));font-size:24px;color:#0a84ff;margin-bottom:28px}.phIcon svg{width:24px;height:24px}.phLabel{font-size:15px;color:#30333a}.phValue{display:block;max-width:100%;font-size:38px;line-height:1.02;font-weight:790;letter-spacing:-.055em;margin-top:8px;overflow-wrap:anywhere}.phValue.phStoreValue{font-size:26px;line-height:1.08;letter-spacing:-.035em}.phSub{display:block;font-size:13px;color:#777c85;margin-top:8px;line-height:1.35;overflow-wrap:anywhere}.phWide{margin-top:14px;padding:22px;border:1px solid rgba(255,255,255,.84);border-radius:30px;background:rgba(255,255,255,.72);box-shadow:0 14px 42px rgba(35,40,55,.08);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px)}.phWideLabel{font-size:16px;color:#6f747d}.phWideValue{font-size:42px;font-weight:790;letter-spacing:-.055em;margin:5px 0 16px}.phButton{width:100%;min-height:54px;border:0;border-radius:19px;background:rgba(180,211,247,.58);color:#0878e8;font-size:17px;font-weight:700}.phRange{margin-top:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 18px;border-radius:22px;background:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.72)}.phRange b{font-size:15px}.phRange span{display:block;font-size:12px;color:#777c85;margin-top:4px}.phRange button{border:0;background:#111217;color:#fff;border-radius:15px;padding:10px 13px;font-weight:700}.phActions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.phActions button{min-height:50px;border-radius:18px;border:1px solid rgba(120,125,140,.14);background:rgba(255,255,255,.70);color:#176fd0;font-weight:720}
 #premiumHomeV2 .phTerrain{order:2;box-sizing:border-box;width:100%;margin:0 0 14px;padding:22px 20px 18px;border-radius:28px;background:#111;color:#fff;box-shadow:0 20px 50px rgba(0,0,0,.18)}#premiumHomeV2 .phTerrainEyebrow{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#d6d2cd}#premiumHomeV2 .phTerrainDay{font-size:13px;color:#b9b5af;margin-top:6px}#premiumHomeV2 .phTerrainStore{font-family:Georgia,serif;font-size:32px;line-height:1.08;margin:10px 0 6px;overflow-wrap:anywhere}#premiumHomeV2 .phTerrainMeta{font-size:14px;line-height:1.4;color:#e8e4de;overflow-wrap:anywhere}#premiumHomeV2 .phTerrainBtns{display:grid;grid-template-columns:1fr;gap:8px;margin-top:16px}#premiumHomeV2 .phTerrainBtns button{min-height:52px;border-radius:17px;font-size:16px;font-weight:800;border:0}#premiumHomeV2 .phTerrainMain{background:#fff;color:#111}#premiumHomeV2 .phTerrainRoute{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.22)!important}#premiumHomeV2 .phTerrainSummary{margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.14);font-size:13px;color:#d6d2cd;line-height:1.4}#premiumHomeV2 .phTerrainNext{font-size:13px;color:#d6d2cd;margin-top:4px;line-height:1.4}#premiumHomeV2 .phTerrainNext b{color:#fff}#premiumHomeV2 .phVisitCard .phAssistant:first-child{margin-top:0}#premiumHomeV2 .phTerrainOpen{margin-top:10px;padding:6px 0;border:0;background:none;color:#fff;font-size:13px;font-weight:700;opacity:.8}@media(min-width:701px){#premiumHomeV2 .phTerrainBtns{grid-template-columns:2fr 1fr}}
 #premiumHomeV2 .phNextDay{box-sizing:border-box;width:100%;margin:0 0 14px;padding:20px;border-radius:28px;background:#111;color:#fff;box-shadow:0 20px 50px rgba(0,0,0,.18)}#premiumHomeV2 .phNextEyebrow{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#d6d2cd}#premiumHomeV2 .phNextMeta{margin-top:7px;font-size:14px;line-height:1.4;color:#fff}#premiumHomeV2 .phNextWarn{margin-top:12px;padding:10px 12px;border-radius:14px;background:rgba(255,184,77,.15);border:1px solid rgba(255,184,77,.28);color:#ffd59a;font-size:13px;font-weight:750}#premiumHomeV2 .phNextList{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:7px}#premiumHomeV2 .phNextList li{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:8px;min-height:38px;padding:6px 8px;border-radius:13px;background:rgba(255,255,255,.08)}#premiumHomeV2 .phNextList li>span{display:grid;place-items:center;width:25px;height:25px;border-radius:999px;background:rgba(255,255,255,.12);font-size:12px;color:#d6d2cd}#premiumHomeV2 .phNextList b{font-size:14px;min-width:0;overflow-wrap:anywhere}#premiumHomeV2 .phNextList small{font-size:11px;color:#d6d2cd;text-align:right}#premiumHomeV2 .phNextOpen{width:100%;margin-top:14px;min-height:48px;border:0;border-radius:16px;background:#fff;color:#111;font-size:14px;font-weight:800}
@@ -568,7 +650,7 @@
 #homeCardsSheet h4{margin:14px 4px 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#6d7890}#homeCardsSheet .phSheetHint{margin:0 4px 4px;font-size:12px;line-height:1.4;color:#52627c}#homeCardsSheet .phSheetEmpty{margin:0 4px;font-size:12px;color:#8a93a6}#homeCardsSheet .phSheetEmpty svg{width:12px;height:12px;vertical-align:-1px}
 #homeCardsSheet .phEditList{list-style:none;margin:0;padding:0;display:grid;gap:6px}#homeCardsSheet .phEditRow{display:flex;align-items:center;gap:8px;min-height:56px;padding:6px 6px 6px 10px;border-radius:16px;background:#fff;border:1px solid #e4e9f1}#homeCardsSheet .phEditRow[data-placement="pinned"]{border-color:#9cc9ff}#homeCardsSheet .phEditIcon{display:grid;place-items:center;width:30px;height:30px;flex-shrink:0;border-radius:10px;background:#eef5ff;color:#1686ff}#homeCardsSheet .phEditIcon svg{width:17px;height:17px}#homeCardsSheet .phEditText{flex:1;min-width:0}#homeCardsSheet .phEditText b{display:block;font-size:14px;line-height:1.2}#homeCardsSheet .phEditText small{display:block;font-size:11px;color:#6d7890;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#homeCardsSheet .phEditTools{display:flex;gap:4px;flex-shrink:0}#homeCardsSheet .phTool{display:grid;place-items:center;min-width:40px;height:44px;padding:0 6px;border:0;border-radius:12px;background:#f0f3f8;color:#33405a;font-size:16px;font-weight:750}#homeCardsSheet .phTool svg{width:16px;height:16px}#homeCardsSheet .phTool.on{background:#1686ff;color:#fff}#homeCardsSheet .phTool:disabled{opacity:.35}#homeCardsSheet .phTool.phAdd{font-size:13px;color:#1686ff;padding:0 12px}
 #homeCardsSheet .phSheetReset{width:100%;min-height:48px;margin-top:16px;border:1px solid #d7deea;border-radius:16px;background:#fff;color:#c2410c;font-weight:750}#homeCardsSheet .phSheetReset:disabled{color:#9aa3b5}
-#premiumHomeV2 .phRunnerSpeech{position:relative;box-sizing:border-box;width:max-content;max-width:min(100%,300px);margin:0 0 6px auto;padding:8px 12px;border:1px solid var(--line);border-radius:16px;background:var(--sr-surface-solid);color:var(--ink);box-shadow:0 3px 10px rgba(20,30,45,.06)}#premiumHomeV2 .phRunnerSpeech:has(.phRunnerLine[hidden]){display:none}#premiumHomeV2 .phRunnerSpeech::after{content:"";position:absolute;right:26px;bottom:-6px;width:10px;height:10px;transform:rotate(45deg);border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--sr-surface-solid);pointer-events:none}#premiumHomeV2 .phRunnerLine{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin:0;font-size:13px;line-height:1.4;overflow-wrap:anywhere;color:inherit;animation:srHomeLineIn .24s ease-out}#premiumHomeV2 .phRunnerLine[hidden]{display:none}@keyframes srHomeLineIn{from{opacity:0}to{opacity:1}}@media(prefers-reduced-motion:reduce){#premiumHomeV2 .phRunnerLine{animation:none}}
+#premiumHomeV2 .phRunnerSpeech{position:relative;box-sizing:border-box;width:max-content;max-width:min(100%,300px);margin:0 0 6px auto;padding:8px 12px;border:1px solid var(--line);border-radius:16px;background:var(--sr-surface-solid);color:var(--ink);box-shadow:0 3px 10px rgba(20,30,45,.06)}#premiumHomeV2 .phRunnerSpeech:has(.phRunnerLine[hidden]){display:none}#premiumHomeV2 .phRunnerSpeech::after{content:"";position:absolute;right:26px;bottom:-6px;width:10px;height:10px;transform:rotate(45deg);border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--sr-surface-solid);pointer-events:none}#premiumHomeV2 .phRunnerLine{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin:0;font-size:13px;line-height:1.4;overflow-wrap:anywhere;color:inherit;animation:srHomeLineIn .24s ease-out}#premiumHomeV2 .phRunnerLine[hidden]{display:none}@keyframes srHomeLineIn{from{opacity:0}to{opacity:1}}@media(prefers-reduced-motion:reduce){#premiumHomeV2 .phRunnerLine{animation:none}}#premiumHomeV2 .phRunnerBrief{box-sizing:border-box;margin:10px 0 12px;padding:12px 14px;border:1px solid var(--line);border-radius:18px;background:var(--sr-surface-solid);color:var(--ink);box-shadow:0 3px 10px rgba(20,30,45,.06)}#premiumHomeV2 .phRunnerBrief[hidden]{display:none}#premiumHomeV2 .phBriefHead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}#premiumHomeV2 .phBriefHead b{font-size:13px}#premiumHomeV2 .phBriefHead button{border:0;background:none;color:inherit;font-size:22px;line-height:1;min-width:44px;min-height:44px;margin:-8px -10px -8px 0}#premiumHomeV2 .phBriefList{list-style:none;margin:0;padding:0;display:grid;gap:8px}#premiumHomeV2 .phBriefList li{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;line-height:1.4}#premiumHomeV2 .phBriefList span{min-width:0;overflow-wrap:anywhere}#premiumHomeV2 .phBriefList li button,#premiumHomeV2 .phBriefSettings{border:1px solid var(--line);border-radius:999px;background:transparent;color:inherit;font:inherit;font-size:12px;font-weight:700;min-height:44px;padding:0 14px;white-space:nowrap}#premiumHomeV2 .phBriefList li button{flex:0 0 auto}#premiumHomeV2 .phBriefSettings{display:block;margin:8px 0 0 auto}#premiumHomeV2 .phBriefEmpty{color:var(--muted,#667085)}
 #moreSheetV2{display:none;position:fixed;inset:0;z-index:190;background:rgba(20,24,32,.20);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}#moreSheetV2.open{display:block}.moreSheetCard{position:absolute;left:12px;right:12px;bottom:calc(82px + env(safe-area-inset-bottom));padding:10px;border-radius:28px;background:rgba(249,250,252,.94);border:1px solid rgba(255,255,255,.9);box-shadow:0 28px 80px rgba(20,25,35,.24)}.moreSheetCard>div:first-child{width:42px;height:5px;border-radius:999px;background:#d3d6dc;margin:2px auto 12px}.moreSheetGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.moreSheetGrid button{border:0;background:rgba(235,238,244,.76);border-radius:18px;min-height:58px;font-weight:720;color:#333941}.moreClose{width:100%;margin-top:8px;border:0;background:#111217;color:#fff;border-radius:18px;min-height:48px;font-weight:750}
 @media(max-width:700px){.top .tabs{display:none!important}.top{padding-bottom:10px!important}.phTop{margin-top:10px}.phTitle{font-size:48px}.phGrid{gap:10px}.phCard{min-height:166px;padding:17px;border-radius:24px}.phIcon{margin-bottom:22px;width:44px;height:44px}.phValue{font-size:31px}.phValue.phStoreValue{font-size:22px}.phWide{border-radius:26px;padding:19px}.phWideValue{font-size:38px}.bottomAppNav{grid-template-columns:repeat(5,1fr)!important}.bottomNavBtn{font-size:10px!important}.bottomNavBtn .bnIcon{font-size:22px!important}#premiumHomeV2 .phNextList li{grid-template-columns:26px minmax(0,1fr)}#premiumHomeV2 .phNextList small{grid-column:2;text-align:left;margin-top:-5px}}
 `;
@@ -579,7 +661,7 @@
     const panel=document.getElementById('homePanel');if(!panel)return false;
     let box=document.getElementById('premiumHomeV2');if(!box){box=document.createElement('div');box.id='premiumHomeV2';const install=document.getElementById('installCard');if(install&&install.parentNode===panel)panel.insertBefore(box,install.nextSibling);else panel.insertBefore(box,panel.firstChild)}
     const range=rangeInfo(),today=new Date(),catalog=runtimeActivityCatalog(today),prefs=readPrefs(),custom=isCustomPrefs(prefs),cards=composeHomeCards(catalog,prefs),tour=runtimeTodayTour(today),archive=archiveSnapshot(),context=buildHomeContext(state,today,tour,archive),showNext=context.mode==='next'&&context.next,terrain=showNext?'':runtimeTerrainCard(tour),nextCard=showNext?buildNextDayCard(context,state):'';let rangeHtml='Aucune période générée',rangeSub='Crée ton prochain planning';
-    lastCatalog=catalog;homeFacts={tour,context,catalog};scheduleContextBoundary(today);
+    lastCatalog=catalog;homeFacts={tour,context,catalog};scheduleContextBoundary(today);dropStaleLine();
     if(range){rangeHtml=fmtDate(range.start)+' → '+fmtDate(range.end);rangeSub=(range.weeks||'')+(range.weeks?' semaines':'')+(range.uniqueStores?' · '+range.uniqueStores+' magasins distincts':'')}
     const day=DAYS[(today.getDay()+6)%7];let todayRoute=[];
     /* dateForDay n'est pas exposé hors du noyau : la tournée du jour vient de la même
@@ -591,12 +673,13 @@
     let daySummary=todayRoute.length?todayRoute.length+' magasin'+(todayRoute.length>1?'s':'')+' prévu'+(todayRoute.length>1?'s':'')+km+(estimate&&estimate.start?' · départ '+estimate.start:''):'Aucune visite prévue aujourd’hui';
     if(showNext){const nextEstimate=nextDayEstimate(context.next),parts=[plural(context.next.total,'magasin prévu','magasins prévus'),plural(context.next.credits,'crédit de visite','crédits de visite')];if(nextEstimate&&nextEstimate.start)parts.push('départ '+nextEstimate.start);if(context.pendingToday)parts.push(plural(context.pendingToday,'visite en attente aujourd’hui','visites en attente aujourd’hui'));daySummary=parts.join(' · ')}
     const sector=String((state.profile&&state.profile.sectorName)||'Mon secteur').replace(/^samsung\s*[·:–—-]?\s*/i,'').trim()||'Mon secteur';
-    const markup=`<div class="phTop"><div class="phBrandRow"><div class="phBrand"><div id="homeRunnerOriginV270" aria-hidden="true"></div><img class="srBrandLogo" src="./app-icon.svg" alt="S-RUNNER"><span class="srBrandName">Store Runner</span><span class="srBrandSignature">S-RUNNER By Red①</span></div><div class="phHeaderContext"><button class="phBase" type="button" onclick="openDepartureSettings()" aria-label="Modifier le point de départ">${icon('pin')}<span class="phDepartureCopy"><span>${/^(ma position(?: actuelle)?)$/i.test(baseName())?'Ma position actuelle':'Départ'}</span><span class="phDepartureAddress"></span></span></button><span class="phSector">${esc(sector)} · ${activeStores().length} magasins</span></div></div><div class="phRunnerSpeech"><p class="phRunnerLine" id="homeRunnerLineV273" hidden></p></div><div class="phDayHeading"><h2 class="phTitle">${esc(context.title)}</h2><button id="homeRunnerAppearanceButton" type="button" aria-label="Personnaliser Runner" aria-haspopup="dialog" aria-controls="runnerAppearanceSheet"><span id="homeRunnerV270" data-home-runner-target="${showNext?'next':(terrain?'today':'preparation')}" aria-hidden="true"></span></button></div><p class="phTagline">${esc(daySummary)}</p></div>
+    const markup=`<div class="phTop"><div class="phBrandRow"><div class="phBrand"><div id="homeRunnerOriginV270" aria-hidden="true"></div><img class="srBrandLogo" src="./app-icon.svg" alt="S-RUNNER"><span class="srBrandName">Store Runner</span><span class="srBrandSignature">S-RUNNER By Red①</span></div><div class="phHeaderContext"><button class="phBase" type="button" onclick="openDepartureSettings()" aria-label="Modifier le point de départ">${icon('pin')}<span class="phDepartureCopy"><span>${/^(ma position(?: actuelle)?)$/i.test(baseName())?'Ma position actuelle':'Départ'}</span><span class="phDepartureAddress"></span></span></button><span class="phSector">${esc(sector)} · ${activeStores().length} magasins</span></div></div><div class="phRunnerSpeech"><p class="phRunnerLine" id="homeRunnerLineV273" hidden></p></div><div class="phDayHeading"><h2 class="phTitle">${esc(context.title)}</h2><button id="homeRunnerTapV276" type="button" aria-label="Runner : le point du jour" aria-expanded="false" aria-controls="homeRunnerBriefV276"><span id="homeRunnerV270" data-home-runner-target="${showNext?'next':(terrain?'today':'preparation')}" aria-hidden="true"></span></button></div><p class="phTagline">${esc(daySummary)}</p><section id="homeRunnerBriefV276" class="phRunnerBrief" role="region" aria-label="Point du jour de Runner" hidden></section></div>
     ${nextCard}${terrain}<section class="phVisitCard" aria-label="Vos visites">${showNext?'':(terrain?'':`<button class="phVisitLink" type="button" onclick="goTab('planPanel')"><span class="phVisitIcon">${icon('navigation')}</span><span class="phVisitText"><strong>${todayRoute.length?'Ta journée est prête':'Prépare ta journée'}</strong><span>${esc(summary)}</span></span><span class="phArrow">${icon('chevron')}</span></button>`)}<button class="phAssistant" type="button" onclick="toggleAssistant()"><span class="phSpark">${icon('spark')}</span><span>Tes magasins, tes priorités,<br>préparons ta prochaine tournée…</span>${icon('chevron')}</button></section>
     <div class="phActivityHeading" data-home-mode="${custom?'custom':'auto'}"><div><h3>Votre activité</h3>${custom?'<p>Personnalisée</p>':''}</div><div class="phActivityTools"><button type="button" data-home-customize>Personnaliser</button><button type="button" data-home-all>Voir tout ${icon('chevron')}</button></div></div>
     <div class="phGrid" data-home-cards="${cards.length}">${activityMarkup(cards)}</div>
     <div class="phRange"><div><b>Planning actif</b><span>${esc(rangeHtml)} · ${esc(rangeSub)}</span></div><button type="button" onclick="goTab('planPanel')">Voir</button></div>`;
     if(box.__lastMarkup!==markup){releaseHomeRunner();box.innerHTML=markup;box.__lastMarkup=markup;paintHomeLine();document.dispatchEvent(new CustomEvent('store-runner:home-rendered'))}
+    paintBrief();
     const sheet=document.getElementById('homeCardsSheet');if(sheet&&sheet.open)renderSheet();return true
   }
 
@@ -631,8 +714,8 @@
   window.addEventListener('pageshow',refreshWhenVisible);
   window.addEventListener('load',()=>{window.requestAnimationFrame(()=>window.requestAnimationFrame(syncHomeRunner))},{once:true});
   window.addEventListener('pagehide',releaseHomeRunner);
-  document.addEventListener('store-runner:appearance-opened',releaseHomeRunner);
+  document.addEventListener('store-runner:appearance-opened',function(){releaseHomeRunner();closeBrief()});
   document.addEventListener('store-runner:appearance-closed',syncHomeRunner);
   document.addEventListener('visibilitychange',refreshWhenVisible);
-  ['store-runner:data-restored','store-runner:planning-updated','store-runner:opportunities-updated','store-runner:visit-deleted','store-runner:first-run-closed'].forEach(name=>document.addEventListener(name,()=>scheduleRun(20)));
+  ['store-runner:data-restored','store-runner:planning-updated','store-runner:opportunities-updated','store-runner:visit-deleted','store-runner:visit-completed','store-runner:visit-reopened','store-runner:first-run-closed'].forEach(name=>document.addEventListener(name,()=>scheduleRun(20)));
 })();
