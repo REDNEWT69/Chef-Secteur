@@ -562,7 +562,7 @@ function renderImportReview(body,sites,tr){
   const matched=sites.filter(s=>s.storeId),pending=sites.filter(s=>!s.storeId);
   const box=el('section',undefined,'srCuisineReview');
   const scanned=Number(tr&&tr.scanned);
-  const counts=[(Number.isFinite(scanned)?scanned:sites.length)+' cuisinistes lus dans '+((tr&&tr.sourceCount)>1?tr.sourceCount+' fichiers':'le fichier'),
+  const counts=[(Number.isFinite(scanned)?scanned:sites.length)+((tr&&tr.sourceCount)>1?' cuisinistes lus dans '+tr.sourceCount+' fichiers':' cuisinistes dans le fichier'),
     sites.length+' de mon secteur',matched.length+' rapprochés',pending.length+' à vérifier'];
   box.append(el('b','Import · '+counts.join(' · ')));
   if(!pending.length){box.append(el('span','Tous les magasins du périmètre sont rattachés.','srCuisineMeta'));body.append(box);return}
