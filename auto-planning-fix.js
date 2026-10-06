@@ -117,7 +117,11 @@ function refreshCountingUi(){
 
 function baseObjSafe(){try{return typeof window.baseObj==='function'?window.baseObj():null}catch(e){return null}}
 function distance(a,b){try{const n=Number(window.hav(a,b));return Number.isFinite(n)?Math.max(0,n):Infinity}catch(e){return Infinity}}
-function homeDistance(store){const b=baseObjSafe();return b?distance(store,b):Infinity}
+/* baseObj() du noyau remplit 0,0 quand aucune base n'est enregistrée : sans ce garde, un domicile
+   inconnu devenait le golfe de Guinée et chaque paire de jours « économisait » ~10 000 km. Un domicile
+   en 0,0 est un domicile inconnu : pas de distance, donc pas de paire (reason no-future-pair). */
+function unlocatedHome(b){return Math.abs(Number(b&&b.lat))<=0.01&&Math.abs(Number(b&&b.lon))<=0.01}
+function homeDistance(store){const b=baseObjSafe();return b&&!unlocatedHome(b)?distance(store,b):Infinity}
 function overnightThreshold(){const n=Number(window.state&&state.profile&&state.profile.overnightMinSaving);return Number.isFinite(n)&&n>=0?n:80}
 function selectedWeekMonday(weekDate){const d=parse(weekDate)||parse(window.state&&state.settings&&state.settings.weekDate)||new Date();return monday(d)}
 /* Automatique : la zone doit être éloignée (REMOTE_MIN_KM) et l'économie atteindre le seuil
