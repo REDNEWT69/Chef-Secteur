@@ -331,10 +331,9 @@ function insightsFor(state,storeId,options){
       if(!moved&&Math.abs(correct.length-before)>=2)items.push({id:'trend',kind:'trend',severity:1,tone:correct.length<before?'positive':'attention',text:plural(correct.length,'point à corriger','points à corriger')+', contre '+before+' au dernier passage.'});
     }
 
-    // Incohérences : un point à corriger sans action notée ; une visite prioritaire clôturée sans aucun point renseigné
+    // Incohérence : un point à corriger sans action notée. Un 6P vide n'est jamais une incohérence (les 6P ne sont plus une source métier prioritaire).
     const loose=correct.filter(k=>!rows.get(k).hasAction);
     if(loose.length)items.push({id:'inconsistency',kind:'inconsistency',severity:bump(2),tone:'attention',text:tag+plural(loose.length,'point à corriger','points à corriger')+' sans action notée : '+labelList(loose,six)+'.'});
-    else if(!rows.size&&prio)items.push({id:'inconsistency',kind:'inconsistency',severity:bump(1),tone:'attention',text:tag+'Visite d’un magasin prioritaire clôturée sans aucun point 6P renseigné.'});
 
     // À revoir : les opportunités notées sans action, avec ce que dit le planning (jamais « le meilleur jour »)
     const chances=keysWhere(rows,r=>r.status==='opportunity'&&!r.hasAction);
