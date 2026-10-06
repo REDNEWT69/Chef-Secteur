@@ -76,7 +76,7 @@ function accessibleLabel(state){return ACCESSIBLE_NAME+' : '+(STATE_LABELS[state
 
 /* ------------------------------------------------------------------- dessin */
 /* Le dessin reprend la planche officielle Runner V1 : tête en goutte nacrée, visière sombre
-   à liseré bleu, yeux lumineux, crête bleue type aileron, pastille d'oreille bleue, corps
+   à liseré bleu, yeux lumineux, crête bleue type aileron, pastilles d'oreille bleues (une de chaque côté, symétriques), corps
    ovoïde blanc avec l'emblème « R », mains bleues, halo bleu sous le corps. Aucun
    filtre SVG (coûteux sur mobile) : les lueurs sont des formes translucides superposées.
    Les identifiants de dégradés sont uniques par instance : un Runner masqué ne prive jamais
@@ -160,6 +160,8 @@ function artMarkup(){
     +'<g class="rnHead">'
     +'<ellipse cx="26" cy="120" rx="14" ry="27" transform="rotate(-6 26 120)" fill="url(#rn{u}-blue)"/>'
     +'<ellipse cx="22" cy="118" rx="4.5" ry="12" transform="rotate(-6 22 118)" fill="#fff" opacity=".55"/>'
+    +'<ellipse cx="210" cy="120" rx="14" ry="27" transform="rotate(6 210 120)" fill="url(#rn{u}-blue)"/>'
+    +'<ellipse cx="214" cy="118" rx="4.5" ry="12" transform="rotate(6 214 118)" fill="#fff" opacity=".55"/>'
     +'<path d="M118 182C62 182 24 152 24 112C24 78 52 50 88 42C104 38 120 32 132 32C176 34 212 70 212 114C212 154 174 182 118 182Z" fill="url(#rn{u}-head)"/>'
     +'<path d="M118 182C62 182 24 152 24 112C24 78 52 50 88 42C104 38 120 32 132 32C176 34 212 70 212 114C212 154 174 182 118 182Z" fill="url(#rn{u}-shade)"/>'
     +'<path d="M62 60C80 46 106 40 126 40" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none" opacity=".75"/>'
