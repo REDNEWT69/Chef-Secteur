@@ -280,18 +280,18 @@ function attachGroupSummary(c,parent){
   });
 }
 function linkGroupContracts(rows){
-  const summaries=new Map(),byPeriod=new Map();
+  const summaries=new Map();
   for(const c of rows||[]){
     if(!isGroupSummary(c))continue;
-    const g=groupSummary(c),key=g.key,period=groupPeriodKey(c);
+    const g=groupSummary(c),key=g.key;
     if(key)summaries.set(key,g);
-    if(period){const list=byPeriod.get(period)||[];list.push(g);byPeriod.set(period,list)}
   }
   const out=[];
   for(const c of rows||[]){
     if(!c||!c.brand||!c.city)continue;
-    let parent=summaries.get(groupContractKey(c))||null;
-    if(!parent){const list=byPeriod.get(groupPeriodKey(c))||[];if(list.length===1)parent=list[0]}
+    /* Le groupement + la période doivent correspondre. La période seule n'est jamais une
+       preuve : le classeur réel contient des contrats indépendants aux mêmes dates. */
+    const parent=summaries.get(groupContractKey(c))||null;
     out.push(attachGroupSummary(c,parent));
   }
   const members=new Map();
