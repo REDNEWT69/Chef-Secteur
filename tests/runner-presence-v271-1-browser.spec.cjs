@@ -44,6 +44,11 @@ async function boot(page) {
   await page.goto(URL, { waitUntil: 'domcontentloaded' });
   await expect(page.locator(HOME)).toBeVisible();
   await page.waitForFunction(() => document.querySelector('#homeRunnerV270 .srRunner')?.getAnimations().length === 1);
+  // Depuis #514 (#505), l'étape différée du démarrage (src/chef-secteur.html) persiste réellement l'état normalisé. Sous
+  // l'horloge simulée de Playwright, son minuteur à 0 ms peut tomber avant ou après l'apparition de Runner : la référence
+  // « Runner n'écrit rien » doit donc se prendre une fois le stockage rattrapé par la mémoire, jamais pendant cette écriture.
+  // Le contrôle final (state + stockage + archive identiques après la scène) reste inchangé.
+  await page.waitForFunction(() => __chefStorage.getItem('sector_planner_universal_v1') === JSON.stringify(state));
   await page.addStyleTag({content:'aside[role="status"]{display:none!important}'});
 }
 const active = page => page.evaluate(() => __presenceAudit.effects.filter(x => !['idle','finished'].includes(x.effect.playState)).map(x=>({ id:x.options.id, connected:x.target.isConnected, duration:x.options.duration, iterations:x.options.iterations })));
