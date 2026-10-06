@@ -16,6 +16,7 @@ const strip = ({ defaultBrowserType, ...rest }) => rest;
 const PROFILES = [
   ['Android 390', { ...strip(devices['Pixel 7']), viewport: { width: 390, height: 844 } }],
   ['Android 360', strip(devices['Galaxy S8'])],
+  ['Android 412', strip(devices['Pixel 7'])],
   ['iPhone 14 (Chromium)', strip(devices['iPhone 14'])]
 ];
 test.use({ timezoneId: 'Europe/Paris', serviceWorkers: 'block', screenshot: 'only-on-failure', trace: 'retain-on-failure' });
@@ -66,8 +67,13 @@ async function boot(page, options) {
 const lineState = page => page.evaluate(sel => {
   const el = document.querySelector(sel);
   if (!el) return null;
-  const r = el.getBoundingClientRect(), tag = document.querySelector('#premiumHomeV2 .phTagline').getBoundingClientRect();
-  return { hidden: el.hidden, text: el.textContent, left: r.left, right: r.right, top: r.top, tagBottom: tag.bottom, position: getComputedStyle(el).position,
+  const r = el.getBoundingClientRect(), heading = document.querySelector('#premiumHomeV2 .phDayHeading').getBoundingClientRect();
+  const bubble = el.parentElement, b = bubble.getBoundingClientRect(), button = document.querySelector('#homeRunnerAppearanceButton').getBoundingClientRect();
+  const tail = getComputedStyle(bubble, '::after');
+  return { hidden: el.hidden, text: el.textContent, left: r.left, right: r.right, top: r.top, bottom: r.bottom, headingTop: heading.top, position: getComputedStyle(el).position,
+    height: r.height, lineHeight: parseFloat(getComputedStyle(el).lineHeight), bubbleBottom: b.bottom,
+    tailX: b.right - parseFloat(getComputedStyle(bubble).borderRightWidth) - parseFloat(tail.right) - (parseFloat(tail.width) + parseFloat(tail.borderRightWidth)) / 2,
+    buttonCenterX: button.left + button.width / 2, labelCount: document.querySelectorAll('#homeRunnerAppearanceButton .phRunnerLabel').length,
     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, vw: innerWidth, children: el.children.length };
 }, LINE);
 const registry = page => page.evaluate(key => __chefStorage.getItem(key), KEY).then(raw => (raw ? B.parseRegistry(raw) : null));
@@ -86,7 +92,7 @@ for (const [label, device] of PROFILES) {
   test.describe(label, () => {
     test.use(device);
 
-    test('Copilote par défaut : une ligne courte et utile sous le résumé, aucune donnée métier touchée', async ({ page }) => {
+    test('Copilote par défaut : une bulle courte près de Runner, aucune donnée métier touchée', async ({ page }) => {
       const errors = await boot(page);
       await persist(page);
       const before = await business(page);
@@ -96,7 +102,11 @@ for (const [label, device] of PROFILES) {
       expect(view.text.length).toBeLessThan(90);
       expect(view.children, 'texte inerte : aucun balisage').toBe(0);
       expect(view.position, 'dans le flux de l’écran hôte, jamais flottant').toBe('static');
-      expect(view.top).toBeGreaterThanOrEqual(view.tagBottom - 1);
+      expect(view.bottom, 'la bulle ne recouvre pas Aujourd’hui').toBeLessThanOrEqual(view.headingTop);
+      expect(view.bubbleBottom).toBeLessThanOrEqual(view.headingTop);
+      expect(Math.abs(view.tailX - view.buttonCenterX), 'queue dirigée vers Runner').toBeLessThanOrEqual(8);
+      expect(view.height, 'deux lignes maximum').toBeLessThanOrEqual(2 * view.lineHeight + 1);
+      expect(view.labelCount, 'aucun libellé sous la mascotte').toBe(0);
       expect(view.left).toBeGreaterThanOrEqual(0);
       expect(view.right).toBeLessThanOrEqual(view.vw);
       expect(view.overflow).toBeLessThanOrEqual(1);
