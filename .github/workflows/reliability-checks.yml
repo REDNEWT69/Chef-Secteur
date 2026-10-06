@@ -45,6 +45,7 @@ jobs:
       - run: node tests/cuisiniste-contract-proposal-v225.test.cjs
       - run: node tests/cuisiniste-followup-v229.test.cjs
       - run: node tests/cuisiniste-import-xlsm.test.cjs
+      - run: node tests/cuisiniste-group-contract-v275.test.cjs
       - run: node tests/cuisiniste-bourgoin-scope.test.cjs
       - run: node tests/cuisiniste-tracking-reserve-v229.test.cjs
       - run: node tests/default-stores-seed.test.cjs
