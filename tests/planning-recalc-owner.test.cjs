@@ -13,6 +13,15 @@ assert.doesNotMatch(CONTROLLER, /window\.storeRunnerRecalculateRemainingWeek\s*=
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
+/* Horloge figée : le scénario est celui de la semaine du lundi 2026-10-05 (plan du lundi, « le reste de la semaine »).
+   Avec l'horloge réelle, le test échouait dès que ce lundi était passé (le cascade ignore les jours antérieurs à aujourd'hui) :
+   tout `verify` lancé après le 05/10/2026 était rouge, y compris celui qui précède un déploiement. Le code testé n'est pas modifié. */
+const FIXED_NOW = new Date('2026-10-05T10:00:00').getTime();
+class FixedDate extends Date {
+  constructor(...args) { if (args.length === 0) super(FIXED_NOW); else super(...args); }
+  static now() { return FIXED_NOW; }
+}
+
 function node(tag) {
   return {
     tagName: String(tag || 'div').toUpperCase(),
@@ -92,7 +101,7 @@ function boot() {
   const mk = id => ({ id, enseigne: 'Fnac', ville: id, active: true, lat: 45, lon: 4 });
   const stores = [mk('a'), mk('b')];
   const ctx = {
-    console, Date, Math, JSON, Object, Array, String, Number, Set, Map, RegExp, Promise,
+    console, Date: FixedDate, Math, JSON, Object, Array, String, Number, Set, Map, RegExp, Promise,
     setTimeout, clearTimeout, document,
     CustomEvent: class { constructor(type, init) { this.type = type; Object.assign(this, init || {}) } },
     localStorage: storage,
