@@ -8,7 +8,9 @@ const STORE_KEY='store-runner-cuisiniste-contracts-v193';
    à conserver vient des réglages ou, à défaut, du fichier importé lui-même ; les onglets
    sont retrouvés par leurs colonnes, pas par leur nom. */
 const HITLIST_COLUMNS=['Secteur 2026','Magasin physique (lib)'];
-/* Colonnes structurelles seulement : les métriques changent de libellé selon les exports\n   mensuels (ex. « CA RÉALISÉ » vs « CA RÉALISÉ À DATE »). Les alias sont résolus plus bas. */\nconst TRACKING_COLUMNS=['ENSEIGNE','VILLE CUISINISTE','Statut Contrat','DATE DÉBUT','DATE FIN'];
+/* Colonnes structurelles seulement : les métriques changent de libellé selon les exports
+   mensuels (ex. « CA RÉALISÉ » vs « CA RÉALISÉ À DATE »). Les alias sont résolus plus bas. */
+const TRACKING_COLUMNS=['ENSEIGNE','VILLE CUISINISTE','Statut Contrat','DATE DÉBUT','DATE FIN'];
 const MENU_BTN_ID='srCuisineMenuButton';
 const SHEET_ID='srCuisineSheet';
 const STORE_CARD_ID='srCuisineContractCard';
