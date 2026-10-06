@@ -25,6 +25,17 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'275',
+      title:'Les contrats cuisinistes deviennent lisibles',
+      items:[
+        'Dans la fiche Cuisiniste, Store Runner distingue maintenant le contrat du groupement des chiffres propres au magasin.',
+        'Les objectifs, le CA, la progression et la facturation du groupement restent au niveau du groupement : aucun montant n’est divisé ou reconstruit au hasard.',
+        'Le CA, le portefeuille et les produits d’exposition du magasin sont affichés séparément, avec l’historique des contrats précédents.',
+        'Tu peux sélectionner plusieurs fichiers contrats .xlsx ou .xlsm à la fois : Store Runner détecte les variantes de colonnes et fusionne les contrats sans doublonner le contrat courant.',
+        'Les macros Excel ne sont jamais exécutées et l’import ne crée aucun magasin tout seul.'
+      ]
+    },
+    {
       version:'274',
       title:'Pourquoi ce magasin, ce jour-là',
       items:[
