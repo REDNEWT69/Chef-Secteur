@@ -11,7 +11,7 @@ const DEFAULT_RADIUS_KM=10;      /* rayon par défaut, réglable dans les Régla
 const MAX_SUGGESTIONS=3;         /* plafond normal */
 const MAX_WITH_PRIORITY=4;       /* plafond quand un P1 du rayon doit rester visible */
 const PRIO_BADGE={P1:'P1',P2:'P2',watch:'À surveiller'};
-let installed=false,observer=null,lastSuggestSignature=null,editBusy=false;
+let installed=false,observer=null,lastSuggestSignature=null,editBusy=false,removedCache={raw:null,byWeek:{}};
 function text(v){return String(v==null?'':v).trim()}
 function norm(v){return text(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim()}
 function parse(v){const d=new Date(String(v||'')+'T12:00:00');return isNaN(d)?null:d}
@@ -338,6 +338,8 @@ function computeSuggestions(state,day,date,deps){
   const closedOn=typeof deps.closedOn==='function'?deps.closedOn:(()=>false);
   const lastVisit=typeof deps.lastVisit==='function'?deps.lastVisit:(()=>'');
   const radius=Number.isFinite(Number(deps.radiusKm))&&Number(deps.radiusKm)>0?Number(deps.radiusKm):radiusKm(state);
+  /* Retirés à la main cette semaine : jamais re-proposés ici (tableau ou Set ; autre chose = aucun). */
+  const removed=new Set(Array.isArray(deps.removedIds)||deps.removedIds instanceof Set?Array.from(deps.removedIds,String):[]);
 
   if(!state||!DAYS.includes(day))return[];
   /* Une journée passée ne se prépare plus : on n'y propose rien. */
@@ -357,6 +359,7 @@ function computeSuggestions(state,day,date,deps){
     if(store.active===false)continue;
     if(state.excluded&&state.excluded[store.id])continue;
     if(plannedDay(state,store.id))continue;          /* déjà quelque part dans la semaine affichée */
+    if(removed.has(String(store.id)))continue;       /* retiré à la main cette semaine : on ne le re-propose pas */
     const pos=coords(store);
     if(!pos)continue;
     if(closedOn(store,day))continue;
@@ -385,6 +388,26 @@ function computeSuggestions(state,day,date,deps){
   return out.slice(0,MAX_WITH_PRIORITY);
 }
 
+/* Planning intelligent, incrément 2 — magasins retirés à la main de la semaine affichée.
+   `persist` les inscrit dans `manualRemovedIds` de l'archive et le recalcul comme les générateurs
+   respectent ce retrait : le bloc de proximité ne les re-propose donc pas (le bouton « + » reste
+   libre, et un magasin rajouté sort de cette liste). Lecture seule ; l'archive n'est relue que
+   lorsque son contenu a changé, et seuls les identifiants retirés sont gardés en mémoire. */
+function removedIdsForWeek(win,state){
+  try{
+    const db=storage(win);
+    if(!db)return[];
+    const raw=db.getItem(ARCHIVE_KEY);
+    if(raw!==removedCache.raw){
+      const archive=raw?JSON.parse(raw):{},byWeek={};
+      if(archive&&typeof archive==='object')for(const [week,snap] of Object.entries(archive)){
+        if(snap&&Array.isArray(snap.manualRemovedIds)&&snap.manualRemovedIds.length)byWeek[week]=snap.manualRemovedIds.map(String);
+      }
+      removedCache={raw,byWeek};
+    }
+    return (removedCache.byWeek[currentWeekKey(state)]||[]).slice();
+  }catch(e){return[]}
+}
 function suggestionsFor(win,day,date){
   const state=win&&win.state;
   day=day||currentDay(win);
@@ -395,7 +418,8 @@ function suggestionsFor(win,day,date){
     distance:distanceVia(win),
     prio:prioLookup(win),
     closedOn:closedLookup(win),
-    lastVisit:lastVisitLookup(win)
+    lastVisit:lastVisitLookup(win),
+    removedIds:removedIdsForWeek(win,state)
   });
 }
 function suggestionLabel(row){
@@ -544,5 +568,5 @@ function bindRow(win,row){if(!row||row.classList.contains('calendarEvent')||row.
 function enhance(win){const doc=win.document,shell=doc.querySelector('#planPanel .timelineShell');if(!shell)return false;let head=shell.querySelector('.pmvHead');if(!head){head=doc.createElement('div');head.className='pmvHead';head.innerHTML='<span>Visites</span><button class="pmvAdd" type="button">＋ Ajouter</button>';const timeline=shell.querySelector('.appleTimeline');shell.insertBefore(head,timeline||shell.firstChild);/* Le swipe reste actif, mais son mode d'emploi n'a pas à occuper l'écran en permanence :
    l'élément reste en place, masqué, pour rester disponible à la demande. */const hint=doc.createElement('div');hint.className='pmvHint';hint.hidden=true;hint.textContent='Astuce : glisse une visite à gauche ou à droite pour la retirer.';head.insertAdjacentElement('afterend',hint);head.querySelector('.pmvAdd').addEventListener('click',()=>openDialog(win))}shell.querySelectorAll('.timelineRow:not(.calendarEvent)').forEach(r=>bindRow(win,r));renderSuggestions(win);installRadiusField(win);return true}
 function install(win){if(installed)return;installed=true;ensureCss(win.document);ensureDialog(win);const run=()=>setTimeout(()=>enhance(win),0);run();win.document.addEventListener('store-runner:planning-updated',run);win.document.addEventListener('store-runner:data-restored',run);if(typeof win.MutationObserver!=='undefined'){const panel=win.document.getElementById('planPanel');if(panel){observer=new win.MutationObserver(run);observer.observe(panel,{childList:true,subtree:true})}}}
-return{DAYS,clonePlan,currentWeekKey,plannedDay,refusalFor,addToPlan,removeFromPlan,currentDay,addStore,removeStore,isPlanned,unscheduleCheck,unscheduleStore,capacityWarning,parseRowStoreId,install,enhance,dayIds,weekDayDate,reorderInPlan,reorderCheck,reorderPolicy,scheduleIssue,reorderStore,undoEdit,DEFAULT_RADIUS_KM,MAX_SUGGESTIONS,MAX_WITH_PRIORITY,PRIO_BADGE,radiusKm,coords,dateOfDay,haversine,computeSuggestions,suggestionsFor,suggestionLabel,visitLabel,renderSuggestions,acceptSuggestion,installRadiusField};
+return{DAYS,clonePlan,currentWeekKey,plannedDay,refusalFor,addToPlan,removeFromPlan,currentDay,addStore,removeStore,isPlanned,unscheduleCheck,unscheduleStore,capacityWarning,parseRowStoreId,install,enhance,dayIds,weekDayDate,reorderInPlan,reorderCheck,reorderPolicy,scheduleIssue,reorderStore,undoEdit,DEFAULT_RADIUS_KM,MAX_SUGGESTIONS,MAX_WITH_PRIORITY,PRIO_BADGE,radiusKm,coords,dateOfDay,haversine,computeSuggestions,removedIdsForWeek,suggestionsFor,suggestionLabel,visitLabel,renderSuggestions,acceptSuggestion,installRadiusField};
 });

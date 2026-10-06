@@ -153,3 +153,57 @@ test('Suggestions de proximité à 390 px : trois lignes un jour futur, rien un 
 
   expect(errors).toEqual([]);
 });
+
+/* Planning intelligent, incrément 2 — après un retrait manuel, le magasin retiré n'est pas re-proposé.
+   Le plus proche voisin (0,1 km) est planifié puis retiré : avant ce lot, il redevenait la première
+   suggestion alors que le recalcul respecte ce retrait. */
+test('Suggestions de proximité à 390 px : un magasin retiré à la main n’est pas re-proposé', async ({page})=>{
+  const errors=[];
+  page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+  page.on('dialog',d=>d.accept().catch(()=>{}));
+  await open(page,'2026-09-16');
+  await seed(page,'Jeudi');
+  await selectDate(page,'2026-09-17');
+  const names=()=>page.locator('#planPanel .pmvSuggest .pmvSuggestName').allTextContents();
+  const kms=()=>page.locator('#planPanel .pmvSuggest .pmvSuggestKm').allTextContents();
+
+  /* v0 (0,1 km) est planifié : il n'est pas suggéré, les trois suivants le sont. */
+  const ajout=await page.evaluate(()=>window.StoreRunnerManualPlanning.addStore(window,'v0','Jeudi').then(r=>r&&r.ok));
+  expect(ajout).toBe(true);
+  await page.waitForTimeout(900);
+  expect(await names()).toEqual(['Enseigne v1 Ville-Test v1','Enseigne v2 Ville-Test v2','Enseigne v3 Ville-Test v3']);
+
+  /* Retrait manuel (même chemin que le geste) : v0 reste le plus proche mais n'est pas proposé. */
+  const retrait=await page.evaluate(()=>window.StoreRunnerManualPlanning.removeStore(window,'v0','Jeudi').then(r=>r&&r.ok));
+  expect(retrait).toBe(true);
+  await page.waitForTimeout(900);
+  expect(await page.evaluate(()=>state.plan.Jeudi.map(s=>s.id))).toEqual(['anc']);
+  expect(await names(), 'v0 vient d’être retiré : il n’est pas la première suggestion').toEqual(['Enseigne v1 Ville-Test v1','Enseigne v2 Ville-Test v2','Enseigne v3 Ville-Test v3']);
+  expect(await kms()).toEqual(['≈ 3 km','≈ 3,5 km','≈ 5 km']);
+  expect(await page.evaluate(()=>(JSON.parse(__chefStorage.getItem('chef_sector_plan_archive_v1'))['2026-09-14']||{}).manualRemovedIds)).toEqual(['v0']);
+
+  /* Le retrait est durable : après rechargement, v0 n'est toujours pas re-proposé. */
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.state&&Array.isArray(window.state.stores)&&document.getElementById('planPanel')&&window.StoreRunnerManualPlanning);
+  await page.waitForTimeout(900);
+  await page.evaluate(()=>{window.selectedPlanningDay='Jeudi';try{goTab('planPanel')}catch(e){}});
+  await selectDate(page,'2026-09-17');
+  expect(await page.evaluate(()=>state.plan.Jeudi.map(s=>s.id))).toEqual(['anc']);
+  const apresReload=await names();
+  expect(apresReload.some(n=>n.includes('v0'))).toBe(false);
+  expect(apresReload.length).toBe(3);
+
+  /* Rien n'est écrit par l'affichage : la liste des retirés et le plan ne bougent pas. */
+  const avant=await page.evaluate(()=>JSON.stringify({plan:state.plan,archive:__chefStorage.getItem('chef_sector_plan_archive_v1')}));
+  await page.evaluate(()=>document.dispatchEvent(new CustomEvent('store-runner:planning-updated')));
+  await page.waitForTimeout(700);
+  expect(await page.evaluate(()=>JSON.stringify({plan:state.plan,archive:__chefStorage.getItem('chef_sector_plan_archive_v1')}))).toBe(avant);
+
+  /* Le bouton « + » reste libre : v0 se rajoute à la main, et il sort de la liste des retirés. */
+  const reajout=await page.evaluate(()=>window.StoreRunnerManualPlanning.addStore(window,'v0','Jeudi').then(r=>r&&r.ok));
+  expect(reajout).toBe(true);
+  expect(await page.evaluate(()=>state.plan.Jeudi.map(s=>s.id))).toEqual(['anc','v0']);
+  expect(await page.evaluate(()=>(JSON.parse(__chefStorage.getItem('chef_sector_plan_archive_v1'))['2026-09-14']||{}).manualRemovedIds)).toEqual([]);
+
+  expect(errors).toEqual([]);
+});

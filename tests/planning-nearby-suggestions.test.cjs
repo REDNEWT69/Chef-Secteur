@@ -181,6 +181,73 @@ const ids=rows=>rows.map(r=>r.id);
   assert.deepEqual(priorites,priorites.map(()=>3),'store.priority n’est jamais touché');
 }
 
+/* 13 bis. Planning intelligent, incrément 2 — un magasin retiré à la main n'est pas re-proposé.
+   Le recalcul et les générateurs respectent `manualRemovedIds` ; le bloc de proximité aussi. -------- */
+{
+  const st=baseState();
+  [0.1,3,3.5,5].forEach((km,i)=>st.stores.push(store('v'+i,km)));
+  assert.deepEqual(ids(M.computeSuggestions(st,'Jeudi',TODAY,deps())),['v0','v1','v2'],'sans retrait, les trois plus proches');
+  assert.deepEqual(ids(M.computeSuggestions(st,'Jeudi',TODAY,deps({removedIds:['v0']}))),['v1','v2','v3'],'le magasin retiré cède sa place au suivant');
+  assert.deepEqual(ids(M.computeSuggestions(st,'Jeudi',TODAY,deps({removedIds:new Set(['v0','v2'])}))),['v1','v3'],'un Set vaut un tableau');
+  for(const invalide of [undefined,null,'v0',0,{v0:true},[]]){
+    assert.deepEqual(ids(M.computeSuggestions(st,'Jeudi',TODAY,deps({removedIds:invalide}))),['v0','v1','v2'],'entrée inexploitable = aucun retrait ('+JSON.stringify(invalide)+')');
+  }
+  const avant=JSON.stringify(st);
+  M.computeSuggestions(st,'Jeudi',TODAY,deps({removedIds:['v0']}));
+  assert.equal(JSON.stringify(st),avant,'l’exclusion ne touche ni le planning ni les magasins');
+}
+/* Les modifications manuelles partagent un verrou (`editBusy`) : ce bloc et celui du 14 s'exécutent l'un après l'autre. */
+const incrementDeux=(async()=>{
+  const st=baseState();
+  [0.1,3,3.5,5].forEach((km,i)=>st.stores.push(store('v'+i,km)));
+  st.plan.Jeudi=[st.stores[0],st.stores[1]];                 /* anc + v0 planifiés */
+  const win=fakeWin(st),KEY='chef_sector_plan_archive_v1';
+  assert.deepEqual(M.removedIdsForWeek(win,st),[],'rien de retiré au départ');
+  assert.deepEqual(ids(M.computeSuggestions(st,'Jeudi',TODAY,deps({removedIds:M.removedIdsForWeek(win,st)}))),['v1','v2','v3']);
+
+  /* Chemin réel : le retrait manuel écrit l'archive, la lecture la restitue, la suggestion saute le retiré. */
+  const retrait=await M.removeStore(win,'v0','Jeudi');
+  assert.equal(retrait.ok,true);
+  assert.deepEqual(st.plan.Jeudi.map(s=>s.id),['anc']);
+  assert.deepEqual(M.removedIdsForWeek(win,st),['v0'],'l’archive de la semaine porte le magasin retiré');
+  assert.deepEqual(ids(M.computeSuggestions(st,'Jeudi',TODAY,deps({removedIds:M.removedIdsForWeek(win,st)}))),['v1','v2','v3'],
+    'v0 est le plus proche (0,1 km) mais il vient d’être retiré : il n’est pas la première suggestion');
+
+  /* La lecture ne modifie rien. */
+  const raw=win.__chefStorage.getItem(KEY),etat=JSON.stringify(st);
+  M.removedIdsForWeek(win,st);M.removedIdsForWeek(win,st);
+  assert.equal(win.__chefStorage.getItem(KEY),raw,'l’archive n’est pas réécrite');
+  assert.equal(JSON.stringify(st),etat,'le state n’est pas touché');
+
+  /* Une autre semaine ne voit pas ce retrait. */
+  const suivante=JSON.parse(JSON.stringify(st));suivante.settings.weekDate='2026-09-21';
+  assert.deepEqual(M.removedIdsForWeek(win,suivante),[],'le retrait ne vaut que pour sa semaine');
+
+  /* Rajouté à la main, le magasin sort de la liste des retirés et redevient candidat s'il est retiré de nouveau plus tard. */
+  await M.addStore(win,'v0','Jeudi');
+  assert.deepEqual(M.removedIdsForWeek(win,st),[],'un magasin rajouté n’est plus « retiré »');
+  assert.deepEqual(ids(M.computeSuggestions(st,'Jeudi',TODAY,deps({removedIds:M.removedIdsForWeek(win,st)}))),['v1','v2','v3'],'v0 est planifié : il n’est pas proposé non plus');
+
+  /* Archive illisible, absente, sans stockage : aucun retrait, jamais d'exception. */
+  win.__chefStorage.setItem(KEY,'{pas du json');
+  assert.deepEqual(M.removedIdsForWeek(win,st),[]);
+  win.__chefStorage.setItem(KEY,'[1,2]');
+  assert.deepEqual(M.removedIdsForWeek(win,st),[]);
+  win.__chefStorage.setItem(KEY,JSON.stringify({'2026-09-14':{manualRemovedIds:'v0'}}));
+  assert.deepEqual(M.removedIdsForWeek(win,st),[],'manualRemovedIds doit être un tableau');
+  win.__chefStorage.removeItem(KEY);
+  assert.deepEqual(M.removedIdsForWeek(win,st),[]);
+  assert.deepEqual(M.removedIdsForWeek({},st),[]);
+  assert.deepEqual(M.removedIdsForWeek(null,st),[]);
+
+  /* Le contenu relu à chaque appel : une archive modifiée est prise en compte. */
+  win.__chefStorage.setItem(KEY,JSON.stringify({'2026-09-14':{manualRemovedIds:['v2','v3']}}));
+  assert.deepEqual(M.removedIdsForWeek(win,st),['v2','v3']);
+  win.__chefStorage.setItem(KEY,JSON.stringify({'2026-09-14':{manualRemovedIds:['v3']}}));
+  assert.deepEqual(M.removedIdsForWeek(win,st),['v3']);
+  console.log('suggestions de proximité (incrément 2) : OK · retiré non re-proposé · tableau/Set · entrées invalides · archive réelle · autre semaine · rajouté · illisible · lecture seule');
+})().catch(e=>{console.error(e);process.exit(1)});
+
 /* 14. « Ajouter » donne exactement le même résultat qu'un ajout manuel. --- */
 function fakeWin(state){
   const db=new Map();
@@ -201,6 +268,7 @@ function fakeWin(state){
   /* IIFE await + catch explicite : sans cela, une assertion qui tombe dans la
      chaîne asynchrone laisserait le test afficher PASS et sortir en 0. */
   (async()=>{
+    await incrementDeux;
     await M.addStore(winA,'v0','Jeudi');
     await M.acceptSuggestion(winB,'v0','Jeudi');
     {
