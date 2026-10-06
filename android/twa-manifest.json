@@ -21,8 +21,8 @@
     "path": "./signing/upload-keystore.jks",
     "alias": "upload"
   },
-  "appVersion": "1.0.0",
-  "appVersionCode": 1,
+  "appVersion": "1.0.1",
+  "appVersionCode": 2,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://store-runner.fr/manifest.webmanifest",

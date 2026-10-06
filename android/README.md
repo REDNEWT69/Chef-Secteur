@@ -37,9 +37,9 @@ Google Play (AAB signé)
 | URL de lancement | `https://store-runner.fr/` |
 | Orientation | portrait (ignorée par Android 16 sur grands écrans ≥ 600 dp) |
 | Couleurs | barre d'état et navigation `#F2F5FA`, démarrage `#F4F6FA` (manifest PWA) |
-| Icônes | `app-icon-512.png` et `app-icon-maskable-512.png` de la PWA (PR #445) |
+| Icônes | `app-icon-512.png` et `app-icon-maskable-512.png` de la PWA (Runner bleu, PR #523), exportées vers `res/` par `tools/generate-android-icons.py` |
 | Permissions Android | aucune déclarée ; AndroidX ajoute seulement `fr.storerunner.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` (interne, niveau signature). Géolocalisation et caméra : permissions Chrome du site |
-| Version de la coque | `versionCode 1`, `versionName 1.0.0` (indépendante de `BUILD_REV`) |
+| Version de la coque | `versionCode 2`, `versionName 1.0.1` (indépendante de `BUILD_REV`) |
 
 `twa-manifest.json` garde les paramètres Bubblewrap. `app/build.gradle` en est la
 traduction ; `tests/android-twa.test.cjs` (Reliability) vérifie qu'ils restent alignés.
@@ -60,7 +60,9 @@ officiel des TWA) puis porté sur le DSL AGP 9 : Bubblewrap produit encore AGP 8
 `jcenter()` et un séparateur de barre de navigation noir. **Ne pas lancer
 `bubblewrap update` dans ce dossier** : il réécrirait ces fichiers. Pour de nouvelles
 icônes, générer dans un dossier temporaire puis ne recopier que `app/src/main/res/`
-(`mipmap-*`, `drawable-*/splash.png`) et `store_icon.png`.
+(`mipmap-*`, `drawable-*/splash.png`) et `store_icon.png`. Depuis la 1.0.1, le plus simple
+est `python tools/generate-android-icons.py` (Pillow) : il exporte ces ressources, aux mêmes
+tailles, depuis les icônes PWA approuvées, sans Bubblewrap.
 
 ## 4. Construire localement
 
