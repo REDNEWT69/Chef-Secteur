@@ -13,6 +13,12 @@
    Il ne choisit aucun magasin, ne déplace aucune visite et n'ouvre aucun second registre : les liens
    (Planning, Visite, Photos, Pilotage, Rendez-vous) rouvrent l'écran du propriétaire.
 
+   « Pourquoi ce jour » (V274) : `placementFor` explique, a posteriori et en lecture seule, le placement d'un magasin
+   à une date — ce qui fixe le jour (rendez-vous, arrivée imposée, pose, « Imposé ») puis ce que dit le besoin de visite
+   à cette date. Ce sont des FAITS déjà produits par leurs propriétaires : aucun moteur n'est rejoué, aucune raison n'est
+   déduite de l'optimisation (jamais « le plus court » ni « le meilleur »), aucune trace n'est écrite. Affiché en tête de
+   la fiche 360 seulement quand elle est ouverte depuis une carte du planning (jour d'aujourd'hui ou à venir).
+
    Branchements : `renderStores` (noyau, seul propriétaire de #storeList) appelle `listContext`,
    `matches`, `compare`, `rowHtml` et `afterList` s'ils existent ; la fiche 360 est une section de
    `#storeQuickSheet`, remplie par un observateur borné à cette feuille (même schéma que V263). */
@@ -133,6 +139,73 @@ function constraintsFor(state,storeId,options,shared){
     out.push({kind:'guard',strength:'soft',title:'Visité récemment',detail:'Non reproposé automatiquement'+(until?' avant le '+frDate(until):'')+' ; un rendez-vous, une pose ou « Imposé » passent outre.',date:until,source:'coverage'});
   }
   return out;
+}
+
+/* --- Pourquoi ce jour -------------------------------------------------------------------- */
+const FIXED_RANK=Object.freeze({appointment:0,arrival:1,lock_dated:2,lock_recurring:3,included:4});
+/* Les contraintes explicites qui tiennent CE jour-là : celles d'une autre date ne comptent pas. */
+function fixedFor(constraints,date,day){
+  return constraints.filter(c=>{
+    if(c.kind==='appointment'||c.kind==='arrival')return c.date===date;
+    if(c.kind==='lock_dated')return c.date?c.date===date:c.day===day;
+    if(c.kind==='lock_recurring')return c.day===day;
+    return c.kind==='included';
+  }).sort((a,b)=>FIXED_RANK[a.kind]-FIXED_RANK[b.kind]);
+}
+function fixedHeadline(c){
+  if(c.kind==='appointment')return'Rendez-vous ce jour-là'+(c.time?' à '+c.time:'');
+  if(c.kind==='arrival')return'Arrivée imposée'+(c.time?' à '+c.time:'');
+  if(c.kind==='lock_dated')return'Posé à la main sur ce jour';
+  if(c.kind==='lock_recurring')return'Posé tous les '+String(c.day||'').toLowerCase()+'s';
+  return'Imposé : le planning cherche toujours à le placer';
+}
+/* Le besoin de visite LU à la date de la carte (même évaluateur que les moteurs, visites réelles seulement). */
+function needLine(need,date){
+  if(!need)return null;
+  const every=need.intervalDays?'fréquence '+need.intervalDays+' j':'';
+  const tail=[need.lastVisit?'dernière visite le '+frDate(need.lastVisit,false):'',every].filter(Boolean);
+  const prio=need.priority?need.priority+(need.secondVisit?' · 2e passage attendu':''):'';
+  if(!need.lastVisit)return{status:'never',title:'Jamais visité',detail:[every,prio].filter(Boolean).join(' · ')};
+  const veryLate=need.ratio>=((coverage()&&coverage().RULES&&coverage().RULES.veryLateRatio)||1.5);
+  if(need.status==='late')return{status:'late',title:veryLate?'Très en retard à cette date':'En retard à cette date',detail:[plural(need.overdueDays||0,'jour','jours')+' de retard'].concat(tail,prio?[prio]:[]).join(' · ')};
+  if(need.status==='soon')return{status:'soon',title:'À visiter bientôt',detail:['échéance le '+frDate(need.nextDue,false)].concat(tail,prio?[prio]:[]).join(' · ')};
+  if(need.status==='ok')return{status:'ok',title:'À jour à cette date',detail:['échéance le '+frDate(need.nextDue,false)].concat(tail,prio?[prio]:[]).join(' · ')};
+  return{status:need.status,title:need.label||'Déjà visité récemment',detail:tail.concat(prio?[prio]:[]).join(' · ')};
+}
+/* `opts` : { date (AAAA-MM-JJ, obligatoire), day (nom du jour), + options de contextFor }. `null` quand il n'y a rien
+   d'honnête à dire : magasin inconnu, date invalide ou jour déjà passé (pas de conseil sur le passé). */
+function placementFor(state,storeId,opts){
+  const o=opts||{},date=isoOf(o.date),id=String(storeId),store=find(state,id);
+  if(!store||!date)return null;
+  const ctx=o.shared||contextFor(state,o);
+  if(date<ctx.today)return null;
+  const dayName=DAYS.includes(o.day)?o.day:DAYS[(parse(date).getDay()+6)%7];
+  const fixed=fixedFor(constraintsFor(state,id,o,ctx),date,dayName);
+  let need=null;try{need=ctx.needOf?ctx.needOf(store,date):null}catch(e){need=null}
+  const line=needLine(need,date),facts=[];
+  fixed.forEach(c=>facts.push({kind:c.kind,title:c.title,detail:c.detail}));
+  if(line)facts.push({kind:'need',status:line.status,title:'Besoin de visite : '+line.title,detail:line.detail});
+  /* La garde « visité récemment » est une garde de couverture : une contrainte explicite passe outre. On le dit tel quel. */
+  if(need&&need.blocked){
+    const until=guardUntil(need);
+    facts.push({kind:'guard',title:'Visité récemment',detail:'Non reproposé automatiquement'+(until?' avant le '+frDate(until,false):'')+(fixed.length?' ; ce jour est fixé par la contrainte ci-dessus, qui passe outre.':'.')});
+  }
+  const headline=fixed.length?fixedHeadline(fixed[0]):'Aucune contrainte ne fixe ce jour'+(line?' · '+line.title.toLowerCase():'');
+  return{storeId:id,date,day:dayName,kind:fixed.length?'fixed':'none',headline,facts};
+}
+function placementHtml(pl){
+  if(!pl)return'';
+  const items=pl.facts.map(f=>'<li class="srXItem" data-kind="'+esc(f.kind)+'"><b>'+esc(f.title)+'</b><span>'+esc(f.detail)+'</span></li>').join('');
+  return'<h3>Pourquoi ce jour ?</h3><p class="srXLead" data-sr-x-why="'+esc(pl.kind)+'">'+esc(pl.headline)+'</p>'+(items?'<ul class="srXList">'+items+'</ul>':'');
+}
+/* Date de la carte ouverte : même calcul que `dateForDay` du noyau (lundi de la semaine affichée + rang du jour). */
+function placementFromQuick(win,state,id){
+  /* Le noyau publie le jour de la carte ouverte à côté de l'identifiant du magasin (`srQuickStart`) ; sans carte du
+     planning (liste « Mes magasins », indicateurs), il est vide et aucun bloc n'est affiché. */
+  const doc=win&&win.document,anchor=doc&&doc.getElementById('srQuickStart'),day=String(anchor&&anchor.dataset&&anchor.dataset.srDay||'');
+  if(!DAYS.includes(day))return null;
+  const base=parse(state&&state.settings&&state.settings.weekDate)||parse(iso(new Date()));
+  return placementFor(state,id,{date:iso(addDays(monday(base),DAYS.indexOf(day))),day});
 }
 
 /* --- Frise du magasin -------------------------------------------------------------------- */
@@ -277,6 +350,7 @@ function ensureCss(doc){
     +'#srStore360{margin:12px 0 4px;padding:14px;border:1px solid #e5e7eb;border-radius:18px;background:#f8fafc}#srStore360 h3{margin:14px 0 6px;font-size:13px;color:#344054}#srStore360 h3:first-child{margin-top:0}'
     +'.srXFacts{display:grid;grid-template-columns:1fr 1fr;gap:8px}.srXFact{padding:9px 10px;border:1px solid #e5e7eb;border-radius:12px;background:#fff}.srXFact small{display:block;font-size:10px;color:#667085}.srXFact b{display:block;font-size:13px;margin-top:2px}'
     +'.srXList{display:grid;gap:6px;margin:0;padding:0;list-style:none}.srXItem{padding:9px 10px;border:1px solid #e5e7eb;border-radius:12px;background:#fff;font-size:12px;line-height:1.35}.srXItem b{display:block;font-size:13px}.srXItem span{color:#667085}.srXItem[data-strength="hard"]{border-left:4px solid #9a6200}.srXItem[data-strength="soft"]{border-left:4px solid #98a2b3}'
+    +'.srXLead{margin:0 0 8px;font-size:15px;font-weight:800;line-height:1.3;color:#101828}'
     +'.srXEmpty{font-size:12px;color:#667085}.srXLinks{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.srXItem button.srXGo{display:block;margin-top:8px;padding:0 14px}.srXLinks button,.srXItem button.srXGo{min-height:44px;border:1px solid #e1e5ed;border-radius:12px;background:#fff;color:#0a6dd9;font:inherit;font-size:13px;font-weight:800}.srXLinks button[disabled]{opacity:.45}'
     +'.srXTl{display:grid;gap:6px}.srXTl button,.srXTl div{display:block;width:100%;min-height:44px;box-sizing:border-box;text-align:left;padding:8px 10px;border:1px solid #e5e7eb;border-radius:12px;background:#fff;font:inherit;font-size:12px;color:#1d2939}.srXTl div{min-height:0;background:#f8fafc}.srXTl b{display:block}.srXTl span{color:#667085}.srXTl [data-future="1"]{border-left:4px solid #0a6dd9}'
     +'.srXMore{margin-top:6px;min-height:44px;border:0;background:transparent;color:#0a6dd9;font:inherit;font-weight:800}';
@@ -343,7 +417,7 @@ function sectionHtml(p,opts){
   const lastVisit=(p.timeline.past.find(e=>e.kind==='visit')||{}).visitId||'';
   const group=need?(need.status==='enough'||need.status==='over'?'covered':need.status):'';
   const links='<div class="srXLinks"><button type="button" data-sr-x-plan="'+esc(p.nextVisit&&p.nextVisit.date||'')+'"'+(p.nextVisit?'':' disabled')+'>📅 Voir au planning</button><button type="button" data-sr-x-visit="'+esc(lastVisit)+'"'+(lastVisit?'':' disabled')+'>🧾 Dernière visite</button><button type="button" data-sr-x-photos="1">📷 Photos</button><button type="button" data-sr-x-pilotage="'+esc(group)+'">📊 Pilotage</button></div>';
-  return'<h3>Magasin 360</h3>'+facts+counts+links+'<h3>Contraintes actives</h3>'+cons+'<h3>Contacts</h3>'+contacts+'<h3>Frise du magasin</h3>'+timeline;
+  return placementHtml(o.placement)+'<h3>Magasin 360</h3>'+facts+counts+links+'<h3>Contraintes actives</h3>'+cons+'<h3>Contacts</h3>'+contacts+'<h3>Frise du magasin</h3>'+timeline;
 }
 function quickStoreId(doc){const b=doc.getElementById('srQuickStart');return b&&b.dataset?String(b.dataset.srStart||''):''}
 /* Feuille fermée : les photos lues ne valent plus. Une photo ajoutée ou supprimée entre deux ouvertures
@@ -365,7 +439,7 @@ function renderSection(win,extra){
   if(grid&&sec.previousElementSibling!==grid)grid.insertAdjacentElement('afterend',sec);else if(!sec.parentNode)sheet.appendChild(sec);
   if(sec.dataset.store!==id){sec.dataset.store=id;sec.__expanded=false;sec.__photos=null;sec.__photoRows=null;sec.__photoGen=(sec.__photoGen||0)+1;sec.__photoLoading=''}
   const timeline=sec.__photoRows?mergePhotos(p.timeline,sec.__photoRows):p.timeline;
-  const html=sectionHtml(p,{expanded:sec.__expanded,timeline,photoCount:sec.__photos});
+  const html=sectionHtml(p,{expanded:sec.__expanded,timeline,photoCount:sec.__photos,placement:placementFromQuick(win,win.state,id)});
   if(sec.__html!==html){sec.innerHTML=html;sec.__html=html}
   /* Photos : IndexedDB, asynchrone. Relues à l'ouverture d'un magasin seulement ; le résultat est
      ignoré si la feuille est passée à un autre magasin entre-temps. */
@@ -428,5 +502,5 @@ function install(win){
 }
 function resetFilters(){filter.priority='all';filter.status='all'}
 
-return{VERSION:1,DAYS,MODE_LABEL,filter,contextFor,constraintsFor,timelineFor,photoEvents,mergePhotos,profileFor,contactsOf,guardUntil,listContext,matches,rowHtml,afterList,counts,rowOf,renderSection,sectionHtml,resetFilters,install};
+return{VERSION:1,DAYS,MODE_LABEL,filter,contextFor,constraintsFor,placementFor,placementHtml,timelineFor,photoEvents,mergePhotos,profileFor,contactsOf,guardUntil,listContext,matches,rowHtml,afterList,counts,rowOf,renderSection,sectionHtml,resetFilters,install};
 });

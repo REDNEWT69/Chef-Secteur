@@ -61,6 +61,24 @@ Lues, jamais écrites (`constraintsFor`) : désactivé, exclu, imposé, pose ré
 « visité récemment » (douce : un rendez-vous, une pose ou « Imposé » passent outre). Chaque ligne dit sa
 force (`hard` / `soft`) et renvoie à son propriétaire.
 
+### Pourquoi ce jour (V274, Planning intelligent — incrément 1)
+
+Quand la fiche est ouverte **depuis une carte du Planning** pour un jour d'aujourd'hui ou à venir, `placementFor`
+(`store-explorer.js`) explique le placement en tête de la section : d'abord ce qui **fixe le jour** (rendez-vous,
+arrivée imposée, pose manuelle datée, verrou récurrent de ce jour, « Imposé » — celles d'une autre date ne comptent pas,
+la plus forte ouvre le bloc), puis le **besoin de visite lu à la date de la carte** (`StoreRunnerVisitCoverage.need` avec
+`ref` = cette date : jamais visité, en retard / très en retard avec les jours de retard, bientôt dû, à jour, priorité P1/P2,
+2ᵉ passage attendu), et la garde « visité récemment » citée telle quelle (et dite « passée outre » quand une contrainte
+explicite fixe le jour). Sans contrainte, la phrase le dit : « Aucune contrainte ne fixe ce jour ».
+
+Règles : **des faits, pas des raisons inventées.** Aucun moteur n'est rejoué, rien n'est déduit de l'optimisation (jamais
+« le plus court », « le meilleur », « optimal »), aucune trace de décision n'est écrite (`state`, archive), aucune sortie du
+planning ne change. Pas d'explication sur un jour passé, pas de « pourquoi plutôt un autre jour ». Le jour de la carte
+vient du noyau : `openStoreQuick(id, jour, arrivée)` publie `data-sr-day` à côté de `data-sr-start` sur `#srQuickStart`
+(une ligne chez le propriétaire de la fiche, aucune fonction enveloppée) ; vide hors Planning (liste « Mes magasins »,
+indicateurs), donc aucun bloc. Protégé par `tests/planning-placement-why-v274.test.cjs` (10 mutants tués) et
+`tests/planning-placement-why-v274-browser.spec.cjs`. Suite du chantier : issue #517.
+
 ## Priorité P1/P2 et « traité » (correction métier, revue #496)
 
 Un magasin P1/P2 **conserve sa priorité jusqu'au prochain fichier performance** ; « traité » est un flag de
