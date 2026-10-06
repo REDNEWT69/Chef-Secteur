@@ -58,10 +58,11 @@ test('V275 distingue clairement contrat groupement et chiffres de ce magasin à 
     const box=card.getBoundingClientRect();
     return{text:card.textContent,width:box.width,viewport:document.documentElement.clientWidth,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};
   });
-  expect(result.text).toContain('Groupement : GROUPE TEST');
-  expect(result.text).toContain('Objectif groupe14 124 €');
-  expect(result.text).toContain('Réalisé groupe13 506 €');
-  expect(result.text).toContain('CA magasin8 154 €');
-  expect(result.text).toContain('Historique : 2 contrats retrouvés');
+  const text=result.text.replace(/\u202f/g,' ');
+  expect(text).toContain('Groupement : GROUPE TEST');
+  expect(text).toContain('Objectif groupe14 124 €');
+  expect(text).toContain('Réalisé groupe13 506 €');
+  expect(text).toContain('CA magasin8 154 €');
+  expect(text).toContain('Historique : 2 contrats retrouvés');
   expect(result.width).toBeLessThanOrEqual(result.viewport);expect(result.overflow).toBeLessThanOrEqual(1);expect(errors).toEqual([]);
 });
