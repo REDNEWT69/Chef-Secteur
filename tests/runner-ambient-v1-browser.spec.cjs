@@ -326,7 +326,7 @@ test.describe('Cadence, timers et garde-fous (Android 390)', () => {
     expect(t.audit.raf, 'aucune boucle requestAnimationFrame').toBe(0);
     expect(t.audit.maxPending, 'au plus la cadence et le chien de garde').toBeLessThanOrEqual(2);
     for (const d of t.audit.timers) expect((d >= 8000 && d <= 12000) || (d >= 1200 && d <= 2200) || (d >= 11000 && d <= 12000), 'délai de temporisation ' + d).toBe(true);
-    expect(t.audit.listeners.filter(x => !['visibilitychange', 'pagehide', 'pageshow', 'focusin', 'focusout', 'change', 'load', 'scroll', 'resize'].includes(x)), 'aucune écoute d’interaction').toEqual([]);
+    expect(t.audit.listeners.filter(x => !['visibilitychange', 'pagehide', 'pageshow', 'focusin', 'focusout', 'change', 'load', 'scroll', 'resize', 'store-runner:appearance-closed'].includes(x)), 'aucune écoute d’interaction').toEqual([]);
     expect(errors).toEqual([]);
   });
 
