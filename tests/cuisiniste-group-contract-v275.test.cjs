@@ -58,6 +58,16 @@ const V=require('../cuisiniste-contracts-v193.js');
   assert.equal(alpha.activeContract.storeMetrics.realized+beta.activeContract.storeMetrics.realized,13506);
   assert.notEqual(alpha.activeContract.groupContract.objective,7062,'aucune division silencieuse par le nombre de magasins');
 
+  // Même période ≠ même groupement : un contrat indépendant ne doit jamais être aspiré
+  // par le seul fait qu'il partage les dates du contrat parent.
+  const linked=V.linkGroupContracts([
+    {group:'GROUPE TEST',startDate:'2025-12-01',endDate:'2026-11-30',objective:14124,realized:13506},
+    {brand:'SCHMIDT',city:'VILLE SOLO',group:'',startDate:'2025-12-01',endDate:'2026-11-30',status:'En cours',objective:7000,realized:4000}
+  ]);
+  assert.equal(linked.length,1);
+  assert.equal(linked[0].groupContract,undefined,'la période seule ne crée jamais un faux groupement');
+  assert.equal(linked[0].objective,7000,'les chiffres du contrat indépendant restent les siens');
+
   assert.equal(alpha.history.length,2,'les deux contrats du même magasin sont conservés');
   const previous=alpha.history.find(c=>c.status==='Finalisé');
   assert(previous);
