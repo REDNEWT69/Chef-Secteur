@@ -113,7 +113,6 @@ function sparks(items,color){
 function leg(x,side){
   return '<g class="rnLeg" data-leg="'+side+'">'
     +'<rect x="'+(x-10)+'" y="244" width="20" height="78" rx="10" fill="url(#rn{u}-arm)" stroke="#bccae3" stroke-width="1.4"/>'
-    +'<rect x="'+(x-4)+'" y="252" width="5" height="44" rx="2.5" fill="#fff" opacity=".7"/>'
     +'<rect x="'+(x-14)+'" y="298" width="28" height="30" rx="13" fill="url(#rn{u}-blue)"/>'
     +'</g>';
 }
