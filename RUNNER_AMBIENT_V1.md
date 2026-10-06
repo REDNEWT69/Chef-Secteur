@@ -2,7 +2,7 @@
 
 `runner-ambient.js` (`StoreRunnerAmbient`) fait « habiter » Runner dans toute l'application : de petites scènes finies, jouées près d'un élément de l'écran réellement affiché, toutes les **8 à 12 s de calme**. C'est une couche **100 % de présentation** : elle ne lit ni n'écrit `state`, le stockage, un moteur de planning, un rapport ou la mémoire de Runner, ne lit jamais le texte saisi (seulement « un champ a le focus »), ne clique rien, ne prend aucun focus et n'intercepte aucun geste.
 
-Build `20261006-r61-runner-ambient-276`, version visible **276 inchangée** (lot de présentation, pas de nouvelle version produit). Branche `claude/runner-ambient-playground-v1`, **PR Draft, ne pas fusionner** : trois décisions humaines sont demandées plus bas (budget de démarrage, `sw.js`, réglage utilisateur).
+Build `20261006-r62-runner-ambient-276`, version visible **276 inchangée** (lot de présentation, pas de nouvelle version produit). Branche `claude/runner-ambient-playground-v1`, **PR Draft, ne pas fusionner** : trois décisions humaines sont demandées plus bas (budget de démarrage, `sw.js`, réglage utilisateur).
 
 ## Pourquoi un contrat de plus
 

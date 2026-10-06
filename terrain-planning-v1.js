@@ -835,6 +835,77 @@ function analyzeOvernightWeeks(weeks,state=root.state,distanceFn){
     return{weekKey,...overnightForPlan(plan,state,distanceFn,weekKey)};
   });
 }
+/* Découché — enrichissement routier d'une nuit DÉJÀ retenue (incrément 1, information seule).
+   Une seule autorité décide qu'une nuit est un découché : V189 (futureOvernightAnalysis, exposée
+   comme StoreRunnerOvernightV182.analyze), dont le contrat est repris ci-dessus. Ce qui suit ne
+   décide rien : il ne retient ni n'écarte aucune nuit et ne crée aucune recommandation. Pour la nuit
+   que V189 a retenue, il dit seulement ce que la ROUTE y gagne, afin que le bandeau V206 le montre.
+     RETOUR BASE : dernière visite de J1 → base, puis base → première visite de J2
+     DÉCOUCHAGE  : dernière visite de J1 → première visite de J2
+     gain        : RETOUR BASE − DÉCOUCHAGE, en km et en minutes
+   Aucune distance n'est calculée ici : le routage est injecté (au runtime, StoreRunnerRoadMatrixV248.leg,
+   la même source que le planning), et un trajet que le propriétaire ne sait pas donner rend null, jamais
+   une valeur inventée. La base est celle du profil, strictement : sans base enregistrée il n'y a rien à
+   comparer. Fonctions pures et déterministes : aucune écriture dans state, le plan, les rendez-vous ou
+   les réservations d'hôtel. Appelées à l'affichage seulement : la génération ne les connaît pas. */
+/* Référence pour l'incrément 2 (migration éventuelle de V189 vers une décision routière, après
+   validation terrain) : exposée comme `roadThresholdMet`, un diagnostic que rien n'affiche et qui ne
+   change aucune décision. Une nuit que V189 n'a pas retenue n'a jamais de ligne routière, quel que soit son gain. */
+const OVERNIGHT_ROAD_REFERENCE={minSavedKm:100,minSavedMinutes:75};
+/* Affichage « ≈ » : km et minutes arrondis à 5 près. */
+const OVERNIGHT_DISPLAY_STEP=5;
+/* Une position exploitable : deux nombres dans leurs bornes, et pas le (0, 0) que les points non
+   renseignés prennent par défaut (même règle que StoreRunnerDayOrigin.located). */
+function roadPoint(p){
+  if(!p||p.lat==null||p.lon==null||String(p.lat).trim()===''||String(p.lon).trim()==='')return null;
+  const lat=Number(p.lat),lon=Number(p.lon);
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)return null;
+  return Math.abs(lat)<=0.01&&Math.abs(lon)<=0.01?null:{lat,lon};
+}
+function roadLeg(routing,a,b){
+  let leg=null;try{leg=routing.leg(a,b)}catch(e){leg=null}
+  /* De vrais nombres seulement : Number(null) vaut 0 et ferait d'une réponse absente un trajet gratuit. */
+  const km=leg&&leg.distanceKm,minutes=leg&&leg.durationMinutes;
+  return typeof km==='number'&&Number.isFinite(km)&&km>=0&&typeof minutes==='number'&&Number.isFinite(minutes)&&minutes>=0?{km,minutes,road:leg.source==='road'}:null;
+}
+function roadZone(store){return String(store&&(store.ville||store.enseigne)||'').trim()}
+/* from : dernière visite de J1 ; to : première visite de J2 ; base : {lat, lon} ; routing : {leg(a,b) →
+   {distanceKm, durationMinutes, source?}}. Rend null si l'un des trois trajets ne peut pas être donné. */
+function overnightRoadGain(from,to,base,routing){
+  const home=roadPoint(base),a=roadPoint(from),b=roadPoint(to);
+  if(!home||!a||!b||!routing||typeof routing.leg!=='function')return null;
+  const backHome=roadLeg(routing,a,home),outAgain=roadLeg(routing,home,b),direct=roadLeg(routing,a,b);
+  if(!backHome||!outAgain||!direct)return null;
+  const savedKm=Math.round((backHome.km+outAgain.km-direct.km)*10)/10,savedMinutes=Math.round(backHome.minutes+outAgain.minutes-direct.minutes);
+  return{savedKm,savedMinutes,
+    from:{zone:roadZone(from),storeId:from.id==null?null:from.id},to:{zone:roadZone(to),storeId:to.id==null?null:to.id},
+    precision:backHome.road&&outAgain.road&&direct.road?'road':'estimate',
+    roadThresholdMet:savedKm>=OVERNIGHT_ROAD_REFERENCE.minSavedKm||savedMinutes>=OVERNIGHT_ROAD_REFERENCE.minSavedMinutes};
+}
+/* Le routage du runtime : la matrice routière V248 (durées et distances réelles quand elle est
+   amorcée, estimation du planning sinon). Absente, il n'y a pas de routage — pas de repli maison. */
+function roadRuntimeRouting(){
+  const api=root.StoreRunnerRoadMatrixV248;
+  return api&&typeof api.leg==='function'?{leg:(a,b)=>api.leg(a,b)}:null;
+}
+/* candidate : la nuit retenue par V189 (ses `last` et `first`). Le magasin du secteur fait foi pour les
+   coordonnées, comme dans l'ordonnanceur ; la base est celle du profil, jamais baseObj() du noyau. */
+function enrichOvernightCandidate(candidate,state=root.state,options){
+  if(!candidate||!candidate.last||!candidate.first)return null;
+  const o=options||{},profile=state&&state.profile||{},canon=s=>canonicalStore(s&&s.id,state||{})||s;
+  return overnightRoadGain(canon(candidate.last),canon(candidate.first),{lat:profile.baseLat,lon:profile.baseLon},o.routing||roadRuntimeRouting());
+}
+/* Deux lignes pour le bandeau V206, sans décor ; null quand la route ne gagne rien de positif (le
+   bandeau reste alors tel que V189 le décide, sans chiffre). */
+function overnightDuration(minutes){const h=Math.floor(minutes/60),m=minutes%60;return h?h+' h'+(m?' '+pad(m):''):m+' min'}
+function describeOvernightRoadGain(gain){
+  if(!gain||!Number.isFinite(gain.savedKm)||!Number.isFinite(gain.savedMinutes))return null;
+  const step=OVERNIGHT_DISPLAY_STEP,km=Math.round(gain.savedKm/step)*step,minutes=Math.round(gain.savedMinutes/step)*step;
+  const parts=[];if(km>0)parts.push(km+' km');if(minutes>0)parts.push(overnightDuration(minutes));
+  if(!parts.length)return null;
+  const from=gain.from&&gain.from.zone,to=gain.to&&gain.to.zone,sameZone=!!from&&!!to&&norm(from)===norm(to);
+  return{route:to?(from&&!sameZone?from+' → secteur '+to:'secteur '+to):from||'',gain:'≈ '+parts.join(' · ')+' de route évités'};
+}
 function summarizeOpeningHours(weeks,state=root.state,hoursApi=root.StoreOpeningHoursV1){
   const out={available:!!(hoursApi&&typeof hoursApi.intervalsFor==='function'),known:0,unknown:0,closed:0,uniqueUnknown:0};
   if(!out.available)return out;
@@ -1512,6 +1583,6 @@ function installStartButton(){
 }
 function install(){installThreeWeekReport();installStartButton()}
 function boot(){install();root.document&&root.document.addEventListener('store-runner:planning-updated',()=>{install();renderStoredInsights()});root.document&&root.document.addEventListener('store-runner:data-restored',()=>{install();renderStoredInsights()})}
-const api={coverageSummaryText,needOrdered,rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,orderedAdaptivePlacementDays,manualWeekInfo,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,simulateCommandWindow,generatedArchiveEntry,routeMetrics,optimizeThreeWeekCrossDay,evaluateDayRouteV264,completeProtectedWeek,rotationWindowWeeks,rotationMemory,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits,dateBlocked,overnightForPlan,analyzeOvernightWeeks,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={coverageSummaryText,needOrdered,rankStoresByDistance,rankStoresForSnail,dayQuotas,orderedPlacementDays,orderedAdaptivePlacementDays,manualWeekInfo,weekDistributionDiagnostics,performancePlanningBoost,reorderDayFromStore,summarizeTerrainPool,buildThreeWeekSnail,simulateCommandWindow,generatedArchiveEntry,routeMetrics,optimizeThreeWeekCrossDay,evaluateDayRouteV264,completeProtectedWeek,rotationWindowWeeks,rotationMemory,refreshThreeWeekDiagnostics,resolveSnailStart,dayFits,dateBlocked,overnightForPlan,analyzeOvernightWeeks,overnightRoadGain,enrichOvernightCandidate,describeOvernightRoadGain,OVERNIGHT_ROAD_REFERENCE,summarizeOpeningHours,generateThreeWeekSnail,startDayWithStore,install};root.StoreRunnerTerrainPlanningV1=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()}
 })(typeof window!=='undefined'?window:globalThis);
