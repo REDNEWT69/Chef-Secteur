@@ -8,7 +8,7 @@ const STORE_KEY='store-runner-cuisiniste-contracts-v193';
    à conserver vient des réglages ou, à défaut, du fichier importé lui-même ; les onglets
    sont retrouvés par leurs colonnes, pas par leur nom. */
 const HITLIST_COLUMNS=['Secteur 2026','Magasin physique (lib)'];
-const TRACKING_COLUMNS=['ENSEIGNE','VILLE CUISINISTE','N° CLIENT','Statut Contrat','OBJECTIF CA','CA RÉALISÉ À DATE'];
+/* Colonnes structurelles seulement : les métriques changent de libellé selon les exports\n   mensuels (ex. « CA RÉALISÉ » vs « CA RÉALISÉ À DATE »). Les alias sont résolus plus bas. */\nconst TRACKING_COLUMNS=['ENSEIGNE','VILLE CUISINISTE','Statut Contrat','DATE DÉBUT','DATE FIN'];
 const MENU_BTN_ID='srCuisineMenuButton';
 const SHEET_ID='srCuisineSheet';
 const STORE_CARD_ID='srCuisineContractCard';
@@ -16,7 +16,7 @@ const MAX_ASSISTANT_ROWS=10;
 /* Réserve bornée : de quoi rattraper un magasin ajouté après l'import sans faire enfler
    le stockage local d'un classeur qui contiendrait des milliers de lignes. */
 const MAX_RESERVE_SITES=500;
-let sheet=null,visitObserver=null,quickObserver=null,renderQueued=false,pendingSectors=null,pendingFile=null;
+let sheet=null,visitObserver=null,quickObserver=null,renderQueued=false,pendingSectors=null,pendingFiles=null;
 
 function text(v){return String(v==null?'':v).trim()}
 function norm(v){try{return text(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim()}catch(e){return text(v).toLowerCase()}}
@@ -207,9 +207,91 @@ function extractHitlist(rows,wanted){
 function trackingHeader(rows){const hr=findHeaderRow(rows,TRACKING_COLUMNS);if(hr<0)throw new Error('Colonnes du suivi contrats introuvables.');const row=rows[hr],idx={};for(let i=0;i<row.length;i++)if(row[i]!=null)idx[norm(row[i])]=i;return{hr,idx}}
 function idxOf(idx,label){return idx[norm(label)]==null?-1:idx[norm(label)]}
 function rowValue(row,idx,label){const i=idxOf(idx,label);return i<0?null:row[i]}
+function rowValueAny(row,idx,labels){
+  for(const label of labels||[]){const i=idxOf(idx,label);if(i>=0&&row[i]!=null&&text(row[i])!=='')return row[i]}
+  return null;
+}
 function contractFromRow(row,idx){
-  const products=[];for(let i=1;i<=5;i++){const v=text(rowValue(row,idx,'PDT EXPO '+i));if(v)products.push(v)}const progress=number(rowValue(row,idx,'Progress'));
-  return{sector:text(rowValue(row,idx,'SECTEUR')),brand:text(rowValue(row,idx,'ENSEIGNE')).toUpperCase(),city:text(rowValue(row,idx,'VILLE CUISINISTE')),clientNumber:cleanClient(rowValue(row,idx,'N° CLIENT')),client:text(rowValue(row,idx,'Client')),group:text(rowValue(row,idx,'GROUPEMENT')),startDate:excelDate(rowValue(row,idx,'DATE DÉBUT')),endDate:excelDate(rowValue(row,idx,'DATE FIN')),status:text(rowValue(row,idx,'Statut Contrat')),objective:number(rowValue(row,idx,'OBJECTIF CA')),realized:number(rowValue(row,idx,'CA RÉALISÉ À DATE')),progress,monthsRemaining:number(rowValue(row,idx,'Mois restant')),closure:text(rowValue(row,idx,'CLOTURE')),toInvoice:rowValue(row,idx,'A facturer'),portfolio:number(rowValue(row,idx,'PORTEFEUILLE Mois en cours')),products};
+  const products=[];
+  for(let i=1;i<=5;i++){const v=text(rowValue(row,idx,'PDT EXPO '+i));if(v&&v!=='-')products.push(v)}
+  const progress=number(rowValue(row,idx,'Progress'));
+  return{
+    sector:text(rowValue(row,idx,'SECTEUR')),
+    brand:text(rowValue(row,idx,'ENSEIGNE')).toUpperCase(),
+    city:text(rowValue(row,idx,'VILLE CUISINISTE')),
+    clientNumber:cleanClient(rowValue(row,idx,'N° CLIENT')),
+    client:text(rowValue(row,idx,'Client')),
+    group:text(rowValue(row,idx,'GROUPEMENT')),
+    startDate:excelDate(rowValue(row,idx,'DATE DÉBUT')),
+    endDate:excelDate(rowValue(row,idx,'DATE FIN')),
+    status:text(rowValue(row,idx,'Statut Contrat')),
+    objective:number(rowValue(row,idx,'OBJECTIF CA')),
+    realized:number(rowValueAny(row,idx,['CA RÉALISÉ À DATE','CA RÉALISÉ'])),
+    progress,
+    monthsRemaining:number(rowValue(row,idx,'Mois restant')),
+    closure:text(rowValueAny(row,idx,['CLOTURE','% à facturer'])),
+    toInvoice:rowValueAny(row,idx,['A facturer','€ à facturer']),
+    portfolio:number(rowValue(row,idx,'PORTEFEUILLE Mois en cours')),
+    products
+  };
+}
+/* Certains exports portent les totaux du contrat sur une ligne « parent » sans enseigne
+   ni ville, puis détaillent les magasins sur les lignes suivantes. On garde les deux
+   niveaux au lieu de répartir arbitrairement l'objectif du groupement entre magasins. */
+function groupContractKey(c){
+  const g=norm(c&&c.group),start=text(c&&c.startDate),end=text(c&&c.endDate);
+  return g&&start&&end?g+'|'+start+'|'+end:'';
+}
+function groupPeriodKey(c){const a=text(c&&c.startDate),b=text(c&&c.endDate);return a&&b?a+'|'+b:''}
+function isGroupSummary(c){
+  return !!c&&!text(c.brand)&&!text(c.city)&&!!text(c.group)&&
+    (c.objective!=null||c.realized!=null||c.progress!=null||c.toInvoice!=null||text(c.closure)||c.portfolio!=null);
+}
+function groupSummary(c){
+  return{key:groupContractKey(c),name:text(c.group),startDate:c.startDate||'',endDate:c.endDate||'',status:text(c.status),
+    objective:c.objective,realized:c.realized,progress:c.progress,monthsRemaining:c.monthsRemaining,
+    closure:text(c.closure),toInvoice:c.toInvoice,portfolio:c.portfolio,memberCount:0,members:[]};
+}
+function attachGroupSummary(c,parent){
+  if(!parent)return Object.assign({},c,{storeMetrics:{objective:c.objective,realized:c.realized,portfolio:c.portfolio}});
+  return Object.assign({},c,{
+    objective:parent.objective!=null?parent.objective:c.objective,
+    realized:parent.realized!=null?parent.realized:c.realized,
+    progress:parent.progress!=null?parent.progress:c.progress,
+    monthsRemaining:parent.monthsRemaining!=null?parent.monthsRemaining:c.monthsRemaining,
+    closure:text(parent.closure)||c.closure,
+    toInvoice:parent.toInvoice!=null?parent.toInvoice:c.toInvoice,
+    groupContract:Object.assign({},parent),
+    storeMetrics:{objective:c.objective,realized:c.realized,portfolio:c.portfolio}
+  });
+}
+function linkGroupContracts(rows){
+  const summaries=new Map(),byPeriod=new Map();
+  for(const c of rows||[]){
+    if(!isGroupSummary(c))continue;
+    const g=groupSummary(c),key=g.key,period=groupPeriodKey(c);
+    if(key)summaries.set(key,g);
+    if(period){const list=byPeriod.get(period)||[];list.push(g);byPeriod.set(period,list)}
+  }
+  const out=[];
+  for(const c of rows||[]){
+    if(!c||!c.brand||!c.city)continue;
+    let parent=summaries.get(groupContractKey(c))||null;
+    if(!parent){const list=byPeriod.get(groupPeriodKey(c))||[];if(list.length===1)parent=list[0]}
+    out.push(attachGroupSummary(c,parent));
+  }
+  const members=new Map();
+  for(const c of out){
+    const g=c.groupContract;if(!g||!g.key)continue;
+    const list=members.get(g.key)||[];
+    list.push({brand:c.brand,city:c.city,clientNumber:c.clientNumber,realized:c.storeMetrics&&c.storeMetrics.realized,portfolio:c.storeMetrics&&c.storeMetrics.portfolio});
+    members.set(g.key,list);
+  }
+  for(const c of out){
+    const g=c.groupContract;if(!g||!g.key)continue;
+    const list=members.get(g.key)||[];g.memberCount=list.length;g.members=list.slice(0,30);
+  }
+  return out;
 }
 function activeStatus(v){const n=norm(v);return !!n&&!/(finalis|termine|clotur|closed)/.test(n)}
 function latestByDate(rows){return rows.slice().sort((a,b)=>String(b.endDate||b.startDate||'').localeCompare(String(a.endDate||a.startDate||'')))[0]||null}
@@ -281,20 +363,58 @@ function buildTrackingReserve(contracts,knownHitSites){
   }
   return out.slice(0,MAX_RESERVE_SITES);
 }
+function contractIdentity(c){
+  if(!c)return'';
+  return[norm(c.brand),cleanClient(c.clientNumber),cityKey(c.city),text(c.startDate),text(c.endDate)].join('|');
+}
+function mergedContractHistory(){
+  const map=new Map();
+  for(const list of arguments)for(const c of list||[]){if(!c)continue;const key=contractIdentity(c)||JSON.stringify(c);map.set(key,c)}
+  return[...map.values()].sort((a,b)=>String(b.endDate||b.startDate||'').localeCompare(String(a.endDate||a.startDate||'')));
+}
+function mergeSiteContractData(a,b){
+  const history=mergedContractHistory(
+    (a&&a.history||[]).concat(a&&a.activeContract||[],a&&a.lastContract||[]),
+    (b&&b.history||[]).concat(b&&b.activeContract||[],b&&b.lastContract||[])
+  );
+  const active=latestByDate(history.filter(c=>activeStatus(c.status))),last=latestByDate(history);
+  return Object.assign({},a||{},b||{},{activeContract:active||null,lastContract:last||null,history:history.slice(0,12)});
+}
+function mergeSiteArrays(){
+  const out=new Map();
+  for(const list of arguments)for(const site of list||[]){
+    const key=text(site&&site.key)||[norm(site&&site.brand),cityKey(site&&site.city),text(site&&site.clientNumber)].join('|');
+    out.set(key,out.has(key)?mergeSiteContractData(out.get(key),site):site);
+  }
+  return[...out.values()];
+}
+function mergeTrackingSnapshots(snaps){
+  const list=(snaps||[]).filter(Boolean);
+  if(!list.length)return{type:'tracking',sector:'',sites:[],others:[],trackingReserve:[],scanned:0,sectorsFound:[],needsSectorChoice:false,sourceCount:0,importedAt:nowIso()};
+  const sites=mergeSiteArrays(...list.map(x=>x.sites||[])),others=mergeSiteArrays(...list.map(x=>x.others||[])),
+    trackingReserve=mergeSiteArrays(...list.map(x=>x.trackingReserve||[]));
+  const sectors=[...new Set(sites.map(x=>text(x.fileSector)).filter(Boolean))];
+  const found=[...new Set(list.flatMap(x=>x.sectorsFound||[]).map(text).filter(Boolean))];
+  return{type:'tracking',sector:sectors.join(' · '),sites,others,trackingReserve,
+    scanned:list.reduce((n,x)=>n+(Number(x.scanned)||0),0),sectorScope:list.map(x=>text(x.sectorScope)).filter(Boolean).join(' · '),
+    sectorsFound:found,needsSectorChoice:sites.length===0&&list.some(x=>x.needsSectorChoice),
+    sourceCount:list.length,importedAt:nowIso()};
+}
 async function parseTrackingWorkbook(input,sector){
-  const files=await unzip(input),hit=extractHitlist(readSheetByColumns(files,HITLIST_COLUMNS,'cuisinisteHitlistSheet'),sector),rows=readSheetByColumns(files,TRACKING_COLUMNS,'cuisinisteTrackingSheet'),h=trackingHeader(rows),all=[];
-  /* Enseigne + ville suffisent à retenir une ligne : exiger en plus un numéro client
-     rendait inatteignable le repli d'identité « enseigne + ville » de la réserve, et
-     perdait au passage des contrats réels dont la colonne N° CLIENT est vide. */
-  for(let r=h.hr+1;r<rows.length;r++){const c=contractFromRow(rows[r],h.idx);if(c.brand&&c.city)all.push(c)}
-  const withContracts=site=>{const history=all.filter(c=>matchHitToContract(site,c));const active=latestByDate(history.filter(c=>activeStatus(c.status))),last=latestByDate(history);return Object.assign({},site,{activeContract:active||null,lastContract:last||null,history:history.slice().sort((a,b)=>String(b.endDate).localeCompare(String(a.endDate))).slice(0,8)})};
+  const files=await unzip(input),hit=extractHitlist(readSheetByColumns(files,HITLIST_COLUMNS,'cuisinisteHitlistSheet'),sector),rows=readSheetByColumns(files,TRACKING_COLUMNS,'cuisinisteTrackingSheet'),h=trackingHeader(rows),parsed=[];
+  /* On lit aussi les lignes parent de groupement. Elles n'entrent jamais comme magasins :
+     linkGroupContracts les rattache uniquement quand groupement + période concordent, ou
+     quand la période ne désigne qu'un seul parent non ambigu. */
+  for(let r=h.hr+1;r<rows.length;r++)parsed.push(contractFromRow(rows[r],h.idx));
+  const all=linkGroupContracts(parsed);
+  const withContracts=site=>{const history=all.filter(c=>matchHitToContract(site,c));const active=latestByDate(history.filter(c=>activeStatus(c.status))),last=latestByDate(history);return Object.assign({},site,{activeContract:active||null,lastContract:last||null,history:history.slice().sort((a,b)=>String(b.endDate).localeCompare(String(a.endDate))).slice(0,12)})};
   const sites=hit.map(withContracts);
   /* Les sites du fichier hors périmètre au moment de l'import sont gardés en réserve, sans
      jamais être affichés ni comptés. C'est ce qui permet à un cuisiniste ajouté APRÈS
      l'import d'apparaître avec son contrat, sans réimport et sans second stockage. */
   const others=(hit.others||[]).slice(0,MAX_RESERVE_SITES).map(withContracts);
   const trackingReserve=buildTrackingReserve(all,hit.concat(hit.others||[]));
-  return{type:'tracking',sector:hit.sector||'',sites,others,trackingReserve,scanned:hit.scanned||sites.length,sectorScope:hit.sectorScope||'',sectorsFound:hit.sectorsFound||[],needsSectorChoice:!!hit.needsChoice,importedAt:nowIso()};
+  return{type:'tracking',sector:hit.sector||'',sites,others,trackingReserve,scanned:hit.scanned||sites.length,sectorScope:hit.sectorScope||'',sectorsFound:hit.sectorsFound||[],needsSectorChoice:!!hit.needsChoice,sourceCount:1,importedAt:nowIso()};
 }
 function tariffHeader(rows){const hr=findHeaderRow(rows,['Famille','Segment','Référence SCHMIDT GROUPE','Référence commerciale SAMSUNG']);if(hr<0)throw new Error('Colonnes du tarif contrats expo introuvables.');const idx={};for(let i=0;i<rows[hr].length;i++)if(rows[hr][i]!=null)idx[norm(rows[hr][i])]=i;return{hr,idx}}
 async function parseTariffWorkbook(input){
@@ -386,14 +506,16 @@ function resolveSites(storage,list){
 function urgency(site){const c=site&&site.activeContract;if(!c)return{score:0,label:'À qualifier',reason:'Aucun contrat actif trouvé'};let score=0,reasons=[];if(/alerte/i.test(c.status)){score+=100;reasons.push('statut Alerte')}if(c.monthsRemaining!=null&&c.monthsRemaining<=3){score+=50+(3-c.monthsRemaining)*5;reasons.push('fin de période proche')}if(c.progress!=null&&c.monthsRemaining!=null){const elapsed=Math.max(0,12-c.monthsRemaining),expected=Math.min(1,elapsed/12);if(c.progress+0.15<expected){score+=30;reasons.push('progression à vérifier par rapport au temps écoulé')}}return{score,label:score>=100?'Prioritaire':score>=50?'À suivre':'Suivi normal',reason:reasons.join(' · ')||'contrat en cours'}}
 function siteForStore(storage,storeId){return resolveSites(storage,stores()).find(s=>String(s.storeId)===String(storeId))||null}
 function enrichedContract(storage,c){if(!c)return null;return Object.assign({},c,{products:(c.products||[]).map(ref=>({ref,info:productInfo(storage,ref)}))})}
-function briefingForStore(storeId){const storage=db(),site=siteForStore(storage,storeId);if(!site)return null;return Object.assign({},site,{activeContract:enrichedContract(storage,site.activeContract),lastContract:enrichedContract(storage,site.lastContract),urgency:urgency(site)})}
+function briefingForStore(storeId){const storage=db(),site=siteForStore(storage,storeId);if(!site)return null;return Object.assign({},site,{activeContract:enrichedContract(storage,site.activeContract),lastContract:enrichedContract(storage,site.lastContract),history:(site.history||[]).map(c=>enrichedContract(storage,c)),urgency:urgency(site)})}
 function planningSignal(storeId){const x=briefingForStore(storeId);if(!x)return null;const u=urgency(x);return{score:u.score,reason:u.reason,source:'Contrat expo',active:!!x.activeContract}}
-function compactSite(site,storage){const c=site.activeContract||site.lastContract;return{storeId:site.storeId||null,brand:site.brand,city:site.city,hasActive:!!site.activeContract,status:c?c.status:null,startDate:c?c.startDate:null,endDate:c?c.endDate:null,objective:c?c.objective:null,realized:c?c.realized:null,progress:c?c.progress:null,monthsRemaining:c?c.monthsRemaining:null,closure:c?c.closure:null,products:c?(c.products||[]).slice(0,5).map(ref=>{const info=productInfo(storage,ref);return{ref,family:info&&info.family||null,segment:info&&info.segment||null,description:info&&info.description||null,type:info&&info.type||null}}):[],urgency:urgency(site)}}
+function compactSite(site,storage){const c=site.activeContract||site.lastContract,g=c&&c.groupContract,m=c&&c.storeMetrics;return{storeId:site.storeId||null,brand:site.brand,city:site.city,hasActive:!!site.activeContract,status:c?c.status:null,startDate:c?c.startDate:null,endDate:c?c.endDate:null,objective:c?c.objective:null,realized:c?c.realized:null,progress:c?c.progress:null,monthsRemaining:c?c.monthsRemaining:null,closure:c?c.closure:null,groupContract:g?{name:g.name,memberCount:g.memberCount,objective:g.objective,realized:g.realized,progress:g.progress,toInvoice:g.toInvoice,portfolio:g.portfolio}:null,storeMetrics:m?{objective:m.objective,realized:m.realized,portfolio:m.portfolio}:null,historyCount:Array.isArray(site.history)?site.history.length:0,products:c?(c.products||[]).slice(0,5).map(ref=>{const info=productInfo(storage,ref);return{ref,family:info&&info.family||null,segment:info&&info.segment||null,description:info&&info.description||null,type:info&&info.type||null}}):[],urgency:urgency(site)}}
 function compactContext(context){const storage=db(),sites=resolveSites(storage,stores());if(!sites.length)return context||{};const out=context||{},sorted=sites.slice().sort((a,b)=>urgency(b).score-urgency(a).score);out.cuisinistesV193={sector:(latestTracking(storage)||{}).sector||'',counts:{sites:sites.length,active:sites.filter(s=>s.activeContract).length,alerts:sites.filter(s=>s.activeContract&&/alerte/i.test(s.activeContract.status)).length,unmatched:sites.filter(s=>!s.storeId).length},rules:{scope:'secteur du fichier importé uniquement',separateFromPerformance:true,rawWorkbookShared:false},sites:sorted.slice(0,MAX_ASSISTANT_ROWS).map(s=>compactSite(s,storage))};return out}
-function fmtEuro(v){return v==null?'—':Math.round(Number(v)).toLocaleString('fr-FR')+' €'}
+function fmtEuro(v){const n=number(v);return n==null?'—':Math.round(n).toLocaleString('fr-FR')+' €'}
 function fmtPct(v){return v==null?'—':(Math.round(Number(v)*1000)/10).toString().replace('.',',')+' %'}
 function siteLabel(s){return s.brand+' '+s.city}
-function detail(site){const c=site.activeContract||site.lastContract;if(!c)return siteLabel(site)+' · aucun contrat retrouvé';const parts=[siteLabel(site),site.activeContract?c.status:'aucun contrat actif · dernier '+c.status];if(c.objective!=null)parts.push('objectif '+fmtEuro(c.objective));if(c.realized!=null)parts.push('réalisé '+fmtEuro(c.realized));if(c.progress!=null)parts.push('progression '+fmtPct(c.progress));if(c.monthsRemaining!=null&&typeof c.monthsRemaining==='number')parts.push(c.monthsRemaining+' mois restant'+(c.monthsRemaining>1?'s':''));return parts.join(' · ')}
+function storeMetricsOf(c){const m=c&&c.storeMetrics||{};return{objective:m.objective,realized:m.realized,portfolio:m.portfolio}}
+function historyExceptCurrent(site,c){const id=contractIdentity(c);return(site&&site.history||[]).filter(x=>contractIdentity(x)!==id)}
+function detail(site){const c=site.activeContract||site.lastContract;if(!c)return siteLabel(site)+' · aucun contrat retrouvé';const parts=[siteLabel(site),site.activeContract?c.status:'aucun contrat actif · dernier '+c.status],g=c.groupContract,m=storeMetricsOf(c);if(g&&g.name)parts.push('groupement '+g.name);if(c.objective!=null)parts.push((g?'objectif groupe ':'objectif ')+fmtEuro(c.objective));if(c.realized!=null)parts.push((g?'réalisé groupe ':'réalisé ')+fmtEuro(c.realized));if(g&&m.realized!=null)parts.push('réalisé magasin '+fmtEuro(m.realized));if(c.progress!=null)parts.push('progression '+fmtPct(c.progress));if(c.monthsRemaining!=null&&typeof c.monthsRemaining==='number')parts.push(c.monthsRemaining+' mois restant'+(c.monthsRemaining>1?'s':''));const prev=historyExceptCurrent(site,c);if(prev.length)parts.push((prev.length+1)+' contrats retrouvés');return parts.join(' · ')}
 function findSite(textValue,sites){const n=norm(textValue);let best=null,score=0;for(const s of sites){const cands=[s.city,siteLabel(s),s.key].map(norm);for(const c of cands){let sc=0;if(c&&n.includes(c))sc=c.length+20;else{const toks=cityKey(s.city).split(' ').filter(x=>x.length>3),hits=toks.filter(x=>n.includes(x)).length;sc=hits*8}if(sc>score){score=sc;best=s}}}return score>=8?best:null}
 function visitTips(site){const c=site.activeContract,tips=[];if(c){tips.push('Faire le point chiffre avec le décisionnaire et vérifier l’avancement du contrat.');if(c.products&&c.products.length)tips.push('Vérifier la présence, la visibilité et la bonne identification des produits d’exposition.');if(c.monthsRemaining!=null&&c.monthsRemaining<=3)tips.push('La fin de période est proche : qualifier les actions restantes et le suivi de clôture.');if(/alerte/i.test(c.status))tips.push('Le fichier source indique « Alerte » : vérifier la situation avec le magasin sans inventer la cause.')}else tips.push('Aucun contrat actif retrouvé : qualifier avec le décisionnaire s’il faut préparer un nouveau contrat ou mettre à jour le suivi.');tips.push('Proposer ou planifier une classroom si l’équipe a besoin d’un rappel produit.');tips.push('Rester disponible pour les questions techniques, SAV et ADV.');return tips.slice(0,5)}
 function answer(q){const storage=db(),sites=resolveSites(storage,stores());if(!sites.length)return null;const n=norm(q),specific=findSite(q,sites),asksPrep=/(prepar|visite|piste|tip|conseil)/.test(n);if(specific){let out=detail(specific);if(asksPrep)out+='\nPistes à vérifier :\n'+visitTips(specific).map(x=>'• '+x).join('\n');return out}if(/alerte/.test(n)){const r=sites.filter(s=>s.activeContract&&/alerte/i.test(s.activeContract.status));return r.length?'Contrats en alerte :\n'+r.map(s=>'• '+detail(s)).join('\n'):'Aucun contrat du périmètre importé n’est marqué « Alerte » dans le dernier import.'}if(/fin|echeance|échéance|termine/.test(n)){const r=sites.filter(s=>s.activeContract&&s.activeContract.monthsRemaining!=null&&s.activeContract.monthsRemaining<=3).sort((a,b)=>a.activeContract.monthsRemaining-b.activeContract.monthsRemaining);return r.length?'Contrats proches de la fin de période :\n'+r.map(s=>'• '+detail(s)).join('\n'):'Aucun contrat actif à 3 mois ou moins de la fin de période.'}if(/cuisiniste|contrat.*suiv|dois.*suiv|priorit/.test(n)){const r=sites.filter(s=>s.activeContract).sort((a,b)=>urgency(b).score-urgency(a).score);return r.length?'Suivi cuisinistes du secteur importé :\n'+r.map(s=>'• '+detail(s)+' · '+urgency(s).reason).join('\n'):'Aucun contrat actif retrouvé dans le périmètre.'}return null}
@@ -407,11 +529,11 @@ function renderProductLine(storage,c){if(!c||!c.products||!c.products.length)ret
 function renderSectorChoice(body){
   const box=el('section',undefined,'srCuisineReview');
   box.append(el('b','Quel secteur est le vôtre ?'));
-  box.append(el('span','Aucun magasin du fichier n’a pu être rapproché de vos cuisinistes. Choisissez votre secteur : Store Runner ne le devine pas à votre place.','srCuisineMeta'));
+  box.append(el('span','Aucun magasin des fichiers n’a pu être rapproché de vos cuisinistes. Choisissez votre secteur : Store Runner ne le devine pas à votre place.','srCuisineMeta'));
   const sel=el('select');
   sel.append(Object.assign(el('option','Choisir un secteur…'),{value:''}));
   for(const name of pendingSectors||[])sel.append(Object.assign(el('option',name),{value:name}));
-  sel.onchange=()=>{if(!sel.value||!pendingFile)return;const chosen=sel.value;pendingSectors=null;importTracking(pendingFile,chosen)};
+  sel.onchange=()=>{if(!sel.value||!pendingFiles||!pendingFiles.length)return;const chosen=sel.value;pendingSectors=null;importTrackingFiles(pendingFiles,chosen)};
   box.append(sel);
   body.append(box);
 }
@@ -419,7 +541,7 @@ function renderImportReview(body,sites,tr){
   const matched=sites.filter(s=>s.storeId),pending=sites.filter(s=>!s.storeId);
   const box=el('section',undefined,'srCuisineReview');
   const scanned=Number(tr&&tr.scanned);
-  const counts=[(Number.isFinite(scanned)?scanned:sites.length)+' cuisinistes dans le fichier',
+  const counts=[(Number.isFinite(scanned)?scanned:sites.length)+' cuisinistes lus dans '+((tr&&tr.sourceCount)>1?tr.sourceCount+' fichiers':'le fichier'),
     sites.length+' de mon secteur',matched.length+' rapprochés',pending.length+' à vérifier'];
   box.append(el('b','Import · '+counts.join(' · ')));
   if(!pending.length){box.append(el('span','Tous les magasins du périmètre sont rattachés.','srCuisineMeta'));body.append(box);return}
@@ -443,29 +565,34 @@ function renderImportReview(body,sites,tr){
   body.append(box);
 }
 function renderSheet(){if(!sheet)return;const storage=db(),sites=resolveSites(storage,stores()),body=sheet.querySelector('#srCuisineBody');body.replaceChildren();const tr=latestTracking(storage),ta=latestTariff(storage);sheet.querySelector('#srCuisineSubtitle').textContent=(text((tr||{}).sector)||'Secteur à importer')+' · '+(tr?'suivi importé':'suivi à importer')+' · '+(ta?'tarifs importés':'tarifs à importer');if(pendingSectors&&pendingSectors.length){renderSectorChoice(body);return}if(!tr){body.append(el('p','Importe ton fichier contrats .xlsx ou .xlsm. Seuls les magasins qui correspondent à tes cuisinistes seront conservés dans Store Runner.','srCuisineMeta'));return}renderImportReview(body,sites,tr);const shown=followupSheetHeader(body,sites)||sites;
-for(const site of shown){const box=el('section',undefined,'srCuisineRow'),c=site.activeContract||site.lastContract,u=urgency(site);const head=el('div');const badge=el('span',site.activeContract?(c.status||'Contrat actif'):'Historique','srCuisineBadge'+(/alerte/i.test(c&&c.status||'')?' srCuisineAlert':''));head.append(badge,el('b',siteLabel(site)));box.append(head);const ident=siteIdentityLine(site);if(ident)box.append(el('span',ident,'srCuisineMeta'));if(c){const meta=[];meta.push(site.activeContract?'Contrat actif':'Aucun contrat actif trouvé · dernier contrat');if(c.startDate||c.endDate)meta.push('Période : '+(c.startDate||'—')+' → '+(c.endDate||'—'));if(c.objective!=null||c.realized!=null)meta.push('Objectif '+fmtEuro(c.objective)+' · réalisé '+fmtEuro(c.realized)+' · progression '+fmtPct(c.progress));if(c.monthsRemaining!=null&&typeof c.monthsRemaining==='number')meta.push('Temps restant : '+c.monthsRemaining+' mois');if(c.closure)meta.push('Clôture source : '+c.closure);if(c.toInvoice!=null&&text(c.toInvoice))meta.push('À facturer : '+text(c.toInvoice));if(c.portfolio!=null)meta.push('Portefeuille mois : '+fmtEuro(c.portfolio));const prod=renderProductLine(storage,c);if(prod)meta.push('Produits expo :\n'+prod);meta.push('Signal : '+u.label+' · '+u.reason);box.append(el('span',meta.join('\n'),'srCuisineMeta'))}else box.append(el('span','Aucun contrat retrouvé dans le suivi importé.','srCuisineMeta'));if(!site.storeId){const sel=el('select');sel.append(Object.assign(el('option','Rattacher à un magasin Store Runner…'),{value:''}));for(const s of stores())sel.append(Object.assign(el('option',text(s.enseigne)+' · '+text(s.ville)),{value:String(s.id)}));sel.onchange=()=>{if(sel.value){rememberMatch(storage,site.key,sel.value);followupReconcile(resolveSites(storage,stores()));renderSheet();renderStoreCard();queueVisitRender()}};box.append(sel)}else box.append(el('span','Rattaché au magasin Store Runner · '+site.matchedBy,'srCuisineMeta'));followupRow(box,site);body.append(box)}}
-async function importTracking(file,sector){
+for(const site of shown){const box=el('section',undefined,'srCuisineRow'),c=site.activeContract||site.lastContract,u=urgency(site);const head=el('div');const badge=el('span',site.activeContract?(c.status||'Contrat actif'):'Historique','srCuisineBadge'+(/alerte/i.test(c&&c.status||'')?' srCuisineAlert':''));head.append(badge,el('b',siteLabel(site)));box.append(head);const ident=siteIdentityLine(site);if(ident)box.append(el('span',ident,'srCuisineMeta'));if(c){const meta=[],g=c.groupContract,m=storeMetricsOf(c);meta.push(site.activeContract?'Contrat actif':'Aucun contrat actif trouvé · dernier contrat');if(c.startDate||c.endDate)meta.push('Période : '+(c.startDate||'—')+' → '+(c.endDate||'—'));if(g){meta.push('Contrat groupement : '+(g.name||c.group||'—')+(g.memberCount?' · '+g.memberCount+' magasin'+(g.memberCount>1?'s':''):''));meta.push('Groupe · objectif '+fmtEuro(g.objective)+' · réalisé '+fmtEuro(g.realized)+' · progression '+fmtPct(g.progress));if(g.portfolio!=null)meta.push('Groupe · portefeuille mois '+fmtEuro(g.portfolio));if(g.closure)meta.push('Groupe · facturation '+g.closure);if(g.toInvoice!=null&&text(g.toInvoice))meta.push('Groupe · à facturer '+fmtEuro(number(g.toInvoice)!=null?number(g.toInvoice):g.toInvoice));meta.push('Ce magasin · réalisé '+fmtEuro(m.realized)+(m.portfolio!=null?' · portefeuille '+fmtEuro(m.portfolio):''));}else if(c.objective!=null||c.realized!=null)meta.push('Objectif '+fmtEuro(c.objective)+' · réalisé '+fmtEuro(c.realized)+' · progression '+fmtPct(c.progress));if(c.monthsRemaining!=null&&typeof c.monthsRemaining==='number')meta.push('Temps restant : '+c.monthsRemaining+' mois');const prod=renderProductLine(storage,c);if(prod)meta.push('Produits expo :\n'+prod);const previous=historyExceptCurrent(site,c).slice(0,4);if(previous.length)meta.push('Historique contrats :\n'+previous.map(h=>(h.startDate||'—')+' → '+(h.endDate||'—')+' · '+(h.status||'—')+' · '+(h.groupContract?'groupe '+fmtPct(h.progress):'réalisé '+fmtEuro(h.realized))).join('\n'));meta.push('Signal : '+u.label+' · '+u.reason);box.append(el('span',meta.join('\n'),'srCuisineMeta'))}else box.append(el('span','Aucun contrat retrouvé dans le suivi importé.','srCuisineMeta'));if(!site.storeId){const sel=el('select');sel.append(Object.assign(el('option','Rattacher à un magasin Store Runner…'),{value:''}));for(const st of stores())sel.append(Object.assign(el('option',text(st.enseigne)+' · '+text(st.ville)),{value:String(st.id)}));sel.onchange=()=>{if(sel.value){rememberMatch(storage,site.key,sel.value);followupReconcile(resolveSites(storage,stores()));renderSheet();renderStoreCard();queueVisitRender()}};box.append(sel)}else box.append(el('span','Rattaché au magasin Store Runner · '+site.matchedBy,'srCuisineMeta'));followupRow(box,site);body.append(box)}}
+async function importTrackingFiles(files,sector){
   try{
-    status('Lecture locale du suivi contrats…');
-    const snap=await parseTrackingWorkbook(new Uint8Array(await file.arrayBuffer()),sector);
+    const list=Array.from(files||[]).filter(Boolean).sort((a,b)=>(Number(a.lastModified)||0)-(Number(b.lastModified)||0));
+    if(!list.length)return false;
+    status('Lecture locale de '+list.length+' fichier'+(list.length>1?'s':'')+' contrats…');
+    const snaps=[];
+    for(const file of list){const snap=await parseTrackingWorkbook(new Uint8Array(await file.arrayBuffer()),sector);snaps.push(snap)}
+    const snap=mergeTrackingSnapshots(snaps);
     if(snap.needsSectorChoice){
       /* Rien n'est enregistré tant que l'utilisateur n'a pas tranché : un import muet
          écraserait le suivi précédent par un périmètre vide. */
-      pendingSectors=snap.sectorsFound||[];pendingFile=file;
-      status('Aucun magasin du fichier ne correspond à tes cuisinistes. Choisis ton secteur.',true);
+      pendingSectors=snap.sectorsFound||[];pendingFiles=list;
+      status('Aucun magasin des fichiers ne correspond à tes cuisinistes. Choisis ton secteur.',true);
       renderSheet();return false;
     }
-    pendingSectors=null;pendingFile=null;
+    pendingSectors=null;pendingFiles=null;
     saveTracking(db(),snap);
     const sites=resolveSites(db(),stores());
     followupReconcile(sites);
     const matched=sites.filter(s=>s.storeId).length;
-    status('Suivi importé · '+sites.length+' de mon secteur · '+matched+' rapprochés · '+(sites.length-matched)+' à vérifier.');
+    status(list.length+' fichier'+(list.length>1?'s':'')+' lu'+(list.length>1?'s':'')+' · '+sites.length+' de mon secteur · '+matched+' rapprochés · '+(sites.length-matched)+' à vérifier.');
     renderSheet();renderStoreCard();queueVisitRender();return true;
   }catch(e){status(e&&e.message||String(e),true);return false}
 }
+async function importTracking(file,sector){return importTrackingFiles(file?[file]:[],sector)}
 async function importTariff(file){try{status('Lecture locale du tarif contrats expo…');const snap=await parseTariffWorkbook(new Uint8Array(await file.arrayBuffer()));saveTariff(db(),snap);status('Tarifs importés · '+snap.products.length+' références.');renderSheet();renderStoreCard();queueVisitRender();return true}catch(e){status(e&&e.message||String(e),true);return false}}
-function ensureSheet(){if(sheet)return sheet;if(!root.document)return null;ensureStyle();sheet=el('dialog');sheet.id=SHEET_ID;sheet.innerHTML='<div><h2 style="margin:0">Contrats expo · Cuisinistes</h2><p id="srCuisineSubtitle" class="srCuisineMeta"></p></div><div class="srCuisineBar"><button id="srCuisineImportTracking" class="primary">📥 Importer mon fichier contrats</button><button id="srCuisineImportTariff">📦 Tarifs / références .xlsx</button></div><input id="srCuisineTrackingFile" type="file" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden><input id="srCuisineTariffFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden><p id="srCuisineStatus" class="srCuisineStatus" role="status"></p><div id="srCuisineBody"></div><div class="srCuisineBar"><button id="srCuisineClose">Fermer</button></div>';root.document.body.appendChild(sheet);const tf=sheet.querySelector('#srCuisineTrackingFile'),pf=sheet.querySelector('#srCuisineTariffFile');sheet.querySelector('#srCuisineImportTracking').onclick=()=>tf.click();sheet.querySelector('#srCuisineImportTariff').onclick=()=>pf.click();sheet.querySelector('#srCuisineClose').onclick=()=>sheet.close();tf.onchange=()=>{const f=tf.files&&tf.files[0];tf.value='';if(f)importTracking(f)};pf.onchange=()=>{const f=pf.files&&pf.files[0];pf.value='';if(f)importTariff(f)};return sheet}
+function ensureSheet(){if(sheet)return sheet;if(!root.document)return null;ensureStyle();sheet=el('dialog');sheet.id=SHEET_ID;sheet.innerHTML='<div><h2 style="margin:0">Contrats expo · Cuisinistes</h2><p id="srCuisineSubtitle" class="srCuisineMeta"></p></div><div class="srCuisineBar"><button id="srCuisineImportTracking" class="primary">📥 Importer fichier(s) contrats</button><button id="srCuisineImportTariff">📦 Tarifs / références .xlsx</button></div><input id="srCuisineTrackingFile" type="file" multiple accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" hidden><input id="srCuisineTariffFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden><p id="srCuisineStatus" class="srCuisineStatus" role="status"></p><div id="srCuisineBody"></div><div class="srCuisineBar"><button id="srCuisineClose">Fermer</button></div>';root.document.body.appendChild(sheet);const tf=sheet.querySelector('#srCuisineTrackingFile'),pf=sheet.querySelector('#srCuisineTariffFile');sheet.querySelector('#srCuisineImportTracking').onclick=()=>tf.click();sheet.querySelector('#srCuisineImportTariff').onclick=()=>pf.click();sheet.querySelector('#srCuisineClose').onclick=()=>sheet.close();tf.onchange=()=>{const files=Array.from(tf.files||[]);tf.value='';if(files.length)importTrackingFiles(files)};pf.onchange=()=>{const f=pf.files&&pf.files[0];pf.value='';if(f)importTariff(f)};return sheet}
 function open(){ensureSheet();status('');if(typeof sheet.showModal==='function'&&!sheet.open)sheet.showModal();else sheet.setAttribute('open','');renderSheet();return true}
 function ensureMenuEntry(){if(!root.document)return false;const grid=root.document.querySelector('#moreSheetV2 .moreSheetGrid');if(!grid)return false;if(root.document.getElementById(MENU_BTN_ID))return true;const b=btn('🧾 Contrats expo',e=>{if(e){e.preventDefault();e.stopPropagation()}const more=root.document.getElementById('moreSheetV2');if(more)more.classList.remove('open');open()});b.id=MENU_BTN_ID;b.setAttribute('aria-label','Suivi contrats expo cuisinistes');grid.appendChild(b);return true}
 function followupSheetHeader(body,sites){
@@ -495,8 +622,8 @@ function followupSection(storeId){
   if(!fu||typeof fu.renderStoreSection!=='function')return false;
   try{return fu.renderStoreSection(storeId)}catch(e){return false}
 }
-function renderStoreCard(){if(!root.document)return false;const sh=root.document.getElementById('storeQuickSheet'),start=root.document.getElementById('srQuickStart');if(!sh||!start||!start.dataset)return false;const storeId=text(start.dataset.srStart);let old=root.document.getElementById(STORE_CARD_ID);if(!storeId){if(old)old.remove();followupSection(null);return false}const x=briefingForStore(storeId);if(!x){if(old)old.remove();followupSection(storeId);return false}const anchor=root.document.getElementById('sqPerformance')||root.document.getElementById('sqVisitCredit')||root.document.getElementById('sqAddress');if(!anchor)return false;if(!old){ensureStyle();old=el('section');old.id=STORE_CARD_ID;old.setAttribute('aria-label','Contrat expo du magasin');anchor.insertAdjacentElement('afterend',old)}old.replaceChildren();const c=x.activeContract||x.lastContract,badge=el('span',x.activeContract?(c.status||'Contrat expo'):'Historique','srCuisineBadge'+(/alerte/i.test(c&&c.status||'')?' srCuisineAlert':''));old.append(badge,el('b','Contrat Expo · '+siteLabel(x)));const identity=siteIdentityLine(x);if(identity)old.append(el('span',identity,'srCuisineMeta'));if(c){const line=t=>old.append(el('span',t,'srCuisineMeta'));line(x.activeContract?'Contrat actif':'Aucun contrat actif trouvé · dernier contrat '+(c.status||''));line('Période '+(c.startDate||'—')+' → '+(c.endDate||'—'));line('Objectif '+fmtEuro(c.objective)+' · réalisé '+fmtEuro(c.realized)+' · '+fmtPct(c.progress));if(c.monthsRemaining!=null&&typeof c.monthsRemaining==='number')line('Temps restant : '+c.monthsRemaining+' mois');if(c.products&&c.products.length)line('Produits expo : '+c.products.map(p=>p.info?(p.ref+' · '+[p.info.family,p.info.segment].filter(Boolean).join(' / ')):p.ref).join(' · '));line('Signal : '+x.urgency.reason)}old.append(btn('Ouvrir le suivi contrats expo',open));followupSection(storeId);return true}
-function createBriefing(storeId){const x=briefingForStore(storeId);if(!x||!root.document)return null;ensureStyle();const s=el('section',undefined,'srCuisineBrief193');s.dataset.storeId=String(storeId);s.setAttribute('aria-label','Brief contrat expo');const c=x.activeContract||x.lastContract,b=el('span',x.activeContract?(c.status||'Contrat expo'):'Historique','srCuisineBadge'+(/alerte/i.test(c&&c.status||'')?' srCuisineAlert':''));s.append(b,el('b','Contrat expo · '+siteLabel(x)));if(c){const g=el('div',undefined,'srCuisineGrid'),cell=(l,v)=>{const x=el('div',undefined,'srCuisineCell');x.append(el('span',l),el('b',v));g.append(x)};cell('Progression',fmtPct(c.progress));cell('Objectif',fmtEuro(c.objective));cell('Réalisé',fmtEuro(c.realized));cell('Temps restant',c.monthsRemaining!=null&&typeof c.monthsRemaining==='number'?c.monthsRemaining+' mois':'—');s.append(g);if(c.products&&c.products.length)s.append(el('span','Produits expo : '+c.products.map(p=>p.ref).join(' · '),'srCuisineMeta'));s.append(el('span','À vérifier : '+visitTips(x).slice(0,3).join(' '),'srCuisineMeta'))}else s.append(el('span','Aucun contrat retrouvé dans le dernier import.','srCuisineMeta'));return s}
+function renderStoreCard(){if(!root.document)return false;const sh=root.document.getElementById('storeQuickSheet'),start=root.document.getElementById('srQuickStart');if(!sh||!start||!start.dataset)return false;const storeId=text(start.dataset.srStart);let old=root.document.getElementById(STORE_CARD_ID);if(!storeId){if(old)old.remove();followupSection(null);return false}const x=briefingForStore(storeId);if(!x){if(old)old.remove();followupSection(storeId);return false}const anchor=root.document.getElementById('sqPerformance')||root.document.getElementById('sqVisitCredit')||root.document.getElementById('sqAddress');if(!anchor)return false;if(!old){ensureStyle();old=el('section');old.id=STORE_CARD_ID;old.setAttribute('aria-label','Contrat expo du magasin');anchor.insertAdjacentElement('afterend',old)}old.replaceChildren();const c=x.activeContract||x.lastContract,badge=el('span',x.activeContract?(c.status||'Contrat expo'):'Historique','srCuisineBadge'+(/alerte/i.test(c&&c.status||'')?' srCuisineAlert':''));old.append(badge,el('b','Contrat Expo · '+siteLabel(x)));const identity=siteIdentityLine(x);if(identity)old.append(el('span',identity,'srCuisineMeta'));if(c){const line=t=>old.append(el('span',t,'srCuisineMeta')),g=c.groupContract,m=storeMetricsOf(c);line(x.activeContract?'Contrat actif':'Aucun contrat actif trouvé · dernier contrat '+(c.status||''));line('Période '+(c.startDate||'—')+' → '+(c.endDate||'—'));if(g){line('Contrat groupement · '+(g.name||'—')+(g.memberCount?' · '+g.memberCount+' magasin'+(g.memberCount>1?'s':''):''));line('Groupe · objectif '+fmtEuro(g.objective)+' · réalisé '+fmtEuro(g.realized)+' · '+fmtPct(g.progress));line('Ce magasin · réalisé '+fmtEuro(m.realized)+(m.portfolio!=null?' · portefeuille '+fmtEuro(m.portfolio):''));if(g.closure||g.toInvoice!=null)line('Facturation groupe · '+(g.closure||'—')+(g.toInvoice!=null?' · '+fmtEuro(number(g.toInvoice)!=null?number(g.toInvoice):g.toInvoice):''));}else line('Objectif '+fmtEuro(c.objective)+' · réalisé '+fmtEuro(c.realized)+' · '+fmtPct(c.progress));if(c.monthsRemaining!=null&&typeof c.monthsRemaining==='number')line('Temps restant : '+c.monthsRemaining+' mois');if(c.products&&c.products.length)line('Produits expo : '+c.products.map(p=>p.info?(p.ref+' · '+[p.info.family,p.info.segment].filter(Boolean).join(' / ')):p.ref).join(' · '));const prev=historyExceptCurrent(x,c);if(prev.length)line('Historique · '+(prev.length+1)+' contrats retrouvés');line('Signal : '+x.urgency.reason)}old.append(btn('Ouvrir le suivi contrats expo',open));followupSection(storeId);return true}
+function createBriefing(storeId){const x=briefingForStore(storeId);if(!x||!root.document)return null;ensureStyle();const s=el('section',undefined,'srCuisineBrief193');s.dataset.storeId=String(storeId);s.setAttribute('aria-label','Brief contrat expo');const c=x.activeContract||x.lastContract,b=el('span',x.activeContract?(c.status||'Contrat expo'):'Historique','srCuisineBadge'+(/alerte/i.test(c&&c.status||'')?' srCuisineAlert':''));s.append(b,el('b','Contrat expo · '+siteLabel(x)));if(c){const grid=el('div',undefined,'srCuisineGrid'),cell=(l,v)=>{const n=el('div',undefined,'srCuisineCell');n.append(el('span',l),el('b',v));grid.append(n)},group=c.groupContract,m=storeMetricsOf(c);if(group){cell('Progression groupe',fmtPct(group.progress));cell('Objectif groupe',fmtEuro(group.objective));cell('Réalisé groupe',fmtEuro(group.realized));cell('CA magasin',fmtEuro(m.realized));s.append(el('span','Groupement : '+(group.name||'—')+(group.memberCount?' · '+group.memberCount+' magasin'+(group.memberCount>1?'s':''):''),'srCuisineMeta'));}else{cell('Progression',fmtPct(c.progress));cell('Objectif',fmtEuro(c.objective));cell('Réalisé',fmtEuro(c.realized));cell('Temps restant',c.monthsRemaining!=null&&typeof c.monthsRemaining==='number'?c.monthsRemaining+' mois':'—')}s.append(grid);if(group&&c.monthsRemaining!=null&&typeof c.monthsRemaining==='number')s.append(el('span','Temps restant : '+c.monthsRemaining+' mois','srCuisineMeta'));if(c.products&&c.products.length)s.append(el('span','Produits expo : '+c.products.map(p=>p.ref).join(' · '),'srCuisineMeta'));const prev=historyExceptCurrent(x,c);if(prev.length)s.append(el('span','Historique : '+(prev.length+1)+' contrats retrouvés','srCuisineMeta'));s.append(el('span','À vérifier : '+visitTips(x).slice(0,3).join(' '),'srCuisineMeta'))}else s.append(el('span','Aucun contrat retrouvé dans le dernier import.','srCuisineMeta'));return s}
 function activeVisitStoreId(){try{const id=root.StoreRunnerVisits&&typeof root.StoreRunnerVisits.activeVisitId==='function'?root.StoreRunnerVisits.activeVisitId():null;if(!id)return null;const vs=(root.state&&root.state.businessV2&&root.state.businessV2.visits)||[],v=vs.find(x=>String(x.id)===String(id));return v&&v.storeId!=null?String(v.storeId):null}catch(e){return null}}
 function renderVisitBriefing(){if(!root.document)return false;const dialog=root.document.getElementById('srVisitDialog');if(!dialog||!dialog.open)return false;const intro=dialog.querySelector('.sr-terrainIntro');if(!intro)return false;const storeId=activeVisitStoreId();if(!storeId)return false;const old=dialog.querySelector('.srCuisineBrief193');if(old&&old.dataset.storeId===String(storeId))return true;if(old)old.remove();const box=createBriefing(storeId);if(!box)return false;intro.insertAdjacentElement('beforebegin',box);return true}
 function queueVisitRender(){if(renderQueued)return;renderQueued=true;const f=()=>{renderQueued=false;renderVisitBriefing()};if(root.requestAnimationFrame)root.requestAnimationFrame(f);else setTimeout(f,0)}
@@ -504,7 +631,7 @@ function attachObservers(){if(!root.document)return;if(!visitObserver){const d=r
 function install(){ensureStyle();ensureMenuEntry();attachObservers();renderStoreCard();queueVisitRender();return true}
 function scheduleInstall(){setTimeout(install,0);setTimeout(install,350);setTimeout(install,1200)}
 
-const api={STORE_KEY,HITLIST_COLUMNS,TRACKING_COLUMNS,MAX_RESERVE_SITES,buildTrackingReserve,trackingIdentity,siteIdentityLine,siteCompany,siteClient,sectorsIn,unzip,workbookSheets,sheetRows,readSheetByColumns,isCuisinisteStore,cuisinisteStores,matchSite,norm,cityKey,parseHitLabel,extractHitlist,parseTrackingWorkbook,parseTariffWorkbook,saveTracking,saveTariff,latestTracking,latestTariff,readStore,writeStore,siteForStore,db,siteLabel,rememberMatch,resolveSites,appStoreScore,productInfo,urgency,briefingForStore,planningSignal,compactContext,answer,visitTips,open,install,importTracking,importTariff,renderStoreCard,renderSheet,createBriefing};
+const api={STORE_KEY,HITLIST_COLUMNS,TRACKING_COLUMNS,MAX_RESERVE_SITES,buildTrackingReserve,trackingIdentity,siteIdentityLine,siteCompany,siteClient,sectorsIn,unzip,workbookSheets,sheetRows,readSheetByColumns,isCuisinisteStore,cuisinisteStores,matchSite,norm,cityKey,parseHitLabel,extractHitlist,contractIdentity,linkGroupContracts,mergeTrackingSnapshots,parseTrackingWorkbook,parseTariffWorkbook,saveTracking,saveTariff,latestTracking,latestTariff,readStore,writeStore,siteForStore,db,siteLabel,rememberMatch,resolveSites,appStoreScore,productInfo,urgency,briefingForStore,planningSignal,compactContext,answer,visitTips,open,install,importTracking,importTrackingFiles,importTariff,renderStoreCard,renderSheet,createBriefing};
 root.StoreRunnerCuisinisteV193=api;
 if(typeof root.storeRunnerRegisterAssistantResolver==='function')root.storeRunnerRegisterAssistantResolver(answer,25);
 if(typeof root.storeRunnerRegisterAssistantContextTransform==='function')root.storeRunnerRegisterAssistantContextTransform(compactContext,75);
