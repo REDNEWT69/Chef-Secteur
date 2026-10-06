@@ -395,8 +395,8 @@ function mergedContractHistory(){
 }
 function mergeSiteContractData(a,b){
   const history=mergedContractHistory(
-    (a&&a.history||[]).concat(a&&a.activeContract||[],a&&a.lastContract||[]),
-    (b&&b.history||[]).concat(b&&b.activeContract||[],b&&b.lastContract||[])
+    [].concat(a&&a.lastContract||[],a&&a.history||[],a&&a.activeContract||[]),
+    [].concat(b&&b.lastContract||[],b&&b.history||[],b&&b.activeContract||[])
   );
   const active=latestByDate(history.filter(c=>activeStatus(c.status))),last=latestByDate(history);
   return Object.assign({},a||{},b||{},{activeContract:active||null,lastContract:last||null,history:history.slice(0,12)});
