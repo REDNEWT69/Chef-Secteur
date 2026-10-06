@@ -72,6 +72,8 @@ const V=require('../cuisiniste-contracts-v193.js');
   const merged=V.mergeTrackingSnapshots([a,b]);
   const ma=merged.sites.find(s=>s.city==='VILLE ALPHA');
   assert.equal(merged.sourceCount,2);
+  const cumul=V.mergeTrackingSnapshots([Object.assign({},merged,{sourceCount:2}),b]);
+  assert.equal(cumul.sourceCount,3,'les imports mensuels séparés conservent le compte de sources');
   assert.equal(ma.history.length,2);
   assert.equal(ma.activeContract.groupContract.objective,14124);
   assert.equal(ma.activeContract.storeMetrics.realized,8154);
