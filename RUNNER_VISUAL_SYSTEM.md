@@ -4,7 +4,7 @@ Runner est le copilote **visuel** de Store Runner : un personnage, quatre états
 
 **Mobile uniquement, Android d'abord.** Store Runner est Android-first : Runner a été pensé et validé sur Android, puis adapté à l'iPhone. Il n'a aucune mise en page desktop : sa feuille de style ne contient aucune requête de largeur. Références : **Pixel 7 (412 px)** et **Galaxy S8 (360 px, Samsung)**, puis iPhone 14 ; 320 px sans défilement horizontal. L'application installée est verrouillée en portrait (`portrait-primary` dans le manifeste) : le paysage n'est pas un cas de conception, seulement de robustesse. En cas de doute entre desktop et mobile, c'est le mobile qui a été choisi.
 
-- Build courant `20261006-r56-cuisiniste-groups-275`, version visible **274** (« Quoi de neuf » : « Pourquoi ce magasin, ce jour-là » ; V273 « Runner a du caractère », V272, V271, V270, V269 et V268 restent dessous).
+- Build courant `20261006-r56-cuisiniste-groups-275`, version visible **275** (« Quoi de neuf » : « Contrats cuisinistes par groupement » ; V273 « Runner a du caractère », V272, V271, V270, V269 et V268 restent dessous).
 - Budget de démarrage **78 scripts** (V273 : `runner-behavior.js`, le module de personnalité, décision D2 explicitement validée ; Runner lui-même reste `runner-visual.js`, posé en V268) et entrée de shell dans `sw.js` : décisions explicitement validées.
 - **Personnalité (V273)** : `runner-visual.js` ignore la personnalité et ses textes ; il ne gagne que deux gestes génériques dans `react()` (`'nod'` et `'look'`, `transform` seulement). Voir `RUNNER_PERSONALITY_V273.md`.
 - Module : `runner-visual.js` (`StoreRunnerRunner`, alias `Runner`). Un seul fichier, aucune dépendance, aucune feuille séparée.
