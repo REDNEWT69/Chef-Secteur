@@ -244,7 +244,7 @@ function contractFromRow(row,idx){
     progress,
     monthsRemaining:number(rowValue(row,idx,'Mois restant')),
     closure:text(rowValueAny(row,idx,['CLOTURE','% à facturer'])),
-    toInvoice:rowValueAny(row,idx,['A facturer','€ à facturer']),
+    toInvoice:rowValueAny(row,idx,['€ à facturer','A facturer']),
     portfolio:number(rowValue(row,idx,'PORTEFEUILLE Mois en cours')),
     products
   };
