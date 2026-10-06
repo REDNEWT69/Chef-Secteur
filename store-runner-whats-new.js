@@ -26,8 +26,9 @@
   const RELEASES=[
     {
       version:'275',
-      title:'Les contrats cuisinistes deviennent lisibles',
+      title:'Runner prend sa place, les contrats deviennent lisibles',
       items:[
+        'La nouvelle icône montre Runner sur sa carte bleue, avec son repère orange : tu la retrouves au démarrage et dans l’application.',
         'Dans la fiche Cuisiniste, Store Runner distingue maintenant le contrat du groupement des chiffres propres au magasin.',
         'Les objectifs, le CA, la progression et la facturation du groupement restent au niveau du groupement : aucun montant n’est divisé ou reconstruit au hasard.',
         'Le CA, le portefeuille et les produits d’exposition du magasin sont affichés séparément, avec l’historique des contrats précédents.',

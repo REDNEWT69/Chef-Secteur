@@ -135,6 +135,16 @@ test('V260 : première installation sans rechargement parasite, hors ligne, réo
   for(let i=0;i<3;i++){nav.n=0;await page.reload({waitUntil:'domcontentloaded'});await ready(page);expect(nav.n).toBe(1)}
   await context.setOffline(true);await page.reload({waitUntil:'domcontentloaded'});await ready(page);
   coherent(await snapshot(page),OLD,'old');
+  // #522 : les icônes installables restent disponibles dans le vrai cache hors ligne.
+  const offlineIcons=await page.evaluate(async()=>{
+    const urls=['app-icon-192.png','app-icon-512.png','app-icon-maskable-512.png'];
+    return Promise.all(urls.map(async url=>{
+      const response=await fetch('./'+url);
+      const bytes=new Uint8Array(await response.arrayBuffer());
+      return {ok:response.ok,signature:Array.from(bytes.slice(0,8))};
+    }));
+  });
+  for(const result of offlineIcons){expect(result.ok).toBe(true);expect(result.signature).toEqual([137,80,78,71,13,10,26,10])}
   await context.close();
   const again=await launch('first',true);
   await again.page.goto(URL0,{waitUntil:'domcontentloaded'});await ready(again.page);

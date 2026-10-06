@@ -78,7 +78,7 @@ assert.ok(any192, 'icône PNG 192x192 purpose=any absente');
 assert.ok(any512, 'icône PNG 512x512 purpose=any absente');
 assert.ok(maskable512, 'icône PNG 512x512 purpose=maskable absente');
 assert.notEqual(any512.src, maskable512.src, 'l’icône maskable doit être un asset distinct');
-assert.ok(manifest.icons.some(item => item.type === 'image/svg+xml' && item.sizes === 'any' && item.purpose === 'any'), 'le SVG vectoriel doit rester disponible sans prétendre être maskable');
+assert.ok(manifest.icons.some(item => item.type === 'image/svg+xml' && item.sizes === 'any' && item.purpose === 'any'), 'le logo SVG doit rester disponible sans prétendre être maskable');
 
 const assets = [
   [any192, 192, 192],
@@ -113,11 +113,12 @@ for (let y = 0; y < maskableInfo.height; y++) {
   for (let x = 0; x < maskableInfo.width; x++) {
     const offset = (y * maskableInfo.width + x) * 4;
     const channels = [pixels[offset], pixels[offset + 1], pixels[offset + 2]];
-    const min = Math.min(...channels), max = Math.max(...channels);
-    // Les traits, le coureur, la flèche et les textes portent un contraste/saturation
-    // nettement plus fort que le fond pastel. Ils doivent rester dans le cercle central
-    // de diamètre 80 % recommandé pour une icône maskable.
-    if ((min < 150 && max - min > 25) || max < 100) {
+    const [red, green, blue] = channels;
+    // Visage sombre et repère orange : sujets essentiels de cette illustration.
+    // La carte bleue et la route blanche sont décoratives et peuvent être rognées.
+    const face = Math.max(...channels) < 105;
+    const pin = red > 160 && green > 60 && blue < 150 && red > green * 1.35;
+    if (face || pin) {
       foregroundPixels++;
       foregroundRadius = Math.max(foregroundRadius, Math.hypot(x - 255.5, y - 255.5));
     }
@@ -125,6 +126,15 @@ for (let y = 0; y < maskableInfo.height; y++) {
 }
 assert.ok(foregroundPixels > 5000, 'le contrôle de zone sûre doit bien détecter le logo');
 assert.ok(foregroundRadius <= 512 * 0.4, `le logo sort du cercle maskable sûr : rayon ${foregroundRadius.toFixed(1)} px`);
+
+// Le logo de l'application et le favicon présentent exactement le même dessin.
+const svg = fs.readFileSync(path.join(ROOT, 'app-icon.svg'), 'utf8');
+const embedded = svg.match(/href="data:image\/png;base64,([A-Za-z0-9+/=]+)"/);
+assert.ok(embedded, 'le logo SVG doit embarquer son image, sans dépendance réseau');
+assert.deepEqual(Buffer.from(embedded[1], 'base64'), pngInfo('app-icon-512.png').data);
+const index = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+assert.match(index, /rel="apple-touch-icon" sizes="192x192" href="\.\/app-icon-192\.png\?rev=/, 'Apple doit recevoir un PNG');
+assert.ok(index.includes("'<head>'+runtimeIconMarkup+"), 'document.write doit préserver les icônes du shell');
 
 assert.ok(Number(any512.sizes.split('x')[0]) >= 512, 'Bubblewrap doit trouver une icône standard >= 512 px');
 assert.ok(Number(maskable512.sizes.split('x')[0]) >= 512, 'Bubblewrap doit trouver une icône maskable >= 512 px');
