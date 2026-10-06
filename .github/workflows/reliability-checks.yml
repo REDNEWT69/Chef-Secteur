@@ -118,6 +118,7 @@ jobs:
       - run: node tests/runner-intelligence-v276.test.cjs
       - run: node tests/runner-insights-v276.test.cjs
       - run: node tests/generation-location-v276.test.cjs
+      - run: node tests/departure-display-v276.test.cjs
       - run: node tests/boot-storage-race-505.test.cjs
       - run: node tests/planning-placement-why-v274.test.cjs
       - run: node tests/runner-visual-v269.test.cjs
