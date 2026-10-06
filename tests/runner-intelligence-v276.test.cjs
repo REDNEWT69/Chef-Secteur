@@ -34,6 +34,14 @@ for (const id of ['copilote', 'complice', 'coach', 'taquin']) { // même juste a
   if (id !== 'discret') assert.ok(done.text, id + ' : le texte du fait métier est affiché');
   assert.equal(done.meta.textCounted, false, 'un texte métier ne compte pas dans le budget décoratif');
 }
+{ // Quand Runner se tait : le clavier, le guide, un recouvrement, un état en cours valent pour le métier aussi ; la bannière de mise à jour, non
+  const done = { date: D, tour: TOUR_DONE };
+  for (const flag of ['keyboard', 'firstRun', 'overlay']) assert.equal(B.decide(mk({ view: Object.assign({}, view, { [flag]: true }), facts: done }), registry('coach')), null, 'le métier se tait aussi : ' + flag);
+  assert.equal(B.decide(mk({ view: Object.assign({}, view, { state: 'alert' }), facts: done }), registry('coach')), null, 'Runner déjà occupé');
+  assert.equal(B.decide(mk({ view: Object.assign({}, view, { updating: true }), facts: done }), registry('coach')).id, 'tour.finished', 'une mise à jour proposée ne fait pas taire un fait métier');
+  const att = { kind: 'late', key: 's1', label: 'Darty Metz', reason: 'en retard' };
+  assert.equal(B.decide(mk({ view: Object.assign({}, view, { updating: true }), facts: { date: D, attention: att } }), registry('coach')), null, 'mais elle fait taire le décoratif');
+}
 { // le métier n'ouvre pas non plus de cooldown décoratif : le texte ambiant suivant reste possible
   const r0 = registry('coach', { lastActiveDate: '2026-09-01' });
   const a = step(r0, { facts: { date: D, tour: TOUR_DONE } });
@@ -151,6 +159,10 @@ for (const id of ['copilote', 'complice', 'coach', 'taquin']) { // même juste a
   const noRem = B.brief({ tour: { total: 3, done: 1, finished: false, next }, mode: 'today', attention: att });
   assert.deepEqual(noRem.lines.map(l => l.id), ['day.left', 'attention']);
   assert.equal(noRem.lines[1].text, 'À regarder : Darty Metz, action échue.'); assert.deepEqual(noRem.lines[1].action, { type: 'open-store', storeId: 's-c' });
+  const named = B.brief({ tour: { total: 3, done: 1, finished: false, next }, mode: 'today', remarks: { store: 'Darty Metz', lines: rem.lines } });
+  assert.equal(named.lines[1].text, 'Darty Metz · ' + rem.lines[0].text, 'la première remarque nomme le magasin concerné');
+  assert.equal(named.lines[2].text, rem.lines[1].text, 'les suivantes ne répètent pas son nom');
+  assert.ok(Array.from(B.brief({ mode: 'today', remarks: { store: 'M'.repeat(90), lines: [{ kind: 'trend', text: 'x'.repeat(200) }] } }).lines[0].text).length <= B.CONFIG.lineMaxChars, 'borné');
   const overdue = B.brief({ tour: { total: 3, done: 1, finished: false, next }, mode: 'today', attention: att, remarks: { lines: [{ kind: 'overdue-action', text: '1 action en retard.' }] } });
   assert.ok(!overdue.lines.some(l => l.id === 'attention'), 'pas de doublon avec la remarque d’action en retard');
   for (const l of full.lines.concat(noRem.lines)) { assert.ok(l.action === null || l.action.type === 'open-store'); assert.doesNotMatch(l.text, /\{|\}|undefined|null|NaN/); }

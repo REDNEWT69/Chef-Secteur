@@ -1116,7 +1116,7 @@
       if(active!==document.body&&!sheet.contains(active))return;
       const connected=returnFocus&&returnFocus.isConnected&&returnFocus.getClientRects().length;
       const fromMore=returnFocus&&returnFocus.closest&&returnFocus.closest('#moreSheetV2');
-      const target=connected?returnFocus:document.querySelector(fromMore?'.bottomNavBtn[data-more]':'#homeRunnerAppearanceButton');
+      const target=connected?returnFocus:document.querySelector(fromMore?'.bottomNavBtn[data-more]':'#homeRunnerTapV276');
       if(target&&typeof target.focus==='function')target.focus({preventScroll:true});
     });
     document.body.appendChild(sheet);syncControls();

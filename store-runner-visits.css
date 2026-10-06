@@ -75,3 +75,8 @@
 
 /* V262 — « Réessayer l'enregistrement » n'apparaît que si l'enregistrement a échoué. */
 #srVisitDialog>.sr-status:not(.sr-error)+button{display:none}
+/* V276 — « À retenir » : la remarque de Runner dans le rapport terminé (dans le flux, jamais flottante) */
+.sr-runnerRemark{display:flex;align-items:flex-start;gap:10px;margin:0 0 14px;padding:11px 13px;border-radius:14px;background:#eef4ff;border:1px solid #cfe0fb}
+.sr-runnerSlot{flex:0 0 56px;width:56px;min-height:56px;display:block;pointer-events:none}
+.sr-runnerLines{min-width:0;flex:1}.sr-runnerLines b{display:block;font-size:11.5px;color:#1d4f9b;margin-bottom:4px}
+.sr-runnerLines p{margin:0 0 6px;font-size:13px;line-height:1.4;color:#1f2a44;overflow-wrap:anywhere}.sr-runnerLines p:last-child{margin-bottom:0}

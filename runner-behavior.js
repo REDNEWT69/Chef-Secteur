@@ -297,9 +297,11 @@ function normalizeInput(input,cfg){
     lastVisitDaysAgo:int(f.lastVisitDaysAgo,0,9999),returnFrom:clean(f.returnFrom,32)||null};
   return{surface,trigger,now,view,facts};
 }
-function blocked(inp){
+/* Quand Runner doit se taire. Le clavier ouvert, le guide de premier lancement, un recouvrement et un état de Runner déjà en cours
+   valent pour tout. La bannière de mise à jour (information, non modale) ne fait taire que le DÉCORATIF : un fait métier passe. */
+function blocked(inp,kind){
   const v=inp.view;
-  return v.state!=='neutral'||v.keyboard||v.firstRun||v.updating||(v.overlay&&inp.surface!=='sheet');
+  return v.state!=='neutral'||v.keyboard||v.firstRun||(v.updating&&kind!=='business')||(v.overlay&&inp.surface!=='sheet');
 }
 
 /* ---------------------------------------------------------------- textes */
@@ -407,12 +409,12 @@ function build(def,entry,hit,c){
 function decide(input,registry,options){
   try{
     const o=resolveOptions(options),inp=normalizeInput(input,o.cfg);
-    if(!inp||blocked(inp))return null;
+    if(!inp)return null;
     const reg=normalizeRegistry(registry,{now:inp.now,date:inp.facts.date},o,true);
     const p=o.personalities[reg.personality],c={inp,reg,p,cfg:o.cfg};
     let best=null;
     for(const def of REACTIONS){
-      if(def.surfaces.indexOf(inp.surface)===-1||def.triggers.indexOf(inp.trigger)===-1||!has(p.reactions,def.id))continue;
+      if(def.surfaces.indexOf(inp.surface)===-1||def.triggers.indexOf(inp.trigger)===-1||!has(p.reactions,def.id)||blocked(inp,def.kind))continue;
       if((def.kind==='ambient'||def.kind==='business')&&!inp.facts.date)continue;
       if(def.kind==='ambient'&&elapsed(inp.now,reg.session.lastReaction[inp.surface])<o.cfg.arrivalGuardMs)continue;
       const hit=RULES[def.id](c);
@@ -567,8 +569,8 @@ function brief(input,options){
         lines.push({id:'day.left',text:fr(left,'visite restante','visites restantes')+' aujourd’hui'+(t.next?' · prochaine : '+t.next.label:'')+'.',action:t.next?{type:'open-store',storeId:t.next.key}:null});
       }
     }else if(i.workday===true&&mode==='today'&&i.afterHours!==true)lines.push({id:'day.empty',text:'Rien de prévu aujourd’hui.',action:null});
-    const rem=cleanRemarks(isObj(i.remarks)?i.remarks.lines:null,cfg).slice(0,2);
-    for(const r of rem)lines.push({id:r.id,text:r.text,action:null});
+    const rem=cleanRemarks(isObj(i.remarks)?i.remarks.lines:null,cfg).slice(0,2),store=isObj(i.remarks)?clean(i.remarks.store,cfg.labelMaxChars):'';
+    rem.forEach((r,n)=>lines.push({id:r.id,text:n===0&&store?clean(store+' · '+r.text,cfg.lineMaxChars):r.text,action:null}));
     let attention=null;
     if(isObj(i.attention)&&ATTENTION_KINDS.indexOf(i.attention.kind)!==-1){
       const key=keyToken(i.attention.key),label=clean(i.attention.label,cfg.labelMaxChars);

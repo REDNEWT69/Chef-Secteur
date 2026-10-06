@@ -170,7 +170,8 @@ for (const state of ['analyzing', 'alert', 'success', 'inconnu', '', null, undef
 }
 assert.equal(B.decide(Object.assign(mk({ facts: FULL }), { view: {} }), R0), null, 'état absent = fermé');
 assert.equal(B.decide({ surface: 'home', trigger: 'arrive', now: NOW, facts: { date: D } }, R0), null, 'vue absente = fermé');
-for (const flag of ['keyboard', 'firstRun', 'updating', 'overlay']) assert.equal(B.decide(mk({ view: { state: 'neutral', [flag]: true }, facts: FULL }), R0), null, 'bloqué : ' + flag);
+// V276 : la bannière de mise à jour ne fait taire que le décoratif (la tournée terminée, fait métier, passe : voir runner-intelligence-v276)
+for (const flag of ['keyboard', 'firstRun', 'updating', 'overlay']) assert.equal(B.decide(mk({ view: { state: 'neutral', [flag]: true }, facts: flag === 'updating' ? Object.assign({}, FULL, { tour: null }) : FULL }), R0), null, 'bloqué : ' + flag);
 assert.ok(B.decide(mk({ surface: 'sheet', trigger: 'personality', view: { state: 'neutral', overlay: true } }), R0), 'la sheet est elle-même une surface en overlay');
 assert.equal(B.decide(mk({ surface: 'sheet', trigger: 'personality', view: { state: 'neutral', keyboard: true } }), R0), null);
 for (const surface of ['planning', 'assistant']) for (const trigger of ['arrive', 'rerender', 'touch', 'personality']) assert.equal(B.decide(mk({ surface, trigger, facts: FULL }), R0), null, surface + ' : aucune réaction ambiante en V273');
@@ -607,11 +608,11 @@ const assertValid = (reg, label) => {
   assert.ok(from > 0 && apply > from, 'bloc V273 de l’Accueil repéré'); assert.ok(voice.length > 1500);
   assert.doesNotMatch(voice, /localStorage|sessionStorage|__chefStorage|indexedDB|\bsave\s*\(|generateWeek|renderAll|setTimeout|setInterval|addEventListener|MutationObserver|innerHTML|state\.[A-Za-z.]*\s*=[^=]/, 'l’Accueil lit des faits : aucune écriture, aucun timer, aucun écouteur, aucun HTML injecté');
   assert.match(voice, /textContent=homeLineText/, 'le texte de Runner passe toujours par textContent');
-  assert.match(voice, /controller\.decide\(\{surface:'home',trigger:'arrive'/, 'l’Accueil confie la décision au module');
+  assert.match(voice, /controller\.decide\(\{surface:'home',trigger:trigger\|\|'arrive'/, 'l’Accueil confie la décision au module (V276 : arrive ou rerender)');
   assert.match(voice, /controller\.record\(reaction/, 'toute réaction affichée est enregistrée (budget, écart)');
   assert.match(voice, /returnFrom:returnedFrom\|\|null/, 'le retour depuis un autre écran est un fait de l’Accueil, jamais déduit du module');
   assert.match(voice, /homeRunner\.isMoving\(\)/, 'aucun geste ambiant par-dessus la scène d’entrée');
-  assert.match(home, /if\(skipBehavior\)skipBehavior=false;else applyBehavior\(panel,returnedFrom\)/, 'retour de la feuille Apparence : aucune réaction supplémentaire');
+  assert.match(home, /if\(skipBehavior\)skipBehavior=false;else applyBehavior\(panel,returnedFrom,trigger\)/, 'retour de la feuille Apparence : aucune réaction supplémentaire');
   assert.match(home, /homeRunnerLineV273/, 'ligne de l’Accueil réservée dans le flux de la page');
   assert.doesNotMatch(read('runner-visual.js'), /StoreRunnerBehavior|runner-behavior/, 'la couche visuelle ignore le module de comportement');
   assert.match(home, /setPresence\(behaviorIdle\(\)\)/, 'Accueil : Discret coupe la présence idle');
