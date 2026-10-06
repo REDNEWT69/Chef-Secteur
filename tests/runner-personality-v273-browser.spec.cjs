@@ -68,12 +68,12 @@ const lineState = page => page.evaluate(sel => {
   const el = document.querySelector(sel);
   if (!el) return null;
   const r = el.getBoundingClientRect(), heading = document.querySelector('#premiumHomeV2 .phDayHeading').getBoundingClientRect();
-  const bubble = el.parentElement, b = bubble.getBoundingClientRect(), button = document.querySelector('#homeRunnerAppearanceButton').getBoundingClientRect();
+  const bubble = el.parentElement, b = bubble.getBoundingClientRect(), button = document.querySelector('#homeRunnerTapV276').getBoundingClientRect();
   const tail = getComputedStyle(bubble, '::after');
   return { hidden: el.hidden, text: el.textContent, left: r.left, right: r.right, top: r.top, bottom: r.bottom, headingTop: heading.top, position: getComputedStyle(el).position,
     height: r.height, lineHeight: parseFloat(getComputedStyle(el).lineHeight), bubbleBottom: b.bottom,
     tailX: b.right - parseFloat(getComputedStyle(bubble).borderRightWidth) - parseFloat(tail.right) - (parseFloat(tail.width) + parseFloat(tail.borderRightWidth)) / 2,
-    buttonCenterX: button.left + button.width / 2, labelCount: document.querySelectorAll('#homeRunnerAppearanceButton .phRunnerLabel').length,
+    buttonCenterX: button.left + button.width / 2, labelCount: document.querySelectorAll('#homeRunnerTapV276 .phRunnerLabel').length,
     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, vw: innerWidth, children: el.children.length };
 }, LINE);
 const registry = page => page.evaluate(key => __chefStorage.getItem(key), KEY).then(raw => (raw ? B.parseRegistry(raw) : null));
@@ -84,7 +84,9 @@ async function persist(page) {
   await page.evaluate(async () => { save(); await __chefStorage.flush(); });
 }
 async function openSheet(page) {
-  await page.locator('#homeRunnerAppearanceButton').click();
+  // V276 : le tap sur Runner ouvre son point du jour ; la feuille (Apparence + Personnalité) s'ouvre par « Personnaliser Runner ».
+  await page.locator('#homeRunnerTapV276').click();
+  await page.locator('[data-home-brief-settings]').click();
   await expect(page.locator(SHEET)).toHaveAttribute('open', '');
 }
 

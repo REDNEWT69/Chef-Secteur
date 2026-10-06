@@ -39,8 +39,8 @@ assert.doesNotMatch(sw, moduleLike, 'sw.js ne cache aucun module de premier lanc
 assert.match(index, /'\.\/navigation-controller\.js'/, 'navigation-controller.js reste chargé au démarrage');
 assert.match(sw, /"\.\/navigation-controller\.js"/, 'navigation-controller.js reste dans le shell obligatoire');
 assert.match(sw, /"\.\/runner-visual\.js"/, 'Runner reste dans le shell obligatoire');
-assert.equal(version.displayVersion, '275', 'version visible V275, guide V271 conservé');
-assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-275$/, 'BUILD_REV V275');
+assert.equal(version.displayVersion, '276', 'version visible V276, guide V271 conservé');
+assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-276$/, 'BUILD_REV V276');
 assert.equal(index.match(/const BUILD_REV='([^']+)'/)[1], version.latestBuild);
 assert.equal(sw.match(/const BUILD_REV = "([^"]+)"/)[1], version.latestBuild);
 assert.match(read('store-runner-whats-new.js'), /version:'271',\s*title:'Runner te guide au premier lancement'/, 'Quoi de neuf V271');
@@ -111,7 +111,7 @@ assert.doesNotMatch(code, /position:\s*fixed[^']*\.srRunner|\.srRunner[^']*posit
 
 /* Accueil : l'entrée de Runner V270 est gardée pour la fermeture du guide. */
 const homeAdapter = home.slice(home.indexOf('function syncHomeRunner()'), home.indexOf('function esc('));
-assert.match(homeAdapter, /classList\.contains\('srFirstRunOpen'\)\)\{releaseHomeRunner\(\);(clearHomeLine\(\);)?return\}/, 'le guide couvre l’Accueil : Runner et sa ligne V273 sont relâchés');
+assert.match(homeAdapter, /classList\.contains\('srFirstRunOpen'\)\)\{releaseHomeRunner\(\);(clearHomeLine\(\);)?(closeBrief\(\);)?return\}/, 'le guide couvre l’Accueil : Runner, sa ligne V273 et le point du jour V276 sont relâchés');
 assert.match(home, /'store-runner:first-run-closed'\]\.forEach\(name=>document\.addEventListener\(name,\(\)=>scheduleRun\(20\)\)\)/);
 assert.match(code, /classList\.add\('srFirstRunOpen'\)/);
 assert.match(code, /classList\.remove\('srFirstRunOpen'\)/);
