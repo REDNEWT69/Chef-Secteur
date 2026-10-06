@@ -376,6 +376,95 @@ test.describe('Cadence, timers et garde-fous (Android 390)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('Discret : la cadence dort, puis reprend quand la feuille Apparence se ferme', async ({ page }) => {
+    test.setTimeout(120000);
+    const errors = await boot(page);
+    await settleHome(page);
+    const persona = await page.evaluate(() => StoreRunnerBehavior.controller().personality());
+    /* Démarrage en Discret : aucune temporisation retenue. */
+    await page.evaluate(() => { StoreRunnerBehavior.controller().setPersonality('discret'); StoreRunnerAmbient.start(); });
+    expect(await page.evaluate(() => StoreRunnerAmbient.status().pendingTimers), 'Discret : aucune cadence').toBe(0);
+    /* Retour à une autre personnalité : rien ne bouge tant que la feuille Apparence n'est pas refermée... */
+    await page.evaluate(p => StoreRunnerBehavior.controller().setPersonality(p), persona);
+    expect(await page.evaluate(() => StoreRunnerAmbient.status().pendingTimers)).toBe(0);
+    /* ...puis sa fermeture (événement public déjà utilisé par l'Accueil) ré-arme UNE cadence, une seule fois. */
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('store-runner:appearance-closed')));
+    expect(await page.evaluate(() => StoreRunnerAmbient.status().pendingTimers), 'cadence ré-armée').toBe(1);
+    const delay = await page.evaluate(() => { const t = __ambientAudit.timers; return t[t.length - 1]; });
+    expect(delay).toBeGreaterThanOrEqual(8000);
+    expect(delay).toBeLessThanOrEqual(12000);
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('store-runner:appearance-closed')));
+    expect(await page.evaluate(() => __ambientAudit.timers.length), 'une cadence saine n’est pas remise à zéro').toBe(await page.evaluate(() => __ambientAudit.timers.length));
+    expect(await page.evaluate(() => StoreRunnerAmbient.status().pendingTimers)).toBe(1);
+    await page.evaluate(() => StoreRunnerAmbient.stop());
+    expect(errors).toEqual([]);
+  });
+
+  test('focus puis blur avant le délai : la minuterie accélérée ne joue pas une scène ordinaire', async ({ page }) => {
+    test.setTimeout(120000);
+    const errors = await boot(page);
+    await settleHome(page);
+    await openPlanning(page);
+    await page.evaluate(() => { __ambientAudit.timers.length = 0; StoreRunnerAmbient.start(); });
+    await page.evaluate(() => { const i = document.querySelector('#planPanel input[type=date]'); i.focus(); i.blur(); });
+    /* Fenêtre de la minuterie accélérée (1,2 à 2,2 s) puis marge : aucune scène ne doit démarrer. */
+    await page.waitForTimeout(3200);
+    expect(await page.evaluate(() => StoreRunnerAmbient.status().running), 'aucune scène ordinaire démarrée trop tôt').toBe(false);
+    const timers = await page.evaluate(() => __ambientAudit.timers.slice());
+    const fast = timers.filter(d => d >= 1200 && d <= 2200), normal = timers.filter(d => d >= 8000 && d <= 12000);
+    expect(fast.length, 'la minuterie accélérée a bien existé : ' + JSON.stringify(timers)).toBeGreaterThanOrEqual(1);
+    expect(normal.length, 'et le rythme normal a repris : ' + JSON.stringify(timers)).toBeGreaterThanOrEqual(1);
+    expect(timers[timers.length - 1], 'dernier délai armé = rythme normal').toBeGreaterThanOrEqual(8000);
+    expect(await page.evaluate(() => StoreRunnerAmbient.status().pendingTimers)).toBe(1);
+    await page.evaluate(() => StoreRunnerAmbient.stop());
+    expect(errors).toEqual([]);
+  });
+
+  test('défilement : l’acteur ne passe jamais sous l’en-tête collant, Runner repart', async ({ page }) => {
+    test.setTimeout(150000);
+    const errors = await boot(page);
+    await settleHome(page);
+    await openPlanning(page);
+    const run = page.evaluate(() => StoreRunnerAmbient.play('observe-card'));
+    await page.waitForFunction(() => StoreRunnerAmbient.status().running && document.querySelector('.srAmbientActor'), null, { timeout: 5000 });
+    await page.waitForTimeout(1300);
+    const header = await page.evaluate(() => document.querySelector('.top').getBoundingClientRect().bottom);
+    /* Un petit défilement est suivi, un grand défilement ramène l'ancre sous l'en-tête. */
+    await page.evaluate(() => window.scrollBy(0, 12));
+    await page.waitForTimeout(60);
+    expect(await page.evaluate(() => StoreRunnerAmbient.status().running), 'petit défilement : la scène continue').toBe(true);
+    /* Quelle que soit l'ancre tirée, 700 px la font sortir par le haut (le défilement est lissé : la sortie arrive en cours de route). */
+    await page.evaluate(() => window.scrollBy(0, 700));
+    expect(await run).toMatchObject({ played: true, reason: 'out-of-bounds' });
+    await expectCalm(page, 'ancre sous l’en-tête');
+    expect(header).toBeGreaterThan(40);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    expect(errors).toEqual([]);
+  });
+
+  test('garde-fous en pleine scène : bannière, voix de l’Accueil et état de l’hôte arrêtent Runner', async ({ page }) => {
+    test.setTimeout(200000);
+    const errors = await boot(page);
+    await settleHome(page);
+    const stopWith = async (label, apply, expected, undo) => {
+      const scene = page.evaluate(() => StoreRunnerAmbient.play('sit-edge'));
+      await page.waitForFunction(() => StoreRunnerAmbient.status().running && document.querySelector('.srAmbientActor'), null, { timeout: 5000 });
+      await page.waitForTimeout(500);
+      const t0 = Date.now();
+      await page.evaluate(apply);
+      const r = await scene;
+      expect(Date.now() - t0, label + ' : arrêt immédiat').toBeLessThan(1200);
+      expect(r, label).toMatchObject({ played: true, reason: expected });
+      await expectCalm(page, label);
+      await page.evaluate(undo);
+      await page.waitForTimeout(250);
+    };
+    await stopWith('bannière de mise à jour', () => { const a = document.createElement('aside'); a.id = 'storeRunnerUpdateBanner'; a.textContent = 'maj'; document.body.appendChild(a); }, 'blocked', () => document.getElementById('storeRunnerUpdateBanner').remove());
+    await stopWith('voix de l’Accueil', () => { const l = document.getElementById('homeRunnerLineV273'); l.textContent = 'Bonne route.'; l.hidden = false; }, 'blocked', () => { const l = document.getElementById('homeRunnerLineV273'); l.hidden = true; l.textContent = ''; });
+    await stopWith('état métier de l’hôte', () => document.querySelector('#homeRunnerV270 .srRunner').setAttribute('data-state', 'success'), 'host-state', () => document.querySelector('#homeRunnerV270 .srRunner').setAttribute('data-state', 'neutral'));
+    expect(errors).toEqual([]);
+  });
+
   test('mouvement réduit : aucune scène, aucun calque, aucune temporisation ; coupé à chaud', async ({ page }) => {
     test.setTimeout(120000);
     const errors = await boot(page, { reduced: true });

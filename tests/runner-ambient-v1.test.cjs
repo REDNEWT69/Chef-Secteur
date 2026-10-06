@@ -39,8 +39,8 @@ assert.doesNotMatch(src, /\b(?:window|root)\.(?!StoreRunnerAmbient\b)[A-Za-z_$][
 assert.doesNotMatch(src, /\bAudio\b|\.play\s*\(\s*\)|new Audio|AudioContext|vibrate/, 'aucun son, aucune vibration');
 assert.match(src, /root\.StoreRunnerAmbient=api;api\.start\(\)/, 'API publique unique, démarrage automatique');
 /* Seuls événements observés : visibilité, cycle de page, focus (sans lire la saisie), préférence de mouvement, et, pendant une scène seulement, défilement et taille. */
-const listened = [...src.matchAll(/addEventListener\('([a-z]+)'/g)].map(m => m[1]).sort();
-assert.deepEqual([...new Set(listened)], ['change', 'focusin', 'focusout', 'load', 'pagehide', 'pageshow', 'resize', 'scroll', 'visibilitychange'], 'écoutes bornées : aucun clic, toucher, clavier ni saisie');
+const listened = [...src.matchAll(/addEventListener\('([a-z:-]+)'/g)].map(m => m[1]).sort();
+assert.deepEqual([...new Set(listened)], ['change', 'focusin', 'focusout', 'load', 'pagehide', 'pageshow', 'resize', 'scroll', 'store-runner:appearance-closed', 'visibilitychange'], 'écoutes bornées : aucun clic, toucher, clavier ni saisie (la fermeture de la feuille Apparence ré-arme la cadence)');
 assert.doesNotMatch(src, /addEventListener\('(?:input|keydown|keyup|keypress|click|touch\w*|pointer\w*|mouse\w*|wheel|beforeinput|compositionstart)'/, 'aucune écoute d’interaction');
 
 /* 3. Un calque unique, sous la barre basse, qui ne reçoit jamais un geste ; promotion supérieure seulement pour un modal autorisé. */

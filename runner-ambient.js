@@ -96,7 +96,7 @@ function returnFrames(height,dir){
 }
 
 /* ------------------------------------------------------------------ état */
-const S={started:false,timer:0,run:null,prev:null,lastReason:'',lastFormAt:-Infinity,random:null,motion:null,gap:null};
+const S={started:false,timer:0,fast:false,run:null,prev:null,lastReason:'',lastFormAt:-Infinity,random:null,motion:null,gap:null};
 let layer=null;
 function rand(){return rnd(S.random||Math.random)}
 function now(){return root.performance&&typeof root.performance.now==='function'?root.performance.now():Date.now()}
@@ -326,9 +326,12 @@ function newRun(def,env,plan){
     let a;
     try{a=target.animate(frames,Object.assign({fill:'forwards',easing:'ease-in-out',iterations:1},opts))}catch(e){return res(false)}
     run.anims.push(a);
-    /* À chaque étape, l'ancre doit exister encore (l'écran a pu se redessiner sans défiler ni se redimensionner). */
+    /* À chaque étape : l'ancre existe encore (l'écran a pu se redessiner) et aucun garde-fou ne s'est levé entre-temps. */
     a.onfinish=()=>{
-      if(!run.dead&&run.anchor&&!rectOf(run.anchor)){abort(run,'anchor-lost',true);res(false);return}
+      if(!run.dead){
+        const lost=run.anchor&&!rectOf(run.anchor),why=lost?'anchor-lost':revalidate(run);
+        if(why){abort(run,why,true);res(false);return}
+      }
       res(!run.dead);
     };
     a.oncancel=()=>res(false);
@@ -413,15 +416,26 @@ function abort(run,reason,fade){
   finishRun(run);
   return true;
 }
+/* Jusqu'où l'acteur s'étend au-dessus et au-dessous du bord haut de son ancre, au départ de la scène. */
+function reachOf(run){
+  const p=run.plan,top=run.rect0.top;
+  if(p.spot&&p.spot.box)return{up:Math.max(0,top-p.spot.box.top),down:Math.max(0,p.spot.box.bottom-top)};
+  if(p.spot&&p.spot.vis)return{up:p.spot.vis,down:0};
+  return{up:12,down:H};
+}
 /* La scène suit son ancre (défilement de n'importe quel conteneur, redimensionnement, clavier) : jamais de position figée. */
 function track(run,anchor){
   run.anchor=anchor;run.rect0=rectOf(anchor);
   if(!run.rect0){abort(run,'anchor-lost',false);return}
   const d=doc(),vv=root.visualViewport;
+  const reach=reachOf(run);
   const move=()=>{
     if(run.dead)return;
     const r=rectOf(anchor);
     if(!r){abort(run,'anchor-lost',true);return}
+    /* L'emprise de l'acteur suit l'ancre : si elle sort de la zone sûre (sous l'en-tête collant, sous la barre basse), Runner repart. */
+    const b=safeBounds();
+    if(r.top-reach.up<b.top-2||r.top+reach.down>b.bottom+2){abort(run,'out-of-bounds',true);return}
     run.root.style.transform='translate3d('+(r.left-run.rect0.left)+'px,'+(r.top-run.rect0.top)+'px,0)';
   };
   d.addEventListener('scroll',move,{capture:true,passive:true});
@@ -440,6 +454,10 @@ function watch(run){
   });
   d.querySelectorAll('.panel,#assistantPanel,#moreSheetV2,#storeQuickSheet,dialog').forEach(n=>obs.observe(n,{attributes:true,attributeFilter:['class','open']}));
   obs.observe(d.documentElement,{attributes:true,attributeFilter:['class','data-sr-keyboard']});
+  /* Gardes prioritaires : voix et point du jour de l'Accueil, bannière de mise à jour, état métier des hôtes. */
+  d.querySelectorAll('#homeRunnerLineV273,#homeRunnerBriefV276,#storeRunnerUpdateBanner').forEach(n=>obs.observe(n,{attributes:true,attributeFilter:['hidden']}));
+  d.querySelectorAll('.srRunner[data-sr-runner]').forEach(n=>{if(!n.hasAttribute('data-sr-ambient-actor'))obs.observe(n,{attributes:true,attributeFilter:['data-state']})});
+  if(d.body)obs.observe(d.body,{childList:true});
   run.cleanups.push(()=>obs.disconnect());
 }
 function facts(){
@@ -452,6 +470,9 @@ function revalidate(run){
   if(x.f.inert||x.block)return 'blocked';
   if(ctx!==run.ctx)return 'context';
   if(run.ctx==='form'&&x.field!==run.field)return 'field';
+  /* Un état métier de Runner ou un geste de son propriétaire passe avant le décor, même en pleine scène. */
+  const h=hostInfo(x.field&&x.field.closest('dialog,#storeQuickSheet'));
+  if(h.block==='host-state'||h.block==='host-busy')return h.block;
   return '';
 }
 /* Couche supérieure : un champ d'un dialogue modal autorisé n'est jamais atteint par un z-index, on promeut le calque (API Popover). */
@@ -688,12 +709,16 @@ function begin(r){
 /* ------------------------------------------------------------------ cadence */
 function arm(ms){
   if(S.timer){root.clearTimeout(S.timer);S.timer=0}
+  S.fast=false;
   if(!S.started||S.run||inertReason())return;
   S.timer=root.setTimeout(tick,ms);
 }
 function tick(){
   S.timer=0;
   if(S.run)return;
+  /* Minuterie accélérée par un focus : si le champ a perdu le focus entre-temps, on revient au rythme normal (8 à 12 s). */
+  const fast=S.fast;S.fast=false;
+  if(fast&&!activeField()){arm(nextGap(S.random||Math.random));return}
   const r=prepare(null);
   if(!r.ok){S.lastReason=r.reason;arm(nextGap(S.random||Math.random));return}
   S.lastReason='';
@@ -724,11 +749,14 @@ function onFocusIn(){
   if(S.run||!S.started)return;
   if(!activeField()||now()-S.lastFormAt<FORM_COOLDOWN)return;
   arm(Math.round(FORM_DELAY_MIN+rand()*(FORM_DELAY_MAX-FORM_DELAY_MIN)));
+  S.fast=S.timer!==0;
 }
 function onFocusOut(e){
   const run=S.run;
   if(run&&run.ctx==='form'&&e&&e.target===run.field)abort(run,'blur',true);
 }
+/* La personnalité (Discret) se règle dans la feuille Apparence : à sa fermeture, la cadence reprend si elle dormait. */
+function onAppearanceClosed(){if(S.started&&!S.run&&!S.timer)arm(nextGap(S.random||Math.random))}
 function start(){
   if(S.started||!doc()||root.__STORE_RUNNER_AMBIENT==='off')return false;
   S.started=true;
@@ -738,6 +766,7 @@ function start(){
   root.addEventListener('pageshow',onPageShow);
   d.addEventListener('focusin',onFocusIn,true);
   d.addEventListener('focusout',onFocusOut,true);
+  d.addEventListener('store-runner:appearance-closed',onAppearanceClosed);
   S.motion=typeof root.matchMedia==='function'?root.matchMedia('(prefers-reduced-motion: reduce)'):null;
   if(S.motion&&typeof S.motion.addEventListener==='function')S.motion.addEventListener('change',onMotion);
   const go=()=>arm(nextGap(S.random||Math.random));
@@ -755,6 +784,7 @@ function stop(){
   root.removeEventListener('pageshow',onPageShow);
   d.removeEventListener('focusin',onFocusIn,true);
   d.removeEventListener('focusout',onFocusOut,true);
+  d.removeEventListener('store-runner:appearance-closed',onAppearanceClosed);
   if(S.motion&&typeof S.motion.removeEventListener==='function')S.motion.removeEventListener('change',onMotion);
   S.motion=null;
   return true;
