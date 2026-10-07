@@ -90,6 +90,72 @@ test('La fiche magasin retrouve notes, visites et actions à 390 px', async ({ p
   expect(pageErrors,'La mémoire magasin ne doit produire aucune erreur JavaScript').toEqual([]);
 });
 
+
+
+test('La fiche Cuisiniste garde un seul rapport et met Photos / Horaires en avant', async ({ page }) => {
+  const pageErrors=[];
+  page.on('pageerror', e => pageErrors.push(String(e && e.message || e)));
+
+  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(() => typeof window.openStoreQuick==='function' && window.StoreRunnerVisits && window.StoreRunnerVisitModel && window.StoreRunnerStoreExplorer);
+
+  await page.evaluate(() => {
+    const st=window.state,M=window.StoreRunnerVisitModel;
+    const store={id:'cuisine-1',enseigne:'Schmidt',ville:'Ville-Cuisine',channel:'cuisiniste',adresse:'1 rue du Showroom',dept:'73',lat:45.56,lon:5.92,active:true,priority:2,products:['Encastrable']};
+    st.stores=[store];st.notes={};st.visits={};st.included={};st.excluded={};st.locks={};st.plan={};st.appointments=[];st.calendarEvents=[];
+    st.storeContacts={'cuisine-1':[{name:'Nadia',role:'Responsable showroom',email:'nadia@example.test'}]};
+    st.businessV2=M.empty();
+    const rows=[
+      ['2026-09-01','Ancien rapport showroom'],
+      ['2026-09-20','Deuxième rapport showroom'],
+      ['2026-10-06','Dernier rapport showroom']
+    ];
+    rows.forEach(([day,conclusion],index)=>{
+      const id=M.start(st,'cuisine-1');
+      M.editReport(st,id,'shared','context','Contexte '+index);
+      M.editReport(st,id,index%2?'blanc':'brun','team',index===2?'Retour responsable showroom':'Ancienne note');
+      M.editReport(st,id,'brun','massification',index===2?'Four et micro-ondes bien exposés':'');
+      M.editVisit(st,id,'conclusion',null,conclusion);
+      M.complete(st,id,day);
+      const visit=st.businessV2.visits.find(v=>v.id===id);
+      visit.completedAt=day+'T12:00:00.000Z';visit.updatedAt=visit.completedAt;
+    });
+    save();
+    openStoreQuick('cuisine-1','Mardi','10:00');
+  });
+
+  const sheet=page.locator('#storeQuickSheet');
+  await expect(sheet).toHaveClass(/open/);
+  const focused=page.locator('#srStore360');
+  await expect(focused).toBeVisible();
+  await expect(focused).toContainText('Fiche Cuisiniste');
+  await expect(focused).toContainText('Nadia');
+  await expect(focused).toContainText('Dernier rapport showroom');
+  await expect(focused).toContainText('Retour responsable showroom');
+  await expect(focused).toContainText('Four et micro-ondes bien exposés');
+  await expect(focused).not.toContainText('Ancien rapport showroom');
+  await expect(focused).not.toContainText('Deuxième rapport showroom');
+  await expect(focused).not.toContainText('Cadence');
+  await expect(focused).not.toContainText('Contraintes actives');
+  await expect(focused).not.toContainText('Frise du magasin');
+  await expect(focused).not.toContainText(/BRUN|BLANC/);
+  await expect(focused.locator('[data-sr-x-photos]')).toBeVisible();
+  await expect(focused.locator('[data-sr-x-hours]')).toBeVisible();
+
+  const memory=page.locator('#srStoreMemory');
+  await expect(memory).toBeHidden();
+  await expect(memory.locator('[data-sr-history-visit]')).toHaveCount(0);
+
+  const hours=focused.locator('[data-sr-x-hours]');
+  const box=await hours.boundingBox();if(!box)throw new Error('Bouton Horaires Cuisiniste introuvable');
+  expect(box.height).toBeGreaterThanOrEqual(44);
+
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  expect(pageErrors,'La fiche Cuisiniste ne doit produire aucune erreur JavaScript').toEqual([]);
+});
+
+
 test('La fiche magasin mémorise les contacts et leurs emails après rechargement', async ({ page }) => {
   const pageErrors=[];
   page.on('pageerror', e => pageErrors.push(String(e && e.message || e)));
