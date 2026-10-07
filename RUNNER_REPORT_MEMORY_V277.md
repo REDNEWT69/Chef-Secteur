@@ -1,6 +1,6 @@
 # Runner — mémoire des rapports V277
 
-PR Draft, ne pas fusionner. Audit initial sur main `a363db4` après #531, puis reprise des modifications locales et intégration de main `869f9c3` après #539. La version produit visible reste 276 ; build technique `20261007-r69-report-memory-276`.
+PR Draft, ne pas fusionner. Audit initial sur main `a363db4` après #531, puis reprise des modifications locales et intégration de main `869f9c3` après #539. La version produit visible reste 276 ; build technique `20261007-r70-report-memory-276`.
 
 ## Audit du parcours réel
 

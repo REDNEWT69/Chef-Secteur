@@ -88,7 +88,7 @@ function runnerMemory(host,storeId,options){
 }
 /* V255 — la galerie s'ouvre sur les photos de CETTE visite, et la prochaine photo prend la
    famille affichée ici (BRUN ou BLANC) : aucun classement manuel à faire. */
-function openPhotos(v){const api=window.StorePhotosV1;if(!api||typeof api.open!=='function'){message('Photos indisponibles sur cet appareil.',true);return}api.open(v.storeId,{visitId:v.id,family:shownFamily(v)}).catch(e=>message('Photos indisponibles : '+(e.message||String(e)),true))}
+function openPhotos(v){const api=window.StorePhotosV1;if(!api||typeof api.open!=='function'){message('Photos indisponibles sur cet appareil.',true);return}const opts={visitId:v.id};if(isCuisinisteStoreId(v.storeId))opts.simpleFamily=true;else opts.family=shownFamily(v);api.open(v.storeId,opts).catch(e=>message('Photos indisponibles : '+(e.message||String(e)),true))}
 /* V276 — « À retenir » : Runner croise ce rapport avec les précédents du magasin, ses actions, son planning et sa priorité
    (StoreRunnerStoreExplorer.insightsFor) et n'en dit que 1 ou 2 (StoreRunnerBehavior.remarks), la plus grave d'abord. Rien d'utile :
    rien n'est affiché, pas même un cadre vide. Jamais de paraphrase : des statuts, des comptes, des dates. Dans le flux de l'écran,
@@ -115,7 +115,32 @@ function runnerRemark(host,v){
   }
  }catch(e){}
 }
+function cuisinisteReportText(v){
+ const data=M.reportOf(v),values=[data.shared&&data.shared.context];
+ for(const family of M.FAMILIES)for(const key of Object.keys(M.REPORT_FIELDS||{}))values.push(data[family]&&data[family][key]);
+ const seen=new Set(),out=[];for(const value of values){const text=String(value||'').trim();if(text&&!seen.has(text)){seen.add(text);out.push(text)}}
+ return out.join('\n\n');
+}
+function editCuisinisteReport(state,visitId,value){
+ M.editReport(state,visitId,'shared','context',value);
+ for(const family of M.FAMILIES)for(const key of Object.keys(M.REPORT_FIELDS||{}))M.editReport(state,visitId,family,key,'');
+}
+function cuisinisteReport(host,v){
+ const note=field(host,'Rapport magasin',cuisinisteReportText(v),value=>save(s=>editCuisinisteReport(s,v.id,value)),'textarea',v.status==='completed');
+ note.rows=10;note.placeholder='Ex. interlocuteur rencontré, retour showroom, références proposées, concurrence, formation, action ou point à suivre…';
+ host.append(element('p','Tu peux dicter directement avec le micro du clavier. Un seul rapport pour le magasin.','sr-hint'));
+ const photo=button('📷 Photos',()=>openPhotos(v),'sr-photoEntry');host.append(photo);
+ if(v.status==='draft'){
+  const finish=button('Terminer la visite',()=>completeVisit(v),'primary');finish.dataset.srCompleteVisit=v.id;host.append(finish)
+ }else{
+  host.append(element('p','Visite terminée le '+v.completedDate,'sr-completed'));
+  runnerRemark(host,v);
+  if(v.completedDate===localDay()){const reopen=button('↩ Réouvrir cette visite',()=>reopenVisit(v,true),'secondary');reopen.dataset.srReopenVisit=v.id;host.append(reopen)}
+  dangerZone(host,v);
+ }
+}
 function report(host,v){
+ if(isCuisinisteStoreId(v.storeId)){cuisinisteReport(host,v);return}
  const data=M.reportOf(v),family=shownFamily(v),families=visitFamilies(v),block=data[family];
  if(v.status==='draft')runnerMemory(host,v.storeId,{family,excludeVisitId:v.id,previous:true,limit:6});
  const intro=element('section',undefined,'sr-terrainIntro');intro.append(element('h3','Carnet terrain · '+family.toUpperCase()),element('p','Note seulement ce que TeamHaven ne capte pas : retour vendeur, perception de la marque, concurrence, opportunité, formation ou point à revoir.'));host.append(intro);
@@ -252,7 +277,7 @@ function steps(host,v){
  for(const i of VISIBLE_STEPS){const b=button(STEP_LABELS[i],async()=>{if(v.status==='draft')await save(s=>M.editVisit(s,v.id,'step',null,i),()=>{render();dialog.scrollTop=0});else{viewStep=i;render();dialog.scrollTop=0}});b.setAttribute('aria-current',step===i?'step':'false');nav.append(b)}
  host.append(nav)
 }
-function render(){releaseRunner();const v=current();if(!v){hub();return}body.replaceChildren();title.textContent=name(v.storeId)+' · '+(v.status==='draft'?'Visite en cours':'Visite terminée');steps(body,v);familySwitch(body,v);report(body,v)}
+function render(){releaseRunner();const v=current();if(!v){hub();return}body.replaceChildren();title.textContent=name(v.storeId)+' · '+(v.status==='draft'?'Visite en cours':'Visite terminée');steps(body,v);if(!isCuisinisteStoreId(v.storeId))familySwitch(body,v);report(body,v)}
 function hub(){activeId=null;title.textContent='Visites';body.replaceChildren();const rows=domain().visits.slice().sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));if(!rows.length)body.append(element('p','Démarre une visite depuis une fiche magasin, le planning ou la tournée.'));for(const v of rows){const box=element('section',undefined,'sr-item');box.append(element('h3',name(v.storeId)),element('p',v.status==='draft'?'Visite en cours':('Terminée le '+v.completedDate)),button(v.status==='draft'?'Reprendre la visite':'Consulter la visite',()=>{activeId=v.id;previewFamily=activeFamily(v);viewStep=3;render()}));body.append(box)}}
 function show(){if(!dialog.open){opener=document.activeElement;dialog.showModal()}}
 /* V233 — une visite terminée aujourd'hui est consultée par défaut.

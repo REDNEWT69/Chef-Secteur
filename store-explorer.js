@@ -365,25 +365,18 @@ function contactsOf(state,id){
   return rows.map(r=>({name:String(r&&r.name||'').trim(),role:String(r&&r.role||'').trim(),email:String(r&&r.email||'').trim()})).filter(r=>r.name||r.role||r.email);
 }
 function validEmail(v){return/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v||'').trim())}
-const CUISINE_REPORT_FIELDS=Object.freeze([
-  ['context','Contexte magasin'],['team','Terrain / interlocuteurs'],['actions','Actions réalisées'],
-  ['massification','Exposition / merchandising'],['omni','Suivi OMNI'],['training','Formation / prochain passage']
-]);
+const CUISINE_REPORT_KEYS=Object.freeze(['team','actions','massification','omni','training']);
 function latestReportFor(state,storeId){
   const id=String(storeId),b=(state&&state.businessV2)||{};
   const visits=(b.visits||[]).filter(v=>v&&String(v.storeId)===id&&v.status==='completed').slice()
     .sort((a,c)=>String(c.completedAt||c.completedDate||c.updatedAt||'').localeCompare(String(a.completedAt||a.completedDate||a.updatedAt||'')));
   const visit=visits[0];if(!visit)return null;
   let report=visit.report||{};try{const M=root.StoreRunnerVisitModel;if(M&&typeof M.reportOf==='function')report=M.reportOf(visit)}catch(e){}
-  const fields=[];
-  for(const [key,label] of CUISINE_REPORT_FIELDS){
-    let values=[];
-    if(key==='context')values=[report&&report.shared&&report.shared.context];
-    else values=[report&&report.blanc&&report.blanc[key],report&&report.brun&&report.brun[key]];
-    values=[...new Set(values.map(v=>String(v||'').trim()).filter(Boolean))];
-    if(values.length)fields.push({key,label,text:values.join('\n')});
-  }
-  return{visitId:String(visit.id||''),date:String(visit.completedDate||localDay(visit.completedAt)||''),conclusion:String(visit.conclusion||'').trim(),fields};
+  const values=[report&&report.shared&&report.shared.context];
+  for(const family of ['blanc','brun'])for(const key of CUISINE_REPORT_KEYS)values.push(report&&report[family]&&report[family][key]);
+  values.push(visit.conclusion);
+  const seen=new Set(),parts=[];for(const value of values){const text=String(value||'').trim();if(text&&!seen.has(text)){seen.add(text);parts.push(text)}}
+  return{visitId:String(visit.id||''),date:String(visit.completedDate||localDay(visit.completedAt)||''),text:parts.join('\n\n')};
 }
 function profileFor(state,storeId,options,shared){
   const ctx=shared||contextFor(state,options),store=find(state,storeId);if(!store)return null;
@@ -478,7 +471,7 @@ function ensureCss(doc){
     +'.srXEmpty{font-size:12px;color:#667085}.srXLinks{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.srXItem button.srXGo{display:block;margin-top:8px;padding:0 14px}.srXLinks button,.srXItem button.srXGo{min-height:44px;border:1px solid #e1e5ed;border-radius:12px;background:#fff;color:#0a6dd9;font:inherit;font-size:13px;font-weight:800}.srXLinks button[disabled]{opacity:.45}'
     +'.srXTl{display:grid;gap:6px}.srXTl button,.srXTl div{display:block;width:100%;min-height:44px;box-sizing:border-box;text-align:left;padding:8px 10px;border:1px solid #e5e7eb;border-radius:12px;background:#fff;font:inherit;font-size:12px;color:#1d2939}.srXTl div{min-height:0;background:#f8fafc}.srXTl b{display:block}.srXTl span{color:#667085}.srXTl [data-future="1"]{border-left:4px solid #0a6dd9}'
     +'.srXMore{margin-top:6px;min-height:44px;border:0;background:transparent;color:#0a6dd9;font:inherit;font-weight:800}'
-    +'.srXCuisineLead{margin:2px 0 10px;color:#667085;font-size:12px;line-height:1.45}.srXCuisineReport{display:block;width:100%;min-height:44px;box-sizing:border-box;text-align:left;padding:11px 12px;border:1px solid #d9e2ef;border-radius:14px;background:#fff;color:#1d2939;font:inherit}.srXCuisineReport>b{display:block;font-size:13px}.srXCuisineReport>span{display:block;margin-top:3px;color:#667085;font-size:11px;line-height:1.4}.srXCuisineFields{display:grid;gap:7px;margin-top:9px}.srXCuisineField{padding-top:7px;border-top:1px solid #edf0f4}.srXCuisineField small{display:block;color:#667085;font-size:10px;font-weight:800}.srXCuisineField span{display:block;margin-top:2px;white-space:pre-line;color:#344054;font-size:11.5px;line-height:1.4}.srXCuisineActions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.srXCuisineActions button{min-height:44px;border:1px solid #e1e5ed;border-radius:12px;background:#fff;color:#0a6dd9;font:inherit;font-size:13px;font-weight:800}';
+    +'.srXCuisineLead{margin:2px 0 10px;color:#667085;font-size:12px;line-height:1.45}.srXCuisineReport{display:block;width:100%;min-height:44px;box-sizing:border-box;text-align:left;padding:11px 12px;border:1px solid #d9e2ef;border-radius:14px;background:#fff;color:#1d2939;font:inherit}.srXCuisineReport>b{display:block;font-size:13px}.srXCuisineReport>span{display:block;margin-top:3px;color:#667085;font-size:11px;line-height:1.4;white-space:pre-line}.srXCuisineFields{display:grid;gap:7px;margin-top:9px}.srXCuisineField{padding-top:7px;border-top:1px solid #edf0f4}.srXCuisineField small{display:block;color:#667085;font-size:10px;font-weight:800}.srXCuisineField span{display:block;margin-top:2px;white-space:pre-line;color:#344054;font-size:11.5px;line-height:1.4}.srXCuisineActions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.srXCuisineActions button{min-height:44px;border:1px solid #e1e5ed;border-radius:12px;background:#fff;color:#0a6dd9;font:inherit;font-size:13px;font-weight:800}';
   doc.head.appendChild(s);
 }
 function chipsHtml(kind,list,current,countMap){
@@ -533,8 +526,7 @@ function contactsHtml(p){
 }
 function cuisinisteReportHtml(report){
   if(!report)return'<p class="srXEmpty">Aucun rapport magasin enregistré pour le moment.</p>';
-  const fields=report.fields&&report.fields.length?'<div class="srXCuisineFields">'+report.fields.map(f=>'<div class="srXCuisineField"><small>'+esc(f.label)+'</small><span>'+esc(f.text)+'</span></div>').join('')+'</div>':'';
-  return'<button type="button" class="srXCuisineReport" data-sr-x-visit="'+esc(report.visitId)+'"><b>Rapport du '+esc(frDate(report.date,false)||report.date||'dernier passage')+'</b>'+(report.conclusion?'<span>'+esc(report.conclusion)+'</span>':'')+fields+'</button>';
+  return'<button type="button" class="srXCuisineReport" data-sr-x-visit="'+esc(report.visitId)+'"><b>Rapport du '+esc(frDate(report.date,false)||report.date||'dernier passage')+'</b>'+(report.text?'<span>'+esc(report.text)+'</span>':'')+'</button>';
 }
 function cuisinisteSectionHtml(p,o){
   const photos=o.photoCount==null?'Ouvrir les photos':(o.photoCount?plural(o.photoCount,'photo','photos'):'Aucune photo · ouvrir la galerie');
