@@ -136,9 +136,10 @@ body.glassHome #premiumHomeV2 #calendarHomeStatus button{min-height:44px;padding
 body.glassHome #premiumHomeV2 #calendarHomeStatus strong{font-size:11px;line-height:1.4}
 @media(max-width:700px){
   #premiumHomeV2 .phHeaderContext{gap:0}
-  #premiumHomeV2 .phHeaderContext .phBase{min-height:34px;padding:0}
-  body.glassHome #premiumHomeV2 #calendarHomeStatus{min-height:32px}
-  body.glassHome #premiumHomeV2 #calendarHomeStatus button{min-height:32px;padding:2px 0 2px 4px}
+  #premiumHomeV2 .phHeaderContext .phBase{min-height:44px;padding:8px 0 0;align-items:flex-end}
+  body.glassHome #premiumHomeV2 #calendarHomeStatus{min-height:44px;align-items:flex-start}
+  body.glassHome #premiumHomeV2 #calendarHomeStatus .calendarHomeCopy{align-self:flex-start;padding-top:0}
+  body.glassHome #premiumHomeV2 #calendarHomeStatus button{min-height:44px;padding:0 0 8px 4px;align-self:flex-start}
 }
 /* V254.1 — l'identité reste en haut, l'IA sous le titre, puis seulement la carte Runner. */
 #premiumHomeV2 .phTop{order:1!important}
