@@ -47,11 +47,13 @@ for(const [enseigne,attendu] of [['Darty','grands-magasins'],['BOULANGER','grand
 // Les deux trames métier du PDF restent explicites, mais avec les mêmes garde-fous rédactionnels.
 (function promptsMetierV222(){
  const cuisiniste=R.aiPrompt({skeleton:'cuisinistes',store:{enseigne:'Schmidt',ville:'Test'},family:'mixte'});
- assert.ok(cuisiniste.includes('Chiffre d’Affaires 2025 / 2026'));
- assert.ok(cuisiniste.includes('Historique Classroom'));
- assert.ok(cuisiniste.includes('Contrat d’Expo'));
- assert.ok(cuisiniste.includes('SAV / ADV'));
- assert.ok(cuisiniste.includes('n’invente aucun chiffre'));
+ assert.ok(cuisiniste.includes('UN SEUL compte rendu'));
+ assert.ok(cuisiniste.includes('formation/Classroom'));
+ assert.ok(cuisiniste.includes('contrat d’exposition'));
+ assert.ok(cuisiniste.includes('SAV/ADV'));
+ assert.ok(cuisiniste.includes('N’invente jamais un chiffre'));
+ assert.ok(cuisiniste.includes('AUCUNE rubrique vide'));
+ assert.ok(cuisiniste.includes('3 à 7 paragraphes'));
  const buying=R.aiPrompt({skeleton:'buying-groups',store:{enseigne:'Gitem',ville:'Test'},family:'mixte'});
  assert.ok(buying.includes('Protechneed'));
  assert.ok(buying.includes('Valise Haas'));

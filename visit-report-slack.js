@@ -1,5 +1,6 @@
-/* Store Runner V1 — Sortie magasin : rapport local hors ligne + génération IA optionnelle.
-   La saisie terrain reste simple. Rien n'est envoyé à l'IA tant que l'utilisateur n'appuie pas sur le bouton dédié. */
+/* Store Runner V1 — Sortie magasin : rapport local hors ligne + génération IA.
+   La génération de CE compte rendu reste déclenchée par son bouton. V277.1 gère séparément
+   l'enrichissement automatique de la mémoire après clôture, sans modifier les notes source. */
 (function(root){
 'use strict';
 const SHEET_ID='srReportSheet',VISIT_BTN_ID='srReportBtn',QUICK_BTN_ID='srReportQuickBtn',SHARE_BTN_ID='srReportSharePhotos',AI_BTN_ID='srReportAI',EDIT_BTN_ID='srReportEdit';
@@ -102,7 +103,7 @@ RÈGLES DE FOND — PRIORITÉ ABSOLUE :
 FORMAT STRICT :
 ${emoji} Résumé ${fam} – ${storeName||'[Enseigne Ville]'}
 
-[3 à 6 paragraphes courts, naturels et regroupés intelligemment. Utilise si pertinent des amorces comme « Sur l’aspiration », « Sur la cuisson », « Sur le froid », « Côté TV » ou « Sur l’audio », mais seulement pour les thèmes réellement présents.]
+[3 à 6 paragraphes courts, naturels et regroupés intelligemment. Chaque paragraphe apporte un fait terrain utile. Conserve toutes les références, chiffres, noms, prix et verbatims utiles. Attribue toujours explicitement les avis vendeurs/clients. Utilise si pertinent des amorces comme « Sur l’aspiration », « Sur la cuisson », « Sur le froid », « Côté TV » ou « Sur l’audio », mais seulement pour les thèmes réellement présents.]
 
 ### 🎯 Plan d’action / prochain passage
 - [2 à 5 actions maximum, uniquement si elles sont sûres et directement reliées aux faits]
@@ -116,45 +117,35 @@ EXEMPLE_DE_STYLE_VALIDÉ — STYLE ET ORGANISATION UNIQUEMENT, JAMAIS UNE SOURCE
 ${sample}`;
  }
  if(data.skeleton==='cuisinistes'){
-  return `Tu es un Field Merchandising Trainer (FMT) expert des enseignes cuisinistes. Transforme DONNEES_SOURCE en un compte rendu professionnel, analytique mais factuel, destiné à la direction.
+  const storeName=[text(data.store&&data.store.enseigne),text(data.store&&data.store.ville)].filter(Boolean).join(' ');
+  return `Tu es un Field Merchandising Trainer (FMT) expert des enseignes cuisinistes. Tu rédiges le compte rendu de visite professionnel d’un chef de secteur ${PRIMARY_BRAND} à partir de ses notes terrain.
+
+OBJECTIF :
+Produire UN SEUL compte rendu clair, naturel et directement exploitable. Il doit ressembler à un vrai rapport terrain rédigé après la visite, pas à un formulaire rempli automatiquement.
 
 RÈGLES ABSOLUES :
-- utilise uniquement les faits présents dans DONNEES_SOURCE ;
-- N’invente aucun fait, même plausible ;
-- n’invente aucun chiffre, contact, cause, performance, marque partenaire, contrat, litige, rendez-vous ou action ;
-- corrige la forme, regroupe les informations proches, supprime les doublons et conserve les références / montants / dates exacts ;
-- rédige naturellement : ne récite pas les notes et ne montre pas les libellés techniques 6P ;
-- pour chaque information attendue mais absente, écris exactement ${PLACEHOLDER} ;
-- le plan d’action ne contient que les actions ou suivis réellement saisis ;
-- aucun préambule ni bloc de code.
+1. Utilise UNIQUEMENT les faits présents dans DONNEES_SOURCE. N’invente aucun fait, même plausible. N’invente jamais un chiffre, un contact, une référence, une performance, une marque partenaire, un contrat, un litige, un rendez-vous, une action ou une conclusion.
+2. Conserve exactement les références produit, montants, dates, noms, marques, volumes et statuts lorsqu’ils sont présents.
+3. Corrige orthographe, grammaire et dictée vocale sans modifier le sens.
+4. Regroupe les informations proches et supprime les répétitions. Ne récite jamais les notes ligne par ligne.
+5. Distingue les faits observés des propos magasin : « le responsable indique… », « selon l’équipe… » lorsqu’il s’agit d’un retour humain.
+6. Ne montre jamais BRUN / BLANC ni les libellés techniques 6P.
+7. N’affiche AUCUNE rubrique vide et n’écris jamais ${PLACEHOLDER} juste pour remplir un manque. Si une information n’existe pas, omets-la.
+8. Les thèmes possibles sont : suivi magasin, produits et concurrence, formation/Classroom, contrat d’exposition, SAV/ADV, demandes et prochaines étapes. N’affiche que ceux réellement renseignés.
+9. Le plan d’action contient uniquement les actions, rendez-vous, relances ou suivis explicitement présents dans les notes. N’invente jamais une prochaine étape.
+10. Le rapport doit rester synthétique mais complet : en général 3 à 7 paragraphes courts ou blocs métier selon la richesse réelle des notes.
+11. Chaque référence produit citée dans les notes et utile au suivi doit rester visible telle quelle.
+12. Aucun préambule, aucune explication de méthode, aucun bloc de code.
 
-FORMAT STRICT :
-# COMPTE RENDU DE VISITE CUISINISTE
-**Enseigne :** [Schmidt / Cuisinella] | **Magasin :** [Ville / Point de vente]
+FORMAT :
+# COMPTE RENDU DE VISITE — CUISINISTE
+**Magasin :** ${storeName||'[Enseigne Ville]'}
 
-### 1. Suivi Magasin
-- **Chiffre d’Affaires 2025 / 2026 :** [montants exacts ou ${PLACEHOLDER}]
-- **Groupement :** [statut + nombre de magasins ou ${PLACEHOLDER}]
-- **Équipe du Magasin :** [propriétaire / directeur / nombre de concepteurs-vendeurs ou ${PLACEHOLDER}]
+[Corps professionnel en paragraphes courts. Utilise des sous-titres uniquement pour les thèmes réellement présents, par exemple « Suivi magasin », « Produits & concurrence », « Formation », « Contrat d’exposition », « SAV / ADV ».]
 
-### 2. Point Produits & Concurrence
-- **Performance de la marque :** [faits de vente vs concurrence uniquement]
-- **Typologie de produits porteurs :** [familles réellement citées]
-- **Marques Partenaires :** [marques + raisons réellement citées]
-
-### 3. Formation
-- **Historique Classroom :** [Oui / Non + date + nombre de personnes si disponibles]
-
-### 4. Contrats d’Exposition (Expo)
-- **Contrat d’Expo ${PRIMARY_BRAND} :** [Oui avec montant / nombre de produits / temps restant, ou Non avec points bloquants]
-- **Contrat Concurrent :** [marque et produits]
-
-### 5. SAV / ADV
-- **Litiges en cours :** [détails + statut de résolution FMT / SEF]
-
-### 6. Plan d’Action & Prochaines Étapes
-- **Suivi Opérationnel :** [RDV point chiffre / Classroom / accompagnement technique réellement saisi]
-- **Statut Négociation Contrat d’Expo :** [RDV programmé + date / RDV effectué en attente retour / signé en attente livraison]
+### 🎯 Plan d’action / prochaines étapes
+- [uniquement les actions ou suivis explicitement présents]
+[Si aucune action n’est réellement présente, omets entièrement cette section.]
 
 DONNEES_SOURCE :
 ${source}`;
@@ -351,5 +342,26 @@ function fromVisitDialog(){const api=root.StoreRunnerVisits,id=api&&typeof api.a
 function fromQuickSheet(){const start=root.document&&root.document.getElementById('srQuickStart'),storeId=start&&start.dataset?start.dataset.srStart:'',draft=storeId?draftFor(storeId):null;if(!draft){ensureSheet();say('Démarre la visite avant de générer le compte rendu.',true);if(typeof root.alert==='function')root.alert('Démarre la visite avant de générer le compte rendu.');return false}open(draft.id);return true}
 function installButtons(){if(!root.document)return false;ensureStyle();let done=0;const head=root.document.querySelector('#srVisitDialog .sr-head');if(head&&!root.document.getElementById(VISIT_BTN_ID)){const b=btn('📤 Sortie magasin',fromVisitDialog,'secondary');b.id=VISIT_BTN_ID;const fermer=[...head.querySelectorAll('button')].find(x=>x.textContent==='Fermer');if(fermer)head.insertBefore(b,fermer);else head.appendChild(b);done++}const actions=root.document.querySelector('#storeQuickSheet .sheetActions');if(actions&&!root.document.getElementById(QUICK_BTN_ID)){const b=btn('📤 Sortie magasin',fromQuickSheet,'secondary');b.id=QUICK_BTN_ID;const photo=root.document.getElementById('storePhotosQuickBtn');if(photo&&photo.parentNode===actions)photo.insertAdjacentElement('afterend',b);else actions.appendChild(b);done++}return done>0}
 function boot(){ensureSheet();installButtons()}
-const api={FAMILY_OF_BRAND,skeletonFor,build,buildAIPayload,aiPrompt,cleanAIText,aiFailureMessage,open,installButtons};root.StoreRunnerVisitReport=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();root.document.addEventListener('store-runner:data-restored',installButtons);root.document.addEventListener('store-runner:planning-updated',installButtons)}
+let autoAILoading=null;
+function hasPendingAI(){
+ try{const b=root.state&&root.state.businessV2,rows=b&&Array.isArray(b.visits)?b.visits:[];return rows.some(v=>v&&v.status==='completed'&&v.runnerAI&&v.runnerAI.status==='pending')}catch(e){return false}
+}
+function ensureAutoAI(){
+ if(root.StoreRunnerReportAIAutoV2771)return Promise.resolve(true);
+ if(autoAILoading)return autoAILoading;
+ if(!root.document)return Promise.resolve(false);
+ autoAILoading=new Promise(resolve=>{const script=root.document.createElement('script'),rev=root.__STORE_RUNNER_BUILD_REV||'v2771';script.src='./runner-report-ai-auto-v2771.js?rev='+encodeURIComponent(rev);script.async=true;script.dataset.srAutoAiV2771='1';script.onload=()=>{autoAILoading=null;resolve(!!root.StoreRunnerReportAIAutoV2771)};script.onerror=()=>{autoAILoading=null;resolve(false)};(root.document.head||root.document.documentElement).appendChild(script)});
+ return autoAILoading;
+}
+function bootAutoAI(){
+ if(hasPendingAI()&&(!root.navigator||root.navigator.onLine!==false))ensureAutoAI();
+}
+const api={FAMILY_OF_BRAND,skeletonFor,build,buildAIPayload,aiPrompt,cleanAIText,aiFailureMessage,open,installButtons};root.StoreRunnerVisitReport=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;if(root.document){
+ if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
+ root.document.addEventListener('store-runner:data-restored',()=>{installButtons();bootAutoAI()});
+ root.document.addEventListener('store-runner:planning-updated',installButtons);
+ root.document.addEventListener('store-runner:visit-completed',()=>{ensureAutoAI()});
+ if(root.addEventListener)root.addEventListener('online',bootAutoAI);
+ root.setTimeout&&root.setTimeout(bootAutoAI,1200);
+}
 })(typeof window!=='undefined'?window:globalThis);
