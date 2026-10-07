@@ -106,3 +106,25 @@ test('une restauration avec une autre position GPS relance la résolution de vil
   await expect(page.locator('#premiumHomeV2 .phDepartureTitle')).toHaveText('Annemasse · Position précise');
   expect(reverseCalls).toBeGreaterThanOrEqual(1);
 });
+
+
+test('le bloc Position + Agenda reste remonté et Connecter reste sur la même ligne',async({page})=>{
+  await ready(page);
+  await expect(page.locator('#calendarHomeStatus')).toBeVisible();
+  const layout=await page.evaluate(()=>{
+    const host=document.querySelector('#premiumHomeV2 .phHeaderContext');
+    const card=document.querySelector('#calendarHomeStatus');
+    const title=card&&card.querySelector('strong');
+    const action=card&&card.querySelector('button');
+    const hr=host&&host.getBoundingClientRect(),tr=title&&title.getBoundingClientRect(),ar=action&&action.getBoundingClientRect();
+    return{
+      transform:host?getComputedStyle(host).transform:'none',
+      flexWrap:card?getComputedStyle(card).flexWrap:'',
+      titleTop:tr&&tr.top,buttonTop:ar&&ar.top,
+      hostTop:hr&&hr.top
+    };
+  });
+  expect(layout.transform).not.toBe('none');
+  expect(layout.flexWrap).toBe('nowrap');
+  expect(Math.abs(layout.titleTop-layout.buttonTop)).toBeLessThanOrEqual(2);
+});
