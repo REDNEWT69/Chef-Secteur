@@ -131,15 +131,15 @@ html body .top .departureShortcut b{max-width:100%;font-size:11px}
 #premiumHomeV2 .phBase .phDepartureCopy{display:flex;flex-direction:column;gap:4px;min-width:0;white-space:normal;overflow:visible;text-overflow:clip;text-align:right;font-size:12px;line-height:1.3}
 #premiumHomeV2 .phBase .phDepartureAddress{display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
 #premiumHomeV2 .phHeaderContext .phSector{font-size:12px;line-height:1.5;color:#52627c;overflow-wrap:anywhere}
-body.glassHome #premiumHomeV2 #calendarHomeStatus{position:static;display:flex;justify-content:flex-end;align-items:center;gap:5px;max-width:none;width:100%;min-height:44px;margin:0;padding:0;flex-wrap:nowrap;white-space:nowrap}
+body.glassHome #premiumHomeV2 #calendarHomeStatus{position:static;display:flex;justify-content:flex-end;align-items:center;gap:5px;max-width:none;width:100%;min-height:44px;margin:-8px 0 0;padding:0;flex-wrap:nowrap;white-space:nowrap}
 body.glassHome #premiumHomeV2 #calendarHomeStatus button{min-height:44px;padding:6px 0 6px 4px;font-size:11px}
 body.glassHome #premiumHomeV2 #calendarHomeStatus strong{font-size:11px;line-height:1.4}
 @media(max-width:700px){
   #premiumHomeV2 .phHeaderContext{gap:0}
-  #premiumHomeV2 .phHeaderContext .phBase{min-height:44px;padding:8px 0 0;align-items:flex-end}
-  body.glassHome #premiumHomeV2 #calendarHomeStatus{min-height:44px;align-items:flex-start}
-  body.glassHome #premiumHomeV2 #calendarHomeStatus .calendarHomeCopy{align-self:flex-start;padding-top:0}
-  body.glassHome #premiumHomeV2 #calendarHomeStatus button{min-height:44px;padding:0 0 8px 4px;align-self:flex-start}
+  #premiumHomeV2 .phHeaderContext .phBase{min-height:44px;padding:0;align-items:center}
+  body.glassHome #premiumHomeV2 #calendarHomeStatus{min-height:44px;margin:-10px 0 0;align-items:center}
+  body.glassHome #premiumHomeV2 #calendarHomeStatus .calendarHomeCopy{align-self:center;padding-top:0}
+  body.glassHome #premiumHomeV2 #calendarHomeStatus button{min-height:44px;padding:0 0 0 4px;align-self:center}
 }
 /* V254.1 — l'identité reste en haut, l'IA sous le titre, puis seulement la carte Runner. */
 #premiumHomeV2 .phTop{order:1!important}
