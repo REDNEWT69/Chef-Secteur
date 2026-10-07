@@ -80,7 +80,7 @@ const profileSource=profile;
   let releaseLookup;
   const race=runtime(gps,{online:true,fetchImpl:()=>new Promise(resolve=>{releaseLookup=resolve})});
   const pending=race.context.StoreRunnerProfile.refreshDepartureDisplay();
-  await Promise.resolve();
+  while(!releaseLookup)await new Promise(resolve=>setImmediate(resolve));
   race.state.profile.baseLat=46.1956;
   race.state.profile.baseLon=6.2364;
   race.state.profile.baseAddress='Position GPS · 46.19560, 6.23640';
