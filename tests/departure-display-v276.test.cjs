@@ -10,6 +10,7 @@ const profile=read('profile-controller.js');
 const home=read('home-refresh-v2.js');
 const branding=read('store-runner-branding.js');
 const glass=read('glass-theme.css');
+const connection=read('connection-ui.js');
 const core=read('src/chef-secteur.html');
 
 assert.match(profile,/departureDisplay:departureDisplay/,'le propriétaire profil expose le libellé de départ');
@@ -25,8 +26,9 @@ assert.match(glass,/@media\(max-width:700px\)[\s\S]*\.phHeaderContext\{gap:0\}/,
 assert.match(glass,/\.phHeaderContext \.phBase\{min-height:44px;padding:8px 0 0;align-items:flex-end\}/,'le départ reste tactile à 44 px tout en rapprochant son contenu');
 assert.match(glass,/#calendarHomeStatus\{min-height:44px;align-items:flex-start\}/,'le statut Google reste tactile à 44 px et rapproche son contenu');
 assert.match(glass,/\.phHeaderContext\{transform:translateY\(-8px\)\}/,'sur mobile, le bloc Position + Agenda remonte ensemble sans modifier le flux');
-assert.match(glass,/#calendarHomeStatus\{[^}]*flex-wrap:nowrap;white-space:nowrap\}/,'Google Agenda et son action restent sur une seule ligne');
-assert.match(glass,/#calendarHomeStatus \.calendarHomeCopy\{flex:0 0 auto\}/,'le libellé Agenda ne repousse plus le bouton à la ligne');
+assert.match(connection,/calendarHomeLine/,'Google Agenda et son action partagent une vraie ligne DOM dédiée');
+assert.match(glass,/#calendarHomeStatus \.calendarHomeLine\{[^}]*display:inline-flex;[^}]*align-items:center;[^}]*white-space:nowrap\}/,'la ligne Agenda est compacte, centrée et non sécable');
+assert.match(glass,/#calendarHomeStatus button\{[^}]*min-height:44px;[^}]*display:inline-flex;[^}]*align-items:center/,'Connecter garde 44 px de cible tactile sans descendre son texte');
 assert.match(branding,/display&&display\.kind==='saved'&&generic/,'les noms génériques de base enregistrée conservent l’adresse utile');
 assert.match(branding,/display&&display\.kind==='gps'[\s\S]*display\.address/,'le tooltip GPS utilise le libellé résolu, pas baseAddress brut');
 assert.match(profile,/store-runner:data-restored'[\s\S]*refreshDepartureDisplay/,'une restauration redéclenche la résolution du départ');
