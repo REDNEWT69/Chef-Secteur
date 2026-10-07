@@ -38,6 +38,31 @@ function reportOf(v){const src=object(v&&v.report)?v.report:{},out=emptyReport()
    voyage avec la visite ; les sources restent l'autorité (anciens exports compris). */
 const MEMORY_LABELS={action:'Action réalisée',followup:'Sujet à suivre',training:'Formation',merchandising:'Merchandising / exposition',product:'Référence citée',problem:'Problème / blocage',priority:'Prochain passage',objection:'Objection / concurrence',contact:'Interlocuteur / terrain'};
 const memoryKey=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+function reportSourceEntries(v){
+ const report=reportOf(v),out=[],add=(text,source,family='')=>{if(typeof text==='string'&&text.trim())out.push({source,family,text})};
+ for(const family of FAMILIES)for(const key of Object.keys(REPORT_FIELDS))add(report[family][key],'report.'+family+'.'+key,family);
+ add(report.shared.context,'report.shared.context','');add(v&&v.conclusion,'conclusion','');
+ const arrival=v&&v.arrival||{};add(arrival.positives,'arrival.positives','');add(arrival.opportunities,'arrival.opportunities','');
+ for(const [i,a] of (Array.isArray(arrival.anomalies)?arrival.anomalies:[]).entries())if(a)add(a.text,'arrival.anomalies.'+i+'.text',a.family||'');
+ for(const [p,section] of Object.entries(SIX_P)){const rows=v&&v.sixP&&v.sixP[p];if(!Array.isArray(rows))continue;rows.forEach((row,i)=>{if(!row)return;add(row.comment,'sixP.'+p+'.'+i+'.comment',row.family||'');add(row.action,'sixP.'+p+'.'+i+'.action',row.family||'')})}
+ return out;
+}
+function reportSourceSignature(v){
+ const raw=JSON.stringify(reportSourceEntries(v));let h=2166136261;
+ for(let i=0;i<raw.length;i++){h^=raw.charCodeAt(i);h=Math.imul(h,16777619)}
+ return 'v1-'+(h>>>0).toString(36);
+}
+function aiMemoryOf(v){
+ const cache=v&&v.runnerAI;if(!v||v.status!=='completed'||!object(cache)||cache.version!==1||cache.status!=='done'||cache.sourceSignature!==reportSourceSignature(v)||!Array.isArray(cache.items))return[];
+ const bySource=new Map(reportSourceEntries(v).map(x=>[x.source,x])),out=[],seen=new Set(),statuses=new Set(['recorded','planned','done','cancelled']);
+ for(const item of cache.items){if(!object(item)||!Object.hasOwn(MEMORY_LABELS,item.kind)||!statuses.has(item.status)||typeof item.source!=='string'||typeof item.text!=='string')continue;
+  const src=bySource.get(item.source),quote=item.text.replace(/\s+/g,' ').trim();if(!src||quote.length<4||quote.length>600)continue;
+  const hay=src.text.replace(/\s+/g,' ').trim();if(!memoryKey(hay).includes(memoryKey(quote)))continue;
+  const key=item.kind+'|'+item.source+'|'+memoryKey(quote);if(seen.has(key))continue;seen.add(key);
+  out.push({kind:item.kind,topic:item.topic||item.kind,text:quote,source:item.source,family:src.family||'',status:item.status});
+ }
+ return out;
+}
 function analyzeReport(v){
  if(!v||v.status!=='completed')return{version:1,items:[]};
  const items=[],seen=new Set(),report=reportOf(v);
@@ -127,10 +152,16 @@ function reportMemoryFor(s,storeId,options){
  }
  // Trois derniers rapports pour les rappels ; l'historique conserve tous les autres.
  // Un sujet textuel n'est jamais déclaré « encore ouvert » sans Action liée.
- for(const v of visits.slice(0,o.history===true?visits.length:3))for(const i of reportMemoryOf(v).items){
-  if(actionQuotes.has(i.family+'|'+fingerprint(i)))continue;
-  if(i.source==='conclusion'&&items.some(x=>fingerprint(x)===fingerprint(i)))continue;
-  keep({...i,visitId:v.id,date:v.completedDate,label:i.topic==='sav'?'SAV':i.topic==='stock'?'Stock / rupture':i.kind==='action'&&i.status!=='done'?'Action notée':MEMORY_LABELS[i.kind]||'Note'});
+ const recent=visits.slice(0,o.history===true?visits.length:3);
+ for(const v of recent){
+  for(const i of reportMemoryOf(v).items){
+   if(actionQuotes.has(i.family+'|'+fingerprint(i)))continue;
+   if(i.source==='conclusion'&&items.some(x=>fingerprint(x)===fingerprint(i)))continue;
+   keep({...i,visitId:v.id,date:v.completedDate,label:i.topic==='sav'?'SAV':i.topic==='stock'?'Stock / rupture':i.kind==='action'&&i.status!=='done'?'Action notée':MEMORY_LABELS[i.kind]||'Note'});
+  }
+  for(const i of aiMemoryOf(v)){
+   keep({...i,visitId:v.id,date:v.completedDate,label:i.topic==='sav'?'SAV':i.topic==='stock'?'Stock / rupture':MEMORY_LABELS[i.kind]||'Note'});
+  }
  }
  const score=i=>i.actionId&&i.status!=='done'?100:i.status==='planned'?80:i.kind==='problem'&&i.status!=='done'?70:i.kind==='priority'||i.kind==='followup'?60:i.kind==='training'?40:i.kind==='merchandising'?30:i.kind==='action'?20:10;
  items.sort((a,c)=>score(c)-score(a)||String(c.date).localeCompare(String(a.date)));
@@ -185,7 +216,7 @@ function editAction(s,actionId,key,value){const a=getAction(s,actionId);if(!['ow
  const v=getVisit(s,a.visitId);if(['owner','dueDate'].includes(key))for(const rows of Object.values(v.sixP))for(const row of rows)if(row.actionId===a.id)row[key]=value;
 }
 function complete(s,visitId,day){const v=getVisit(s,visitId);if(v.status==='completed')return v.id;if(!dateValid(day))fail('Date de visite invalide.');if(!v.conclusion.trim())fail('Ajoute une conclusion avant de terminer.');for(const [p,rows] of Object.entries(v.sixP))rows.forEach((row,i)=>{if(row.action.trim())actionFrom6P(s,visitId,p,i)});
- v.status='completed';v.completedDate=day;v.completedAt=now();touch(v);v.runnerMemory=analyzeReport(v);
+ v.status='completed';v.completedDate=day;v.completedAt=now();touch(v);delete v.runnerAI;v.runnerMemory=analyzeReport(v);
  if(s.stores.some(x=>String(x.id)===v.storeId)){if(!s.visits)s.visits={};const history=s.visits[v.storeId]||(s.visits[v.storeId]={lastVisit:'',history:[]});if(!Array.isArray(history.history))history.history=[];if(!history.history.includes(day))history.history.push(day);history.history.sort();history.lastVisit=history.history[history.history.length-1]||''}return v.id;
 }
 /* V231 — suppression d'une visite enregistrée par erreur.
@@ -253,6 +284,6 @@ function validate(s){const b=s.businessV2;if(b===undefined)return s;if(!object(b
   const parts=a.source.split(':');if(parts[0]==='6p'){const rows=v.sixP[parts[1]],row=rows&&rows[Number(parts[2])];if(!row||row.actionId!==a.id||a.category!==SIX_P[parts[1]].label)fail('Source 6P invalide.')}else if(parts[0]==='360'){if(!v.arrival.anomalies.some(x=>x.id===parts.slice(1).join(':')&&x.actionId===a.id)||a.category!=='360°')fail('Source anomalie invalide.')}else fail('Source action inconnue.');
  }return s;
 }
-const api={SIX_P,CHECKS,PREP,FAMILIES,FAMILY_LABELS,FAMILY_VALUES,REPORT_SHARED,REPORT_FIELDS,MEMORY_LABELS,analyzeReport,reportMemoryOf,reportMemoryFor,reportMemoryLines,clone,empty,data,start,getVisit,editVisit,edit6P,addAnomaly,editAnomaly,setAnomalyFamily,editReport,reportOf,actionFrom6P,actionFromAnomaly,editAction,complete,removeVisit,validate,dateValid};
+const api={SIX_P,CHECKS,PREP,FAMILIES,FAMILY_LABELS,FAMILY_VALUES,REPORT_SHARED,REPORT_FIELDS,MEMORY_LABELS,reportSourceEntries,reportSourceSignature,aiMemoryOf,analyzeReport,reportMemoryOf,reportMemoryFor,reportMemoryLines,clone,empty,data,start,getVisit,editVisit,edit6P,addAnomaly,editAnomaly,setAnomalyFamily,editReport,reportOf,actionFrom6P,actionFromAnomaly,editAction,complete,removeVisit,validate,dateValid};
 root.StoreRunnerVisitModel=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

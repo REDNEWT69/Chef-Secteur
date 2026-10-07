@@ -261,3 +261,11 @@ test('les lignes Runner identifient une citation datée et ne modifient aucune d
  }
  assert.equal(JSON.stringify(s),before);assert.equal(v.storeId,'a');
 });
+
+test('un enrichissement IA validé complète la mémoire locale mais devient caduc si la source change',()=>{
+ const s=state(),v=visit(s,'a',{brun:{team:'Bruno privilégie BSH en showroom.'}});
+ const sig=M.reportSourceSignature(v);v.runnerAI={version:1,status:'done',sourceSignature:sig,items:[{kind:'objection',text:'Bruno privilégie BSH en showroom.',source:'report.brun.team',family:'brun',status:'recorded'}]};
+ assert(memory(s).some(x=>x.kind==='objection'&&x.text==='Bruno privilégie BSH en showroom.'));
+ v.report.brun.team='Texte changé après import.';
+ assert(!memory(s).some(x=>x.text==='Bruno privilégie BSH en showroom.'),'un cache IA périmé ne peut plus fabriquer un souvenir');
+});
