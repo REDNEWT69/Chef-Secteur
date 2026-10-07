@@ -27,7 +27,7 @@ let selectedIds=new Set(),objectUrls=[];
 /* Étiquettes appliquées à la PROCHAINE photo prise : le prompt de reporting exige des
    avant / après systématiques, et les régler après coup sur chaque carte est intenable
    sur le terrain. La famille suit par défaut celle de la visite en cours. */
-let pendingFamily='',pendingMoment='',pendingCategory='';
+let pendingFamily='',pendingMoment='',pendingCategory='',simpleFamilyMode=false;
 const FAMILY_OPTIONS=[['','Non étiquetée'],['blanc','Blanc'],['brun','Brun']];
 const MOMENT_OPTIONS=[['','Sans moment'],['avant','Avant'],['apres','Après']];
 /* Catégories métier, toujours facultatives. Une famille = ses catégories propres + les
@@ -231,7 +231,7 @@ let persistAsked=false;
 function askPersistentStorage(){if(persistAsked)return;persistAsked=true;try{const s=root.navigator&&root.navigator.storage;if(s&&typeof s.persisted==='function'&&typeof s.persist==='function')s.persisted().then(p=>p||s.persist()).catch(()=>{})}catch(e){}}
 async function addPhoto(storeId,file,visitId){
   const packed=await compressImage(file),linked=visitId===undefined?currentVisitId(storeId):String(visitId||''),now=new Date().toISOString();
-  const family=['blanc','brun'].includes(pendingFamily)?pendingFamily:defaultFamily(storeId);
+  const family=simpleFamilyMode?'':(['blanc','brun'].includes(pendingFamily)?pendingFamily:defaultFamily(storeId));
   const moment=['avant','apres'].includes(pendingMoment)?pendingMoment:'';
   const category=normalizeCategory(family,pendingCategory);
   askPersistentStorage();
@@ -342,15 +342,15 @@ function categorySelect(family,value,label){
 function renderContext(){
   if(!dialog)return;const box=dialog.querySelector('#srPhotoContext');if(!box)return;
   const v=currentVisit(activeStoreId),fam=pendingFamily?pendingFamily.toUpperCase():'sans famille';
-  box.replaceChildren(root.document.createTextNode('Prochaine photo classée : '));
+  box.replaceChildren(root.document.createTextNode(simpleFamilyMode?'Prochaine photo : ':'Prochaine photo classée : '));
   const where=v?'visite du '+frenchDay(localDay(v.createdAt)||localDay(new Date().toISOString())):'hors visite, au '+frenchDay(localDay(new Date().toISOString()));
-  box.append(el('span',where+' · '+fam+(pendingCategory?' · '+categoryLabel(pendingCategory):'')));
+  const bits=[where];if(!simpleFamilyMode)bits.push(fam);if(pendingCategory)bits.push(categoryLabel(pendingCategory));box.append(el('span',bits.join(' · ')));
 }
 function renderPendingTags(){
   if(!dialog)return;const host=dialog.querySelector('#srPhotoTags');if(!host)return;host.replaceChildren();
   pendingCategory=normalizeCategory(pendingFamily,pendingCategory);
   host.append(el('p','S’appliquent à la prochaine photo prise. Tout est facultatif.','sr-photoHint'));
-  tagRow(host,'Famille',FAMILY_OPTIONS,pendingFamily,v=>{pendingFamily=v});
+  if(!simpleFamilyMode)tagRow(host,'Famille',FAMILY_OPTIONS,pendingFamily,v=>{pendingFamily=v});
   tagRow(host,'Moment',MOMENT_OPTIONS,pendingMoment,v=>{pendingMoment=v});
   const row=el('div',undefined,'sr-photoTagRow');row.append(el('b','Catégorie'));
   const sel=categorySelect(pendingFamily,pendingCategory,'Catégorie de la prochaine photo (facultatif)');sel.id='srPendingCategory';
@@ -705,17 +705,18 @@ async function deleteCurrent(){
 /* --- Ouverture ------------------------------------------------------------------ */
 /* `options.visitId` : ouverte depuis une visite, la galerie montre d'abord les photos
    de CETTE visite. `options.family` : famille affichée par la visite, appliquée à la
-   prochaine photo. Sans option, comportement historique. */
+   prochaine photo. `options.simpleFamily` : visite Cuisiniste, aucune famille BRUN/BLANC
+   n'est imposée aux nouvelles photos. Sans option, comportement historique. */
 async function open(storeId,options){
   if(!storeId)throw new Error('Magasin introuvable.');ensureDialog();const opts=options&&typeof options==='object'?options:{};
-  activeStoreId=String(storeId);selectedIds.clear();compareOpen=false;showAllGroups=false;filters=freshFilters();
+  activeStoreId=String(storeId);selectedIds.clear();compareOpen=false;showAllGroups=false;filters=freshFilters();simpleFamilyMode=opts.simpleFamily===true;
   const visitId=String(opts.visitId||'');if(visitId&&visitStoreId(visitId)===activeStoreId)filters.group='v:'+visitId;
-  pendingFamily=['blanc','brun'].includes(opts.family)?opts.family:defaultFamily(activeStoreId);pendingMoment='';pendingCategory='';setStatus('');
+  pendingFamily=simpleFamilyMode?'':(['blanc','brun'].includes(opts.family)?opts.family:defaultFamily(activeStoreId));pendingMoment='';pendingCategory='';setStatus('');
   if(typeof dialog.showModal==='function'&&!dialog.open)dialog.showModal();else dialog.setAttribute('open','');
   dialog.scrollTop=0;
   try{await render();return true}catch(e){report(e);return false}
 }
-function closeDialog(){galleryDirty=false;closeViewer();closeMoveDialog();selectedIds.clear();syncMoveButton();clearUrls();allRows=[];viewRows=[];if(dialog&&typeof dialog.close==='function'&&dialog.open)dialog.close();else if(dialog)dialog.removeAttribute('open')}
+function closeDialog(){galleryDirty=false;simpleFamilyMode=false;closeViewer();closeMoveDialog();selectedIds.clear();syncMoveButton();clearUrls();allRows=[];viewRows=[];if(dialog&&typeof dialog.close==='function'&&dialog.open)dialog.close();else if(dialog)dialog.removeAttribute('open')}
 function openFromQuick(){const start=root.document&&root.document.getElementById('srQuickStart'),id=start&&start.dataset&&start.dataset.srStart;if(!id){setStatus('Magasin introuvable.',true);return false}open(id);return true}
 function installQuickButton(){
   if(!root.document)return false;const actions=root.document.querySelector('#storeQuickSheet .sheetActions');if(!actions)return false;if(root.document.getElementById('storePhotosQuickBtn'))return true;
