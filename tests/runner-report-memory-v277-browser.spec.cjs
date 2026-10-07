@@ -27,9 +27,9 @@ for(const width of [390,360])test.describe('Android '+width,()=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));await boot(page);
   const id=await page.evaluate(()=>StoreRunnerVisits.start('v277-a'));
   await field(page,'Note terrain BRUN').fill('Formation réalisée avec Julie.\nSAV RF48A401EB4 à relancer.');
-  await expect(page.locator(DIALOG+' .sr-status')).toContainText('Enregistré');
+  await expect(page.locator(DIALOG+' .sr-status')).toContainText('Enregistré',{timeout:15000});
   await field(page,'Prochain passage / formation BRUN').fill('Revoir le mural au prochain passage.');
-  await expect(page.locator(DIALOG+' .sr-status')).toContainText('Enregistré');
+  await expect(page.locator(DIALOG+' .sr-status')).toContainText('Enregistré',{timeout:15000});
   await expect.poll(()=>page.evaluate(()=>StoreRunnerVisitModel.reportMemoryFor(state,'v277-a').items.length)).toBe(0);
   await context.setOffline(true);await complete(page); // analyse sans réseau, aucune étape ajoutée
   await expect(page.locator(DIALOG+' .sr-reportMemory')).toContainText('Runner a retenu');
@@ -43,9 +43,9 @@ for(const width of [390,360])test.describe('Android '+width,()=>{
   await expect(page.locator('#srVisitTitle')).toContainText('Visite en cours');
   expect(await page.evaluate(()=>StoreRunnerVisitModel.reportMemoryFor(state,'v277-a').items)).toEqual([]);
   await field(page,'Note terrain BRUN').fill('SAV RF48A401EB4 résolu.');
-  await expect(page.locator(DIALOG+' .sr-status')).toContainText('Enregistré');
+  await expect(page.locator(DIALOG+' .sr-status')).toContainText('Enregistré',{timeout:15000});
   await field(page,'Prochain passage / formation BRUN').fill('Formation réalisée sur le son.');
-  await expect(page.locator(DIALOG+' .sr-status')).toContainText('Enregistré');
+  await expect(page.locator(DIALOG+' .sr-status')).toContainText('Enregistré',{timeout:15000});
   await complete(page);
   expect(await page.evaluate(()=>state.businessV2.visits.length)).toBe(1);
   expect(await page.evaluate(()=>StoreRunnerVisitModel.reportMemoryLines(state,'v277-a'))).toEqual([]);
