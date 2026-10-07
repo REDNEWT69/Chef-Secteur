@@ -83,7 +83,9 @@ function analyzeReport(v){
   read(block.omni,'report.'+family+'.omni',family,'followup');
  }
  read(report.shared.context,'report.shared.context','','');
- read(v&&v.conclusion,'conclusion','','');
+ // Le carnet copie parfois une note en conclusion. Après correction de cette note,
+ // l'ancien texte reste conservé dans le rapport mais ne doit plus fabriquer un rappel.
+ if(!/^report\.(blanc|brun|shared)\.[a-z]+$/.test(String(v.runnerConclusionSource||'')))read(v.conclusion,'conclusion','','');
  const arrival=v&&v.arrival||{};
  read(arrival.positives,'arrival.positives','','');read(arrival.opportunities,'arrival.opportunities','','followup');
  for(const [i,a] of (Array.isArray(arrival.anomalies)?arrival.anomalies:[]).entries())if(a&&!a.actionId)read(a.text,'arrival.anomalies.'+i+'.text',a.family||'','problem');
@@ -108,6 +110,7 @@ function reportMemoryFor(s,storeId,options){
  if(o.onlyVisitId)visits=visits.filter(v=>v.id===o.onlyVisitId);
  if(o.beforeVisitId){const at=visits.findIndex(v=>v.id===o.beforeVisitId);if(at>=0)visits=visits.slice(at+1);else visits=[]}
  const byId=new Map(visits.map(v=>[v.id,v])),items=[],seen=new Set();
+ const actionQuotes=new Set();
  const familyFits=f=>!o.family||!f||f==='both'||f===o.family;
  const fingerprint=i=>memoryKey(i.text).replace(/[.!?;]+$/,'');
  function keep(i){const k=fingerprint(i);if(!k||seen.has(k)||!familyFits(i.family))return;seen.add(k);items.push(i)}
@@ -117,6 +120,7 @@ function reportMemoryFor(s,storeId,options){
   if(parts[0]==='6p')row=v.sixP&&v.sixP[parts[1]]&&v.sixP[parts[1]][Number(parts[2])];
   else row=(v.arrival&&v.arrival.anomalies||[]).find(x=>x.id===parts.slice(1).join(':'));
   if(!familyFits(row&&row.family||''))continue;
+  for(const part of String(a.description||'').split(/\n+|(?<=[.!?;])\s+/))actionQuotes.add((row&&row.family||'')+'|'+fingerprint({text:part}));
   if(a.status==='cancelled'){seen.add(fingerprint({text:a.description}));continue}
   if(!['open','in_progress','done'].includes(a.status))continue;
   keep({kind:a.status==='done'?'action':'followup',text:a.description,source:'actions.'+a.id,family:row&&row.family||'',status:a.status,actionId:a.id,visitId:v.id,date:v.completedDate,label:'Action '+(a.status==='done'?'terminée':a.status==='in_progress'?'en cours':'ouverte'),dueDate:a.dueDate||''});
@@ -124,6 +128,7 @@ function reportMemoryFor(s,storeId,options){
  // Trois derniers rapports pour les rappels ; l'historique conserve tous les autres.
  // Un sujet textuel n'est jamais déclaré « encore ouvert » sans Action liée.
  for(const v of visits.slice(0,o.history===true?visits.length:3))for(const i of reportMemoryOf(v).items){
+  if(actionQuotes.has(i.family+'|'+fingerprint(i)))continue;
   if(i.source==='conclusion'&&items.some(x=>fingerprint(x)===fingerprint(i)))continue;
   keep({...i,visitId:v.id,date:v.completedDate,label:i.topic==='sav'?'SAV':i.topic==='stock'?'Stock / rupture':i.kind==='action'&&i.status!=='done'?'Action notée':MEMORY_LABELS[i.kind]||'Note'});
  }
@@ -150,7 +155,7 @@ function touch(v){v.updatedAt=now()}
 function editVisit(s,visitId,section,key,value){const v=getVisit(s,visitId,true);if(section==='preparation'&&Object.hasOwn(PREP,key)&&typeof value==='string')v.preparation[key]=value;
  else if(section==='arrival'&&['positives','opportunities'].includes(key)&&typeof value==='string')v.arrival[key]=value;
  else if(section==='check'&&Number.isInteger(key)&&key>=0&&key<CHECKS.length&&typeof value==='boolean')v.arrival.checks[key]=value;
- else if(section==='conclusion'&&typeof value==='string')v.conclusion=value;
+ else if(section==='conclusion'&&typeof value==='string'){v.conclusion=value;delete v.runnerConclusionSource}
  else if(section==='activeFamily'){if(!FAMILIES.includes(value))fail('Famille invalide.');v.activeFamily=value}
  else if(section==='step'&&Number.isInteger(value)&&value>=0&&value<=5)v.step=value;
  else fail('Champ visite inconnu.');touch(v)}
@@ -172,7 +177,10 @@ function actionFromAnomaly(s,visitId,anomalyId){const {v,row}=anomaly(s,visitId,
 function editReport(s,visitId,scope,key,value){const v=getVisit(s,visitId,true);
  const allowed=scope==='shared'?REPORT_SHARED:(scope==='blanc'||scope==='brun')?REPORT_FIELDS:null;
  if(!allowed||!Object.hasOwn(allowed,key)||typeof value!=='string')fail('Champ compte rendu inconnu.');
- const report=v.report=reportOf(v);report[scope][key]=value;touch(v)}
+ const report=v.report=reportOf(v);
+ // Migration paresseuse des conclusions copiées avant V277, sans effacer leur texte.
+ const previous=report[scope][key].trim();if(previous&&v.conclusion.trim()===previous.slice(0,500))v.runnerConclusionSource='report.'+scope+'.'+key;
+ report[scope][key]=value;touch(v)}
 function editAction(s,actionId,key,value){const a=getAction(s,actionId);if(!['owner','dueDate','status'].includes(key)||typeof value!=='string')fail('Champ action inconnu.');if(key==='dueDate'&&value&&!dateValid(value))fail('Échéance invalide.');if(key==='status'&&!['open','in_progress','done','cancelled'].includes(value))fail('Statut action invalide.');a[key]=value;a.updatedAt=now();if(key==='status')a.completedAt=value==='done'?(a.completedAt||now()):null;
  const v=getVisit(s,a.visitId);if(['owner','dueDate'].includes(key))for(const rows of Object.values(v.sixP))for(const row of rows)if(row.actionId===a.id)row[key]=value;
 }

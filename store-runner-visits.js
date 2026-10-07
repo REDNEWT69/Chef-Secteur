@@ -77,7 +77,7 @@ function runnerMemory(host,storeId,options){
   const entry=element('div',undefined,'sr-reportMemoryItem');entry.dataset.memoryKind=item.kind;
   entry.append(element('span',item.label+' · '+item.date+(item.family?' · '+item.family.toUpperCase():''),'sr-memoryMeta'),element('p',item.text));
   const origin=memorySource(item);
-  if(item.visitId!==activeId){const link=button(origin+' · voir le rapport',async()=>{if(!await save())return;if(typeof window.closeStoreQuick==='function')window.closeStoreQuick();openVisit(item.visitId)},'sr-memorySource');link.dataset.memoryVisit=item.visitId;entry.append(link)}
+  if(item.visitId!==activeId||!dialog.open){const link=button(origin+' · voir le rapport',async()=>{if(!await save())return;if(typeof window.closeStoreQuick==='function')window.closeStoreQuick();openVisit(item.visitId)},'sr-memorySource');link.dataset.memoryVisit=item.visitId;entry.append(link)}
   else entry.append(element('span',origin,'sr-memoryMeta'));
   target.append(entry);
  }

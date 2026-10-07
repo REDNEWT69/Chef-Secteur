@@ -19,6 +19,14 @@ function complete(s,store,date,text){
 const current={total:1,done:0,finished:false,current:stores[0]};
 const memory=(s,context={mode:'today'},tour=current)=>Home.upcomingReportRemarks(s,context,tour,env);
 
+// Les vrais visitId sont des UUID longs : tronquer leur préfixe confondait deux extraits du même rapport.
+{
+  const s=fresh();complete(s,'a','2026-10-01','Formation à prévoir sur le son.\nSAV RF48A401EB4 à relancer.');
+  const result=memory(s);assert.equal(result.lines.length,2);
+  assert.notEqual(result.lines[0].id,result.lines[1].id);
+  const brief=B.brief({remarks:result});assert.equal(brief.lines.length,2);
+}
+
 // La prochaine visite relit son propre historique, même ancien ; aucune donnée d'un autre magasin.
 {
   const s=fresh();

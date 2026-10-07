@@ -531,7 +531,7 @@ function cleanRemarks(items,cfg){
     if(memory&&typeof it.text==='string'&&Array.from(it.text.replace(/[\u0000-\u001f\u007f\s]+/g,' ').trim()).length>max)continue;
     if(!text)continue;
     const sev=int(it.severity,0,3);
-    out.push({id:keyToken(it.id)||it.kind,kind:it.kind,severity:sev===null?1:sev,tone:REMARK_TONES.indexOf(it.tone)!==-1?it.tone:'neutral',text,order:i});
+    out.push({id:memory?'memory-'+hash(text):keyToken(it.id)||it.kind,kind:it.kind,severity:sev===null?1:sev,tone:REMARK_TONES.indexOf(it.tone)!==-1?it.tone:'neutral',text,order:i});
   }
   return out;
 }

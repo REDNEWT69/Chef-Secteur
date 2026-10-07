@@ -47,6 +47,9 @@ function fixture(history) {
       if (action) M.edit6P(state, id, 'produit', 1, 'action', action);
       M.editVisit(state, id, 'conclusion', null, 'Passage terminé');
       M.complete(state, id, day);
+      // Cette fixture reste dédiée aux constats 6P V276. Les actions ouvertes et la priorité
+      // mémoire sur le décor sont couvertes par runner-report-memory-v277-browser.
+      for (const a of state.businessV2.actions.filter(a => a.visitId === id)) M.editAction(state, a.id, 'status', 'done');
     });
   }
   return state;

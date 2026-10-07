@@ -183,6 +183,18 @@ test('les brouillons et les visites réouvertes ne sont jamais présentés comme
  assert(evidence(memory(s),'Formation réalisée sur le mural.','training'));
 });
 
+test('la conclusion copiée avant une réouverture ne réactive pas une note corrigée',()=>{
+ const s=state(),old='SAV RF48A401EB4 à relancer.',v=visit(s,'a',{brun:{team:old}});
+ v.conclusion=old;delete v.runnerMemory; // ancienne version, aucune provenance persistée
+ v.status='draft';v.completedDate=null;v.completedAt=null;
+ M.editReport(s,v.id,'brun','team','SAV RF48A401EB4 résolu.');M.complete(s,v.id,'2026-10-02');
+ assert.equal(v.conclusion,old,'l’ancien texte est conservé');
+ assert.equal(v.runnerConclusionSource,'report.brun.team');assert.deepEqual(M.reportMemoryLines(s,'a'),[]);
+ v.status='draft';v.completedDate=null;v.completedAt=null;
+ M.editVisit(s,v.id,'conclusion',null,'Formation à prévoir.');M.complete(s,v.id,'2026-10-02');
+ assert(M.reportMemoryLines(s,'a').some(x=>x.text.includes('Formation à prévoir.')),'une conclusion saisie explicitement reste une source');
+});
+
 test('la mémoire des actions suit leurs statuts vivants, y compris après clôture',()=>{
  const s=state(),id=M.start(s,'a'),description='Prévoir la démonstration du mural.';
  M.edit6P(s,id,'produit',0,'action',description);M.editReport(s,id,'brun','training',description);
@@ -213,6 +225,14 @@ test('les visites sont ordonnées aussi au sein du même jour et la préparation
  assert(!prior.some(x=>[second.id,third.id].includes(x.visitId)));
  assert(!memory(s,'a',{excludeVisitId:third.id}).some(x=>x.visitId===third.id));
  assert.equal(memory(s,'a',{limit:1}).length,1);
+});
+
+test('les phrases d’une action multiligne terminée ne reviennent pas comme rappels textuels',()=>{
+ const s=state(),id=M.start(s,'a'),text='SAV RF48A401EB4 à relancer.\nFormation à prévoir sur le son.';
+ M.edit6P(s,id,'produit',0,'action',text);M.editReport(s,id,'brun','training',text);
+ M.editVisit(s,id,'conclusion',null,'Visite terrain enregistrée');M.complete(s,id,'2026-10-01');
+ M.editAction(s,s.businessV2.actions[0].id,'status','done');
+ assert.deepEqual(M.reportMemoryLines(s,'a'),[]);
 });
 
 test('les répétitions rapport/conclusion et anciennes visites ne doublonnent pas la restitution',()=>{
