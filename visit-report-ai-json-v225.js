@@ -170,7 +170,7 @@ RÈGLES ABSOLUES :
 1. Réponds UNIQUEMENT par un objet JSON valide, sans markdown ni préambule.
 2. Utilise uniquement DONNEES_SOURCE. N'invente jamais un fait, chiffre, référence, prix, nom, date, cause, action, formation, promesse ou rendez-vous.
 3. Corrige la dictée, l'orthographe et la syntaxe sans changer le sens. Conserve exactement références produit, prix, chiffres, noms, marques et termes métier.
-4. Tout avis vendeur/client reste attribué (« le vendeur indique… », « selon l’équipe… ») et ne devient jamais un fait produit.
+4. Une opinion vendeur doit rester explicitement attribuée au vendeur ; tout avis client reste aussi attribué et ne devient jamais un fait produit.
 5. Supprime répétitions et phrases vagues, sans supprimer d'information utile ni créer de causalité.
 6. Champ absent = "" ou []. actions_realisees = seulement fait ; formation = seulement réalisée ou explicitement demandée ; prochain_passage = seulement prévu ; priorite = vide si elle n'est pas sûre.
 7. synthese est le CORPS PRINCIPAL : 3 à 6 paragraphes courts, naturels, professionnels, sans titres artificiels. Regroupe les faits par sujet utile (merchandising, produits, vendeurs/clients, concurrence, actions, formation, blocages, suite) et omets les thèmes absents.
