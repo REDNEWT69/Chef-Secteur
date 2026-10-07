@@ -108,7 +108,7 @@ test('une restauration avec une autre position GPS relance la résolution de vil
 });
 
 
-test('Position reste en place et Google Agenda · Connecter forme une vraie ligne',async({page})=>{
+test('Position et Agenda remontent sans être coupés, avec Google Agenda · Connecter resserré',async({page})=>{
   await ready(page);
   await expect(page.locator('#calendarHomeStatus')).toBeVisible();
   await expect(page.locator('#calendarHomeStatus .calendarHomeLine')).toBeVisible();
@@ -117,10 +117,13 @@ test('Position reste en place et Google Agenda · Connecter forme une vraie lign
     const line=document.querySelector('#calendarHomeStatus .calendarHomeLine');
     const title=line&&line.querySelector('strong');
     const action=line&&line.querySelector('button');
-    const tr=title&&title.getBoundingClientRect(),ar=action&&action.getBoundingClientRect();
-    const style=line&&getComputedStyle(line);
+    const tr=title&&title.getBoundingClientRect(),ar=action&&action.getBoundingClientRect(),hr=host&&host.getBoundingClientRect();
+    const style=line&&getComputedStyle(line),hostStyle=host&&getComputedStyle(host);
+    const matrix=hostStyle&&hostStyle.transform!=='none'?new DOMMatrixReadOnly(hostStyle.transform):null;
     return{
-      transform:host?getComputedStyle(host).transform:'none',
+      transform:hostStyle?hostStyle.transform:'none',
+      translateY:matrix?matrix.m42:0,
+      hostTop:hr&&hr.top,
       display:style&&style.display,
       flexWrap:style&&style.flexWrap,
       alignItems:style&&style.alignItems,
@@ -131,11 +134,13 @@ test('Position reste en place et Google Agenda · Connecter forme une vraie lign
     };
   });
   expect(layout.transform).not.toBe('none');
+  expect(layout.translateY).toBeLessThanOrEqual(-18);
+  expect(layout.hostTop).toBeGreaterThanOrEqual(0);
   expect(layout.display).toContain('flex');
   expect(layout.flexWrap).toBe('nowrap');
   expect(layout.alignItems).toBe('center');
   expect(Math.abs(layout.titleCenter-layout.buttonCenter)).toBeLessThanOrEqual(1);
   expect(layout.gap).toBeGreaterThanOrEqual(0);
-  expect(layout.gap).toBeLessThanOrEqual(12);
+  expect(layout.gap).toBeLessThanOrEqual(6);
   expect(layout.buttonHeight).toBeGreaterThanOrEqual(44);
 });
