@@ -80,15 +80,21 @@
     return request;
   }
 
-  async function reverseGeocode(lat,lon){
-    if(navigator.onLine===false)return '';
+  async function reverseGeocodeInfo(lat,lon){
+    if(navigator.onLine===false)return null;
     try{
       const path='/reverse?format=jsonv2&lat='+encodeURIComponent(lat)+'&lon='+encodeURIComponent(lon)+'&zoom=18&addressdetails=1';
       const r=await nominatimFetch(path,6000);
-      if(!r.ok)return '';
-      const data=await r.json();
-      return String(data.display_name||'').trim();
-    }catch(e){return ''}
+      if(!r.ok)return null;
+      const data=await r.json(),a=(data&&data.address)||{};
+      const city=String(a.city||a.town||a.village||a.municipality||a.hamlet||'').trim();
+      return{address:String(data.display_name||'').trim(),city:city};
+    }catch(e){return null}
+  }
+
+  async function reverseGeocode(lat,lon){
+    const info=await reverseGeocodeInfo(lat,lon);
+    return info&&info.address||'';
   }
 
   async function forwardGeocode(query){
@@ -136,6 +142,65 @@
     if(lat==null||lon==null||String(lat).trim()===''||String(lon).trim()==='')return false;
     lat=Number(lat);lon=Number(lon);
     return isFinite(lat)&&isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180&&!(lat===0&&lon===0);
+  }
+
+  const DEPARTURE_DISPLAY_CACHE='store-runner-departure-display-v1';
+  let departureDisplayLookup=null;
+  function isCurrentGpsProfile(profile){
+    const p=profile||{},name=String(p.baseName||'').trim(),address=String(p.baseAddress||'').trim();
+    return validCoordinates(p.baseLat,p.baseLon)&&(/^(ma position\b|position(?: actuelle| gps)?(?:\s|$)|gps\b)/i.test(name)||/^position gps\b/i.test(address));
+  }
+  function departureDisplayKey(profile){
+    const p=profile||{};
+    return Number(p.baseLat).toFixed(4)+','+Number(p.baseLon).toFixed(4);
+  }
+  function readDepartureDisplayCache(profile){
+    try{
+      const raw=window.sessionStorage&&window.sessionStorage.getItem(DEPARTURE_DISPLAY_CACHE);
+      if(!raw)return null;
+      const cached=JSON.parse(raw);
+      return cached&&cached.key===departureDisplayKey(profile)?cached:null;
+    }catch(e){return null}
+  }
+  function writeDepartureDisplayCache(profile,info){
+    try{
+      if(!window.sessionStorage)return;
+      window.sessionStorage.setItem(DEPARTURE_DISPLAY_CACHE,JSON.stringify({
+        key:departureDisplayKey(profile),
+        city:String(info&&info.city||'').trim(),
+        address:String(info&&info.address||'').trim()
+      }));
+    }catch(e){}
+  }
+  function departureDisplay(profile){
+    const p=profile||((window.state&&state.profile)||{}),name=String(p.baseName||'').trim(),address=String(p.baseAddress||'').trim();
+    if(isCurrentGpsProfile(p)){
+      const cached=readDepartureDisplayCache(p);
+      return{kind:'gps',title:(cached&&cached.city)||'Position actuelle',detail:'Position précise',address:(cached&&cached.address)||''};
+    }
+    const title=name||address||'À définir';
+    return{kind:'saved',title:title,detail:address&&address!==title?address:'',address:address};
+  }
+  function emitDepartureDisplayUpdated(){
+    try{if(typeof window.renderHeader==='function')window.renderHeader()}catch(e){}
+    try{document.dispatchEvent(new CustomEvent('store-runner:departure-display-updated',{detail:departureDisplay()}))}catch(e){}
+  }
+  function refreshDepartureDisplay(profile){
+    const p=profile||((window.state&&state.profile)||{});
+    if(!isCurrentGpsProfile(p)||navigator.onLine===false)return Promise.resolve(departureDisplay(p));
+    const cached=readDepartureDisplayCache(p);
+    if(cached&&cached.city)return Promise.resolve(departureDisplay(p));
+    const key=departureDisplayKey(p);
+    if(departureDisplayLookup&&departureDisplayLookup.key===key)return departureDisplayLookup.promise;
+    const promise=(async function(){
+      const info=await reverseGeocodeInfo(Number(p.baseLat),Number(p.baseLon));
+      if(info&&(info.city||info.address)){writeDepartureDisplayCache(p,info);emitDepartureDisplayUpdated()}
+      return departureDisplay(p);
+    })().catch(function(){return departureDisplay(p)}).finally(function(){
+      if(departureDisplayLookup&&departureDisplayLookup.key===key)departureDisplayLookup=null;
+    });
+    departureDisplayLookup={key:key,promise:promise};
+    return promise;
   }
 
   function freshPosition(pos,startedAt){
@@ -235,6 +300,7 @@
       if(!validCoordinates(origin.lat,origin.lon))return false;
       target.baseLat=Number(origin.lat);target.baseLon=Number(origin.lon);
       target.baseName=origin.baseName;target.baseAddress=origin.baseAddress;
+      refreshDepartureDisplay(target);
     }
     if(!profile||profile===(window.state&&state.profile))installPersistedBase();
     return true;
@@ -292,7 +358,7 @@
   window.storeRunnerToast=toast;
   window.StoreRunnerGeocode={forward:forwardGeocode,reverse:reverseGeocode};
   window.storeRunnerHasValidBase=validBase;
-  window.StoreRunnerProfile={preparePlanningOrigin:preparePlanningOrigin,resolvePlanningOrigin:resolvePlanningOrigin,applyPlanningOrigin:applyPlanningOrigin};
+  window.StoreRunnerProfile={preparePlanningOrigin:preparePlanningOrigin,resolvePlanningOrigin:resolvePlanningOrigin,applyPlanningOrigin:applyPlanningOrigin,departureDisplay:departureDisplay,refreshDepartureDisplay:refreshDepartureDisplay};
   window.storeRunnerPreparePlanningOrigin=preparePlanningOrigin;
   window.lookupDepartureAddress=async function(){
     const btn=document.getElementById('departureLookupBtn');
@@ -364,6 +430,7 @@
       state.profile.overnightMinSaving=Number.isFinite(overnightMinSaving)&&overnightMinSaving>=0?overnightMinSaving:80;
       save();
       installPersistedBase();
+      refreshDepartureDisplay(state.profile);
       if(typeof renderAll==='function')renderAll();
       feedback('Réglages enregistrés ✓','ok');
       toast('Réglages enregistrés ✓');
@@ -377,7 +444,7 @@
     }
   };
 
-  function boot(){ensureCss();ensureFeedback();installPersistedBase()}
+  function boot(){ensureCss();ensureFeedback();installPersistedBase();refreshDepartureDisplay()}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
   window.addEventListener('focus',function(){setTimeout(installPersistedBase,30)});
 })();

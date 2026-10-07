@@ -36,7 +36,8 @@ async function seed(page){
     goTab('homePanel');
   });
   /* L'accueil a été reconstruit avec le jeu de test (12 magasins actifs). */
-  await expect(page.locator('#premiumHomeV2 .phSector')).toContainText('12 magasins');
+  await expect(page.locator('#premiumHomeV2 .phSector')).toHaveCount(0);
+  await expect(page.locator('#premiumHomeV2 .phHeaderContext')).not.toContainText('12 magasins');
 }
 const homeIds=page=>page.locator('#premiumHomeV2 .phGrid .phCard').evaluateAll(els=>els.map(e=>e.dataset.homeCard));
 const noOverflow=page=>page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
