@@ -51,6 +51,7 @@ const CONFIG=Object.freeze({
   labelMaxChars:32,           // longueur maximale d'un nom fourni par un propriétaire
   reasonMaxChars:40,
   lineMaxChars:140,           // V276 : longueur maximale d'une remarque métier
+  reportMemoryMaxChars:360,   // V277 : une citation reste entière, sinon la fiche seule la présente
   briefMaxLines:3,            // V276 : lignes maximales du « point du jour » (tap sur Runner)
   messageMs:6000              // durée d'affichage d'un message ou d'un état de réaction
 });
@@ -294,6 +295,7 @@ function normalizeInput(input,cfg){
   }
   const facts={date:isoDate(f.date),workday:typeof f.workday==='boolean'?f.workday:null,afterHours:f.afterHours===true,
     mode:f.mode==='today'||f.mode==='next'?f.mode:null,busy:f.busy===true,tour,attention,
+    reportMemoryKey:typeof f.reportMemoryKey==='string'&&f.reportMemoryKey?String(hash(f.reportMemoryKey)):'',
     lastVisitDaysAgo:int(f.lastVisitDaysAgo,0,9999),returnFrom:clean(f.returnFrom,32)||null};
   return{surface,trigger,now,view,facts};
 }
@@ -416,6 +418,7 @@ function decide(input,registry,options){
     for(const def of REACTIONS){
       if(def.surfaces.indexOf(inp.surface)===-1||def.triggers.indexOf(inp.trigger)===-1||!has(p.reactions,def.id)||blocked(inp,def.kind))continue;
       if((def.kind==='ambient'||def.kind==='business')&&!inp.facts.date)continue;
+      if(def.kind==='ambient'&&inp.facts.reportMemoryKey)continue;
       if(def.kind==='ambient'&&elapsed(inp.now,reg.session.lastReaction[inp.surface])<o.cfg.arrivalGuardMs)continue;
       const hit=RULES[def.id](c);
       if(!hit)continue;
@@ -501,7 +504,7 @@ function listPersonalities(options){
    l'adaptateur que l'hôte lui a confié (`connect`). Sans adaptateur, il travaille en mémoire seule. Le contrôleur
    ne lit ni n'écrit rien d'autre, n'a aucun timer ni écouteur, et ne lève jamais d'exception. */
 /* ------------------------------------------------------------ V276 : métier */
-const REMARK_KINDS=Object.freeze(['inconsistency','overdue-action','recurring','regression','improved','trend','open-actions','revisit']);
+const REMARK_KINDS=Object.freeze(['report-memory','inconsistency','overdue-action','recurring','regression','improved','trend','open-actions','revisit']);
 const REMARK_TONES=Object.freeze(['attention','positive','neutral']);
 function fr(n,one,many){return n+' '+(n>1?many:one)}
 
@@ -513,7 +516,7 @@ function signature(facts,options){
     if(!inp)return '';
     const f=inp.facts,t=f.tour,a=f.attention;
     return [f.date||'',f.workday===null?'':f.workday?'1':'0',f.afterHours?'1':'0',f.mode||'',
-      t?t.total+'/'+t.done+(t.finished?'f':''):'-',a?a.kind+':'+a.key:'-',f.lastVisitDaysAgo===null?'':f.lastVisitDaysAgo,f.busy?'b':''].join('|');
+      t?t.total+'/'+t.done+(t.finished?'f':''):'-',a?a.kind+':'+a.key:'-',f.lastVisitDaysAgo===null?'':f.lastVisitDaysAgo,f.busy?'b':'',f.reportMemoryKey].join('|');
   }catch(e){return ''}
 }
 function cleanRemarks(items,cfg){
@@ -522,7 +525,10 @@ function cleanRemarks(items,cfg){
   for(let i=0;i<items.length&&i<12;i++){
     const it=items[i];
     if(!isObj(it)||REMARK_KINDS.indexOf(it.kind)===-1)continue;
-    const text=clean(it.text,cfg.lineMaxChars);
+    // Couper une citation pourrait retirer une négation ou sa réserve. Au-delà du plafond, elle reste dans la fiche source.
+    const memory=it.kind==='report-memory',max=memory?cfg.reportMemoryMaxChars:cfg.lineMaxChars;
+    const text=clean(it.text,max);
+    if(memory&&typeof it.text==='string'&&Array.from(it.text.replace(/[\u0000-\u001f\u007f\s]+/g,' ').trim()).length>max)continue;
     if(!text)continue;
     const sev=int(it.severity,0,3);
     out.push({id:keyToken(it.id)||it.kind,kind:it.kind,severity:sev===null?1:sev,tone:REMARK_TONES.indexOf(it.tone)!==-1?it.tone:'neutral',text,order:i});
@@ -537,9 +543,10 @@ function remarks(input,options){
     const o=resolveOptions(options),i=isObj(input)?input:{};
     const p=o.personalities[has(o.personalities,i.personality)?i.personality:DEFAULT_PERSONALITY];
     const cap=Math.min(int(i.max,1,2)||2,int(p.remarkCap,1,2)||2);
-    const list=cleanRemarks(i.items,o.cfg).sort((a,b)=>b.severity-a.severity||a.order-b.order);
+    const list=cleanRemarks(i.items,o.cfg).sort((a,b)=>(b.kind==='report-memory')-(a.kind==='report-memory')||b.severity-a.severity||a.order-b.order);
     const seen=new Set(),lines=[];
-    for(const r of list){if(lines.length>=cap)break;if(seen.has(r.kind))continue;seen.add(r.kind);lines.push(r)}
+    const memory=list.some(r=>r.kind==='report-memory');
+    for(const r of list){if(lines.length>=cap)break;if(memory&&['overdue-action','open-actions'].includes(r.kind))continue;const key=r.kind==='report-memory'?r.id:r.kind;if(seen.has(key)||lines.some(l=>l.text===r.text))continue;seen.add(key);lines.push(r)}
     if(!lines.length)return none();
     const first=lines[0],state=first.tone==='attention'&&first.severity>=2?'alert':first.tone==='positive'?'success':'neutral';
     return deepFreeze({lines:lines.map(r=>({id:r.id,kind:r.kind,text:r.text})),tone:first.tone,state});
@@ -570,13 +577,15 @@ function brief(input,options){
       }
     }else if(i.workday===true&&mode==='today'&&i.afterHours!==true)lines.push({id:'day.empty',text:'Rien de prévu aujourd’hui.',action:null});
     const rem=cleanRemarks(isObj(i.remarks)?i.remarks.lines:null,cfg).slice(0,2),store=isObj(i.remarks)?clean(i.remarks.store,cfg.labelMaxChars):'';
-    rem.forEach((r,n)=>lines.push({id:r.id,text:n===0&&store?clean(store+' · '+r.text,cfg.lineMaxChars):r.text,action:null}));
+    const memoryStore=isObj(i.remarks)?keyToken(i.remarks.storeId):'';
+    rem.forEach((r,n)=>lines.push({id:r.id,text:n===0&&store?(r.kind==='report-memory'?store+' · '+r.text:clean(store+' · '+r.text,cfg.lineMaxChars)):r.text,
+      action:r.kind==='report-memory'&&n===0&&memoryStore&&!(t&&t.next&&t.next.key===memoryStore)?{type:'open-store',storeId:memoryStore}:null}));
     let attention=null;
     if(isObj(i.attention)&&ATTENTION_KINDS.indexOf(i.attention.kind)!==-1){
       const key=keyToken(i.attention.key),label=clean(i.attention.label,cfg.labelMaxChars);
       if(key&&label)attention={key,label,reason:clean(i.attention.reason,cfg.reasonMaxChars)};
     }
-    if(attention&&!rem.some(r=>r.kind==='overdue-action')){
+    if(attention&&!rem.some(r=>r.kind==='overdue-action'||(r.kind==='report-memory'&&memoryStore===attention.key))){
       // Même magasin que la prochaine visite : le bouton de la première ligne ouvre déjà sa fiche, pas un second identique.
       const sameStore=!!(t&&t.next&&t.next.key===attention.key);
       lines.push({id:'attention',text:'À regarder : '+attention.label+(attention.reason?', '+attention.reason:'')+'.',action:sameStore?null:{type:'open-store',storeId:attention.key}});

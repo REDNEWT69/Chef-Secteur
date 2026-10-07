@@ -33,6 +33,107 @@ function emptyReport(){return{shared:blankScope(REPORT_SHARED),blanc:blankScope(
 function reportOf(v){const src=object(v&&v.report)?v.report:{},out=emptyReport();
  for(const scope of REPORT_SCOPES){const from=object(src[scope])?src[scope]:{};for(const key of Object.keys(out[scope]))if(typeof from[key]==='string')out[scope][key]=from[key]}
  return out}
+/* V277 — mémoire locale, dérivée et traçable. Pas de résumé génératif : chaque texte
+   est un extrait intégral ou une référence explicitement citée. Le cache facultatif
+   voyage avec la visite ; les sources restent l'autorité (anciens exports compris). */
+const MEMORY_LABELS={action:'Action réalisée',followup:'Sujet à suivre',training:'Formation',merchandising:'Merchandising / exposition',product:'Référence citée',problem:'Problème / blocage',priority:'Prochain passage'};
+const memoryKey=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+function analyzeReport(v){
+ const items=[],seen=new Set(),report=reportOf(v);
+ function add(kind,text,source,family,status){
+  const key=kind+'|'+family+'|'+memoryKey(text);if(seen.has(key)||items.length>=48)return;
+  seen.add(key);items.push({kind,text,source,family,status});
+ }
+ function read(value,source,family,hint){
+  if(typeof value!=='string'||value.length>20000)return;
+  // Garder une phrase entière : couper à 180 caractères pourrait effacer une négation.
+  for(const part of value.split(/\n+|(?<=[.!?;])\s+/).slice(0,80)){
+   const text=part.trim();if(text.length<4||text.length>600)continue;
+   if(source==='conclusion'&&FAMILIES.some(f=>Object.values(report[f]).some(note=>note.includes(text))))continue;
+   const n=memoryKey(text);
+   const uncertain=/\?|\b(pas|non|jamais|aucun|aucune|sans|peut|pourrait|pourraient|semble|semblerait|si|souhaite|souhaiterait|envisage|envisagee)\b/.test(n);
+   const future=/\ba (prevoir|faire|suivre|revoir|relancer|terminer|finaliser|organiser|former|verifier|installer|corriger)\b|\b(prochain[e]? (passage|visite)|prevu[e]?|planifie[e]?|reste a|relancer|revoir|prevoir)\b|^(former|verifier|suivre|installer|organiser)\b/.test(n);
+   const done=/\b(realise[e]?s?|effectue[e]?s?|termine[e]?s?|corrige[e]?s?|resolu[e]?s?|installe[e]?s?|forme[e]?s?|nettoye[e]?s?|mis[e]? a jour|fait[e]?s?)\b/.test(n);
+   const status=!uncertain&&!future&&done?'done':!uncertain&&future?'planned':'recorded';
+   let kind='';
+   if(/\b(formation|forme[e]?s?|former|pedagogie)\b/.test(n))kind='training';
+   else if(/\b(probleme[s]?|blocage[s]?|bloque[e]?s?|rupture[s]?|panne[s]?|anomalie[s]?|sav)\b/.test(n))kind='problem';
+   else if(/\b(engagement[s]?|priorite[s]?|prochain[e]? (visite|passage))\b/.test(n))kind='priority';
+   else if(/\b(merchandising|merch|exposition|expo|mural|facing|lineaire|plv|ldu|massification)\b/.test(n))kind='merchandising';
+   else if(future)kind='followup';
+   else if(status==='done')kind='action';
+   else if(hint)kind=hint;
+   if(kind==='problem'&&/\b(aucun[e]?|pas de|sans)\s+(probleme[s]?|blocage[s]?|rupture[s]?|panne[s]?|anomalie[s]?)\b/.test(n))kind='';
+   if(kind)add(kind,text,source,family,status);
+   // Aucune résolution catalogue : ni modèle, ni vente, ni disponibilité déduits.
+   const refs=text.match(/\b(?:QE|UE|TQ|TU|GU|LS|HW|WW|WD|DV|RB|RS|RF|RT|NV|NZ|NK|DW|VR|VS)[-]?[A-Z0-9]{3,}(?:[-/][A-Z0-9]+)*\b/g)||[];
+   for(const m of text.matchAll(/\b(?:r[ée]f[ée]rence|r[ée]f\.?|mod[èe]le)\s*[:：]?\s*([A-Z0-9][A-Z0-9/-]{3,39})\b/gi))refs.push(m[1]);
+   for(const ref of refs)if(ref.length<=40&&/[A-Za-z]/.test(ref)&&/\d/.test(ref))add('product',ref,source,family,'recorded');
+  }
+ }
+ for(const family of FAMILIES){const block=report[family];
+  read(block.team,'report.'+family+'.team',family,'');
+  read(block.training,'report.'+family+'.training',family,'priority');
+  read(block.actions,'report.'+family+'.actions',family,'action');
+  read(block.massification,'report.'+family+'.massification',family,'merchandising');
+  read(block.omni,'report.'+family+'.omni',family,'followup');
+ }
+ read(report.shared.context,'report.shared.context','','');
+ read(v&&v.conclusion,'conclusion','','');
+ const arrival=v&&v.arrival||{};
+ read(arrival.positives,'arrival.positives','','');read(arrival.opportunities,'arrival.opportunities','','followup');
+ for(const [i,a] of (Array.isArray(arrival.anomalies)?arrival.anomalies:[]).entries())if(a&&!a.actionId)read(a.text,'arrival.anomalies.'+i+'.text',a.family||'','problem');
+ for(const [p,section] of Object.entries(SIX_P)){
+  const rows=v&&v.sixP&&v.sixP[p];if(!Array.isArray(rows))continue;
+  rows.forEach((row,i)=>{if(!row)return;read(row.comment,'sixP.'+p+'.'+i+'.comment',row.family||'',row.status==='correct'?'problem':'');
+   // Les statuts seuls restent chez insightsFor (V276) qui sait comparer leur historique.
+  });
+ }
+ return{version:1,items};
+}
+function reportMemoryOf(v){
+ if(!v||v.status!=='completed')return{version:1,items:[]};
+ const derived=analyzeReport(v);
+ // Un import modifié, une ancienne version ou un cache altéré ne peut fabriquer un fait.
+ return object(v.runnerMemory)&&JSON.stringify(v.runnerMemory)===JSON.stringify(derived)?clone(v.runnerMemory):derived;
+}
+function reportMemoryFor(s,storeId,options){
+ const o=options||{},key=String(storeId==null?'':storeId),b=s&&s.businessV2||{},all=Array.isArray(b.visits)?b.visits:[];
+ const order=(a,c)=>String(c.completedDate||'').localeCompare(String(a.completedDate||''))||String(c.completedAt||'').localeCompare(String(a.completedAt||''))||String(c.id).localeCompare(String(a.id));
+ let visits=all.filter(v=>v&&String(v.storeId)===key&&v.status==='completed'&&v.id!==o.excludeVisitId).slice().sort(order);
+ if(o.onlyVisitId)visits=visits.filter(v=>v.id===o.onlyVisitId);
+ if(o.beforeVisitId){const at=visits.findIndex(v=>v.id===o.beforeVisitId);if(at>=0)visits=visits.slice(at+1);else visits=[]}
+ const byId=new Map(visits.map(v=>[v.id,v])),items=[],seen=new Set();
+ const familyFits=f=>!o.family||!f||f==='both'||f===o.family;
+ const fingerprint=i=>memoryKey(i.text).replace(/[.!?;]+$/,'');
+ function keep(i){const k=fingerprint(i);if(!k||seen.has(k)||!familyFits(i.family))return;seen.add(k);items.push(i)}
+ // Les statuts d'Action sont vivants : aucune copie du cache ne les remplace.
+ const actions=(Array.isArray(b.actions)?b.actions:[]).filter(a=>a&&String(a.storeId)===key&&byId.has(a.visitId)).slice().sort((a,c)=>Number(['done','cancelled'].includes(a.status))-Number(['done','cancelled'].includes(c.status))||order(byId.get(a.visitId),byId.get(c.visitId)));
+ for(const a of actions){const v=byId.get(a.visitId),parts=String(a.source||'').split(':');let row;
+  if(parts[0]==='6p')row=v.sixP&&v.sixP[parts[1]]&&v.sixP[parts[1]][Number(parts[2])];
+  else row=(v.arrival&&v.arrival.anomalies||[]).find(x=>x.id===parts.slice(1).join(':'));
+  if(!familyFits(row&&row.family||''))continue;
+  if(a.status==='cancelled'){seen.add(fingerprint({text:a.description}));continue}
+  if(!['open','in_progress','done'].includes(a.status))continue;
+  keep({kind:a.status==='done'?'action':'followup',text:a.description,source:'actions.'+a.id,family:row&&row.family||'',status:a.status,actionId:a.id,visitId:v.id,date:v.completedDate,label:'Action '+(a.status==='done'?'terminée':a.status==='in_progress'?'en cours':'ouverte'),dueDate:a.dueDate||''});
+ }
+ // Trois derniers rapports pour les rappels ; l'historique conserve tous les autres.
+ // Un sujet textuel n'est jamais déclaré « encore ouvert » sans Action liée.
+ for(const v of visits.slice(0,o.history===true?visits.length:3))for(const i of reportMemoryOf(v).items){
+  if(i.source==='conclusion'&&items.some(x=>fingerprint(x)===fingerprint(i)))continue;
+  keep({...i,visitId:v.id,date:v.completedDate,label:i.kind==='action'&&i.status!=='done'?'Action notée':MEMORY_LABELS[i.kind]||'Note'});
+ }
+ const score=i=>i.actionId&&i.status!=='done'?100:i.status==='planned'?80:i.kind==='problem'&&i.status!=='done'?70:i.kind==='priority'||i.kind==='followup'?60:i.kind==='training'?40:i.kind==='merchandising'?30:i.kind==='action'?20:10;
+ items.sort((a,c)=>score(c)-score(a)||String(c.date).localeCompare(String(a.date)));
+ return{storeId:key,items:items.slice(0,Number.isInteger(o.limit)?Math.max(0,o.limit):48)};
+}
+function reportMemoryLines(s,storeId,options){
+ const o=options||{},data=reportMemoryFor(s,storeId,{...o,limit:48});
+ return data.items.filter(i=>i.status!=='done'&&(i.actionId||i.kind!=='product'&&i.kind!=='action')).slice(0,Number.isInteger(o.limit)?o.limit:2).map(i=>({
+  id:'memory:'+i.visitId+':'+i.source,kind:'report-memory',severity:i.actionId?3:i.status==='planned'||i.kind==='problem'?2:1,tone:i.actionId?'attention':'neutral',
+  text:(i.actionId?i.label+' · ':i.label+' · noté le ')+i.date+' : « '+i.text+' »'
+ }));
+}
 function familyOf(v){return FAMILIES.includes(v&&v.activeFamily)?v.activeFamily:'brun'}
 function data(s){return s.businessV2===undefined?(s.businessV2=empty()):s.businessV2}
 function getVisit(s,visitId,edit=false){const v=data(s).visits.find(x=>x.id===visitId);if(!v)fail('Visite introuvable.');if(edit&&v.status!=='draft')fail('Cette visite est terminée.');return v}
@@ -72,7 +173,7 @@ function editAction(s,actionId,key,value){const a=getAction(s,actionId);if(!['ow
  const v=getVisit(s,a.visitId);if(['owner','dueDate'].includes(key))for(const rows of Object.values(v.sixP))for(const row of rows)if(row.actionId===a.id)row[key]=value;
 }
 function complete(s,visitId,day){const v=getVisit(s,visitId);if(v.status==='completed')return v.id;if(!dateValid(day))fail('Date de visite invalide.');if(!v.conclusion.trim())fail('Ajoute une conclusion avant de terminer.');for(const [p,rows] of Object.entries(v.sixP))rows.forEach((row,i)=>{if(row.action.trim())actionFrom6P(s,visitId,p,i)});
- v.status='completed';v.completedDate=day;v.completedAt=now();touch(v);
+ v.status='completed';v.completedDate=day;v.completedAt=now();touch(v);v.runnerMemory=analyzeReport(v);
  if(s.stores.some(x=>String(x.id)===v.storeId)){if(!s.visits)s.visits={};const history=s.visits[v.storeId]||(s.visits[v.storeId]={lastVisit:'',history:[]});if(!Array.isArray(history.history))history.history=[];if(!history.history.includes(day))history.history.push(day);history.history.sort();history.lastVisit=history.history[history.history.length-1]||''}return v.id;
 }
 /* V231 — suppression d'une visite enregistrée par erreur.
@@ -140,6 +241,6 @@ function validate(s){const b=s.businessV2;if(b===undefined)return s;if(!object(b
   const parts=a.source.split(':');if(parts[0]==='6p'){const rows=v.sixP[parts[1]],row=rows&&rows[Number(parts[2])];if(!row||row.actionId!==a.id||a.category!==SIX_P[parts[1]].label)fail('Source 6P invalide.')}else if(parts[0]==='360'){if(!v.arrival.anomalies.some(x=>x.id===parts.slice(1).join(':')&&x.actionId===a.id)||a.category!=='360°')fail('Source anomalie invalide.')}else fail('Source action inconnue.');
  }return s;
 }
-const api={SIX_P,CHECKS,PREP,FAMILIES,FAMILY_LABELS,FAMILY_VALUES,REPORT_SHARED,REPORT_FIELDS,clone,empty,data,start,getVisit,editVisit,edit6P,addAnomaly,editAnomaly,setAnomalyFamily,editReport,reportOf,actionFrom6P,actionFromAnomaly,editAction,complete,removeVisit,validate,dateValid};
+const api={SIX_P,CHECKS,PREP,FAMILIES,FAMILY_LABELS,FAMILY_VALUES,REPORT_SHARED,REPORT_FIELDS,MEMORY_LABELS,analyzeReport,reportMemoryOf,reportMemoryFor,reportMemoryLines,clone,empty,data,start,getVisit,editVisit,edit6P,addAnomaly,editAnomaly,setAnomalyFamily,editReport,reportOf,actionFrom6P,actionFromAnomaly,editAction,complete,removeVisit,validate,dateValid};
 root.StoreRunnerVisitModel=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

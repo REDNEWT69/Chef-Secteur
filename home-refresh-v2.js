@@ -76,8 +76,10 @@
      signature de la ligne affichée et le point du jour. */
   function behaviorFacts(now,returnedFrom){
     const t=new Date(now),context=homeFacts&&homeFacts.context,tour=homeFacts&&homeFacts.tour;
+    const memory=upcomingReportRemarks(state,context,tour);
     return{date:isoLocal(t),workday:workdayToday(t),afterHours:!!(context&&context.afterHours),mode:context&&context.mode,
-      tour:tour?{total:tour.total,done:tour.done,finished:!!tour.finished}:null,attention:homeAttention(t),lastVisitDaysAgo:lastVisitDaysAgo(t),returnFrom:returnedFrom||null};
+      tour:tour?{total:tour.total,done:tour.done,finished:!!tour.finished}:null,attention:homeAttention(t),lastVisitDaysAgo:lastVisitDaysAgo(t),returnFrom:returnedFrom||null,
+      reportMemoryKey:memory?JSON.stringify([memory.storeId,memory.lines]):''};
   }
   function factsSignature(now){try{const b=behaviorApi();return b?b.controller().signature(behaviorFacts(now,'')):''}catch(e){return''}}
   /* Une ligne ambiante n'est vraie que pour les faits dont elle est née. Dès qu'ils changent (visite clôturée ou rouverte, point
@@ -558,14 +560,32 @@
     const host=document.getElementById('homeRunnerBriefV276');
     if(briefOpen&&host&&typeof host.scrollIntoView==='function')try{host.scrollIntoView({block:'nearest'})}catch(e){}
   }
+  /* V277 : le modèle possède l'analyse. L'accueil ne choisit que le magasin dont le passage est déjà prévu.
+     Aucune limite J/J-1 pour cette mémoire : un engagement ancien reste utile au prochain passage. */
+  function reportRemarksFor(stateValue,storeId,environment){
+    try{
+      const env=environment||{},win=typeof window!=='undefined'?window:{},model=env.model||win.StoreRunnerVisitModel,b=env.behavior||win.StoreRunnerBehavior;
+      if(!model||typeof model.reportMemoryLines!=='function'||!b)return null;
+      const items=model.reportMemoryLines(stateValue,String(storeId),{limit:12}),said=b.controller().remarks({items});
+      return said.lines.length?{lines:said.lines,storeId:String(storeId),store:storeLabel(stateValue,storeId)}:null;
+    }catch(e){return null}
+  }
+  function upcomingReportRemarks(stateValue,context,tour,environment){
+    const next=context&&context.mode==='next'&&context.next,route=next&&Array.isArray(next.route)?next.route:[];
+    const current=next?route[0]:tour&&!tour.finished?tour.current:null;
+    return current&&current.id!=null?reportRemarksFor(stateValue,current.id,environment):null;
+  }
   function lastVisitRemarks(now){
     try{
       const X=window.StoreRunnerStoreExplorer,b=behaviorApi();
-      if(!X||typeof X.insightsFor!=='function'||!b)return null;
+      if(!b)return null;
       const today=isoLocal(now),yesterday=isoLocal(now-DAY_MS);
       const done=(((state.businessV2||{}).visits)||[]).filter(v=>v&&v.status==='completed'&&(v.completedDate===today||v.completedDate===yesterday))
         .sort((a,c)=>String(c.completedAt||c.completedDate).localeCompare(String(a.completedAt||a.completedDate)));
       for(const v of done){
+        const memory=reportRemarksFor(state,v.storeId);
+        if(memory)return memory;
+        if(!X||typeof X.insightsFor!=='function')continue;
         const found=X.insightsFor(state,v.storeId,{});
         if(found.visitId!==String(v.id))continue;
         const said=b.controller().remarks({items:found.items});
@@ -578,7 +598,7 @@
     const facts=behaviorFacts(now,''),context=homeFacts&&homeFacts.context,tour=homeFacts&&homeFacts.tour;
     if(context&&context.mode==='next'&&context.next&&Array.isArray(context.next.route)&&context.next.route.length)facts.tour={total:context.next.route.length,done:0,finished:false,next:null};
     else if(tour){const cur=tour.current;facts.tour={total:tour.total,done:tour.done,finished:!!tour.finished,next:cur&&cur.id!=null?{key:String(cur.id),label:storeLabel(state,cur.id,cur)}:null}}
-    facts.remarks=lastVisitRemarks(now);
+    facts.remarks=upcomingReportRemarks(state,context,tour)||lastVisitRemarks(now);
     return facts;
   }
   function paintBrief(){
@@ -706,7 +726,7 @@
   async function boot(){for(let i=0;i<60;i++){run();observeHomeSignals();observePanels();if(document.getElementById('homePanel')&&document.getElementById('bottomAppNav')&&homeObserver)break;await new Promise(r=>setTimeout(r,100))}run();observeHomeSignals();observePanels()}
   function refreshWhenVisible(){if(document.hidden)return;run();observeHomeSignals();observePanels()}
 
-  const publicApi={buildActivityCards,buildActivityCatalog,composeHomeCards,normalizePrefs,isCustomPrefs,readPrefs,writePrefs,prefsOps,PREFS_KEY,CARD_IDS,buildTerrainCard,rankCards,openActions,opportunityFacts,plannedRouteForDate,nextPlannedTour,buildHomeContext};
+  const publicApi={buildActivityCards,buildActivityCatalog,composeHomeCards,normalizePrefs,isCustomPrefs,readPrefs,writePrefs,prefsOps,PREFS_KEY,CARD_IDS,buildTerrainCard,rankCards,openActions,opportunityFacts,plannedRouteForDate,nextPlannedTour,buildHomeContext,upcomingReportRemarks};
   if(typeof module!=='undefined'&&module.exports)module.exports=publicApi;
   if(typeof window==='undefined'||typeof document==='undefined')return;
   publicApi.openCards=openSheet;publicApi.closeCards=closeSheet;
