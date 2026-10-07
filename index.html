@@ -37,9 +37,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Store Runner">
   <meta name="application-name" content="Store Runner">
-  <link rel="manifest" href="./manifest.webmanifest?rev=20261007-r72-report-quality-276">
-  <link rel="icon" href="./app-icon.svg?rev=20261007-r72-report-quality-276" type="image/svg+xml">
-  <link rel="apple-touch-icon" sizes="192x192" href="./app-icon-192.png?rev=20261007-r72-report-quality-276">
+  <link rel="manifest" href="./manifest.webmanifest?rev=20261007-r73-auto-ai-lazy-276">
+  <link rel="icon" href="./app-icon.svg?rev=20261007-r73-auto-ai-lazy-276" type="image/svg+xml">
+  <link rel="apple-touch-icon" sizes="192x192" href="./app-icon-192.png?rev=20261007-r73-auto-ai-lazy-276">
   <style>
     html,body{margin:0;min-height:100%;background:var(--sr-boot-bg,#fbfaf8);color:var(--sr-boot-ink,#111);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
   </style>
@@ -58,10 +58,10 @@
   </style>
 </head>
 <body>
-  <div id="storeRunnerBoot" data-store-runner-boot role="status" aria-live="polite"><div class="srBootInner"><img src="./app-icon.svg?rev=20261007-r72-report-quality-276" alt="S-RUNNER"><strong>Store Runner</strong><span class="srBootSig">S-RUNNER By Red①</span><span id="bootText" class="srBootText" data-boot-text>Chargement de ton espace terrain…</span></div></div>
+  <div id="storeRunnerBoot" data-store-runner-boot role="status" aria-live="polite"><div class="srBootInner"><img src="./app-icon.svg?rev=20261007-r73-auto-ai-lazy-276" alt="S-RUNNER"><strong>Store Runner</strong><span class="srBootSig">S-RUNNER By Red①</span><span id="bootText" class="srBootText" data-boot-text>Chargement de ton espace terrain…</span></div></div>
   <script>
   (async function(){
-    const BUILD_REV='20261007-r72-report-quality-276';
+    const BUILD_REV='20261007-r73-auto-ai-lazy-276';
     const withRev=(path)=>path+'?rev='+BUILD_REV;
 
     /* V234 — un seul écran de chargement, du tout premier octet jusqu'à l'accueil final.
@@ -430,7 +430,7 @@ if(document.readyState===\'loading\')document.addEventListener(\'DOMContentLoade
       const appearanceAttrs=['data-sr-mode','data-sr-theme','data-sr-accent'].map(function(name){return ' '+name+'="'+document.documentElement.getAttribute(name)+'"'}).join('');
       const runtimeTheme=document.documentElement.getAttribute('data-sr-theme')==='dark'?'#151e2c':'#f2f5fa';
       html=html.replace(/(<meta\s+name="theme-color"\s+content=")[^"]+("\s*>)/,function(_,prefix,suffix){return prefix+runtimeTheme+suffix});
-      const patchedHtml=html.replace(/<html\b/i,'<html data-store-runner-booting').replace('<html data-store-runner-booting','<html data-store-runner-booting'+appearanceAttrs).replace('<head>','<head>'+runtimeIconMarkup+runtimeBootStyle+runtimeScopeShim+assistantUiShim+styleTag('./glass-theme.css')).replace('<body>','<body>'+runtimeBootMarkup+scriptTag('./store-runner-visit-model.js')+scriptTag('./reliability-core.js')).replace('</body>',calendarOauthShim+v184RuntimeShim+connectionUi+regionUi+scriptTag('./reliability-ui.js')+styleTag('./store-runner-visits.css')+scriptTag('./store-runner-visit-store.js')+scriptTag('./store-runner-visits.js')+scriptTag('./store-runner-opportunities.js')+scriptTag('./note-proofreader-v221.js')+scriptTag('./visit-report-slack.js')+scriptTag('./runner-report-ai-auto-v2771.js')+'</body>');
+      const patchedHtml=html.replace(/<html\b/i,'<html data-store-runner-booting').replace('<html data-store-runner-booting','<html data-store-runner-booting'+appearanceAttrs).replace('<head>','<head>'+runtimeIconMarkup+runtimeBootStyle+runtimeScopeShim+assistantUiShim+styleTag('./glass-theme.css')).replace('<body>','<body>'+runtimeBootMarkup+scriptTag('./store-runner-visit-model.js')+scriptTag('./reliability-core.js')).replace('</body>',calendarOauthShim+v184RuntimeShim+connectionUi+regionUi+scriptTag('./reliability-ui.js')+styleTag('./store-runner-visits.css')+scriptTag('./store-runner-visit-store.js')+scriptTag('./store-runner-visits.js')+scriptTag('./store-runner-opportunities.js')+scriptTag('./note-proofreader-v221.js')+scriptTag('./visit-report-slack.js')+'</body>');
       document.open();
       document.write(patchedHtml);
       document.close();

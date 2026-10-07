@@ -1,4 +1,4 @@
-const BUILD_REV = "20261007-r72-report-quality-276";
+const BUILD_REV = "20261007-r73-auto-ai-lazy-276";
 /* V261.2 hotfix : même révision applicative, nouveau namespace de cache afin que les
    PWA déjà installées récupèrent le correctif de capacité à la source (visit-counting.js)
    sans mélanger ancien et nouveau shell. Le BUILD_REV reste V261 : aucune migration. */
@@ -12,7 +12,7 @@ const CORE_SHELL = [
   "./", "./index.html", "./src/chef-secteur.html", "./store-runner-visit-model.js",
   "./store-runner-visit-store.js", "./store-runner-visits.js", "./note-proofreader-v221.js",
   "./store-runner-visits.css", "./store-opening-hours.js", "./reliability-core.js",
-  "./visit-report-slack.js", "./runner-report-ai-auto-v2771.js", "./store-runner-opportunities.js", "./performance-data-v190.js",
+  "./visit-report-slack.js", "./store-runner-opportunities.js", "./performance-data-v190.js",
   "./performance-ui-v190.js", "./assistant-performance-context-v192.js", "./weekly-brief-v246.js",
   "./weekly-brief-ui-v246.js", "./weekly-brief-import-v246b.js", "./visit-mobile-ux-v215.js",
   "./visit-mobile-tabs-v216.js", "./cuisiniste-contracts-v193.js",

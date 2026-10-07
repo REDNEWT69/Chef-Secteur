@@ -124,7 +124,7 @@ OBJECTIF :
 Produire UN SEUL compte rendu clair, naturel et directement exploitable. Il doit ressembler à un vrai rapport terrain rédigé après la visite, pas à un formulaire rempli automatiquement.
 
 RÈGLES ABSOLUES :
-1. Utilise UNIQUEMENT les faits présents dans DONNEES_SOURCE. N’invente jamais un chiffre, un contact, une référence, une performance, une marque partenaire, un contrat, un litige, un rendez-vous, une action ou une conclusion.
+1. Utilise UNIQUEMENT les faits présents dans DONNEES_SOURCE. N’invente aucun fait, même plausible. N’invente jamais un chiffre, un contact, une référence, une performance, une marque partenaire, un contrat, un litige, un rendez-vous, une action ou une conclusion.
 2. Conserve exactement les références produit, montants, dates, noms, marques, volumes et statuts lorsqu’ils sont présents.
 3. Corrige orthographe, grammaire et dictée vocale sans modifier le sens.
 4. Regroupe les informations proches et supprime les répétitions. Ne récite jamais les notes ligne par ligne.
@@ -342,5 +342,26 @@ function fromVisitDialog(){const api=root.StoreRunnerVisits,id=api&&typeof api.a
 function fromQuickSheet(){const start=root.document&&root.document.getElementById('srQuickStart'),storeId=start&&start.dataset?start.dataset.srStart:'',draft=storeId?draftFor(storeId):null;if(!draft){ensureSheet();say('Démarre la visite avant de générer le compte rendu.',true);if(typeof root.alert==='function')root.alert('Démarre la visite avant de générer le compte rendu.');return false}open(draft.id);return true}
 function installButtons(){if(!root.document)return false;ensureStyle();let done=0;const head=root.document.querySelector('#srVisitDialog .sr-head');if(head&&!root.document.getElementById(VISIT_BTN_ID)){const b=btn('📤 Sortie magasin',fromVisitDialog,'secondary');b.id=VISIT_BTN_ID;const fermer=[...head.querySelectorAll('button')].find(x=>x.textContent==='Fermer');if(fermer)head.insertBefore(b,fermer);else head.appendChild(b);done++}const actions=root.document.querySelector('#storeQuickSheet .sheetActions');if(actions&&!root.document.getElementById(QUICK_BTN_ID)){const b=btn('📤 Sortie magasin',fromQuickSheet,'secondary');b.id=QUICK_BTN_ID;const photo=root.document.getElementById('storePhotosQuickBtn');if(photo&&photo.parentNode===actions)photo.insertAdjacentElement('afterend',b);else actions.appendChild(b);done++}return done>0}
 function boot(){ensureSheet();installButtons()}
-const api={FAMILY_OF_BRAND,skeletonFor,build,buildAIPayload,aiPrompt,cleanAIText,aiFailureMessage,open,installButtons};root.StoreRunnerVisitReport=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();root.document.addEventListener('store-runner:data-restored',installButtons);root.document.addEventListener('store-runner:planning-updated',installButtons)}
+let autoAILoading=null;
+function hasPendingAI(){
+ try{const b=root.state&&root.state.businessV2,rows=b&&Array.isArray(b.visits)?b.visits:[];return rows.some(v=>v&&v.status==='completed'&&v.runnerAI&&v.runnerAI.status==='pending')}catch(e){return false}
+}
+function ensureAutoAI(){
+ if(root.StoreRunnerReportAIAutoV2771)return Promise.resolve(true);
+ if(autoAILoading)return autoAILoading;
+ if(!root.document)return Promise.resolve(false);
+ autoAILoading=new Promise(resolve=>{const script=root.document.createElement('script'),rev=root.__STORE_RUNNER_BUILD_REV||'v2771';script.src='./runner-report-ai-auto-v2771.js?rev='+encodeURIComponent(rev);script.async=true;script.dataset.srAutoAiV2771='1';script.onload=()=>{autoAILoading=null;resolve(!!root.StoreRunnerReportAIAutoV2771)};script.onerror=()=>{autoAILoading=null;resolve(false)};(root.document.head||root.document.documentElement).appendChild(script)});
+ return autoAILoading;
+}
+function bootAutoAI(){
+ if(hasPendingAI()&&(!root.navigator||root.navigator.onLine!==false))ensureAutoAI();
+}
+const api={FAMILY_OF_BRAND,skeletonFor,build,buildAIPayload,aiPrompt,cleanAIText,aiFailureMessage,open,installButtons};root.StoreRunnerVisitReport=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;if(root.document){
+ if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
+ root.document.addEventListener('store-runner:data-restored',()=>{installButtons();bootAutoAI()});
+ root.document.addEventListener('store-runner:planning-updated',installButtons);
+ root.document.addEventListener('store-runner:visit-completed',()=>{ensureAutoAI()});
+ if(root.addEventListener)root.addEventListener('online',bootAutoAI);
+ root.setTimeout&&root.setTimeout(bootAutoAI,1200);
+}
 })(typeof window!=='undefined'?window:globalThis);
