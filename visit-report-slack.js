@@ -118,7 +118,7 @@ ${sample}`;
  }
  if(data.skeleton==='cuisinistes'){
   const storeName=[text(data.store&&data.store.enseigne),text(data.store&&data.store.ville)].filter(Boolean).join(' ');
-  return `Tu es un Field Merchandising Trainer (FMT) expert des enseignes cuisinistes. Tu rédiges le compte rendu de visite professionnel d’un chef de secteur Samsung à partir de ses notes terrain.
+  return `Tu es un Field Merchandising Trainer (FMT) expert des enseignes cuisinistes. Tu rédiges le compte rendu de visite professionnel d’un chef de secteur ${PRIMARY_BRAND} à partir de ses notes terrain.
 
 OBJECTIF :
 Produire UN SEUL compte rendu clair, naturel et directement exploitable. Il doit ressembler à un vrai rapport terrain rédigé après la visite, pas à un formulaire rempli automatiquement.
