@@ -59,17 +59,32 @@ function legacyReport(host,block){
 function frenchDay(iso){const p=String(iso||'').split('-');return p.length===3?p[2]+'/'+p[1]:String(iso||'')}
 function localDay(){const d=new Date(),p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())}
 function sameDayCompleted(storeId){const id=String(storeId||''),day=localDay();return domain().visits.filter(v=>String(v.storeId)===id&&v.status==='completed'&&v.completedDate===day).sort((a,b)=>String(b.completedAt||b.updatedAt||'').localeCompare(String(a.completedAt||a.updatedAt||'')))[0]||null}
-/* La promesse de la visite précédente, pour la famille affichée uniquement. Lecture seule :
-   aucune écriture, aucun champ supplémentaire à remplir en magasin. */
-function lastPromise(v,family){
- const rows=domain().visits
-  .filter(x=>String(x.storeId)===String(v.storeId)&&x.id!==v.id&&x.status==='completed')
-  .sort((a,b)=>String(b.completedDate||b.completedAt||'').localeCompare(String(a.completedDate||a.completedAt||'')));
- for(const row of rows){
-  const t=String((M.reportOf(row)[family]||{}).training||'').trim();
-  if(t)return{date:row.completedDate||'',text:t};
+/* Une même lecture pour fiche magasin, rapport et préparation. Les citations sont
+   rendues en textContent, datées et reliées au rapport ; aucune note n'est réécrite. */
+function memorySource(item){
+ const source=item.source||'';
+ if(source.startsWith('actions.'))return 'Plan d’action';
+ if(source.startsWith('report.')){const parts=source.split('.');return parts[2]==='team'?'Note terrain':parts[2]==='training'?'Prochain passage / formation':parts[2]==='context'?'Contexte magasin':'Compte rendu';}
+ return source.startsWith('sixP.')?'Constat 6P':source.startsWith('arrival.')?'Relevé 360°':'Conclusion';
+}
+function runnerMemory(host,storeId,options){
+ const opts=options||{},items=M.reportMemoryFor(window.state,storeId,opts).items;
+ if(!items.length)return false;
+ const box=element('section',undefined,'sr-reportMemory'+(opts.previous?' sr-lastPromise':''));box.setAttribute('aria-label','Mémoire Runner');
+ box.append(element('b',opts.previous?'Pour ce passage':opts.onlyVisitId?'Runner a retenu':'À retenir avec Runner'));
+ const list=element('div',undefined,'sr-reportMemoryList');
+ function row(item,target){
+  const entry=element('div',undefined,'sr-reportMemoryItem');entry.dataset.memoryKind=item.kind;
+  entry.append(element('span',item.label+' · '+item.date+(item.family?' · '+item.family.toUpperCase():''),'sr-memoryMeta'),element('p',item.text));
+  const origin=memorySource(item);
+  if(item.visitId!==activeId||!dialog.open){const link=button(origin+' · voir le rapport',async()=>{if(!await save())return;if(typeof window.closeStoreQuick==='function')window.closeStoreQuick();openVisit(item.visitId)},'sr-memorySource');link.dataset.memoryVisit=item.visitId;entry.append(link)}
+  else entry.append(element('span',origin,'sr-memoryMeta'));
+  target.append(entry);
  }
- return null;
+ items.slice(0,2).forEach(item=>row(item,list));box.append(list);
+ if(items.length>2){const more=element('details');more.append(element('summary','Voir les '+(items.length-2)+' autres éléments'));items.slice(2).forEach(item=>row(item,more));box.append(more)}
+ box.append(element('small','Extraits des visites enregistrées. Seules les actions suivies ont un statut actualisé.'));
+ host.append(box);return true;
 }
 /* V255 — la galerie s'ouvre sur les photos de CETTE visite, et la prochaine photo prend la
    famille affichée ici (BRUN ou BLANC) : aucun classement manuel à faire. */
@@ -127,13 +142,7 @@ function cuisinisteReport(host,v){
 function report(host,v){
  if(isCuisinisteStoreId(v.storeId)){cuisinisteReport(host,v);return}
  const data=M.reportOf(v),family=shownFamily(v),families=visitFamilies(v),block=data[family];
- const promise=lastPromise(v,family);
- if(promise){
-  const box=element('section',undefined,'sr-lastPromise');
-  box.append(element('b','La dernière fois'+(promise.date?' ('+frenchDay(promise.date)+')':'')+', tu notais :'));
-  box.append(element('p',promise.text));
-  host.append(box);
- }
+ if(v.status==='draft')runnerMemory(host,v.storeId,{family,excludeVisitId:v.id,previous:true,limit:6});
  const intro=element('section',undefined,'sr-terrainIntro');intro.append(element('h3','Carnet terrain · '+family.toUpperCase()),element('p','Note seulement ce que TeamHaven ne capte pas : retour vendeur, perception de la marque, concurrence, opportunité, formation ou point à revoir.'));host.append(intro);
  const contextLabel=families.length>1?'Contexte magasin · facultatif, commun BLANC / BRUN':'Contexte magasin · facultatif';
  const context=field(host,contextLabel,data.shared.context,value=>save(s=>M.editReport(s,v.id,'shared','context',value)),'textarea',v.status==='completed');context.rows=3;
@@ -148,6 +157,7 @@ function report(host,v){
  }else{
   host.append(element('p','Visite terminée le '+v.completedDate,'sr-completed'));
   runnerRemark(host,v);
+  runnerMemory(host,v.storeId,{family,onlyVisitId:v.id,history:true});
   if(v.completedDate===localDay()){const reopen=button('↩ Réouvrir cette visite',()=>reopenVisit(v,true),'secondary');reopen.dataset.srReopenVisit=v.id;host.append(reopen)}
   dangerZone(host,v);
  }
@@ -251,7 +261,7 @@ async function reopenVisit(v,ask){
   const live=M.getVisit(s,visitId);if(live.status!=='completed')return;
   const day=live.completedDate,storeId=String(live.storeId);
   if(day!==localDay())throw Error('Seule une visite terminée aujourd’hui peut être réouverte.');
-  live.status='draft';live.completedAt=null;live.completedDate=null;live.updatedAt=new Date().toISOString();normalizeVisitFamily(s,live);
+  live.status='draft';live.completedAt=null;live.completedDate=null;delete live.runnerMemory;live.updatedAt=new Date().toISOString();normalizeVisitFamily(s,live);
   const otherSameDay=(s.businessV2&&s.businessV2.visits||[]).some(x=>x.id!==live.id&&String(x.storeId)===storeId&&x.status==='completed'&&x.completedDate===day);
   const legacy=s.visits&&s.visits[storeId];
   if(legacy&&Array.isArray(legacy.history)&&!otherSameDay){legacy.history=legacy.history.filter(x=>x!==day);legacy.history.sort();legacy.lastVisit=legacy.history[legacy.history.length-1]||''}
@@ -299,7 +309,7 @@ function isCuisinisteStoreId(storeId){
 function ensureMemoryStyle(){if(document.getElementById('sr-store-memory-style'))return;const s=element('style');s.id='sr-store-memory-style';s.textContent='#srStoreMemory{margin:14px 0 4px;padding:14px;border:1px solid #e5e7eb;border-radius:18px;background:#f8fafc}#srStoreMemory .sr-memoryHead{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:9px}#srStoreMemory h3{margin:0;font-size:15px}#srStoreMemory .sr-memoryMeta{font-size:11px;color:#667085;margin-top:3px}#srStoreMemory .sr-memoryList{display:grid;gap:7px}#srStoreMemory .sr-memoryRow{width:100%;min-height:44px;text-align:left;border:1px solid #dde3ec;border-radius:13px;background:#fff;padding:9px 10px;display:block;color:#1d2939}#srStoreMemory .sr-memoryRow b{display:block;font-size:12px;margin-bottom:2px}#srStoreMemory .sr-memoryRow span{display:block;font-size:11px;line-height:1.35;color:#667085;white-space:normal}#srStoreMemory .sr-memoryActions{margin-top:12px;padding-top:10px;border-top:1px solid #e5e7eb}#srStoreMemory .sr-memoryToggle{width:100%;min-height:44px;margin-top:8px;border:0;border-radius:12px;background:#eef4ff;color:#1456c4;font-weight:800}';document.head.appendChild(s)}
 function ensureMemoryHost(){const sheet=document.getElementById('storeQuickSheet');if(!sheet)return null;let host=document.getElementById('srStoreMemory');if(host)return host;host=element('section');host.id='srStoreMemory';host.setAttribute('aria-label','Mémoire terrain du magasin');const bottom=sheet.querySelector('.sheetBottom');if(bottom)sheet.insertBefore(host,bottom);else sheet.appendChild(host);return host}
 function actionLabel(a){return (a.status==='in_progress'?'En cours':'À faire')+(a.dueDate?' · '+a.dueDate:'')+(a.owner?' · '+a.owner:'')}
-function renderQuickMemory(){const sheet=document.getElementById('storeQuickSheet');if(!sheet||!sheet.classList.contains('open'))return;const startButton=document.getElementById('srQuickStart'),storeId=String(startButton&&startButton.dataset?(startButton.dataset.srStart||''):'');if(!storeId)return;refreshStartCtas(storeId);ensureMemoryStyle();const host=ensureMemoryHost();if(!host)return;if(isCuisinisteStoreId(storeId)){host.hidden=true;host.replaceChildren();expandedMemoryStore='';return}host.hidden=false;const data=memoryFor(storeId),expanded=expandedMemoryStore===storeId,shown=expanded?data.visits:data.visits.slice(0,3);host.replaceChildren();const head=element('div',undefined,'sr-memoryHead'),headText=element('div');headText.append(element('h3','Mémoire terrain'),element('div',data.visits.length+' visite'+(data.visits.length>1?'s':'')+' enregistrée'+(data.visits.length>1?'s':'')+' · '+data.actions.length+' action'+(data.actions.length>1?'s':'')+' en cours','sr-memoryMeta'));head.append(headText);host.append(head);const list=element('div',undefined,'sr-memoryList');list.id='srStoreHistoryList';if(!shown.length)list.append(element('div','Aucune visite terminée pour ce magasin.','sr-memoryMeta'));for(const v of shown){const row=button('',()=>{if(typeof window.closeStoreQuick==='function')window.closeStoreQuick();openVisit(v.id)},'sr-memoryRow');row.dataset.srHistoryVisit=v.id;row.append(element('b',v.completedDate||'Visite terminée'),element('span',v.conclusion||'Visite terrain'));list.append(row)}host.append(list);if(data.visits.length>3){const toggle=button(expanded?'Réduire l’historique':'Voir tout l’historique ('+data.visits.length+')',()=>{expandedMemoryStore=expanded?'':storeId;renderQuickMemory()},'sr-memoryToggle');toggle.dataset.srHistoryToggle='1';host.append(toggle)}if(data.actions.length){const wrap=element('div',undefined,'sr-memoryActions');wrap.append(element('h3','Actions en cours'));const actionList=element('div',undefined,'sr-memoryList');for(const a of data.actions.slice(0,3)){const row=button('',()=>{if(typeof window.closeStoreQuick==='function')window.closeStoreQuick();openVisit(a.visitId)},'sr-memoryRow');row.dataset.srOpenAction=a.id;row.append(element('b',a.description||'Action'),element('span',actionLabel(a)));actionList.append(row)}wrap.append(actionList);host.append(wrap)}}
+function renderQuickMemory(){const sheet=document.getElementById('storeQuickSheet');if(!sheet||!sheet.classList.contains('open'))return;const startButton=document.getElementById('srQuickStart'),storeId=String(startButton&&startButton.dataset?(startButton.dataset.srStart||''):'');if(!storeId)return;refreshStartCtas(storeId);ensureMemoryStyle();const host=ensureMemoryHost();if(!host)return;if(isCuisinisteStoreId(storeId)){host.hidden=true;host.replaceChildren();expandedMemoryStore='';return}host.hidden=false;const data=memoryFor(storeId),expanded=expandedMemoryStore===storeId,shown=expanded?data.visits:data.visits.slice(0,3);host.replaceChildren();const head=element('div',undefined,'sr-memoryHead'),headText=element('div');headText.append(element('h3','Mémoire terrain'),element('div',data.visits.length+' visite'+(data.visits.length>1?'s':'')+' enregistrée'+(data.visits.length>1?'s':'')+' · '+data.actions.length+' action'+(data.actions.length>1?'s':'')+' en cours','sr-memoryMeta'));head.append(headText);host.append(head);runnerMemory(host,storeId,{limit:12});const list=element('div',undefined,'sr-memoryList');list.id='srStoreHistoryList';if(!shown.length)list.append(element('div','Aucune visite terminée pour ce magasin.','sr-memoryMeta'));for(const v of shown){const row=button('',()=>{if(typeof window.closeStoreQuick==='function')window.closeStoreQuick();openVisit(v.id)},'sr-memoryRow');row.dataset.srHistoryVisit=v.id;row.append(element('b',v.completedDate||'Visite terminée'),element('span',v.conclusion||'Visite terrain'));list.append(row)}host.append(list);if(data.visits.length>3){const toggle=button(expanded?'Réduire l’historique':'Voir tout l’historique ('+data.visits.length+')',()=>{expandedMemoryStore=expanded?'':storeId;renderQuickMemory()},'sr-memoryToggle');toggle.dataset.srHistoryToggle='1';host.append(toggle)}if(data.actions.length){const wrap=element('div',undefined,'sr-memoryActions');wrap.append(element('h3','Actions en cours'));const actionList=element('div',undefined,'sr-memoryList');for(const a of data.actions.slice(0,3)){const row=button('',()=>{if(typeof window.closeStoreQuick==='function')window.closeStoreQuick();openVisit(a.visitId)},'sr-memoryRow');row.dataset.srOpenAction=a.id;row.append(element('b',a.description||'Action'),element('span',actionLabel(a)));actionList.append(row)}wrap.append(actionList);host.append(wrap)}}
 function installQuickMemory(){const sheet=document.getElementById('storeQuickSheet');if(!sheet||quickMemoryObserver)return;ensureMemoryStyle();ensureMemoryHost();quickMemoryObserver=new MutationObserver(renderQuickMemory);quickMemoryObserver.observe(sheet,{attributes:true,attributeFilter:['class','aria-hidden']});document.addEventListener('store-runner:data-restored',renderQuickMemory);document.addEventListener('store-runner:planning-updated',renderQuickMemory)}
 function installStoreDialogCta(){const storeDialog=document.getElementById('storeDlg');if(!storeDialog||storeDialogObserver)return;storeDialogObserver=new MutationObserver(()=>{if(storeDialog.open)refreshStartCtas(window.currentEditId)});storeDialogObserver.observe(storeDialog,{attributes:true,attributeFilter:['open']})}
 function boot(){if(document.getElementById('srVisitDialog'))return;dialog=element('dialog');dialog.id='srVisitDialog';dialog.className='sr-visit';dialog.setAttribute('aria-labelledby','srVisitTitle');const header=element('div',undefined,'sr-head');title=element('h2','Visites');title.id='srVisitTitle';header.append(title,button('Fermer',close));status=element('p',undefined,'sr-status');status.setAttribute('role','status');body=element('div');dialog.append(header,status,button('Réessayer l’enregistrement',()=>save()),body);document.body.append(dialog);session=window.StoreRunnerVisitStore.create({model:M,reliability:window.ChefReliability,db:window.__chefStorage||window.storage||window.localStorage,getState:()=>window.state,setState:s=>{window.state=s},onStatus:(phase,error)=>{if(phase==='saving')message('Enregistrement…');else if(phase==='error')message('Non enregistré : '+error,true);else message(window.__chefStorageMode==='memory'?'Stockage temporaire : exporte tes données avant de fermer.':'Enregistré localement · '+new Date().toLocaleTimeString('fr-FR'),window.__chefStorageMode==='memory')}});window.StoreRunnerVisits={start,openVisit,openHub,memoryFor,renderQuickMemory,refreshStartCtas,deleteVisit,deleteHistoryEntry,activeVisitId:()=>activeId};installQuickMemory();installStoreDialogCta();dialog.addEventListener('cancel',e=>{e.preventDefault();close()});document.addEventListener('click',e=>{const b=e.target.closest('[data-sr-start],[data-sr-current],[data-sr-terrain],[data-sr-hub]');if(!b)return;e.preventDefault();e.stopPropagation();if(b.hasAttribute('data-sr-hub'))openHub();else if(b.hasAttribute('data-sr-current')){if(window.currentEditId)start(window.currentEditId)}else if(b.hasAttribute('data-sr-terrain')){const t=window.terrainCurrent();if(t)start(t.store.id);else{show();hub();message('Aucune visite de tournée en attente.')}}else start(b.dataset.srStart)},true);document.addEventListener('store-runner:data-restored',()=>{session.invalidate();if(dialog.open){hub();message('Sauvegarde restaurée.')}});window.addEventListener('beforeunload',e=>{if(session.hasPending()){e.preventDefault();e.returnValue=''}});document.addEventListener('visibilitychange',()=>{if(document.hidden)save()})}

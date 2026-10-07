@@ -259,7 +259,8 @@ test('L’écran Terrain rappelle la promesse de la visite précédente, famille
 
   const promise=dialog.locator('.sr-lastPromise');
   await expect(promise).toBeVisible();
-  await expect(promise).toContainText('La dernière fois (10/09), tu notais :');
+  await expect(promise).toContainText('Pour ce passage');
+  await expect(promise).toContainText('2026-09-10 · BRUN');
   await expect(promise).toContainText('Revoir le mural TV avec Julien au prochain passage.');
 
   await dialog.locator('.sr-familyBtn[data-family="blanc"]').tap();

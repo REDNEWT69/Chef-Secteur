@@ -544,6 +544,9 @@ const assertValid = (reg, label) => {
   const brief = { tour: { total: 3, done: 1, finished: false, next: { key: 'a', label: 'b' } }, mode: 'today', attention: ATT('s1'), remarks: { lines: [{ kind: 'trend', text: 't' }] } };
   assert.equal(B.brief(brief, cfg('briefMaxLines', 1)).lines.length, 1, 'nombre de lignes du point du jour piloté par CONFIG');
   assert.equal(B.brief(brief).lines.length, 3);
+  const quote = { items: [{ kind: 'report-memory', text: 'Une citation entière.' }] };
+  assert.equal(B.remarks(quote, cfg('reportMemoryMaxChars', 20)).lines.length, 0, 'une citation trop longue est omise sans la couper');
+  assert.equal(B.remarks(quote, cfg('reportMemoryMaxChars', 21)).lines[0].text, quote.items[0].text, 'la citation tient exactement dans le plafond');
 }
 {
   assert.equal(B.decide(mk({ facts: { tour: TOUR_DONE } }), registry('coach'), cfg('messageMs', 1500)).messageMs, 1500, 'durée pilotée par CONFIG');

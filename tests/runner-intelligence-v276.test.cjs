@@ -130,7 +130,7 @@ for (const id of ['copilote', 'complice', 'coach', 'taquin']) { // même juste a
   assert.ok(Object.isFrozen(r) && Object.isFrozen(r.lines) && Object.isFrozen(r.lines[0]));
   const input = { items: all }, before = json(input); B.remarks(input); assert.equal(json(input), before, 'ne modifie pas son entrée');
   assert.equal(json(B.remarks({ items: all })), json(B.remarks({ items: all.slice() })), 'déterministe');
-  assert.deepEqual(B.REMARK_KINDS.slice().sort(), ['improved', 'inconsistency', 'open-actions', 'overdue-action', 'recurring', 'regression', 'revisit', 'trend']);
+  assert.deepEqual(B.REMARK_KINDS.slice().sort(), ['improved', 'inconsistency', 'open-actions', 'overdue-action', 'recurring', 'regression', 'report-memory', 'revisit', 'trend']);
   const ctl = B.createController(null);
   assert.equal(ctl.remarks({ items: all }).lines.length, 2, 'Copilote par défaut');
   ctl.setPersonality('discret'); assert.equal(ctl.remarks({ items: all }).lines.length, 1, 'le contrôleur injecte la personnalité choisie');
