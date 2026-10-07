@@ -81,8 +81,8 @@
 .sr-runnerLines{min-width:0;flex:1}.sr-runnerLines b{display:block;font-size:11.5px;color:#1d4f9b;margin-bottom:4px}
 .sr-runnerLines p{margin:0 0 6px;font-size:13px;line-height:1.4;color:#1f2a44;overflow-wrap:anywhere}.sr-runnerLines p:last-child{margin-bottom:0}
 /* V277 : deux extraits lisibles, détails repliés et source tactile, Android 360 px. */
-.sr-reportMemory{margin:12px 0;padding:12px;border:1px solid var(--sr-border,#dbe5f3);border-radius:14px;background:var(--sr-surface,#f6f8fc);color:var(--sr-text,#1f2a44);min-width:0;overflow-wrap:anywhere}
-.sr-reportMemoryItem{padding:9px 0;border-bottom:1px solid var(--sr-border,#dbe5f3)}
+.sr-reportMemory{margin:12px 0;padding:12px;border:1px solid var(--line,#dbe5f3);border-radius:14px;background:var(--sr-surface-solid,#f6f8fc);color:var(--ink,#1f2a44);min-width:0;overflow-wrap:anywhere}
+.sr-reportMemoryItem{padding:9px 0;border-bottom:1px solid var(--line,#dbe5f3)}
 .sr-reportMemoryItem p{margin:5px 0;white-space:pre-wrap;font-size:13px;line-height:1.5}
 .sr-reportMemory .sr-memoryMeta,.sr-reportMemory small{display:block;font-size:11px;line-height:1.4;opacity:.8}
 .sr-reportMemory small{margin-top:8px}

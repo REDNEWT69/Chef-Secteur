@@ -36,13 +36,15 @@ function reportOf(v){const src=object(v&&v.report)?v.report:{},out=emptyReport()
 /* V277 — mémoire locale, dérivée et traçable. Pas de résumé génératif : chaque texte
    est un extrait intégral ou une référence explicitement citée. Le cache facultatif
    voyage avec la visite ; les sources restent l'autorité (anciens exports compris). */
-const MEMORY_LABELS={action:'Action réalisée',followup:'Sujet à suivre',training:'Formation',merchandising:'Merchandising / exposition',product:'Référence citée',problem:'Problème / blocage',priority:'Prochain passage'};
+const MEMORY_LABELS={action:'Action réalisée',followup:'Sujet à suivre',training:'Formation',merchandising:'Merchandising / exposition',product:'Référence citée',problem:'Problème / blocage',priority:'Prochain passage',objection:'Objection / concurrence',contact:'Interlocuteur / terrain'};
 const memoryKey=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
 function analyzeReport(v){
+ if(!v||v.status!=='completed')return{version:1,items:[]};
  const items=[],seen=new Set(),report=reportOf(v);
  function add(kind,text,source,family,status){
   const key=kind+'|'+family+'|'+memoryKey(text);if(seen.has(key)||items.length>=48)return;
-  seen.add(key);items.push({kind,text,source,family,status});
+  const n=memoryKey(text),topic=kind==='problem'?(/\bsav\b|service apres.vente/.test(n)?'sav':/\bstock[s]?\b|\brupture[s]?\b/.test(n)?'stock':'blocker'):kind;
+  seen.add(key);items.push({kind,topic,text,source,family,status});
  }
  function read(value,source,family,hint){
   if(typeof value!=='string'||value.length>20000)return;
@@ -52,12 +54,14 @@ function analyzeReport(v){
    if(source==='conclusion'&&FAMILIES.some(f=>Object.values(report[f]).some(note=>note.includes(text))))continue;
    const n=memoryKey(text);
    const uncertain=/\?|\b(pas|non|jamais|aucun|aucune|sans|peut|pourrait|pourraient|semble|semblerait|si|souhaite|souhaiterait|envisage|envisagee)\b/.test(n);
-   const future=/\ba (prevoir|faire|suivre|revoir|relancer|terminer|finaliser|organiser|former|verifier|installer|corriger)\b|\b(prochain[e]? (passage|visite)|prevu[e]?|planifie[e]?|reste a|relancer|revoir|prevoir)\b|^(former|verifier|suivre|installer|organiser)\b/.test(n);
+   const future=/\ba (prevoir|faire|suivre|revoir|relancer|terminer|finaliser|organiser|former|verifier|installer|corriger|reparer|remplacer|envoyer|commander)\b|\b(prochain[e]? (passage|visite)|prevu[e]?|planifie[e]?|reste a|relancer|revoir|prevoir)\b|^(former|verifier|suivre|installer|organiser|reparer|remplacer|envoyer|commander)\b/.test(n);
    const done=/\b(realise[e]?s?|effectue[e]?s?|termine[e]?s?|corrige[e]?s?|resolu[e]?s?|installe[e]?s?|forme[e]?s?|nettoye[e]?s?|mis[e]? a jour|fait[e]?s?)\b/.test(n);
-   const status=!uncertain&&!future&&done?'done':!uncertain&&future?'planned':'recorded';
+   const status=!uncertain&&!future&&/\bannule[e]?s?\b/.test(n)?'cancelled':!uncertain&&!future&&done?'done':!uncertain&&future?'planned':'recorded';
    let kind='';
    if(/\b(formation|forme[e]?s?|former|pedagogie)\b/.test(n))kind='training';
-   else if(/\b(probleme[s]?|blocage[s]?|bloque[e]?s?|rupture[s]?|panne[s]?|anomalie[s]?|sav)\b/.test(n))kind='problem';
+   else if(/\b(probleme[s]?|blocage[s]?|bloque[e]?s?|rupture[s]?|panne[s]?|anomalie[s]?|sav)\b|\bstock[s]?\s+(insuffisant[s]?|manquant[s]?|nul[s]?|indisponible[s]?)\b/.test(n))kind='problem';
+   else if(/\b(objection[s]?|concurren(?:ce|t[e]?s?)|comparaison|compare)\b/.test(n))kind='objection';
+   else if(/\b(interlocuteur|responsable|directeur|directrice|manager|vendeur|vendeuse)\b/.test(n))kind='contact';
    else if(/\b(engagement[s]?|priorite[s]?|prochain[e]? (visite|passage))\b/.test(n))kind='priority';
    else if(/\b(merchandising|merch|exposition|expo|mural|facing|lineaire|plv|ldu|massification)\b/.test(n))kind='merchandising';
    else if(future)kind='followup';
@@ -121,7 +125,7 @@ function reportMemoryFor(s,storeId,options){
  // Un sujet textuel n'est jamais déclaré « encore ouvert » sans Action liée.
  for(const v of visits.slice(0,o.history===true?visits.length:3))for(const i of reportMemoryOf(v).items){
   if(i.source==='conclusion'&&items.some(x=>fingerprint(x)===fingerprint(i)))continue;
-  keep({...i,visitId:v.id,date:v.completedDate,label:i.kind==='action'&&i.status!=='done'?'Action notée':MEMORY_LABELS[i.kind]||'Note'});
+  keep({...i,visitId:v.id,date:v.completedDate,label:i.topic==='sav'?'SAV':i.topic==='stock'?'Stock / rupture':i.kind==='action'&&i.status!=='done'?'Action notée':MEMORY_LABELS[i.kind]||'Note'});
  }
  const score=i=>i.actionId&&i.status!=='done'?100:i.status==='planned'?80:i.kind==='problem'&&i.status!=='done'?70:i.kind==='priority'||i.kind==='followup'?60:i.kind==='training'?40:i.kind==='merchandising'?30:i.kind==='action'?20:10;
  items.sort((a,c)=>score(c)-score(a)||String(c.date).localeCompare(String(a.date)));
@@ -129,7 +133,7 @@ function reportMemoryFor(s,storeId,options){
 }
 function reportMemoryLines(s,storeId,options){
  const o=options||{},data=reportMemoryFor(s,storeId,{...o,limit:48});
- return data.items.filter(i=>i.status!=='done'&&(i.actionId||i.kind!=='product'&&i.kind!=='action')).slice(0,Number.isInteger(o.limit)?o.limit:2).map(i=>({
+ return data.items.filter(i=>!['done','cancelled'].includes(i.status)&&(i.actionId||i.kind!=='product'&&i.kind!=='action')).slice(0,Number.isInteger(o.limit)?o.limit:2).map(i=>({
   id:'memory:'+i.visitId+':'+i.source,kind:'report-memory',severity:i.actionId?3:i.status==='planned'||i.kind==='problem'?2:1,tone:i.actionId?'attention':'neutral',
   text:(i.actionId?i.label+' · ':i.label+' · noté le ')+i.date+' : « '+i.text+' »'
  }));

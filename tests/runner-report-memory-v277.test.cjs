@@ -16,6 +16,42 @@ function visit(s,store='a',fields={},day='2026-10-01'){
 function memory(s,store='a',options={}){return M.reportMemoryFor(s,store,{limit:100,...options}).items}
 function evidence(items,text,kind){return items.find(x=>x.text===text&&(!kind||x.kind===kind))}
 
+test('analyse directe réservée aux clôtures, annulation comprise',()=>{
+ const s=state(),id=M.start(s,'a');M.editReport(s,id,'brun','training','Formation à prévoir.');
+ const v=M.getVisit(s,id);assert.deepEqual(M.analyzeReport(v).items,[]);
+ v.status='cancelled';assert.deepEqual(M.analyzeReport(v).items,[]);assert.deepEqual(memory(s),[]);
+ for(const invalid of [null,undefined,{},[]])assert.deepEqual(M.analyzeReport(invalid).items,[]);
+});
+
+test('SAV, stock, concurrence et interlocuteur sont conservés sans inventer leur suivi',()=>{
+ const s=state(),v=visit(s,'a',{brun:{team:[
+  'SAV RF48A401EB4 à relancer.', 'Stock insuffisant pour le QE55S95D.',
+  'Objection prix : le vendeur compare avec la concurrence.', 'Interlocuteur : Marc, responsable du rayon.'
+ ].join('\n')}});
+ const rows=memory(s);assert(rows.some(x=>x.topic==='sav'&&x.text==='SAV RF48A401EB4 à relancer.'));
+ assert(rows.some(x=>x.topic==='stock'&&x.text==='Stock insuffisant pour le QE55S95D.'));
+ assert(rows.some(x=>x.kind==='objection'));assert(rows.some(x=>x.kind==='contact'));
+ assert(rows.some(x=>x.kind==='product'&&x.text==='RF48A401EB4'));
+ assert(rows.every(x=>x.visitId===v.id));
+});
+
+test('annulation écrite et réalisation explicite ne produisent plus de rappel actif',()=>{
+ const s=state();visit(s,'a',{brun:{training:'Formation annulée.',team:'SAV RF48A401EB4 résolu.'}});
+ assert(memory(s).some(x=>x.status==='cancelled'));
+ assert(!M.reportMemoryLines(s,'a').length);
+});
+
+test('réanalyser ne crée aucun doublon et re-clôturer remplace le cliché',()=>{
+ const s=state(),v=visit(s,'a',{brun:{training:'Formation à prévoir sur le son.'}}),first=M.clone(v.runnerMemory);
+ assert.deepEqual(M.analyzeReport(v),first);assert.deepEqual(M.analyzeReport(v),first);
+ assert.equal(s.businessV2.visits.length,1);
+ v.status='draft';v.completedAt=null;v.completedDate=null;
+ M.editReport(s,v.id,'brun','training','Formation réalisée sur le son.');M.complete(s,v.id,'2026-10-02');
+ assert.notDeepEqual(v.runnerMemory,first);assert.equal(s.businessV2.visits.length,1);
+ assert.equal(memory(s).filter(x=>x.kind==='training').length,1);
+ assert.equal(M.reportMemoryLines(s,'a').length,0);
+});
+
 test('la clôture conserve automatiquement sept catégories avec des citations exactes',()=>{
  const s=state(),phrases={
   action:'Nettoyage réalisé.',
