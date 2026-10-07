@@ -9,7 +9,7 @@ const api=require('../visit-report-ai-json-v225.js');
   assert.match(prompt,/N'invente jamais un fait/);
   assert.match(prompt,/"famille": "BRUN"/);
   assert.match(prompt,/3 à 6 paragraphes courts/);
-  assert.match(prompt,/jusqu’à 8 éléments utiles/);
+  assert.match(prompt,/Jusqu'à 8 éléments utiles/);
   assert.match(prompt,/CORPS PRINCIPAL/);
 })();
 

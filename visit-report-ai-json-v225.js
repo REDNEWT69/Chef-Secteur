@@ -167,35 +167,15 @@ function buildPrompt(visit){
 Ta seule mission ici est de STRUCTURER les notes de la visite. Store Runner fera lui-même la mise en page finale.
 
 RÈGLES ABSOLUES :
-1. Réponds UNIQUEMENT par un objet JSON valide. Aucun markdown, aucun commentaire, aucun préambule.
-2. Utilise uniquement les informations présentes dans DONNEES_SOURCE.
-3. N'invente jamais un fait, un chiffre, une référence produit, un prix, un nom, une date, une quantité, une cause, une action, une formation, une promesse ou un rendez-vous.
-4. Ne modifie jamais le sens d'un retour vendeur ou client.
-5. Une opinion vendeur doit rester explicitement attribuée au vendeur. Exemple : « le vendeur juge la gamme Mini LED moins lumineuse ». N'écris jamais cette opinion comme un fait établi sur le produit.
-6. Si une information est incertaine, garde une formulation prudente et attribuée à sa source.
-7. Corrige orthographe, grammaire et phrases issues de dictée vocale, mais conserve exactement les références produits, prix, chiffres, noms, marques et termes métier.
-8. Supprime les répétitions sans supprimer de fait utile.
-9. N'ajoute aucune formulation marketing ou conclusion non soutenue par les notes.
-10. Pour toute donnée absente : utilise une chaîne vide "" ou un tableau vide []. Ne remplis jamais un manque par une supposition.
-11. actions_realisees contient uniquement ce qui a réellement été fait pendant la visite.
-12. formation contient uniquement une formation réalisée ou un besoin de formation explicitement mentionné.
-13. prochain_passage contient uniquement un suivi ou une action future explicitement prévue dans les notes.
-14. priorite doit être vide si aucune priorité future n'est explicitement déductible des informations déjà formulées sans inventer d'action.
-15. synthese est le CORPS PRINCIPAL du compte rendu final. Elle doit faire 3 à 6 paragraphes courts, naturels et professionnels, séparés par une ligne vide. Elle reprend UNE FOIS les faits utiles structurés dans les autres champs, en les regroupant intelligemment par sujet ou univers produit.
-16. Dans synthese, distingue toujours un fait observé d’un avis vendeur ou client : attribue explicitement les opinions (« le vendeur indique… », « selon l’équipe… »). Ne transforme jamais un retour terrain en vérité produit.
-17. Hiérarchise le corps selon l’intérêt métier : visibilité / merchandising, références et produits, retours vendeurs ou clients, concurrence, actions réalisées, formation, blocages et prochain passage. Omet les thèmes absents.
-18. Conserve mot pour mot les références produit, prix, volumes, noms, marques, dates et chiffres présents dans la source. Ne corrige jamais une référence produit de toi-même.
-19. Évite les phrases génériques (« bonne visite », « présence satisfaisante ») si elles n’apportent aucun fait concret. Chaque paragraphe doit contenir au moins une information terrain utile.
-20. Les listes structurées servent de garde-fou et de source de contrôle : jusqu’à 8 éléments utiles par champ si les notes le justifient. Ne coupe pas arbitrairement une information utile pour respecter un quota de 4 éléments.
-21. Ne duplique pas un même fait dans plusieurs formulations différentes. Une information importante apparaît une fois dans synthese et, si nécessaire, dans son champ structuré correspondant.
-
-STYLE DE RÉDACTION ATTENDU POUR synthese :
-- prose de chef de secteur expérimenté, claire et directe ;
-- 3 à 6 paragraphes courts, sans titres artificiels à l’intérieur du texte ;
-- regrouper naturellement les faits proches (« Côté TV », « Sur l’audio », « Sur le froid », « Sur la cuisson ») uniquement lorsque ces univers sont réellement présents ;
-- préserver les références exactes et les verbatims utiles ;
-- faire ressortir les conséquences terrain explicites sans inventer de causalité ;
-- terminer le corps sur le principal point à suivre uniquement s’il est réellement présent dans les notes.
+1. Réponds UNIQUEMENT en JSON valide, sans markdown ni préambule.
+2. Utilise uniquement DONNEES_SOURCE. N'invente jamais un fait, chiffre, référence, prix, nom, date, cause, action, formation, promesse ou rendez-vous.
+3. Corrige la dictée, l'orthographe et la syntaxe sans changer le sens. Conserve exactement références produit, prix, chiffres, noms, marques et termes métier.
+4. Tout avis vendeur/client reste attribué (« le vendeur indique… », « selon l’équipe… ») et ne devient jamais un fait produit.
+5. Supprime répétitions et phrases vagues, sans supprimer d'information utile ni créer de causalité.
+6. Champ absent = "" ou []. actions_realisees = seulement fait ; formation = seulement réalisée ou explicitement demandée ; prochain_passage = seulement prévu ; priorite = vide si elle n'est pas sûre.
+7. synthese est le CORPS PRINCIPAL : 3 à 6 paragraphes courts, naturels, professionnels, sans titres artificiels. Regroupe les faits par sujet utile (merchandising, produits, vendeurs/clients, concurrence, actions, formation, blocages, suite) et omets les thèmes absents.
+8. Chaque paragraphe contient un fait terrain concret. Pas de remplissage générique ni de formulation marketing.
+9. Jusqu'à 8 éléments utiles par liste si nécessaire. Ne duplique pas un même fait sous plusieurs formulations.
 
 FAMILLE ATTENDUE : ${family.toUpperCase()}
 SCHÉMA JSON STRICT :
