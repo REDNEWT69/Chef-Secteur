@@ -134,8 +134,10 @@ html body .top .departureShortcut b{max-width:100%;font-size:11px}
 body.glassHome #premiumHomeV2 #calendarHomeStatus{position:static;display:flex;justify-content:flex-end;align-items:center;gap:5px;max-width:none;width:100%;min-height:44px;margin:0;padding:0;flex-wrap:nowrap;white-space:nowrap}
 body.glassHome #premiumHomeV2 #calendarHomeStatus button{min-height:44px;padding:6px 0 6px 4px;font-size:11px}
 body.glassHome #premiumHomeV2 #calendarHomeStatus strong{font-size:11px;line-height:1.4}
+body.glassHome #premiumHomeV2 #calendarHomeStatus .calendarHomeCopy{flex:0 0 auto}
 @media(max-width:700px){
   #premiumHomeV2 .phHeaderContext{gap:0}
+  #premiumHomeV2 .phHeaderContext{transform:translateY(-8px)}
   #premiumHomeV2 .phHeaderContext .phBase{min-height:44px;padding:8px 0 0;align-items:flex-end}
   body.glassHome #premiumHomeV2 #calendarHomeStatus{min-height:44px;align-items:flex-start}
   body.glassHome #premiumHomeV2 #calendarHomeStatus .calendarHomeCopy{align-self:flex-start;padding-top:0}
