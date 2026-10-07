@@ -154,6 +154,39 @@ assert.equal(typeof sorted2.compare,'function');X.resetFilters();
   }finally{globalThis.__chefStorage=saved.db;globalThis.StoreRunnerPerformanceV190=saved.perf;if(saved.db===undefined)delete globalThis.__chefStorage;if(saved.perf===undefined)delete globalThis.StoreRunnerPerformanceV190}
 }
 
+
+
+/* --- Fiche Cuisiniste : contrat à son propriétaire, un seul rapport, contacts/photos/horaires ------------------ */
+{
+  const cuisineStore={id:'k',enseigne:'Schmidt',ville:'Cuisine-Test',channel:'cuisiniste',freq:'Mensuel',active:true,priority:2,products:['Encastrable']};
+  const cuisineState={
+    stores:[cuisineStore],visits:{},notes:{},included:{},excluded:{},locks:{},appointments:[],calendarEvents:[],
+    storeContacts:{k:[{name:'Nadia',role:'Responsable showroom',email:'nadia@example.test'}]},
+    businessV2:{version:2,visits:[
+      {id:'old-k',storeId:'k',status:'completed',completedDate:'2026-09-01',completedAt:'2026-09-01T12:00:00Z',updatedAt:'2026-09-01T12:00:00Z',activeFamily:'blanc',conclusion:'Ancien rapport à ne pas afficher',report:{shared:{context:'Ancien contexte'},blanc:{team:'Ancienne note'},brun:{}}},
+      {id:'new-k',storeId:'k',status:'completed',completedDate:'2026-10-06',completedAt:'2026-10-06T12:00:00Z',updatedAt:'2026-10-06T12:00:00Z',activeFamily:'brun',conclusion:'Showroom revu avec la responsable',report:{
+        shared:{context:'Nouvelle exposition en place'},
+        blanc:{team:'Retour encastrable à suivre',training:'Prévoir une formation'},
+        brun:{team:'Retour encastrable à suivre',massification:'Four et micro-ondes bien exposés'}
+      }}
+    ],actions:[],opportunities:[]}
+  };
+  const cp=X.profileFor(cuisineState,'k',{today:TODAY,archive:{},priorities:new Map(),forecast:false});
+  assert.equal(cp.cuisiniste,true);
+  assert.equal(cp.latestReport.visitId,'new-k');
+  assert.equal(cp.latestReport.fields.find(x=>x.key==='team').text,'Retour encastrable à suivre','les doublons des anciennes familles sont fusionnés sans étiquette BRUN/BLANC');
+  const ch=X.sectionHtml(cp,{photoCount:4});
+  assert.match(ch,/Fiche Cuisiniste/);
+  assert.match(ch,/Contacts/);assert.match(ch,/Nadia/);
+  assert.match(ch,/Rapport magasin/);assert.match(ch,/Showroom revu avec la responsable/);assert.match(ch,/Four et micro-ondes bien exposés/);
+  assert.doesNotMatch(ch,/Ancien rapport à ne pas afficher/,'un seul rapport : le dernier passage uniquement');
+  assert.doesNotMatch(ch,/\bBlanc\b|\bBrun\b|BRUN|BLANC/,'aucune famille BRUN/BLANC dans la fiche Cuisiniste');
+  assert.match(ch,/4 photos/);assert.match(ch,/data-sr-x-hours="1"/);
+  assert.doesNotMatch(ch,/Cadence|Contraintes actives|Frise du magasin/,'la fiche Cuisiniste ne reprend pas le tableau 360 Retail');
+  const clc=X.listContext({state:cuisineState,today:TODAY,archive:{},priorities:new Map(),forecast:false});
+  assert.match(X.rowHtml(cuisineStore,clc),/Fiche Cuisiniste/);
+}
+
 // --- Aucune écriture, aucun second propriétaire -----------------------------------------------------------------------
 assert.equal(JSON.stringify(state),frozen,'lire ne modifie jamais state');
 const src=fs.readFileSync(__dirname+'/../store-explorer.js','utf8');

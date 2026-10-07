@@ -190,13 +190,19 @@
     if(!isCurrentGpsProfile(p)||navigator.onLine===false)return Promise.resolve(departureDisplay(p));
     const cached=readDepartureDisplayCache(p);
     if(cached&&cached.city)return Promise.resolve(departureDisplay(p));
-    const key=departureDisplayKey(p);
+    const snapshot={baseLat:Number(p.baseLat),baseLon:Number(p.baseLon)};
+    const key=departureDisplayKey(snapshot);
     if(departureDisplayLookup&&departureDisplayLookup.key===key)return departureDisplayLookup.promise;
     const promise=(async function(){
-      const info=await reverseGeocodeInfo(Number(p.baseLat),Number(p.baseLon));
-      if(info&&(info.city||info.address)){writeDepartureDisplayCache(p,info);emitDepartureDisplayUpdated()}
-      return departureDisplay(p);
-    })().catch(function(){return departureDisplay(p)}).finally(function(){
+      const info=await reverseGeocodeInfo(snapshot.baseLat,snapshot.baseLon);
+      const current=(window.state&&state.profile)||{};
+      if(!isCurrentGpsProfile(current)||departureDisplayKey(current)!==key)return departureDisplay(current);
+      if(info&&(info.city||info.address)){writeDepartureDisplayCache(snapshot,info);emitDepartureDisplayUpdated()}
+      return departureDisplay(current);
+    })().catch(function(){
+      const current=(window.state&&state.profile)||p;
+      return departureDisplay(current);
+    }).finally(function(){
       if(departureDisplayLookup&&departureDisplayLookup.key===key)departureDisplayLookup=null;
     });
     departureDisplayLookup={key:key,promise:promise};
@@ -446,5 +452,6 @@
 
   function boot(){ensureCss();ensureFeedback();installPersistedBase();refreshDepartureDisplay()}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
+  document.addEventListener('store-runner:data-restored',function(){refreshDepartureDisplay()});
   window.addEventListener('focus',function(){setTimeout(installPersistedBase,30)});
 })();

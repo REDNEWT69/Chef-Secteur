@@ -38,6 +38,9 @@ test('Accueil et Planning affichent Ville · Position précise sans muter le pro
   await expect(page.locator('#premiumHomeV2 .phSector')).toHaveCount(0);
   await expect(page.locator('#planningDeparture')).toHaveText('Lyon · Position précise');
   await expect(page.locator('#headerDeparture')).toHaveText('Lyon');
+  const headerTooltip=await page.locator('#headerDeparture').getAttribute('title');
+  expect(headerTooltip).toContain('Lyon');
+  expect(headerTooltip).not.toMatch(/45[.,]764|4[.,]8357|Position GPS/);
   const visible=await page.locator('#premiumHomeV2 .phHeaderContext,#planningDeparture,#headerDeparture').allTextContents();
   expect(visible.join(' ')).not.toMatch(/45[.,]764|4[.,]8357|Position GPS/);
 });
@@ -62,4 +65,82 @@ test('hors ligne sans ville en cache : fallback propre sans coordonnées',async(
   await expect(page.locator('#premiumHomeV2 .phDepartureTitle')).toHaveText('Position actuelle · Position précise');
   const visible=await page.locator('#premiumHomeV2 .phHeaderContext,#planningDeparture').allTextContents();
   expect(visible.join(' ')).not.toMatch(/48[.,]8566|2[.,]3522|Position GPS/);
+  const headerTooltip=await page.locator('#headerDeparture').getAttribute('title');
+  expect(headerTooltip).not.toMatch(/48[.,]8566|2[.,]3522|Position GPS/);
+});
+
+test('une base enregistrée au nom générique conserve son adresse utile',async({page})=>{
+  await ready(page);
+  await page.evaluate(async()=>{
+    state.profile=Object.assign({},state.profile,{
+      baseName:'Maison',baseAddress:'12 rue Test, Lyon',baseLat:45.75,baseLon:4.85
+    });
+    renderAll();
+    document.dispatchEvent(new CustomEvent('store-runner:profile-saved'));
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  });
+  await expect(page.locator('#headerDeparture')).toHaveText('12 rue Test, Lyon');
+  await expect(page.locator('#premiumHomeV2 .phDepartureAddress')).toHaveText('12 rue Test, Lyon');
+  await expect(page.locator('#premiumHomeV2 .phDepartureTitle')).toHaveText('Départ');
+});
+
+test('une restauration avec une autre position GPS relance la résolution de ville',async({page})=>{
+  let reverseCalls=0;
+  await page.route('https://nominatim.openstreetmap.org/reverse**',async route=>{
+    reverseCalls++;
+    await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+      display_name:'Annemasse, Haute-Savoie, France',address:{city:'Annemasse'}
+    })});
+  });
+  await ready(page);
+  await page.evaluate(()=>{
+    sessionStorage.removeItem('store-runner-departure-display-v1');
+    state.profile=Object.assign({},state.profile,{
+      baseName:'Ma position actuelle',
+      baseAddress:'Position GPS · 46.19560, 6.23640',
+      baseLat:46.1956,baseLon:6.2364
+    });
+    document.dispatchEvent(new CustomEvent('store-runner:data-restored'));
+  });
+  await expect(page.locator('#planningDeparture')).toHaveText('Annemasse · Position précise');
+  await expect(page.locator('#premiumHomeV2 .phDepartureTitle')).toHaveText('Annemasse · Position précise');
+  expect(reverseCalls).toBeGreaterThanOrEqual(1);
+});
+
+
+test('Position et Agenda remontent sans être coupés, avec Google Agenda · Connecter resserré',async({page})=>{
+  await ready(page);
+  await expect(page.locator('#calendarHomeStatus')).toBeVisible();
+  await expect(page.locator('#calendarHomeStatus .calendarHomeLine')).toBeVisible();
+  const layout=await page.evaluate(()=>{
+    const host=document.querySelector('#premiumHomeV2 .phHeaderContext');
+    const line=document.querySelector('#calendarHomeStatus .calendarHomeLine');
+    const title=line&&line.querySelector('strong');
+    const action=line&&line.querySelector('button');
+    const tr=title&&title.getBoundingClientRect(),ar=action&&action.getBoundingClientRect(),hr=host&&host.getBoundingClientRect();
+    const style=line&&getComputedStyle(line),hostStyle=host&&getComputedStyle(host);
+    const matrix=hostStyle&&hostStyle.transform!=='none'?new DOMMatrixReadOnly(hostStyle.transform):null;
+    return{
+      transform:hostStyle?hostStyle.transform:'none',
+      translateY:matrix?matrix.m42:0,
+      hostTop:hr&&hr.top,
+      display:style&&style.display,
+      flexWrap:style&&style.flexWrap,
+      alignItems:style&&style.alignItems,
+      titleCenter:tr&&tr.top+tr.height/2,
+      buttonCenter:ar&&ar.top+ar.height/2,
+      gap:tr&&ar?ar.left-tr.right:null,
+      buttonHeight:ar&&ar.height
+    };
+  });
+  expect(layout.transform).not.toBe('none');
+  expect(layout.translateY).toBeLessThanOrEqual(-18);
+  expect(layout.hostTop).toBeGreaterThanOrEqual(0);
+  expect(layout.display).toContain('flex');
+  expect(layout.flexWrap).toBe('nowrap');
+  expect(layout.alignItems).toBe('center');
+  expect(Math.abs(layout.titleCenter-layout.buttonCenter)).toBeLessThanOrEqual(1);
+  expect(layout.gap).toBeGreaterThanOrEqual(0);
+  expect(layout.gap).toBeLessThanOrEqual(6);
+  expect(layout.buttonHeight).toBeGreaterThanOrEqual(44);
 });

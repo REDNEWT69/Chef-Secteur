@@ -156,7 +156,7 @@
     const home=document.getElementById('homePanel'),badge=document.getElementById('googleCalendarBadge'),status=document.getElementById('googleCalendarStatus');
     if(!home||!badge||!status||document.getElementById('calendarHomeStatus'))return;
     const card=document.createElement('div');card.id='calendarHomeStatus';
-    card.innerHTML='<div class="calendarHomeCopy" role="status"><strong></strong><small></small></div><button type="button"></button>';
+    card.innerHTML='<div class="calendarHomeCopy"><div class="calendarHomeLine"><strong></strong><button type="button"></button></div><small role="status"></small></div>';
     home.insertBefore(card,home.firstChild);
     function placeCard(){const host=home.querySelector('.phHeaderContext');if(host&&card.parentNode!==host)host.insertBefore(card,host.querySelector('.phSector'))}
     document.addEventListener('store-runner:home-rendered',placeCard);placeCard();
