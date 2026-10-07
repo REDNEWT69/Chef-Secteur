@@ -117,6 +117,9 @@ jobs:
       - run: node tests/runner-behavior-v273.test.cjs
       - run: node tests/runner-intelligence-v276.test.cjs
       - run: node tests/runner-insights-v276.test.cjs
+      - run: node tests/runner-report-memory-v277.test.cjs
+      - run: node tests/runner-report-memory-storage-v277.test.cjs
+      - run: node tests/runner-report-home-v277.test.cjs
       - run: node tests/generation-location-v276.test.cjs
       - run: node tests/departure-display-v276.test.cjs
       - run: node tests/boot-storage-race-505.test.cjs

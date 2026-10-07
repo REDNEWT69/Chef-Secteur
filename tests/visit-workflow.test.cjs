@@ -44,10 +44,10 @@ assert(!/function actions\(/.test(ui),'la vue Suivi, devenue inatteignable, ne d
 assert(!ui.includes("STEP_LABELS={3:'Terrain',5:'Suivi'}"),'le libellé Suivi disparaît avec son onglet');
 assert(/if\(VISIBLE_STEPS\.length<2\)return/.test(ui),'un onglet Terrain orphelin ne doit pas rester en haut de l’écran');
 // La promesse précédente remplace l'onglet : lecture seule, famille par famille, jamais la visite courante.
-assert(ui.includes('function lastPromise(v,family)'),'l’écran Terrain doit rappeler la promesse précédente');
-assert(ui.includes("x.id!==v.id&&x.status==='completed'"),'la promesse doit venir d’une autre visite, déjà terminée');
-assert(ui.includes("(M.reportOf(row)[family]||{}).training"),'la promesse reste cloisonnée par famille');
-assert(!/lastPromise[\s\S]{0,400}?M\.edit/.test(ui),'le rappel de promesse ne doit rien écrire dans l’état');
+assert(ui.includes('function runnerMemory(host,storeId,options)'),'le rappel terrain utilise la mémoire structurée V277');
+assert(ui.includes("family,excludeVisitId:v.id,previous:true"),'la mémoire précédente est cloisonnée par famille et exclut la visite courante');
+assert(ui.includes('M.reportMemoryFor(window.state,storeId,opts)'),'la lecture des seules clôtures appartient au modèle testé');
+assert(!/function runnerMemory[\s\S]*?M\.edit/.test(ui.split('function openPhotos')[0]),'la restitution mémoire ne modifie pas le rapport');
 assert(!ui.includes('Méthode 6P'),'la Méthode 6P n’est plus une étape visible');
 assert(!ui.includes('function sixP('),'aucun formulaire 6P ne doit être rendu');
 assert(ui.includes('Famille active : '),'le changement BLANC / BRUN doit donner un retour visuel persistant');
