@@ -49,16 +49,19 @@ function parseResponse(value,payload){
  return{version:VERSION,sourceSignature:payload.sourceSignature,items};
 }
 function ready(){return typeof root.callAIGateway==='function'&&root.aiConfig&&root.aiConfig.gateway}
+function persistResult(visitId,result){
+ if(!root.document||typeof root.document.dispatchEvent!=='function'||typeof root.CustomEvent!=='function')return Promise.resolve(false);
+ return new Promise(resolve=>{let settled=false,timer=null;const done=ok=>{if(settled)return;settled=true;if(timer&&root.clearTimeout)root.clearTimeout(timer);resolve(!!ok)};try{root.document.dispatchEvent(new root.CustomEvent('store-runner:report-ai-enrichment-ready',{detail:{visitId:String(visitId||''),result,respond:done}}));if(root.setTimeout)timer=root.setTimeout(()=>done(false),15000)}catch(e){done(false)}})
+}
 async function enrichVisit(visitId){
  const id=String(visitId||'');if(!id||running.has(id))return false;const v=visitById(id),M=model();if(!v||v.status!=='completed'||!M)return false;
  const cache=v.runnerAI,sig=M.reportSourceSignature(v);if(cache&&cache.status==='done'&&cache.sourceSignature===sig)return true;if(!cache||cache.status!=='pending'||cache.sourceSignature!==sig)return false;
  if(!ready()||(root.navigator&&root.navigator.onLine===false))return false;
  running.add(id);try{
   const payload=payloadFor(state(),id);if(!payload)return false;
-  if(!payload.entries.length){return !!(root.StoreRunnerVisits&&await root.StoreRunnerVisits.applyAIEnrichment(id,{version:VERSION,sourceSignature:payload.sourceSignature,items:[]}))}
+  if(!payload.entries.length)return await persistResult(id,{version:VERSION,sourceSignature:payload.sourceSignature,items:[]});
   const response=await root.callAIGateway({mode:'assistant',message:promptFor(payload),context:{task:'runner_report_memory_enrichment',visit:{id:payload.visitId,storeId:payload.storeId,date:payload.date}}});
-  const result=parseResponse(response&&response.text,payload),api=root.StoreRunnerVisits;if(!api||typeof api.applyAIEnrichment!=='function')return false;
-  const ok=await api.applyAIEnrichment(id,result);if(ok)retryAfter.delete(id);return !!ok;
+  const result=parseResponse(response&&response.text,payload),ok=await persistResult(id,result);if(ok)retryAfter.delete(id);return !!ok;
  }catch(e){retryAfter.set(id,Date.now()+RETRY_MS);try{console.warn('Enrichissement IA Runner reporté',e)}catch(_){}return false}
  finally{running.delete(id)}
 }
