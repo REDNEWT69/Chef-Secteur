@@ -21,9 +21,9 @@ assert.match(home,/phDepartureTitle/,'l’Accueil possède une ligne de départ 
 assert.doesNotMatch(home,/<span class="phSector">/,'le secteur/count ne doit plus être affiché dans ce bloc Accueil');
 assert.match(branding,/departureDisplay\.kind==='gps'/,'le branding sait rendre le GPS courant');
 assert.match(branding,/store-runner:departure-display-updated/,'le branding suit la résolution asynchrone de la ville');
-assert.match(glass,/@media\(max-width:700px\)[\s\S]*\.phHeaderContext\{gap:0\}/,'sur mobile, départ et agenda sont visuellement rapprochés');
-assert.match(glass,/\.phHeaderContext \.phBase\{min-height:34px;padding:0\}/,'le bouton départ mobile est resserré sans perdre sa cible tactile');
-assert.match(glass,/#calendarHomeStatus\{min-height:32px\}/,'le statut Google mobile est resserré');
+assert.match(glass,/@media\(max-width:700px\)[\s\S]*\.phHeaderContext\{gap:0\}/,'sur mobile, départ et agenda sont visuellement rapprochés sans réduire les cibles');
+assert.match(glass,/\.phHeaderContext \.phBase\{min-height:44px;padding:8px 0 0;align-items:flex-end\}/,'le départ reste tactile à 44 px tout en rapprochant son contenu');
+assert.match(glass,/#calendarHomeStatus\{min-height:44px;align-items:flex-start\}/,'le statut Google reste tactile à 44 px et rapproche son contenu');
 assert.match(branding,/display&&display\.kind==='saved'&&generic/,'les noms génériques de base enregistrée conservent l’adresse utile');
 assert.match(branding,/display&&display\.kind==='gps'[\s\S]*display\.address/,'le tooltip GPS utilise le libellé résolu, pas baseAddress brut');
 assert.match(profile,/store-runner:data-restored'[\s\S]*refreshDepartureDisplay/,'une restauration redéclenche la résolution du départ');
