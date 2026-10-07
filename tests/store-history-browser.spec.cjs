@@ -150,6 +150,25 @@ test('La fiche Cuisiniste garde un seul rapport et met Photos / Horaires en avan
   const box=await hours.boundingBox();if(!box)throw new Error('Bouton Horaires Cuisiniste introuvable');
   expect(box.height).toBeGreaterThanOrEqual(44);
 
+  await focused.locator('[data-sr-x-visit]').tap();
+  const visitDialog=page.locator('#srVisitDialog');
+  await expect(visitDialog).toBeVisible();
+  await expect(visitDialog.locator('.sr-familySwitch')).toHaveCount(0);
+  await expect(visitDialog.locator('.sr-field textarea')).toHaveCount(1);
+  await expect(visitDialog.locator('.sr-field')).toContainText('Rapport magasin');
+  await expect(visitDialog).not.toContainText('Contexte magasin');
+  await expect(visitDialog).not.toContainText('Note terrain');
+  await expect(visitDialog).not.toContainText('Prochain passage / formation');
+  await expect(visitDialog).not.toContainText(/BRUN|BLANC/);
+  const visitPhotos=visitDialog.locator('.sr-photoEntry');
+  await expect(visitPhotos).toHaveText('📷 Photos');
+  await visitPhotos.tap();
+  const photosDialog=page.locator('#storePhotosDialog');
+  await expect(photosDialog).toBeVisible();
+  await expect(photosDialog.locator('#srPhotoTags')).not.toContainText('Famille');
+  await expect(photosDialog.locator('#srPhotoContext')).toContainText('Prochaine photo :');
+  await photosDialog.locator('#srPhotoClose').tap();
+
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
   expect(pageErrors,'La fiche Cuisiniste ne doit produire aucune erreur JavaScript').toEqual([]);
