@@ -134,6 +134,12 @@ html body .top .departureShortcut b{max-width:100%;font-size:11px}
 body.glassHome #premiumHomeV2 #calendarHomeStatus{position:static;display:flex;justify-content:flex-end;align-items:center;gap:5px;max-width:none;width:100%;min-height:44px;margin:0;padding:0;flex-wrap:wrap}
 body.glassHome #premiumHomeV2 #calendarHomeStatus button{min-height:44px;padding:6px 0 6px 4px;font-size:11px}
 body.glassHome #premiumHomeV2 #calendarHomeStatus strong{font-size:11px;line-height:1.4}
+@media(max-width:700px){
+  #premiumHomeV2 .phHeaderContext{gap:0}
+  #premiumHomeV2 .phHeaderContext .phBase{min-height:34px;padding:0}
+  body.glassHome #premiumHomeV2 #calendarHomeStatus{min-height:32px}
+  body.glassHome #premiumHomeV2 #calendarHomeStatus button{min-height:32px;padding:2px 0 2px 4px}
+}
 /* V254.1 — l'identité reste en haut, l'IA sous le titre, puis seulement la carte Runner. */
 #premiumHomeV2 .phTop{order:1!important}
 #premiumHomeV2 .phVisitCard{order:2!important}
