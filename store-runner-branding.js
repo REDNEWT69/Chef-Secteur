@@ -18,7 +18,7 @@
     const address=text(profile.baseAddress);
     const generic=/^(ma position(?: actuelle)?|maison|départ|base)$/i.test(name);
     let display=null;try{if(window.StoreRunnerProfile&&typeof window.StoreRunnerProfile.departureDisplay==='function')display=window.StoreRunnerProfile.departureDisplay(profile)}catch(e){}
-    const place=display&&display.title?display.title:((name&&!generic)?name:(address||name||'À définir'));
+    const place=display&&display.kind==='saved'&&generic?(address||display.title||name||'À définir'):(display&&display.title?display.title:((name&&!generic)?name:(address||name||'À définir')));
     const label=sector+' · '+storeCount()+' magasins';
     return{sector:sector,name:name,address:address,place:place,label:label,departureDisplay:display};
   }
@@ -80,7 +80,14 @@
     if(!p){p=document.createElement('p');p.id='titleSub';const box=brand.querySelector('.srTopBrandText');if(box)box.appendChild(p)}
     setText(p,context.label);setAttr(p,'title',context.label);
     const departure=document.getElementById('headerDeparture');
-    if(departure){setText(departure,context.place);setAttr(departure,'title',context.address||context.place)}
+    if(departure){
+      setText(departure,context.place);
+      const display=context.departureDisplay;
+      const tooltip=display&&display.kind==='gps'
+        ?(display.address||(display.title+(display.detail?' · '+display.detail:'')))
+        :(context.address||context.place);
+      setAttr(departure,'title',tooltip);
+    }
     return true;
   }
 
