@@ -167,7 +167,7 @@ function buildPrompt(visit){
 Ta seule mission ici est de STRUCTURER les notes de la visite. Store Runner fera lui-même la mise en page finale.
 
 RÈGLES ABSOLUES :
-1. Réponds UNIQUEMENT en JSON valide, sans markdown ni préambule.
+1. Réponds UNIQUEMENT par un objet JSON valide, sans markdown ni préambule.
 2. Utilise uniquement DONNEES_SOURCE. N'invente jamais un fait, chiffre, référence, prix, nom, date, cause, action, formation, promesse ou rendez-vous.
 3. Corrige la dictée, l'orthographe et la syntaxe sans changer le sens. Conserve exactement références produit, prix, chiffres, noms, marques et termes métier.
 4. Tout avis vendeur/client reste attribué (« le vendeur indique… », « selon l’équipe… ») et ne devient jamais un fait produit.
