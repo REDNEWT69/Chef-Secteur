@@ -181,8 +181,21 @@ RÈGLES ABSOLUES :
 12. formation contient uniquement une formation réalisée ou un besoin de formation explicitement mentionné.
 13. prochain_passage contient uniquement un suivi ou une action future explicitement prévue dans les notes.
 14. priorite doit être vide si aucune priorité future n'est explicitement déductible des informations déjà formulées sans inventer d'action.
-15. synthese doit faire 1 à 3 phrases maximum, sans répéter toutes les rubriques. Elle résume seulement la situation Samsung, le principal point de blocage ou levier et la prochaine priorité lorsqu'ils sont réellement présents.
-16. Reste concis : listes de 1 à 4 éléments maximum par champ.
+15. synthese est le CORPS PRINCIPAL du compte rendu final. Elle doit faire 3 à 6 paragraphes courts, naturels et professionnels, séparés par une ligne vide. Elle reprend UNE FOIS les faits utiles structurés dans les autres champs, en les regroupant intelligemment par sujet ou univers produit.
+16. Dans synthese, distingue toujours un fait observé d’un avis vendeur ou client : attribue explicitement les opinions (« le vendeur indique… », « selon l’équipe… »). Ne transforme jamais un retour terrain en vérité produit.
+17. Hiérarchise le corps selon l’intérêt métier : visibilité / merchandising, références et produits, retours vendeurs ou clients, concurrence, actions réalisées, formation, blocages et prochain passage. Omet les thèmes absents.
+18. Conserve mot pour mot les références produit, prix, volumes, noms, marques, dates et chiffres présents dans la source. Ne corrige jamais une référence produit de toi-même.
+19. Évite les phrases génériques (« bonne visite », « présence satisfaisante ») si elles n’apportent aucun fait concret. Chaque paragraphe doit contenir au moins une information terrain utile.
+20. Les listes structurées servent de garde-fou et de source de contrôle : jusqu’à 8 éléments utiles par champ si les notes le justifient. Ne coupe pas arbitrairement une information utile pour respecter un quota de 4 éléments.
+21. Ne duplique pas un même fait dans plusieurs formulations différentes. Une information importante apparaît une fois dans synthese et, si nécessaire, dans son champ structuré correspondant.
+
+STYLE DE RÉDACTION ATTENDU POUR synthese :
+- prose de chef de secteur expérimenté, claire et directe ;
+- 3 à 6 paragraphes courts, sans titres artificiels à l’intérieur du texte ;
+- regrouper naturellement les faits proches (« Côté TV », « Sur l’audio », « Sur le froid », « Sur la cuisson ») uniquement lorsque ces univers sont réellement présents ;
+- préserver les références exactes et les verbatims utiles ;
+- faire ressortir les conséquences terrain explicites sans inventer de causalité ;
+- terminer le corps sur le principal point à suivre uniquement s’il est réellement présent dans les notes.
 
 FAMILLE ATTENDUE : ${family.toUpperCase()}
 SCHÉMA JSON STRICT :
@@ -192,8 +205,12 @@ DONNEES_SOURCE :
 ${source}`
 }
 
+function bodyCovers(body,value){const b=text(body).toLowerCase(),v=scalar(value).toLowerCase();return !v||b.includes(v)}
+function appendMissing(lines,body,label,value){const v=scalar(value);if(!v||bodyCovers(body,v))return;lines.push(label+' : '+v)}
 function renderBrun(doc,visit){
-  const lines=['⚫ Résumé BRUN – '+storeName(visit),''];
+  const lines=['⚫ Résumé BRUN – '+storeName(visit),''],body=text(doc.synthese);
+  if(body)lines.push(body);
+  else{
   pushSection(lines,'Contexte magasin',doc.contexte);
   pushSection(lines,'TV / Merchandising',doc.merchandising);
   pushListSection(lines,'Retours vendeurs',doc.retours_vendeurs);
@@ -204,7 +221,15 @@ function renderBrun(doc,visit){
   pushListSection(lines,'Points de blocage',doc.blocages);
   pushListSection(lines,'Actions réalisées',doc.actions_realisees);
   pushListSection(lines,'Formation',doc.formation);
-  pushSection(lines,'Synthèse',doc.synthese);
+  }
+  if(body){
+    appendMissing(lines,body,'Retours vendeurs',doc.retours_vendeurs);
+    appendMissing(lines,body,'Retours clientèle',doc.retours_clients);
+    appendMissing(lines,body,'Concurrence',doc.concurrence);
+    appendMissing(lines,body,'Points de blocage',doc.blocages);
+    appendMissing(lines,body,'Actions réalisées',doc.actions_realisees);
+    appendMissing(lines,body,'Formation',doc.formation);
+  }
   lines.push('','### 🎯 Plan d’action / prochain passage');
   const next=[...list(doc.prochain_passage),...list(doc.priorite)];
   if(next.length)next.slice(0,5).forEach(v=>lines.push('- '+v));else lines.push('- [Non renseigné par le FMT]');
@@ -212,7 +237,9 @@ function renderBrun(doc,visit){
   return lines.join('\n').replace(/\n{3,}/g,'\n\n').trim()
 }
 function renderBlanc(doc,visit){
-  const lines=['⚪ Résumé BLANC – '+storeName(visit),''];
+  const lines=['⚪ Résumé BLANC – '+storeName(visit),''],body=text(doc.synthese);
+  if(body)lines.push(body);
+  else{
   pushSection(lines,'Contexte magasin',doc.contexte);
   pushSection(lines,'Lavage',doc.lavage);
   pushSection(lines,'Froid',doc.froid);
@@ -225,7 +252,15 @@ function renderBlanc(doc,visit){
   pushListSection(lines,'Points de blocage',doc.blocages);
   pushListSection(lines,'Actions réalisées',doc.actions_realisees);
   pushListSection(lines,'Formation',doc.formation);
-  pushSection(lines,'Synthèse',doc.synthese);
+  }
+  if(body){
+    appendMissing(lines,body,'Retours vendeurs',doc.retours_vendeurs);
+    appendMissing(lines,body,'Retours clientèle',doc.retours_clients);
+    appendMissing(lines,body,'Concurrence',doc.concurrence);
+    appendMissing(lines,body,'Points de blocage',doc.blocages);
+    appendMissing(lines,body,'Actions réalisées',doc.actions_realisees);
+    appendMissing(lines,body,'Formation',doc.formation);
+  }
   lines.push('','### 🎯 Plan d’action / prochain passage');
   const next=[...list(doc.prochain_passage),...list(doc.priorite)];
   if(next.length)next.slice(0,5).forEach(v=>lines.push('- '+v));else lines.push('- [Non renseigné par le FMT]');

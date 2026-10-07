@@ -155,7 +155,7 @@ function counting(answers){
     formation:[],prochain_passage:[],priorite:'',synthese:''};
   const gw=counting([{text:JSON.stringify(minimal)}]);
   const out=await run(gw,'brun');
-  assert.match(out.text,/Retours vendeurs : Le vendeur signale une rupture\./);
+  assert.match(out.text,/Le vendeur signale une rupture\./);
   // Les rubriques absentes ne sont pas comblées, et le plan d'action reste explicitement vide.
   assert.doesNotMatch(out.text,/Concurrence :/);
   assert.doesNotMatch(out.text,/Synthèse :/);

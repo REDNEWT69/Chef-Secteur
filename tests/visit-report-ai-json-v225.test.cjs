@@ -8,6 +8,9 @@ const api=require('../visit-report-ai-json-v225.js');
   assert.match(prompt,/Une opinion vendeur doit rester explicitement attribuée au vendeur/);
   assert.match(prompt,/N'invente jamais un fait/);
   assert.match(prompt,/"famille": "BRUN"/);
+  assert.match(prompt,/3 à 6 paragraphes courts/);
+  assert.match(prompt,/jusqu’à 8 éléments utiles/);
+  assert.match(prompt,/CORPS PRINCIPAL/);
 })();
 
 (function testParseFencedJson(){
@@ -32,11 +35,12 @@ const api=require('../visit-report-ai-json-v225.js');
     formation:[],
     prochain_passage:['Revoir la disponibilité des barres de son.'],
     priorite:'Travailler la démonstration Mini LED.',
-    synthese:'Samsung reste visible mais le discours Mini LED doit être consolidé.'
+    synthese:'Samsung reste visible en rayon. Le vendeur juge la gamme Mini LED Samsung moins lumineuse que certaines offres concurrentes, tandis que TCL est régulièrement cité.\n\nLes grandes tailles Samsung sont appréciées. La présentation du fonctionnement Q-Symphony a été réalisée, mais l’absence de barre de son Samsung dans la gamme recherchée reste un point de blocage.'
   };
   const out=api.renderStructured(doc,visit);
   assert.match(out,/^⚫ Résumé BRUN – Boulanger Saint-Étienne/);
   assert.match(out,/Le vendeur juge la gamme Mini LED Samsung moins lumineuse/);
+  assert.doesNotMatch(out,/Synthèse :/,'le corps naturel ne doit plus être précédé du libellé Synthèse');
   assert.doesNotMatch(out,/La gamme Mini LED Samsung est moins lumineuse que la concurrence/);
   assert.match(out,/### 🎯 Plan d’action \/ prochain passage/);
   assert.match(out,/\*\*Photos : 3 au total – 1 avant \/ 2 après\.\*\*/);
@@ -47,8 +51,8 @@ const api=require('../visit-report-ai-json-v225.js');
   const doc={famille:'BLANC',contexte:'Rayon électroménager accessible.',lavage:'Samsung présent sur le lavage.',froid:'',cuisson:'',entretien_sols:'',retours_vendeurs:[],retours_clients:[],concurrence:['LG présent à proximité.'],points_positifs:[],blocages:[],actions_realisees:[],formation:[],prochain_passage:[],priorite:'',synthese:'Présence Samsung à maintenir.'};
   const out=api.renderStructured(doc,visit);
   assert.match(out,/^⚪ Résumé BLANC – Darty Lyon/);
-  assert.match(out,/Lavage : Samsung présent sur le lavage/);
-  assert.match(out,/Concurrence : LG présent à proximité/);
+  assert.match(out,/Présence Samsung à maintenir/);
+  assert.match(out,/Concurrence : LG présent à proximité/,'un fait structuré important absent de la synthèse reste rendu en filet de sécurité');
 })();
 
 (async function testGatewayInterceptionAndSingleCall(){
