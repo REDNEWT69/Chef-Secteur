@@ -20,19 +20,22 @@ assert.match(home,/phDepartureTitle/,'l’Accueil possède une ligne de départ 
 assert.doesNotMatch(home,/<span class="phSector">/,'le secteur/count ne doit plus être affiché dans ce bloc Accueil');
 assert.match(branding,/departureDisplay\.kind==='gps'/,'le branding sait rendre le GPS courant');
 assert.match(branding,/store-runner:departure-display-updated/,'le branding suit la résolution asynchrone de la ville');
+assert.match(branding,/display&&display\.kind==='saved'&&generic/,'les noms génériques de base enregistrée conservent l’adresse utile');
+assert.match(branding,/display&&display\.kind==='gps'[\s\S]*display\.address/,'le tooltip GPS utilise le libellé résolu, pas baseAddress brut');
+assert.match(profile,/store-runner:data-restored'[\s\S]*refreshDepartureDisplay/,'une restauration redéclenche la résolution du départ');
 
 const renderHeader=core.slice(core.indexOf('function renderHeader()'),core.indexOf('function openDepartureSettings()'));
 assert.match(renderHeader,/display\.title\+\(display\.detail/,'le Planning rend ville/position précise quand disponible');
 assert.doesNotMatch(renderHeader,/Position GPS ·/,'le Planning ne doit pas reconstruire de coordonnées visibles');
 
-function runtime(profile,{online=false,response=null}={}){
+function runtime(profile,{online=false,response=null,fetchImpl=null}={}){
   const values=new Map(),events=[];
   let fetches=0;
   const state={profile:structuredClone(profile)};
   const context={
     state,navigator:{onLine:online,geolocation:null},console,setTimeout,clearTimeout,AbortController,
     sessionStorage:{getItem:key=>values.has(key)?values.get(key):null,setItem:(key,value)=>values.set(key,String(value))},
-    fetch:async()=>{fetches++;return response||{ok:false,json:async()=>({})}},
+    fetch:async(...args)=>{fetches++;return fetchImpl?fetchImpl(...args):(response||{ok:false,json:async()=>({})})},
     CustomEvent:class{constructor(type,options){this.type=type;this.detail=options&&options.detail}},
     document:{readyState:'loading',addEventListener(){},getElementById(){return null},querySelector(){return null},dispatchEvent(event){events.push(event)}},
     addEventListener(){},renderHeader(){}
@@ -74,5 +77,17 @@ const profileSource=profile;
   await savedRuntime.context.StoreRunnerProfile.refreshDepartureDisplay();
   assert.equal(savedRuntime.fetches(),0,'une base enregistrée ne déclenche aucun reverse geocoding de présentation');
 
-  console.log('departure-display-v276: OK · rendu, cache, hors ligne et absence de mutation');
+  let releaseLookup;
+  const race=runtime(gps,{online:true,fetchImpl:()=>new Promise(resolve=>{releaseLookup=resolve})});
+  const pending=race.context.StoreRunnerProfile.refreshDepartureDisplay();
+  await Promise.resolve();
+  race.state.profile.baseLat=46.1956;
+  race.state.profile.baseLon=6.2364;
+  race.state.profile.baseAddress='Position GPS · 46.19560, 6.23640';
+  releaseLookup({ok:true,json:async()=>({display_name:'Place Bellecour, Lyon, France',address:{city:'Lyon'}})});
+  const afterRace=await pending;
+  assert.equal(afterRace.title,'Position actuelle','une réponse obsolète ne doit pas étiqueter la nouvelle position');
+  assert.equal(race.values.has('store-runner-departure-display-v1'),false,'une réponse obsolète ne doit jamais contaminer le cache de la nouvelle position');
+
+  console.log('departure-display-v276: OK · rendu, cache, restauration/race et absence de mutation');
 })().catch(error=>{console.error(error);process.exitCode=1});
