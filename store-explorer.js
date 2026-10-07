@@ -62,6 +62,11 @@ function frDate(value,withWeekday){
 function localDay(v){const t=String(v||'');if(/^\d{4}-\d{2}-\d{2}$/.test(t))return t;const d=new Date(t);return t&&!isNaN(d)?iso(d):''}
 function plural(n,one,many){return n+' '+(n>1?many:one)}
 function find(state,id){return((state&&state.stores)||[]).find(s=>s&&String(s.id)===String(id))||null}
+function channelOf(store){
+  try{if(typeof root.storeChannel==='function'){const c=String(root.storeChannel(store)||'');if(c)return c}}catch(e){}
+  const explicit=String(store&&store.channel||'');return explicit==='cuisiniste'||explicit==='retail'?explicit:'';
+}
+function isCuisinisteStore(store){return channelOf(store)==='cuisiniste'}
 function storage(){try{return root.__chefStorage||root.localStorage||null}catch(e){return null}}
 function readArchive(){try{const s=storage();return s?JSON.parse(s.getItem(ARCHIVE_KEY)||'{}')||{}:{}}catch(e){return{}}}
 function coverage(){return root.StoreRunnerVisitCoverage||null}
@@ -221,12 +226,12 @@ function excerpt(text,max){const t=String(text||'').replace(/\s+/g,' ').trim();r
    (IndexedDB, asynchrone, ajoutées par l'écran). Aucune donnée n'est copiée : chaque ligne renvoie
    à son enregistrement (visitId, appointmentId, date). */
 function timelineFor(state,storeId,options,shared){
-  const ctx=shared||contextFor(state,options),id=String(storeId),b=(state&&state.businessV2)||{},up=[],past=[];
+  const ctx=shared||contextFor(state,options),id=String(storeId),b=(state&&state.businessV2)||{},up=[],past=[],cuisiniste=isCuisinisteStore(find(state,id));
   const push=e=>(e.date>=ctx.today&&e.future!==false?up:past).push(e);
   const completedByDay=new Map();
   for(const v of (b.visits||[])){
     if(!v||String(v.storeId)!==id)continue;
-    if(v.status==='completed'&&v.completedDate){completedByDay.set(v.completedDate,v);push({kind:'visit',date:v.completedDate,title:'Visite réalisée',detail:[FAMILY[v.activeFamily]||'',excerpt(v.conclusion,90)].filter(Boolean).join(' · '),visitId:String(v.id)})}
+    if(v.status==='completed'&&v.completedDate){completedByDay.set(v.completedDate,v);push({kind:'visit',date:v.completedDate,title:'Visite réalisée',detail:[cuisiniste?'':(FAMILY[v.activeFamily]||''),excerpt(v.conclusion,90)].filter(Boolean).join(' · '),visitId:String(v.id)})}
     else if(v.status==='draft')push({kind:'visit_draft',date:localDay(v.createdAt)||ctx.today,future:false,title:'Visite en cours',detail:'Brouillon à reprendre',visitId:String(v.id)});
   }
   const C=ctx.C;let days=[];try{days=C?(C.visitDays(state).get(id)||[]):[]}catch(e){days=[]}
@@ -360,6 +365,26 @@ function contactsOf(state,id){
   return rows.map(r=>({name:String(r&&r.name||'').trim(),role:String(r&&r.role||'').trim(),email:String(r&&r.email||'').trim()})).filter(r=>r.name||r.role||r.email);
 }
 function validEmail(v){return/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v||'').trim())}
+const CUISINE_REPORT_FIELDS=Object.freeze([
+  ['context','Contexte magasin'],['team','Terrain / interlocuteurs'],['actions','Actions réalisées'],
+  ['massification','Exposition / merchandising'],['omni','Suivi OMNI'],['training','Formation / prochain passage']
+]);
+function latestReportFor(state,storeId){
+  const id=String(storeId),b=(state&&state.businessV2)||{};
+  const visits=(b.visits||[]).filter(v=>v&&String(v.storeId)===id&&v.status==='completed').slice()
+    .sort((a,c)=>String(c.completedAt||c.completedDate||c.updatedAt||'').localeCompare(String(a.completedAt||a.completedDate||a.updatedAt||'')));
+  const visit=visits[0];if(!visit)return null;
+  let report=visit.report||{};try{const M=root.StoreRunnerVisitModel;if(M&&typeof M.reportOf==='function')report=M.reportOf(visit)}catch(e){}
+  const fields=[];
+  for(const [key,label] of CUISINE_REPORT_FIELDS){
+    let values=[];
+    if(key==='context')values=[report&&report.shared&&report.shared.context];
+    else values=[report&&report.blanc&&report.blanc[key],report&&report.brun&&report.brun[key]];
+    values=[...new Set(values.map(v=>String(v||'').trim()).filter(Boolean))];
+    if(values.length)fields.push({key,label,text:values.join('\n')});
+  }
+  return{visitId:String(visit.id||''),date:String(visit.completedDate||localDay(visit.completedAt)||''),conclusion:String(visit.conclusion||'').trim(),fields};
+}
 function profileFor(state,storeId,options,shared){
   const ctx=shared||contextFor(state,options),store=find(state,storeId);if(!store)return null;
   const id=String(store.id),need=needFor(ctx,store),forecast=ctx.forecastById.get(id)||null,b=(state&&state.businessV2)||{};
@@ -369,7 +394,7 @@ function profileFor(state,storeId,options,shared){
   const openOpportunities=(b.opportunities||[]).filter(o=>o&&String(o.storeId)===id&&['open','in_progress'].includes(o.status)).length;
   const next=[planned&&{kind:'planned',date:planned},nextAppt&&{kind:'appointment',date:nextAppt.date}].filter(Boolean).sort((a,c)=>a.date.localeCompare(c.date))[0]||null;
   return{
-    store,id,need,forecast,
+    store,id,need,forecast,cuisiniste:isCuisinisteStore(store),latestReport:latestReportFor(state,id),
     cadence:{label:String(store.freq||'Mensuel'),intervalDays:need?need.intervalDays:null},
     lastVisit:need&&need.lastVisit||'',
     nextVisit:next?{date:next.date,kind:next.kind}:null,
@@ -422,7 +447,7 @@ function rowHtml(store,lc){
   const prio=row.priority?'<span class="srXChip srXp">'+esc(row.priority)+'</span>':'';
   const risk=forecast&&forecast.watch?'<span class="srXForecast">'+esc(forecast.forecastReason)+(forecast.forecastWeek?' · semaine '+forecast.forecastWeek:'')+'</span>':'';
   return'<small class="srXRow">'+statusChip(need)+prio+risk+'<span>'+esc(last)+'</span><span>'+esc(next)+'</span>'+(cons?'<span class="srXCons">🔒 '+plural(cons,'contrainte','contraintes')+'</span>':'')+'</small>'
-    +'<button type="button" class="srXOpen" data-sr-store-360="'+esc(store.id)+'">Fiche 360</button>';
+    +'<button type="button" class="srXOpen" data-sr-store-360="'+esc(store.id)+'">'+(isCuisinisteStore(store)?'Fiche Cuisiniste':'Fiche 360')+'</button>';
 }
 function counts(ctx){
   const state=ctx.state,out={priority:{all:0,P1:0,P2:0,P3:0},status:{all:0,watch:0,todo:0,late:0,never:0}};
@@ -452,7 +477,8 @@ function ensureCss(doc){
     +'.srXLead{margin:0 0 8px;font-size:15px;font-weight:800;line-height:1.3;color:#101828}'
     +'.srXEmpty{font-size:12px;color:#667085}.srXLinks{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.srXItem button.srXGo{display:block;margin-top:8px;padding:0 14px}.srXLinks button,.srXItem button.srXGo{min-height:44px;border:1px solid #e1e5ed;border-radius:12px;background:#fff;color:#0a6dd9;font:inherit;font-size:13px;font-weight:800}.srXLinks button[disabled]{opacity:.45}'
     +'.srXTl{display:grid;gap:6px}.srXTl button,.srXTl div{display:block;width:100%;min-height:44px;box-sizing:border-box;text-align:left;padding:8px 10px;border:1px solid #e5e7eb;border-radius:12px;background:#fff;font:inherit;font-size:12px;color:#1d2939}.srXTl div{min-height:0;background:#f8fafc}.srXTl b{display:block}.srXTl span{color:#667085}.srXTl [data-future="1"]{border-left:4px solid #0a6dd9}'
-    +'.srXMore{margin-top:6px;min-height:44px;border:0;background:transparent;color:#0a6dd9;font:inherit;font-weight:800}';
+    +'.srXMore{margin-top:6px;min-height:44px;border:0;background:transparent;color:#0a6dd9;font:inherit;font-weight:800}'
+    +'.srXCuisineLead{margin:2px 0 10px;color:#667085;font-size:12px;line-height:1.45}.srXCuisineReport{display:block;width:100%;min-height:44px;box-sizing:border-box;text-align:left;padding:11px 12px;border:1px solid #d9e2ef;border-radius:14px;background:#fff;color:#1d2939;font:inherit}.srXCuisineReport>b{display:block;font-size:13px}.srXCuisineReport>span{display:block;margin-top:3px;color:#667085;font-size:11px;line-height:1.4}.srXCuisineFields{display:grid;gap:7px;margin-top:9px}.srXCuisineField{padding-top:7px;border-top:1px solid #edf0f4}.srXCuisineField small{display:block;color:#667085;font-size:10px;font-weight:800}.srXCuisineField span{display:block;margin-top:2px;white-space:pre-line;color:#344054;font-size:11.5px;line-height:1.4}.srXCuisineActions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.srXCuisineActions button{min-height:44px;border:1px solid #e1e5ed;border-radius:12px;background:#fff;color:#0a6dd9;font:inherit;font-size:13px;font-weight:800}';
   doc.head.appendChild(s);
 }
 function chipsHtml(kind,list,current,countMap){
@@ -502,13 +528,29 @@ function forecastSummary(row,need){
   if(row.forecastKind==='becomes_late')return(need&&need.label||'À jour')+' · deviendra en retard dans '+row.forecastInDays+' jour'+(row.forecastInDays>1?'s':'');
   return row.forecastKind==='never'?'Jamais visité':(need?need.label:'—')
 }
+function contactsHtml(p){
+  return p.contacts.length?'<ul class="srXList">'+p.contacts.map(c=>'<li class="srXItem"><b>'+esc(c.name||c.role||c.email)+'</b><span>'+esc([c.name?c.role:'',c.email&&!validEmail(c.email)?c.email:''].filter(Boolean).join(' · '))+'</span>'+(validEmail(c.email)?' <a href="mailto:'+esc(c.email)+'">'+esc(c.email)+'</a>':'')+'</li>').join('')+'</ul>':'<p class="srXEmpty">Aucun contact. Ajoute-les dans « Voir la fiche › Contacts ».</p>';
+}
+function cuisinisteReportHtml(report){
+  if(!report)return'<p class="srXEmpty">Aucun rapport magasin enregistré pour le moment.</p>';
+  const fields=report.fields&&report.fields.length?'<div class="srXCuisineFields">'+report.fields.map(f=>'<div class="srXCuisineField"><small>'+esc(f.label)+'</small><span>'+esc(f.text)+'</span></div>').join('')+'</div>':'';
+  return'<button type="button" class="srXCuisineReport" data-sr-x-visit="'+esc(report.visitId)+'"><b>Rapport du '+esc(frDate(report.date,false)||report.date||'dernier passage')+'</b>'+(report.conclusion?'<span>'+esc(report.conclusion)+'</span>':'')+fields+'</button>';
+}
+function cuisinisteSectionHtml(p,o){
+  const photos=o.photoCount==null?'Ouvrir les photos':(o.photoCount?plural(o.photoCount,'photo','photos'):'Aucune photo · ouvrir la galerie');
+  return placementHtml(o.placement)+'<h3>Fiche Cuisiniste</h3><p class="srXCuisineLead">Le contrat d’exposition reste dans son bloc dédié. Ici : contacts, dernier rapport magasin, photos et horaires.</p>'
+    +'<h3>Contacts</h3>'+contactsHtml(p)
+    +'<h3>Rapport magasin</h3>'+cuisinisteReportHtml(p.latestReport)
+    +'<h3>Photos & horaires</h3><div class="srXCuisineActions"><button type="button" data-sr-x-photos="1">📷 '+esc(photos)+'</button><button type="button" data-sr-x-hours="1">🕘 Horaires</button></div>';
+}
 function sectionHtml(p,opts){
-  const o=opts||{},need=p.need,tl=o.timeline||p.timeline,expanded=!!o.expanded;
+  const o=opts||{};if(p.cuisiniste)return cuisinisteSectionHtml(p,o);
+  const need=p.need,tl=o.timeline||p.timeline,expanded=!!o.expanded;
   const last=p.lastVisit?frDate(p.lastVisit)+(need&&need.daysSinceToday!=null?' · '+(need.daysSinceToday===0?'aujourd’hui':'il y a '+need.daysSinceToday+' j'):''):'Jamais';
   const next=p.nextVisit?frDate(p.nextVisit.date)+(p.nextVisit.kind==='planned'?' · planifiée':' · rendez-vous'):(p.nextDue?'À planifier · échéance '+frDate(p.nextDue,false):'À planifier');
   const cad=p.cadence.label+(p.cadence.intervalDays?' · '+p.cadence.intervalDays+' j':'');
   const facts='<div class="srXFacts"><div class="srXFact"><small>Statut</small><b>'+esc(forecastSummary(p.forecast,need))+(p.priority?' · '+esc(p.priority):'')+'</b></div><div class="srXFact"><small>Cadence</small><b>'+esc(cad)+'</b></div><div class="srXFact"><small>Dernière visite</small><b>'+esc(last)+'</b></div><div class="srXFact"><small>Prochaine visite</small><b>'+esc(next)+'</b></div></div>';
-  const contacts=p.contacts.length?'<ul class="srXList">'+p.contacts.map(c=>'<li class="srXItem"><b>'+esc(c.name||c.role||c.email)+'</b><span>'+esc([c.name?c.role:'',c.email&&!validEmail(c.email)?c.email:''].filter(Boolean).join(' · '))+'</span>'+(validEmail(c.email)?' <a href="mailto:'+esc(c.email)+'">'+esc(c.email)+'</a>':'')+'</li>').join('')+'</ul>':'<p class="srXEmpty">Aucun contact. Ajoute-les dans « Voir la fiche › Contacts ».</p>';
+  const contacts=contactsHtml(p);
   const cons=p.constraints.length?'<ul class="srXList">'+p.constraints.map(constraintHtml).join('')+'</ul>':'<p class="srXEmpty">Aucune contrainte : Store Runner décide seul de la date et de l’heure.</p>';
   const ev=tl.upcoming.concat(tl.past),shown=expanded?ev:ev.slice(0,TIMELINE_SHOWN);
   const timeline=ev.length?'<div class="srXTl">'+shown.map(eventHtml).join('')+'</div>'+(ev.length>TIMELINE_SHOWN?'<button type="button" class="srXMore" data-sr-x-more>'+(expanded?'Réduire':'Voir les '+ev.length+' événements')+'</button>':''):'<p class="srXEmpty">Rien à afficher pour le moment.</p>';
@@ -551,7 +593,7 @@ function renderSection(win,extra){
 }
 function go(win){try{if(typeof win.closeStoreQuick==='function')win.closeStoreQuick()}catch(e){}}
 function onAction(win,e){
-  const doc=win.document,target=e.target&&e.target.closest?e.target.closest('[data-sr-store-360],[data-sr-x-plan],[data-sr-x-visit],[data-sr-x-photos],[data-sr-x-pilotage],[data-sr-x-appt],[data-sr-x-more]'):null;if(!target||target.disabled)return;
+  const doc=win.document,target=e.target&&e.target.closest?e.target.closest('[data-sr-store-360],[data-sr-x-plan],[data-sr-x-visit],[data-sr-x-photos],[data-sr-x-hours],[data-sr-x-pilotage],[data-sr-x-appt],[data-sr-x-more]'):null;if(!target||target.disabled)return;
   if(target.hasAttribute('data-sr-store-360')){e.preventDefault();if(typeof win.openStoreQuick==='function')win.openStoreQuick(target.getAttribute('data-sr-store-360'));return}
   const sec=doc.getElementById(SECTION_ID);if(!sec||!sec.contains(target))return;
   const id=sec.dataset.store||'';
@@ -564,6 +606,7 @@ function onAction(win,e){
   }
   if(target.hasAttribute('data-sr-x-visit')){const v=target.getAttribute('data-sr-x-visit');if(!v||!win.StoreRunnerVisits||typeof win.StoreRunnerVisits.openVisit!=='function')return;go(win);win.StoreRunnerVisits.openVisit(v);return}
   if(target.hasAttribute('data-sr-x-photos')){if(!win.StorePhotosV1||typeof win.StorePhotosV1.open!=='function')return;go(win);win.StorePhotosV1.open(id);return}
+  if(target.hasAttribute('data-sr-x-hours')){if(!win.StoreOpeningHoursV1||typeof win.StoreOpeningHoursV1.openHoursDialog!=='function')return;win.StoreOpeningHoursV1.openHoursDialog(id);return}
   if(target.hasAttribute('data-sr-x-pilotage')){
     go(win);const key=target.getAttribute('data-sr-x-pilotage')||'';
     if(win.StoreRunnerSectorPilotage&&typeof win.StoreRunnerSectorPilotage.open==='function')win.StoreRunnerSectorPilotage.open(win,{coverage:key});
@@ -601,5 +644,5 @@ function install(win){
 }
 function resetFilters(){filter.priority='all';filter.status='all'}
 
-return{VERSION:1,DAYS,MODE_LABEL,filter,contextFor,constraintsFor,placementFor,placementHtml,insightsFor,timelineFor,photoEvents,mergePhotos,profileFor,contactsOf,guardUntil,listContext,matches,rowHtml,afterList,counts,rowOf,renderSection,sectionHtml,resetFilters,install};
+return{VERSION:1,DAYS,MODE_LABEL,filter,contextFor,constraintsFor,placementFor,placementHtml,insightsFor,timelineFor,photoEvents,mergePhotos,profileFor,contactsOf,latestReportFor,isCuisinisteStore,guardUntil,listContext,matches,rowHtml,afterList,counts,rowOf,renderSection,sectionHtml,resetFilters,install};
 });
