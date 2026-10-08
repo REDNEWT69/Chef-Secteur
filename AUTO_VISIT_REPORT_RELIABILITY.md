@@ -162,7 +162,7 @@ appel. Il n'existe pas de garantie exactly-once d'un fournisseur externe.
 
 ## PWA, déploiement et recette
 
-Build proposé `20261008-r78-reliable-auto-report-276`, version produit affichée
+Build proposé `20261008-r79-report-job-error-276`, version produit affichée
 276 conservée. Aucun script de démarrage ajouté, budget 79 inchangé. Renderer,
 coordinateur et adaptateur JSON historique sont précachés pour le chargement à la
 demande hors ligne. Le bump accompagne index/SW/manifest/version.

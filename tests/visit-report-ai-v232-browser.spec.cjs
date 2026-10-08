@@ -20,7 +20,7 @@ test('Terminer prépare automatiquement un rapport rendu localement à 390 px',a
 test('Un échec serveur conserve la visite, les notes et le rapport local',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));const transport=await H.installJobs(page,{status:'failed'});
  const {id,note}=await H.seedAndComplete(page);await H.jobState(page,id,'failed');const sheet=await H.openReport(page,id);
- await expect(sheet.locator('#srReportStatus')).toContainText('notes sont conservés');
+ await expect(sheet.locator('#srReportStatus')).toContainText('Les notes sont conservées');
  await expect(sheet.locator('#srReportText')).toHaveValue(new RegExp(note.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
  await expect(sheet.locator('#srReportAI')).toBeEnabled();expect((await sheet.locator('#srReportAI').boundingBox()).height).toBeGreaterThanOrEqual(44);
  expect(transport.calls).toHaveLength(1);expect(await page.evaluate(()=>state.businessV2.visits[0].status)).toBe('completed');
