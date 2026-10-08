@@ -4,7 +4,7 @@
    When that proof fails, the entire result is rejected and existing reports survive. */
 (function(root){
 'use strict';
-const VERSION=1,PROMPT_VERSION='visit-report-v278-3',MAX_ITEMS=36;
+const VERSION=1,PROMPT_VERSION='visit-report-v278-4',MAX_ITEMS=36;
 const TYPES=['brun','blanc','cuisiniste','buying-groups'];
 const LABELS={context:'🏬 Contexte magasin',tv:'📺 TV / Présence Samsung',challenge:'🏆 Challenge / Prime vendeur',competition:'🆚 Concurrence / Retour vendeur',offers:'🏷️ ODR / Offres Samsung',training:'🎓 Formation',blackFriday:'🛍️ Black Friday',audio:'🔊 Audio / Barres de son',merchandising:'🏬 Merchandising / Massification',omni:'📱 Suivi OMNI',laundry:'🧺 Lavage',cooking:'🍳 Cuisson',cold:'❄️ Froid',vacuum:'🧹 Aspiration',smallAppliances:'☕ Petit électroménager',showroom:'❄️ Point produits / Showroom',contract:'📑 Contrat d’exposition',service:'🛠️ SAV / ADV',products:'📦 Point produits',newsletter:'📰 Newsletter',market:'🏬 Contexte marché',actionsDone:'🛠️ Actions réalisées',positives:'✅ Points positifs',focus:'⚠️ Points à travailler',actions:'🎯 Plan d’action / prochain passage',summary:'📝 Synthèse',notes:'📝 Notes terrain'};
 const ORDER={
@@ -250,13 +250,28 @@ function validateBestEffort(raw,source){
     items.push({section:'notes',text:quote,source:item.source,quote});reportRaw++;
    }
   }
+  // In V278-3 one rejected short quote appended the ENTIRE dictated entry,
+  // even if its facts were already represented by validated items. This
+  // created a huge repeated final paragraph on real store visits.
+  // Preserve untouched sources for genuinely empty reports; otherwise only
+  // append short, uncovered entries. Longer unmatched notes remain in the
+  // immutable visit source and trigger explicit manual-review notice.
   if(reportOmitted||!items.length){
-   // Preserve notes not safely extracted: do not silently drop an observation.
+   const alreadyCovered=items.some(item=>item.section!=='notes');
    for(const entry of inputs.entries){
-    if(!text(entry.text))continue;
-    const key=entry.source+'|'+plain(entry.text);
-    if(duplicates.has(key))continue;duplicates.add(key);
-    items.push({section:'notes',text:text(entry.text),source:entry.source,quote:text(entry.text)});
+    const raw=text(entry.text);if(!raw)continue;
+    const key=entry.source+'|'+plain(raw);
+    if(duplicates.has(key))continue;
+    // This exact passage has already been included, possibly by another
+    // source entry. Never reprint it as an additional raw note.
+    if(items.some(item=>plain(item.quote)===plain(raw)||plain(item.text)===plain(raw)))continue;
+    if(alreadyCovered&&raw.length>220){
+     // Do NOT silently drop the underlying source: it remains in the visit,
+     // and the report explicitly flags that a source entry needs review.
+     reportOmitted++;continue;
+    }
+    duplicates.add(key);
+    items.push({section:'notes',text:raw,source:entry.source,quote:raw});
     reportRaw++;
    }
   }
@@ -320,7 +335,7 @@ function render(doc,source){
  const lines=[head+(name?' – '+name:'')],day=text(source&&source.completedDate||source&&source.date);
  
  if(type==='cuisiniste'&&/^\d{4}-\d{2}-\d{2}$/.test(day))lines.push('','Date : '+day.slice(8,10)+'/'+day.slice(5,7)+'/'+day.slice(0,4));
- if(doc.review&&(doc.review.sourceOnly||doc.review.omitted))lines.push('','⚠️ Relecture nécessaire : '+doc.review.sourceOnly+' extrait(s) repris des notes originales, '+doc.review.omitted+' proposition(s) IA écartée(s).');
+ if(doc.review&&(doc.review.sourceOnly||doc.review.omitted))lines.push('','⚠️ Relecture nécessaire : '+doc.review.sourceOnly+' extrait(s) repris des notes originales, '+doc.review.omitted+' élément(s) non reformulé(s). Les notes complètes restent dans la fiche visite.');
  let sections=0;
  for(const section of ORDER[type]){
   const rows=doc.items.filter(i=>i.section===section&&text(i.text));if(!rows.length)continue;
