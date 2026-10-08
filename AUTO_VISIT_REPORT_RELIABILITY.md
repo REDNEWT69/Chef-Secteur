@@ -162,7 +162,7 @@ appel. Il n'existe pas de garantie exactly-once d'un fournisseur externe.
 
 ## PWA, déploiement et recette
 
-Build proposé `20261008-r80-gemini-report-jobs-276`, version produit affichée
+Build proposé `20261008-r81-report-provider-diagnostics-276`, version produit affichée
 276 conservée. Aucun script de démarrage ajouté, budget 79 inchangé. Renderer,
 coordinateur et adaptateur JSON historique sont précachés pour le chargement à la
 demande hors ligne. Le bump accompagne index/SW/manifest/version.
@@ -234,3 +234,18 @@ aucune seconde tentative automatique sur réponse vide, quota ou panne. Les note
 restent locales et le job en échec conserve son code d'erreur contrôlé.
 Le déploiement du frontend GitHub Pages ne publie pas `workers/chef-secteur-ai.js` :
 redéployer le Worker Cloudflare indépendamment après validation.
+
+
+## Diagnostic fournisseur et sélection explicite (R81)
+
+Le job durable conserve **un seul** appel fournisseur et aucune reprise payante silencieuse.
+Le champ optionnel `REPORT_AI_PROVIDER` (variable texte du Worker, pas un secret)
+peut sélectionner `gemini`, `groq` ou `workers-ai`. Sans ce champ, la priorité
+reste Gemini → Groq → Workers AI. Un fournisseur explicitement sélectionné mais non
+configuré échoue sans basculer silencieusement vers un autre moteur.
+
+Pour les échecs HTTP de Gemini uniquement, le job expose un diagnostic maîtrisé :
+`error.provider='gemini'`, `error.httpStatus` (400–599) et message équivalent.
+**Jamais** de corps de réponse Google, de notes source, de prompt ou de clé API.
+Les jobs déjà échoués restent inchangés ; seule une future génération afficherait
+le nouveau code HTTP. Le backend Cloudflare doit être déployé séparément de Pages.
