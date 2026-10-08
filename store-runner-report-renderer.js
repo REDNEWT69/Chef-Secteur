@@ -4,7 +4,7 @@
    When that proof fails, the entire result is rejected and existing reports survive. */
 (function(root){
 'use strict';
-const VERSION=1,PROMPT_VERSION='visit-report-v278-4',MAX_ITEMS=36;
+const VERSION=1,PROMPT_VERSION='visit-report-v278-5',MAX_ITEMS=36;
 const TYPES=['brun','blanc','cuisiniste','buying-groups'];
 const LABELS={context:'🏬 Contexte magasin',tv:'📺 TV / Présence Samsung',challenge:'🏆 Challenge / Prime vendeur',competition:'🆚 Concurrence / Retour vendeur',offers:'🏷️ ODR / Offres Samsung',training:'🎓 Formation',blackFriday:'🛍️ Black Friday',audio:'🔊 Audio / Barres de son',merchandising:'🏬 Merchandising / Massification',omni:'📱 Suivi OMNI',laundry:'🧺 Lavage',cooking:'🍳 Cuisson',cold:'❄️ Froid',vacuum:'🧹 Aspiration',smallAppliances:'☕ Petit électroménager',showroom:'❄️ Point produits / Showroom',contract:'📑 Contrat d’exposition',service:'🛠️ SAV / ADV',products:'📦 Point produits',newsletter:'📰 Newsletter',market:'🏬 Contexte marché',actionsDone:'🛠️ Actions réalisées',positives:'✅ Points positifs',focus:'⚠️ Points à travailler',actions:'🎯 Plan d’action / prochain passage',summary:'📝 Synthèse',notes:'📝 Notes terrain'};
 const ORDER={
@@ -224,6 +224,54 @@ function safeBusinessRelations(proposed,quote){
  if(people.length>1&&JSON.stringify(people)!==JSON.stringify(outputPeople))return false;
  return true;
 }
+// Professional French can legitimately replace field vocabulary without
+// altering a business claim. This bounded path requires exact-source evidence,
+// ordered numeric/brand/person anchors, unchanged modality and enough overlap.
+function naturalRewrite(proposed,quote,context){
+ const q=text(quote),p=text(proposed),qw=words(q),pw=words(p);
+ if(!q||!p||p.length>1400||/[\r\n]|⸻|\p{Extended_Pictographic}|(?:^|\s)(?:#{1,6}\s|\*\s|>\s|-\s)|\*\*|__|---/u.test(p))return false;
+ if(JSON.stringify(exactTokens(q).map(tokenKey))!==JSON.stringify(exactTokens(p).map(tokenKey)))return false;
+ const brands=w=>w.filter(x=>REPORT_BRANDS.has(x));
+ if(JSON.stringify(brands(qw))!==JSON.stringify(brands(pw)))return false;
+ const person=v=>(v.match(/(?<![\p{L}\p{N}])[\p{Lu}][\p{L}\p{N}-]+/gu)||[])
+   .map(plain).filter(x=>!STOP.has(x)&&!REPORT_BRANDS.has(x));
+ const noNames=new Set(['visite','premiere','formation','baisse','ventes','magasin','rayon','technologie','point','suivi','le','la','les','des','une','un','absence','presence','television','televiseurs','refrigerateur']);
+ const names=person(q),appearing=person(p).filter(x=>names.includes(x));
+ if(names.length>1&&JSON.stringify(names)!==JSON.stringify(appearing))return false;
+ if(person(p).some(x=>!qw.includes(x)&&!noNames.has(x)&&!((x==='dual'||x==='cook')&&qw.includes('dualcook'))))return false;
+ const roles=w=>w.map(x=>SPELL[x]||x).filter(x=>REPORT_ROLES.has(x));
+ if(roles(qw).length&&JSON.stringify(roles(qw))!==JSON.stringify(roles(pw)))return false;
+ const neg=w=>w.filter(x=>/^(?:pas|aucun|aucune|jamais|sans|non|ni)$/.test(x)).length;
+ if(neg(qw)!==neg(pw))return false;
+ // Compare commercial status in order, not just a count: switched actors,
+ // missing uncertainty or a new confirmed outcome must be rejected.
+ const state=v=>words(v).map(x=>{
+  if(/^(?:absence|abscence|absent|absente|absents|absentes)$/.test(x))return 'absent';
+  if(/^(?:present|presente|presents|presentes|presence|expose|exposee)$/.test(x))return 'present';
+  if(/^(?:moins|moin|baisse|diminue|diminution|recul|recule|reculent)$/.test(x))return 'down';
+  if(/^(?:hausse|augmente|augmentation|croissance|progression)$/.test(x))return 'up';
+  if(/^(?:disponible|disponibles|stock)$/.test(x))return 'available';
+  if(/^(?:rupture|indisponible)$/.test(x))return 'unavailable';
+  if(/^(?:valide|validee|accepte|acceptee|confirme|confirmee|accord|signe)$/.test(x))return 'confirmed';
+  if(/^(?:refuse|refusee|oppose|opposee)$/.test(x))return 'refused';
+  if(/^(?:prevu|prevue|prevoir|planifie|planifiee|programme|programmee|envisage)$/.test(x))return 'planned';
+  if(/^(?:realise|realisee|effectue|effectuee|termine|terminee|acheve|achevee)$/.test(x))return 'done';
+  return '';
+ }).filter(Boolean);
+ if(JSON.stringify(state(q))!==JSON.stringify(state(p)))return false;
+ const qp=plain(q),pp=plain(p);
+ if(/\b(?:forme|formee|remplace|remplacee)\b/.test(qp)&&
+    /\b(?:ete|etait)\s+(?:forme|formee|remplace|remplacee)\s+par\b/.test(pp)&&
+   !/\b(?:ete|etait)\s+(?:forme|formee|remplace|remplacee)\s+par\b/.test(qp))return false;
+ if(/americain\s+(?:de|chez)\s+samsung/.test(pp)&&!/americain\s+(?:de|chez)\s+samsung/.test(qp))return false;
+ if(/\brefrigerateur\b/.test(pp)&&!/\brefrigerateur\b/.test(qp)&&/\b(?:americain|combine)\b/.test(qp)&&!/cuisiniste|froid|showroom|refriger|congel|multiportes/.test(context))return false;
+ const aliases={vend:'vente',vends:'vente',ventes:'vente',tele:'tv',teles:'tv',televiseur:'tv',televiseurs:'tv',television:'tv',televisions:'tv',an:'annee',annees:'annee',annee:'annee',precedente:'dernier',derniere:'dernier',technologie:'partie',moin:'baisse',moins:'baisse',diminue:'baisse',diminution:'baisse',recul:'baisse',recule:'baisse',reculent:'baisse',formation:'formation',forme:'formation',presente:'present',expose:'present',exposee:'present',offres:'offre',communiquees:'communication',abscence:'absence'};
+ const normalize=w=>aliases[w]||stem(w);
+ const from=new Set(meaningful(q).map(normalize)),to=meaningful(p).map(normalize);
+ const overlap=to.filter(x=>from.has(x));
+ if(overlap.length<Math.min(2,from.size)||overlap.length/Math.max(1,to.length)<0.25)return false;
+ return true;
+}
 function validateBestEffort(raw,source){
  const doc=parse(raw),types=expectedTypes(source);
  if(!keysOnly(doc,['version','reports'])||doc.version!==VERSION||!Array.isArray(doc.reports)||doc.reports.length!==types.length)fail('schéma ou familles inattendus');
@@ -242,7 +290,7 @@ function validateBestEffort(raw,source){
    if(!completeEvidence(quote,src.text)&&!spokenEvidence(quote,src.text)){reportOmitted++;continue}
    if(!validTopic(item.section,quote)){reportOmitted++;continue}
    const key=item.source+'|'+plain(quote);if(duplicates.has(key))continue;duplicates.add(key);
-   if((validCleanup(proposed,quote,context)||professionalRewrite(proposed,quote,context))&&safeBusinessRelations(proposed,quote)){
+   if(((validCleanup(proposed,quote,context)||professionalRewrite(proposed,quote,context))&&safeBusinessRelations(proposed,quote))||naturalRewrite(proposed,quote,context)){
     items.push({section:item.section,text:proposed,source:item.source,quote});reportAccepted++;
    }else{
     // A questionable statement is never copied into the finished report.
@@ -306,7 +354,7 @@ function validateDelivered(raw,source){
    }
    if(quote.length<4||quote.length>1400||(!completeEvidence(quote,src.text)&&!spokenEvidence(quote,src.text)))fail('citation privée de son contexte');
    if(!validTopic(item.section,quote))fail('rubrique sans preuve métier');
-   if(!(validCleanup(proposed,quote,context)||professionalRewrite(proposed,quote,context))||!safeBusinessRelations(proposed,quote))fail('faits, attribution ou nuance modifiés');
+   if(!(((validCleanup(proposed,quote,context)||professionalRewrite(proposed,quote,context))&&safeBusinessRelations(proposed,quote))||naturalRewrite(proposed,quote,context)))fail('faits, attribution ou nuance modifiés');
    items.push({section:item.section,text:proposed,source:item.source,quote});
   }
   if(!items.length&&entries.some(e=>text(e.text)))fail('rapport vide');
