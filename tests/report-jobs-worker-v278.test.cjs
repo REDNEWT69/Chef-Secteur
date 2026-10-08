@@ -200,7 +200,49 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   const failedGeminiStatus = await (await geminiError.get(failedGeminiJob.jobId)).json();
   assert.equal(failedGeminiStatus.status, 'failed');
   assert.equal(failedGeminiStatus.error.code, 'ai_provider_unavailable');
+  assert.equal(failedGeminiStatus.error.provider, 'gemini');
+  assert.equal(failedGeminiStatus.error.httpStatus, 429);
+  assert.equal(failedGeminiStatus.error.message, 'Gemini a renvoyé une erreur HTTP 429.');
   assert(!JSON.stringify(failedGeminiStatus).includes('synthetic-secret-in-provider-error'));
+
+  const geminiUnavailable = setup({ response: '' }, {
+    fetch: async () => new Response(JSON.stringify({ error: { message: 'sensitive-note-secret' } }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } })
+  });
+  geminiUnavailable.env.GEMINI_API_KEY = 'synthetic-key';
+  const unavailableJob = await (await geminiUnavailable.post(first)).json();
+  await geminiUnavailable.env.REPORT_JOBS.get(unavailableJob.jobId).alarm();
+  const unavailable = await (await geminiUnavailable.get(unavailableJob.jobId)).json();
+  assert.equal(unavailable.status, 'failed');
+  assert.equal(unavailable.error.httpStatus, 503);
+  assert.equal(unavailable.error.provider, 'gemini');
+  assert(!JSON.stringify(unavailable).includes('sensitive-note-secret'));
+
+  // Explicit Groq selection must override the configured Gemini secret, without
+  // a hidden paid fallback or leaking either credential.
+  const selectedCalls = [];
+  const explicit = setup({ response: '' }, {
+    fetch: async (url, init) => {
+      assert.equal(url, 'https://api.groq.com/openai/v1/chat/completions');
+      selectedCalls.push(JSON.parse(init.body));
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify(result()) }, finish_reason: 'stop' }]
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+  });
+  explicit.env.GEMINI_API_KEY = 'synthetic-gemini-key';
+  explicit.env.GROQ_API_KEY = 'synthetic-groq-key';
+  explicit.env.REPORT_AI_PROVIDER = 'groq';
+  const explicitJob = await (await explicit.post(first)).json();
+  await explicit.env.REPORT_JOBS.get(explicitJob.jobId).alarm();
+  const selected = await (await explicit.get(explicitJob.jobId)).json();
+  assert.equal(selected.status, 'done');
+  assert.equal(selected.provider, 'groq');
+  assert.equal(selectedCalls.length, 1);
+  assert.equal(explicit.calls.length, 0);
+  await explicit.env.REPORT_JOBS.get(explicitJob.jobId).alarm();
+  assert.equal(selectedCalls.length, 1);
+  console.log('PASS jobs · explicit Groq selection and safe Gemini 429/503 diagnostics');
 
   const geminiTruncated = setup({ response: '' }, {
     fetch: async () => new Response(JSON.stringify({
