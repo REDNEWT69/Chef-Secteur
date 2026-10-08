@@ -24,7 +24,12 @@ const counts=page=>page.evaluate(()=>({mode:window.__chefStorageMode,visits:stat
 test('V256 : bascule localStorage → IndexedDB sans perte, rechargement et hors ligne',async({page,context})=>{
   test.setTimeout(120000);
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  const legacy=F.build({months:3,stores:40});const raw=JSON.stringify(legacy.state);
+  const legacy=F.build({months:3,stores:40});
+  /* Le générateur utilise le modèle courant. L’appareil pré-V256 n’avait pas
+     d’outbox V278 : retirer ce seul champ restitue le véritable état à migrer.
+     Le test annuel ci-dessous conserve intégralement les nouveaux champs. */
+  for(const visit of legacy.state.businessV2.visits)delete visit.reportJob;
+  const raw=JSON.stringify(legacy.state);
   /* Appareil installé avant V256 : tout est dans localStorage. */
   await context.addInitScript(({raw,key})=>{try{if(!localStorage.getItem('v256-seeded')){localStorage.setItem(key,raw);localStorage.setItem('v256-seeded','1')}}catch(e){}},{raw,key:MAIN});
   await open(page);

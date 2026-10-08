@@ -51,6 +51,11 @@ Sans binding `AI`, le Worker continue temporairement à utiliser Groq si sa clé
 - `parse_stores` : transformation de notes en magasins structurés ;
 - `proofread` : correction légère des notes terrain sans charger le gros contexte assistant.
 
+Les comptes rendus automatiques V278 utilisent le protocole durable `POST /api/ai/report-jobs`
+et `GET /api/ai/report-jobs/{jobId}`, avec le nouveau binding SQLite `REPORT_JOBS`.
+La configuration versionnée et les étapes de déploiement sont décrites dans
+[REPORT_JOBS_V278.md](REPORT_JOBS_V278.md). Déployer GitHub Pages seul ne déploie pas le Worker.
+
 ## Sécurité
 
 - CORS limité à Store Runner et au GitHub Pages historique autorisé.

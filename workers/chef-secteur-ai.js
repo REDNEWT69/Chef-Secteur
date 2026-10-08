@@ -2,6 +2,10 @@
 // Moteur principal : Cloudflare Workers AI via le binding `AI`.
 // Secours facultatif : Groq via le secret GROQ_API_KEY.
 // Aucune clé API ne doit être placée dans GitHub Pages ou dans le navigateur.
+import { DurableObject } from 'cloudflare:workers';
+import '../store-runner-report-renderer.js';
+
+const REPORTS = globalThis.StoreRunnerReportRenderer;
 
 const ALLOWED_ORIGINS = new Set([
   'https://rednewt69.github.io',
@@ -15,7 +19,7 @@ const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-20b';
 function cors(origin) {
   const headers = {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Report-Capability',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin'
   };
@@ -28,6 +32,7 @@ function json(data, status = 200, origin = '') {
     status,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
       ...cors(origin)
     }
   });
@@ -246,7 +251,8 @@ async function callGroq(env, system, user, maxTokens, options = {}) {
       'Authorization': `Bearer ${env.GROQ_API_KEY}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    signal: options.signal
   });
 
   const data = await response.json().catch(() => ({}));
@@ -466,6 +472,247 @@ const VISIT_REPORT_RETRY_OPTIONS = {
 // Plafond dur. Deux tentatives logiques pour un cas vide, jamais trois, jamais de boucle.
 const VISIT_REPORT_MAX_ATTEMPTS = 2;
 
+// V278 — one persisted server job per immutable source version and explicit generation.
+// A Durable Object alarm, rather than an HTTP request or waitUntil, owns the inference.
+const REPORT_JOB_PROTOCOL = 1;
+const REPORT_JOB_TIMEOUT_MS = 90000;
+const REPORT_JOB_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const REPORT_JOB_PATH = '/api/ai/report-jobs';
+const JOB_TYPES = new Set(['brun', 'blanc', 'cuisiniste', 'buying-groups']);
+
+function jobsReady(env) {
+  return Boolean(env && env.REPORT_JOBS && typeof env.REPORT_JOBS.idFromName === 'function'
+    && typeof env.REPORT_JOBS.get === 'function');
+}
+
+function jobError(code, message, status = 400) {
+  const error = new Error(message);
+  error.code = code;
+  error.status = status;
+  return error;
+}
+
+async function sha256(value) {
+  const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(buffer), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function validDate(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+}
+
+function exactKeys(value, keys) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).every(key => keys.includes(key));
+}
+
+async function prepareJob(body) {
+  if (!body || body.protocolVersion !== REPORT_JOB_PROTOCOL) throw jobError('report_protocol', 'Protocole de compte rendu incompatible.');
+  const source = body.source;
+  if (!exactKeys(source, ['version', 'visitId', 'storeId', 'completedDate', 'store', 'reports']) || source.version !== 1
+    || !exactKeys(source.store, ['enseigne', 'ville', 'channel'])
+    || !Array.isArray(source.reports) || !source.reports.length || source.reports.length > 4) {
+    throw jobError('report_source', 'Source de compte rendu invalide.');
+  }
+  for (const key of ['visitId', 'storeId']) {
+    if (typeof body[key] !== 'string' || !body[key] || body[key].length > 160 || source[key] !== body[key]) {
+      throw jobError('report_identity', 'Identité de visite invalide.');
+    }
+  }
+  if (!validDate(body.completedDate) || source.completedDate !== body.completedDate
+    || !Number.isSafeInteger(body.generation) || body.generation < 0 || body.generation > 1000000) {
+    throw jobError('report_identity', 'Date ou génération de visite invalide.');
+  }
+  for (const key of ['enseigne', 'ville', 'channel']) {
+    if (typeof source.store[key] !== 'string' || source.store[key].length > 200) throw jobError('report_source', 'Magasin source invalide.');
+  }
+  const types = new Set();
+  let entries = 0;
+  for (const report of source.reports) {
+    if (!exactKeys(report, ['reportType', 'entries']) || !JOB_TYPES.has(report.reportType) || types.has(report.reportType)
+      || !Array.isArray(report.entries) || report.entries.length > 96) throw jobError('report_source', 'Rubriques sources invalides.');
+    types.add(report.reportType);
+    for (const entry of report.entries) {
+      if (!exactKeys(entry, ['source', 'family', 'text']) || typeof entry.source !== 'string' || !entry.source || entry.source.length > 240
+        || typeof entry.family !== 'string' || entry.family.length > 40 || typeof entry.text !== 'string' || entry.text.length > 20000) {
+        throw jobError('report_source', 'Note source invalide.');
+      }
+      entries += 1;
+    }
+  }
+  if (entries > 192 || REPORTS.canonicalJSON(source).length > 64000) throw jobError('report_source_too_large', 'Notes trop volumineuses pour cette analyse.', 413);
+  if (typeof body.accessToken !== 'string' || !/^[a-f0-9]{64}$/.test(body.accessToken)) throw jobError('report_capability', 'Accès au compte rendu invalide.');
+  const sourceSignature = await REPORTS.sourceSignature(source);
+  if (body.sourceSignature !== sourceSignature) throw jobError('report_source_signature', 'La signature ne correspond pas aux notes.');
+  const capabilityHash = await sha256(body.accessToken);
+  const identity = REPORTS.canonicalJSON({ protocolVersion: REPORT_JOB_PROTOCOL, visitId: body.visitId, storeId: body.storeId,
+    completedDate: body.completedDate, sourceSignature, generation: body.generation });
+  const jobId = await sha256(identity);
+  return { protocolVersion: REPORT_JOB_PROTOCOL, jobId, visitId: body.visitId, storeId: body.storeId,
+    completedDate: body.completedDate, sourceSignature, generation: body.generation, capabilityHash,
+    promptVersion: REPORTS.PROMPT_VERSION, source };
+}
+
+function publicJob(job) {
+  const { protocolVersion, jobId, visitId, storeId, completedDate, sourceSignature, generation,
+    promptVersion, status, createdAt, updatedAt, expiresAt, result, error, provider, model } = job;
+  return { protocolVersion, jobId, visitId, storeId, completedDate, sourceSignature, generation,
+    promptVersion, status, createdAt, updatedAt, expiresAt,
+    ...(status === 'done' ? { result, provider, model } : {}), ...(error ? { error } : {}) };
+}
+
+function jobFailure(err) {
+  const code = err && err.code ? String(err.code) : 'report_invalid_result';
+  // Provider messages can echo notes or credentials. Persist only controlled diagnostics.
+  const messages = {
+    ai_no_provider: 'Aucun moteur IA disponible.', ai_provider_unavailable: 'Le moteur IA est indisponible.',
+    ai_empty_response: 'Le moteur IA a renvoyé une réponse vide.', report_provider_timeout: 'Le délai du moteur IA est dépassé.',
+    report_truncated: 'Le moteur IA a renvoyé un JSON tronqué.', report_processing_uncertain: 'Traitement interrompu : une régénération explicite est nécessaire.',
+    report_invalid_result: 'La réponse IA ne respecte pas les sources ou le format attendu.'
+  };
+  return { code: Object.hasOwn(messages, code) ? code : 'report_invalid_result', message: messages[code] || messages.report_invalid_result };
+}
+
+async function oneJobInference(env, source) {
+  const controller = new AbortController();
+  let timeout;
+  try {
+    const expired = new Promise((resolve, reject) => {
+      timeout = setTimeout(() => { controller.abort(); reject(jobError('report_provider_timeout', 'Délai IA dépassé.')); }, REPORT_JOB_TIMEOUT_MS);
+    });
+    const options = { ...VISIT_REPORT_OPTIONS, signal: controller.signal };
+    const message = REPORTS.buildPrompt(source);
+    let inference;
+    // Exactly one configured provider per job. No fallback, empty retry or JSON repair.
+    if (hasWorkersAI(env)) inference = callWorkersAI(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
+    else if (env && env.GROQ_API_KEY) inference = callGroq(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
+    else throw jobError('ai_no_provider', 'Aucun moteur IA disponible.');
+    let answer;
+    try { answer = await Promise.race([inference, expired]); }
+    catch (err) { throw err && err.code ? err : jobError('ai_provider_unavailable', 'Moteur IA indisponible.'); }
+    if (!answer.text) throw jobError('ai_empty_response', 'Réponse IA vide.');
+    if (String(answer.finishReason || '').toLowerCase() === 'length') throw jobError('report_truncated', 'JSON tronqué.');
+    return { answer, result: REPORTS.validate(answer.text, source) };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// Each object has one source/version. Storage and alarm scheduling share a transaction.
+// Alarm delivery is at-least-once. A processing record is NEVER inferred again: after a
+// crash we cannot tell whether an external provider already billed its first invocation.
+export class VisitReportJob extends DurableObject {
+  constructor(ctx, env) { super(ctx, env); this.storage = ctx.storage; }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (request.method === 'POST' && url.pathname === '/create') {
+      const candidate = await request.json();
+      let created = false;
+      const job = await this.storage.transaction(async () => {
+        const prior = await this.storage.get('job');
+        if (prior) return prior;
+        const now = Date.now();
+        const value = { ...candidate, status: 'pending', createdAt: new Date(now).toISOString(),
+          updatedAt: new Date(now).toISOString(), expiresAt: new Date(now + REPORT_JOB_RETENTION_MS).toISOString() };
+        await this.storage.put('job', value);
+        await this.storage.setAlarm(now + 1);
+        created = true;
+        return value;
+      });
+      if (job.capabilityHash !== candidate.capabilityHash) return json({ error: { code: 'report_capability', message: 'Accès refusé.' } }, 403);
+      const visible = Date.now() >= Date.parse(job.expiresAt) ? this.expired(job) : job;
+      if (visible !== job) await this.storage.put('job', visible);
+      return json(publicJob(visible), created ? 202 : 200);
+    }
+    if (request.method === 'GET') {
+      const job = await this.storage.get('job');
+      if (!job) return json({ error: { code: 'report_not_found', message: 'Compte rendu introuvable.' } }, 404);
+      const token = request.headers.get('X-Report-Capability') || '';
+      if (!/^[a-f0-9]{64}$/.test(token) || await sha256(token) !== job.capabilityHash) return json({ error: { code: 'report_capability', message: 'Accès refusé.' } }, 403);
+      if (Date.now() >= Date.parse(job.expiresAt)) {
+        const expired = this.expired(job);
+        await this.storage.put('job', expired);
+        return json(publicJob(expired));
+      }
+      return json(publicJob(job));
+    }
+    return json({ error: { code: 'report_method', message: 'Méthode non autorisée.' } }, 405);
+  }
+
+  expired(job) {
+    const { source, result, provider, model, ...tombstone } = job;
+    return { ...tombstone, status: 'failed', updatedAt: new Date().toISOString(),
+      error: { code: 'report_job_expired', message: 'Résultat serveur expiré. Les notes locales restent conservées.' } };
+  }
+
+  async alarm() {
+    let job = await this.storage.get('job');
+    if (!job) return;
+    if (Date.now() >= Date.parse(job.expiresAt)) {
+      await this.storage.put('job', this.expired(job));
+      return;
+    }
+    if (job.status === 'done' || job.status === 'failed') return;
+    if (job.status === 'processing') {
+      job = { ...job, status: 'failed', updatedAt: new Date().toISOString(), error: jobFailure({ code: 'report_processing_uncertain' }) };
+      await this.storage.put('job', job);
+      await this.storage.setAlarm(Date.parse(job.expiresAt));
+      return;
+    }
+    job = { ...job, status: 'processing', updatedAt: new Date().toISOString() };
+    await this.storage.transaction(async () => {
+      await this.storage.put('job', job);
+      await this.storage.setAlarm(Date.now() + REPORT_JOB_TIMEOUT_MS + 1000);
+    });
+    try {
+      const { answer, result } = await oneJobInference(this.env, job.source);
+      job = { ...job, status: 'done', result, provider: answer.provider, model: answer.model, updatedAt: new Date().toISOString() };
+    } catch (err) {
+      job = { ...job, status: 'failed', error: jobFailure(err), updatedAt: new Date().toISOString() };
+    }
+    await this.storage.transaction(async () => {
+      await this.storage.put('job', job);
+      await this.storage.setAlarm(Date.parse(job.expiresAt));
+    });
+  }
+}
+
+async function reportJobRoute(request, env, origin, jobId) {
+  if (!jobsReady(env)) return json({ error: { code: 'report_jobs_unavailable', message: 'Le traitement serveur est indisponible. Les notes restent enregistrées.' } }, 503, origin);
+  try {
+    let response;
+    if (request.method === 'POST' && !jobId) {
+      // Enforce a byte limit before JSON parsing; do not truncate an immutable source.
+      const reader = request.body && request.body.getReader(), chunks = [];
+      let length = 0;
+      if (reader) for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        length += value.byteLength;
+        if (length > 160000) { await reader.cancel(); throw jobError('report_source_too_large', 'Notes trop volumineuses.', 413); }
+        chunks.push(value);
+      }
+      const bytes = new Uint8Array(length);
+      let offset = 0;
+      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+      let body;
+      try { body = JSON.parse(new TextDecoder().decode(bytes)); }
+      catch { throw jobError('report_source', 'JSON source invalide.'); }
+      const job = await prepareJob(body);
+      const stub = env.REPORT_JOBS.get(env.REPORT_JOBS.idFromName(job.jobId));
+      response = await stub.fetch(new Request('https://report-job/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(job) }));
+    } else if (request.method === 'GET' && /^[a-f0-9]{64}$/.test(jobId || '')) {
+      const stub = env.REPORT_JOBS.get(env.REPORT_JOBS.idFromName(jobId));
+      response = await stub.fetch(new Request('https://report-job/status', { headers: { 'X-Report-Capability': request.headers.get('X-Report-Capability') || '' } }));
+    } else return json({ error: { code: 'report_method', message: 'Méthode ou identifiant invalide.' } }, 405, origin);
+    return json(await response.json(), response.status, origin);
+  } catch (err) {
+    return json({ error: { code: err.code || 'report_job_storage', message: err.status ? err.message : 'Impossible de persister le traitement serveur.' } }, err.status || 503, origin);
+  }
+}
+
 async function handlePing(env, origin) {
   const workersReady = hasWorkersAI(env);
   const groqReady = Boolean(env && env.GROQ_API_KEY);
@@ -482,6 +729,7 @@ async function handlePing(env, origin) {
 
   return json({
     ok: true,
+    reportJobs: { protocolVersion: REPORT_JOB_PROTOCOL, ready: jobsReady(env) },
     provider: primaryProvider,
     model: primaryModel,
     workersAiBinding: workersReady,
@@ -501,6 +749,14 @@ export default {
         return json({ error: 'Origine non autorisée.' }, 403, origin);
       }
       return new Response(null, { status: 204, headers: cors(origin) });
+    }
+
+    if (url.pathname === REPORT_JOB_PATH || url.pathname.startsWith(REPORT_JOB_PATH + '/')) {
+      if ((origin && !ALLOWED_ORIGINS.has(origin)) || (request.method === 'POST' && !origin)) {
+        return json({ error: 'Origine non autorisée.' }, 403, origin);
+      }
+      const jobId = url.pathname === REPORT_JOB_PATH ? '' : url.pathname.slice(REPORT_JOB_PATH.length + 1);
+      return reportJobRoute(request, env, origin, jobId);
     }
 
     // Diagnostic simple depuis le navigateur ou l'éditeur Cloudflare.

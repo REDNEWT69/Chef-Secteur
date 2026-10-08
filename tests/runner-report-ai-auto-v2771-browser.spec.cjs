@@ -1,31 +1,43 @@
 const {test,expect,devices}=require('@playwright/test');
-const M=require('../store-runner-visit-model.js');
-const APP=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
-const MAIN='sector_planner_universal_v1',DIALOG='#srVisitDialog';
+const crypto=require('node:crypto'),M=require('../store-runner-visit-model.js');
+const APP=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/',MAIN='sector_planner_universal_v1',DIALOG='#srVisitDialog';
+const NOW='2026-10-08T15:00:00+02:00',LATER='2026-10-08T15:05:00+02:00';
+const NOTE='Bruno privilégie BSH en showroom.\nUn américain Samsung RS68A882 présent en showroom à 749 €.\nRevoir la gérante vendredi.';
 function fixture(){const store={id:'auto-ai-cuisine',enseigne:'Schmidt',ville:'Ville-Test',channel:'cuisiniste',adresse:'1 rue Test',dept:'73',lat:45.5,lon:5.9,active:true,priority:2};return{schemaVersion:5,profile:{sectorName:'Test'},settings:{days:['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],weekDate:'2026-10-05'},stores:[store],plan:{Lundi:[],Mardi:[],Mercredi:[store],Jeudi:[],Vendredi:[],Samedi:[]},visits:{},notes:{},included:{},excluded:{},locks:{},appointments:[],calendarEvents:[],manualWeekEdits:{},businessV2:M.empty()}}
-async function ready(page){await page.waitForFunction(()=>window.StoreRunnerVisits&&window.StoreRunnerVisitReport&&window.StoreRunnerBoot?.settled()&&window.__chefStorage);await page.waitForLoadState('load');await page.evaluate(async()=>{if(__chefStorage&&typeof __chefStorage.flush==='function')await __chefStorage.flush()})}
+async function ready(page){await page.waitForFunction(()=>window.StoreRunnerVisits&&window.StoreRunnerVisitReport&&window.StoreRunnerBoot?.settled()&&window.__chefStorage);await page.waitForLoadState('load');await page.evaluate(async()=>{await __chefStorage.flush();window.aiConfig={gateway:'/api/ai'};window.callAIGateway=()=>{throw Error('Le provider ne doit pas être appelé côté téléphone')};if((state.businessV2?.visits||[]).some(v=>v.status==='completed'&&v.reportJob&&!v.reportJob.obsolete&&['pending','processing'].includes(v.reportJob.status))){await StoreRunnerVisitReport.ensureAutoAI();await StoreRunnerReportAIAutoV2771.scan()}})}
+async function boot(page,seed=true,time=NOW){await page.clock.setFixedTime(new Date(time));if(seed)await page.addInitScript(({MAIN,initial})=>{if(!localStorage.getItem('report-job-seeded')){localStorage.setItem(MAIN,JSON.stringify(initial));localStorage.setItem('report-job-seeded','1')}},{MAIN,initial:fixture()});await page.goto(APP,{waitUntil:'domcontentloaded'});await ready(page)}
+async function note(page){const id=await page.evaluate(()=>StoreRunnerVisits.start('auto-ai-cuisine'));await page.locator(DIALOG+' label.sr-field').filter({hasText:'Rapport magasin'}).locator('textarea').fill(NOTE);return id}
+async function complete(page,double=false){page.once('dialog',d=>d.accept());const finish=page.locator(DIALOG+' [data-sr-complete-visit]');if(double)await finish.evaluate(b=>{b.click();b.click()});else await finish.tap();await expect(page.locator('#srVisitTitle')).toContainText('Visite terminée')}
+function dataFor(source){return{version:1,reports:source.reports.map(r=>({reportType:r.reportType,items:r.entries.flatMap(e=>e.text.split('\n').filter(x=>x.trim()).map(quote=>({section:/revoir/i.test(quote)?'actions':/bsh/i.test(quote)?'competition':'showroom',text:quote,source:e.source,quote})))}))}}
+async function server(context,initial='done'){
+ const jobs=new Map();let posts=0,gets=0,billable=0;
+ await context.route(url=>url.pathname.startsWith('/api/ai/report-jobs'),async route=>{
+  const req=route.request();let job;
+  if(req.method()==='POST'){posts++;const body=req.postDataJSON(),key=crypto.createHash('sha256').update(JSON.stringify([body.visitId,body.storeId,body.completedDate,body.sourceSignature,body.generation])).digest('hex');if(!jobs.has(key)){billable++;jobs.set(key,{...body,protocolVersion:1,jobId:key,status:initial,result:initial==='done'?dataFor(body.source):undefined})}job=jobs.get(key)}
+  else{gets++;job=jobs.get(new URL(req.url()).pathname.split('/').at(-1));expect(req.headers()['x-report-capability']).toBe(job.accessToken)}
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(job)});
+ });
+ return{jobs,get posts(){return posts},get gets(){return gets},get billable(){return billable},finish(){for(const job of jobs.values()){job.status='done';job.result=dataFor(job.source)}}};
+}
+async function done(page,id){await expect.poll(()=>page.evaluate(id=>state.businessV2.visits.find(v=>v.id===id)?.reportJob?.status,id),{timeout:15000}).toBe('done')}
 test.use({...devices['Pixel 7'],viewport:{width:390,height:844},timezoneId:'Europe/Paris',serviceWorkers:'block'});
-test('V277.1 : Terminer déclenche l IA automatiquement sans laisser passer une invention',async({page})=>{
- await page.clock.setFixedTime(new Date('2026-10-07T15:00:00+02:00'));
- await page.addInitScript(({MAIN,initial})=>localStorage.setItem(MAIN,JSON.stringify(initial)),{MAIN,initial:fixture()});
- await page.goto(APP,{waitUntil:'domcontentloaded'});await ready(page);
- await page.evaluate(()=>{window.__autoAICalls=0;window.aiConfig={gateway:'/api/ai'};window.callAIGateway=async()=>{window.__autoAICalls++;return{text:JSON.stringify({items:[
-  {kind:'objection',text:'Bruno privilégie BSH en showroom.',source:'report.shared.context',status:'recorded'},
-  {kind:'followup',text:'Revoir la gérante vendredi.',source:'report.shared.context',status:'planned'},
-  {kind:'priority',text:'Commander 100 téléviseurs.',source:'report.shared.context',status:'planned'}
- ]})}}});
- const id=await page.evaluate(()=>StoreRunnerVisits.start('auto-ai-cuisine'));
- const field=page.locator(DIALOG+' label.sr-field').filter({hasText:'Rapport magasin'}).locator('textarea');
- await field.fill('Bruno privilégie BSH en showroom.\nRevoir la gérante vendredi.');
- await expect(page.locator(DIALOG+' .sr-status')).toContainText('Enregistré',{timeout:15000});
- page.once('dialog',d=>d.accept());await page.locator(DIALOG+' [data-sr-complete-visit]').tap();
- await expect(page.locator('#srVisitTitle')).toContainText('Visite terminée');
- await expect.poll(()=>page.evaluate(id=>state.businessV2.visits.find(v=>v.id===id)?.runnerAI?.status,id),{timeout:15000}).toBe('done');
- expect(await page.evaluate(()=>window.__autoAICalls)).toBe(1);
- expect(await page.evaluate(()=>!!window.StoreRunnerReportAIAutoV2771)).toBe(true);
- const memory=await page.evaluate(()=>StoreRunnerVisitModel.reportMemoryFor(state,'auto-ai-cuisine',{limit:100}).items);
- expect(memory.some(x=>x.kind==='objection'&&x.text==='Bruno privilégie BSH en showroom.')).toBe(true);
- expect(memory.some(x=>x.text.includes('100 téléviseurs'))).toBe(false);
- const saved=await page.evaluate(async id=>{await __chefStorage.flush();return JSON.parse(__chefStorage.getItem('sector_planner_universal_v1')).businessV2.visits.find(v=>v.id===id).runnerAI},id);
- expect(saved.status).toBe('done');
+for(const width of [390,360])test('Android '+width+' : dernières notes durables, double Terminer, un seul rapport automatique',async({page,context})=>{
+ await page.setViewportSize({width,height:844});const backend=await server(context);await boot(page);const id=await note(page);await expect(page.locator(DIALOG+' .sr-noteProofBtn')).toHaveCount(0);await complete(page,true);await done(page,id);
+ expect(backend.billable).toBe(1);expect(backend.posts).toBe(1);const v=await page.evaluate(id=>state.businessV2.visits.find(v=>v.id===id),id);expect(v.report.shared.context).toBe(NOTE);expect(v.professionalReport.reports.cuisiniste.text).toContain('RS68A882');expect(v.professionalReport.reports.cuisiniste.text).toContain('749 €');expect(v.professionalReport.reports.cuisiniste.text).toContain('Date : 08/10/2026');expect(v.professionalReport.reports.cuisiniste.text).not.toMatch(/BRUN|BLANC/);expect(v.runnerAI.status).toBe('done');expect(v.runnerAI.items.some(x=>x.text==='RS68A882')).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth)).toBeLessThanOrEqual(1);await expect(page.locator(DIALOG+' .sr-status')).not.toContainText('autre fenêtre');
+});
+test('application fermée après POST : résultat serveur récupéré au retour par GET',async({page,context})=>{
+ const backend=await server(context,'processing');await boot(page);const id=await note(page);await complete(page);await expect.poll(()=>backend.posts).toBe(1);await expect.poll(()=>page.evaluate(id=>!!state.businessV2.visits.find(v=>v.id===id).reportJob.jobId,id)).toBe(true);await page.close();backend.finish();const returned=await context.newPage();await boot(returned,false,LATER);await done(returned,id);expect(backend.billable).toBe(1);expect(backend.posts).toBe(1);expect(backend.gets).toBeGreaterThanOrEqual(1);expect(await returned.evaluate(id=>StoreRunnerVisits.reportFor(id,'cuisiniste').text,id)).toContain('749 €');
+});
+test('hors ligne à la clôture puis fermeture avant POST : outbox reprise sans perte',async({page,context})=>{
+ const backend=await server(context);await boot(page);const id=await note(page);await context.setOffline(true);await complete(page);expect(backend.posts).toBe(0);expect(await page.evaluate(id=>state.businessV2.visits.find(v=>v.id===id).reportJob.status,id)).toBe('pending');await page.close();await context.setOffline(false);const returned=await context.newPage();await boot(returned,false,LATER);await done(returned,id);expect(backend.billable).toBe(1);expect(await returned.evaluate(id=>state.businessV2.visits.find(v=>v.id===id).report.shared.context,id)).toBe(NOTE);
+});
+test('visibilité suspendue et retour online simultanés : un résultat, aucune seconde génération',async({page,context})=>{
+ const backend=await server(context,'processing');await boot(page);const id=await note(page);await complete(page);await expect.poll(()=>backend.posts).toBe(1);await expect.poll(()=>page.evaluate(id=>!!state.businessV2.visits.find(v=>v.id===id).reportJob.jobId,id)).toBe(true);
+ await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'))});backend.finish();await page.clock.setFixedTime(new Date(LATER));await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.dispatchEvent(new Event('visibilitychange'));window.dispatchEvent(new Event('online'));document.dispatchEvent(new Event('visibilitychange'))});await done(page,id);expect(backend.billable).toBe(1);expect(backend.posts).toBe(1);
+});
+test('édition professionnelle pendant job : résultat ancien ignoré et édition conservée au reload',async({page,context})=>{
+ const backend=await server(context,'processing');await boot(page);const id=await note(page);await complete(page);await expect.poll(()=>backend.posts).toBe(1);await page.evaluate(id=>StoreRunnerVisitReport.open(id),id);await page.locator('#srReportEdit').tap();const area=page.locator('#srReportText');await area.fill('Texte final relu avec Redouane ; RS68A882 à 749 €.');await expect.poll(()=>page.evaluate(id=>StoreRunnerVisits.reportFor(id,'cuisiniste')?.text,id)).toBe('Texte final relu avec Redouane ; RS68A882 à 749 €.');backend.finish();await page.clock.setFixedTime(new Date(LATER));await page.evaluate(()=>{window.dispatchEvent(new Event('online'));document.dispatchEvent(new Event('visibilitychange'))});expect(await area.inputValue()).toBe('Texte final relu avec Redouane ; RS68A882 à 749 €.');await page.reload({waitUntil:'domcontentloaded'});await ready(page);expect(await page.evaluate(id=>StoreRunnerVisits.reportFor(id,'cuisiniste').text,id)).toBe('Texte final relu avec Redouane ; RS68A882 à 749 €.');expect(await page.evaluate(id=>state.businessV2.visits.find(v=>v.id===id).report.shared.context,id)).toBe(NOTE);expect(backend.billable).toBe(1);
+});
+for(const failure of ['failed','empty','truncated'])test('IA '+failure+' : clôture, notes et mémoire locale conservées',async({page,context})=>{
+ const backend=await server(context,'processing');await boot(page);const id=await note(page);await complete(page);await expect.poll(()=>backend.posts).toBe(1);await expect.poll(()=>page.evaluate(id=>!!state.businessV2.visits.find(v=>v.id===id).reportJob.jobId,id)).toBe(true);const job=[...backend.jobs.values()][0];if(failure==='failed'){job.status='failed';job.error={code:'timeout',message:'IA indisponible'}}else{job.status='done';job.result=failure==='empty'?'':'{"version":1,"reports":['}await page.clock.setFixedTime(new Date(LATER));await page.evaluate(id=>StoreRunnerReportAIAutoV2771.reconcileVisit(id),id);await expect.poll(()=>page.evaluate(id=>state.businessV2.visits.find(v=>v.id===id).reportJob.status,id)).toBe('failed');const v=await page.evaluate(id=>state.businessV2.visits.find(v=>v.id===id),id);expect(v.status).toBe('completed');expect(v.report.shared.context).toBe(NOTE);expect(v.runnerMemory.items.length).toBeGreaterThan(0);expect(v.professionalReport).toBeUndefined();expect(backend.billable).toBe(1);
 });

@@ -183,7 +183,7 @@ function start(s,storeId){const store=s.stores.find(x=>String(x.id)===String(sto
  const v={id:id(),storeId:key,status:'draft',createdAt:now(),updatedAt:now(),completedAt:null,completedDate:null,step:0,preparation:Object.fromEntries(Object.keys(PREP).map(k=>[k,''])),arrival:{checks:CHECKS.map(()=>false),positives:'',opportunities:'',anomalies:[]},sixP,conclusion:'',activeFamily:'brun',report:emptyReport()};b.visits.push(v);return v.id;
 }
 function touch(v){v.updatedAt=now()}
-function editVisit(s,visitId,section,key,value){const v=getVisit(s,visitId,true);if(section==='preparation'&&Object.hasOwn(PREP,key)&&typeof value==='string')v.preparation[key]=value;
+function editVisit(s,visitId,section,key,value){const v=getVisit(s,visitId,true);preserveReportSource(v);if(section==='preparation'&&Object.hasOwn(PREP,key)&&typeof value==='string')v.preparation[key]=value;
  else if(section==='arrival'&&['positives','opportunities'].includes(key)&&typeof value==='string')v.arrival[key]=value;
  else if(section==='check'&&Number.isInteger(key)&&key>=0&&key<CHECKS.length&&typeof value==='boolean')v.arrival.checks[key]=value;
  else if(section==='conclusion'&&typeof value==='string'){v.conclusion=value;delete v.runnerConclusionSource}
@@ -192,7 +192,7 @@ function editVisit(s,visitId,section,key,value){const v=getVisit(s,visitId,true)
  else fail('Champ visite inconnu.');touch(v)}
 function getAction(s,actionId){const a=data(s).actions.find(x=>x.id===actionId);if(!a)fail('Action introuvable.');return a}
 function item(s,visitId,p,index,edit=false){const v=getVisit(s,visitId,edit);if(!Object.hasOwn(SIX_P,p)||!Number.isInteger(index)||!v.sixP[p][index])fail('Élément 6P inconnu.');return {v,row:v.sixP[p][index]}}
-function edit6P(s,visitId,p,index,key,value){const {v,row}=item(s,visitId,p,index,true);if(!['status','comment','action','owner','dueDate','family'].includes(key)||typeof value!=='string')fail('Champ 6P inconnu.');if(key==='family'&&!FAMILY_VALUES.includes(value))fail('Famille invalide.');if(key==='dueDate'&&value&&!dateValid(value))fail('Échéance invalide.');if(key==='status'&&!['','ok','correct','opportunity'].includes(value))fail('Statut 6P invalide.');if(key==='action'&&row.actionId&&!value.trim())fail('La description d’une action liée ne peut pas être vide.');row[key]=value;
+function edit6P(s,visitId,p,index,key,value){const {v,row}=item(s,visitId,p,index,true);preserveReportSource(v);if(!['status','comment','action','owner','dueDate','family'].includes(key)||typeof value!=='string')fail('Champ 6P inconnu.');if(key==='family'&&!FAMILY_VALUES.includes(value))fail('Famille invalide.');if(key==='dueDate'&&value&&!dateValid(value))fail('Échéance invalide.');if(key==='status'&&!['','ok','correct','opportunity'].includes(value))fail('Statut 6P invalide.');if(key==='action'&&row.actionId&&!value.trim())fail('La description d’une action liée ne peut pas être vide.');row[key]=value;
  /* Étiquetage automatique : sur le terrain, renseigner une ligne suffit à la rattacher à la
     famille en cours. Zéro tap supplémentaire, et une ligne déjà étiquetée n'est jamais
     réécrite — y compris quand on repasse sur l'autre famille pour la compléter. */
@@ -200,14 +200,15 @@ function edit6P(s,visitId,p,index,key,value){const {v,row}=item(s,visitId,p,inde
  if(row.actionId&&['action','owner','dueDate'].includes(key)){const a=getAction(s,row.actionId);a[key==='action'?'description':key]=value;a.updatedAt=now()}touch(v)}
 function createAction(s,v,source,category,description,owner='',dueDate=''){if(!description.trim())fail('Décris le constat ou l’action avant de convertir.');const b=data(s);const existing=b.actions.find(a=>a.visitId===v.id&&a.source===source);if(existing)return existing.id;const a={id:id(),storeId:v.storeId,visitId:v.id,source,category,description,owner,dueDate,status:'open',completedAt:null,createdAt:now(),updatedAt:now()};b.actions.push(a);return a.id}
 function actionFrom6P(s,visitId,p,index){const {v,row}=item(s,visitId,p,index,true);if(!row.actionId)row.actionId=createAction(s,v,'6p:'+p+':'+index,SIX_P[p].label,row.action,row.owner,row.dueDate);touch(v);return row.actionId}
-function addAnomaly(s,visitId){const v=getVisit(s,visitId,true),a={id:id(),text:'',actionId:null,family:familyOf(v)};v.arrival.anomalies.push(a);touch(v);return a.id}
+function addAnomaly(s,visitId){const v=getVisit(s,visitId,true),a={id:id(),text:'',actionId:null,family:familyOf(v)};preserveReportSource(v);v.arrival.anomalies.push(a);touch(v);return a.id}
 function anomaly(s,visitId,anomalyId){const v=getVisit(s,visitId,true),row=v.arrival.anomalies.find(a=>a.id===anomalyId);if(!row)fail('Anomalie introuvable.');return {v,row}}
-function setAnomalyFamily(s,visitId,anomalyId,family){const {v,row}=anomaly(s,visitId,anomalyId);if(!FAMILY_VALUES.includes(family))fail('Famille invalide.');row.family=family;touch(v)}
-function editAnomaly(s,visitId,anomalyId,text){const {v,row}=anomaly(s,visitId,anomalyId);if(typeof text!=='string'||(row.actionId&&!text.trim()))fail('La description d’une action liée ne peut pas être vide.');row.text=text;if(row.actionId){const a=getAction(s,row.actionId);a.description=text;a.updatedAt=now()}touch(v)}
+function setAnomalyFamily(s,visitId,anomalyId,family){const {v,row}=anomaly(s,visitId,anomalyId);if(!FAMILY_VALUES.includes(family))fail('Famille invalide.');preserveReportSource(v);row.family=family;touch(v)}
+function editAnomaly(s,visitId,anomalyId,text){const {v,row}=anomaly(s,visitId,anomalyId);if(typeof text!=='string'||(row.actionId&&!text.trim()))fail('La description d’une action liée ne peut pas être vide.');preserveReportSource(v);row.text=text;if(row.actionId){const a=getAction(s,row.actionId);a.description=text;a.updatedAt=now()}touch(v)}
 function actionFromAnomaly(s,visitId,anomalyId){const {v,row}=anomaly(s,visitId,anomalyId);if(!row.actionId)row.actionId=createAction(s,v,'360:'+row.id,'360°',row.text);touch(v);return row.actionId}
 function editReport(s,visitId,scope,key,value){const v=getVisit(s,visitId,true);
  const allowed=scope==='shared'?REPORT_SHARED:(scope==='blanc'||scope==='brun')?REPORT_FIELDS:null;
  if(!allowed||!Object.hasOwn(allowed,key)||typeof value!=='string')fail('Champ compte rendu inconnu.');
+ preserveReportSource(v);
  const report=v.report=reportOf(v);
  // Migration paresseuse des conclusions copiées avant V277, sans effacer leur texte.
  const previous=report[scope][key].trim();if(previous&&v.conclusion.trim()===previous.slice(0,500))v.runnerConclusionSource='report.'+scope+'.'+key;
@@ -215,8 +216,87 @@ function editReport(s,visitId,scope,key,value){const v=getVisit(s,visitId,true);
 function editAction(s,actionId,key,value){const a=getAction(s,actionId);if(!['owner','dueDate','status'].includes(key)||typeof value!=='string')fail('Champ action inconnu.');if(key==='dueDate'&&value&&!dateValid(value))fail('Échéance invalide.');if(key==='status'&&!['open','in_progress','done','cancelled'].includes(value))fail('Statut action invalide.');a[key]=value;a.updatedAt=now();if(key==='status')a.completedAt=value==='done'?(a.completedAt||now()):null;
  const v=getVisit(s,a.visitId);if(['owner','dueDate'].includes(key))for(const rows of Object.values(v.sixP))for(const row of rows)if(row.actionId===a.id)row[key]=value;
 }
+/* Le carnet terrain reste la source. Le texte professionnel et le travail distant
+   sont facultatifs, sauvegardés avec la visite et ne sont jamais écrits dans report. */
+const REPORT_TYPES=['brun','blanc','cuisiniste','buying-groups'];
+const JOB_STATUSES=['pending','processing','done','failed'];
+function professionalRevision(v){return object(v&&v.professionalReport)&&Number.isSafeInteger(v.professionalReport.revision)?v.professionalReport.revision:0}
+function reportTypes(s,v){
+ const store=(s.stores||[]).find(x=>String(x.id)===String(v.storeId))||(s.businessV2&&s.businessV2.storeSnapshots||{})[v.storeId]||{};
+ const brand=memoryKey(store.enseigne);
+ if(store.channel==='cuisiniste'||['schmidt','cuisinella'].includes(brand))return['cuisiniste'];
+ if(['gitem','pro&cie','pro et cie','procie','pro cie'].includes(brand))return['buying-groups'];
+ const selected=(store.products||[]).map(x=>String(x||'').trim().toLowerCase()).filter(x=>FAMILIES.includes(x)),r=reportOf(v);
+ const supplied=FAMILIES.filter(f=>Object.values(r[f]).some(x=>x.trim()));
+ return FAMILIES.filter(f=>selected.includes(f)||supplied.includes(f)).length?FAMILIES.filter(f=>selected.includes(f)||supplied.includes(f)):[familyOf(v)];
+}
+function frozenReportSource(s,v){
+ const store=(s.stores||[]).find(x=>String(x.id)===String(v.storeId))||(s.businessV2&&s.businessV2.storeSnapshots||{})[v.storeId]||{},r=reportOf(v);
+ const entries=reportSourceEntries(v).filter(e=>e.source!=='conclusion'||(!v.runnerConclusionSource&&e.text!=='Visite terrain enregistrée'&&!r.shared.context.includes(e.text)&&!FAMILIES.some(f=>Object.values(r[f]).some(x=>x.trim()&&x.includes(e.text)))));
+ return{version:1,visitId:v.id,storeId:String(v.storeId),completedDate:v.completedDate,store:{enseigne:String(store.enseigne||''),ville:String(store.ville||''),channel:String(store.channel||'')},reports:reportTypes(s,v).map(reportType=>({reportType,entries:clone(entries.filter(e=>!FAMILIES.includes(reportType)||!e.family||e.family==='both'||e.family===reportType))}))};
+}
+function compactReportSource(source){return{...source,compact:true,reports:source.reports.map(r=>({reportType:r.reportType,entries:r.entries.map(e=>({source:e.source,family:e.family}))}))}}
+function sourceForReportJob(v){
+ const j=v&&v.reportJob;if(!j||!object(j.source))return null;
+ if(!j.source.compact)return clone(j.source);
+ if(j.localSourceSignature!==reportSourceSignature(v))return null;
+ const bySource=new Map(reportSourceEntries(v).map(e=>[e.source,e])),out=clone(j.source);delete out.compact;
+ for(const r of out.reports)for(const e of r.entries){const entry=bySource.get(e.source);if(!entry||entry.family!==e.family)return null;e.text=entry.text}
+ return out;
+}
+function preserveReportSource(v){
+ const j=v&&v.reportJob;if(!j)return;
+ if(Array.isArray(v.reportSourceHistory)&&v.reportSourceHistory.some(x=>x.generation===j.generation))return;
+ const source=sourceForReportJob(v);if(!source)return;
+ if(!Array.isArray(v.reportSourceHistory))v.reportSourceHistory=[];
+ v.reportSourceHistory.push({generation:j.generation,capturedAt:j.createdAt,source});
+}
+function secureReportCapability(){
+ if(!(root.crypto&&typeof root.crypto.getRandomValues==='function'))return'';
+ try{const bytes=new Uint8Array(32);root.crypto.getRandomValues(bytes);return Array.from(bytes,x=>x.toString(16).padStart(2,'0')).join('')}catch(e){return''}
+}
+function createReportJob(s,visitId,force=false){
+ const v=getVisit(s,visitId);if(v.status!=='completed')fail('Termine la visite avant de générer son compte rendu.');
+ const localSourceSignature=reportSourceSignature(v),previous=v.reportJob,revision=professionalRevision(v);
+ if(object(previous)&&!previous.obsolete&&previous.localSourceSignature===localSourceSignature&&previous.completedDate===v.completedDate&&previous.finalRevision===revision&&(!force||['pending','processing'].includes(previous.status)))return previous;
+ const generation=object(previous)&&Number.isSafeInteger(previous.generation)?previous.generation+1:0,source=frozenReportSource(s,v),at=now();
+ // Les notes clôturées sont déjà immuables : le manifeste référence leur texte
+ // sans le doubler pour chaque historique. Une réouverture préserve l'ancien cliché.
+ if(object(previous)&&previous.localSourceSignature!==localSourceSignature)preserveReportSource(v);
+ v.reportJob={version:1,status:'pending',visitId:v.id,storeId:String(v.storeId),completedDate:v.completedDate,localSourceSignature,sourceSignature:'',generation,finalRevision:revision,accessToken:secureReportCapability(),jobId:'',createdAt:at,updatedAt:at,source:compactReportSource(source)};
+ v.runnerAI={version:1,status:'pending',sourceSignature:localSourceSignature,items:[]};
+ return v.reportJob;
+}
+function reportJobGuard(v,expected){
+ const j=v&&v.reportJob;
+ return !!(v&&v.status==='completed'&&object(j)&&!j.obsolete&&object(expected)&&j.generation===expected.generation&&j.completedDate===expected.completedDate&&v.completedDate===j.completedDate&&j.localSourceSignature===reportSourceSignature(v)&&j.finalRevision===professionalRevision(v)&&(!expected.sourceSignature||j.sourceSignature===expected.sourceSignature));
+}
+function updateReportJob(s,visitId,expected,patch){
+ const v=getVisit(s,visitId);if(!reportJobGuard(v,expected))return false;const j=v.reportJob;
+ for(const key of ['status','sourceSignature','accessToken','jobId','error','retryAt'])if(Object.hasOwn(patch,key))j[key]=clone(patch[key]);
+ if(j.status==='failed'&&v.runnerAI&&v.runnerAI.status==='pending')v.runnerAI.status='failed';
+ j.updatedAt=now();return true;
+}
+function professionalReportOf(v,family){
+ const p=v&&v.professionalReport,reports=object(p)&&object(p.reports)?p.reports:{},key=Object.hasOwn(reports,'cuisiniste')?'cuisiniste':Object.hasOwn(reports,'buying-groups')?'buying-groups':family||v&&v.activeFamily||'brun';
+ return object(reports[key])?clone(reports[key]):null;
+}
+function editProfessionalReport(s,visitId,family,value){
+ const v=getVisit(s,visitId);if(v.status!=='completed')fail('Termine la visite avant de modifier son compte rendu.');if(typeof value!=='string'||!REPORT_TYPES.includes(family))fail('Compte rendu professionnel invalide.');
+ const p=object(v.professionalReport)?v.professionalReport:{version:1,revision:0,reports:{}};v.professionalReport=p;p.revision++;
+ const previous=p.reports[family]||{},at=now();p.reports[family]={...previous,text:value,manual:true,reportType:family,sourceSignature:v.reportJob&&v.reportJob.sourceSignature||previous.sourceSignature||'',revision:p.revision,generatedAt:previous.generatedAt||at,updatedAt:at};
+ if(object(v.reportJob))v.reportJob.obsolete=true;if(v.runnerAI&&v.runnerAI.status==='pending')v.runnerAI.status='failed';touch(v);return p.reports[family];
+}
+function applyProfessionalReport(s,visitId,expected,validated,reports,memory){
+ const v=getVisit(s,visitId);if(!reportJobGuard(v,expected))return false;
+ const p=object(v.professionalReport)?v.professionalReport:{version:1,revision:0,reports:{}};p.revision++;const at=now();
+ for(const [reportType,text] of Object.entries(reports))p.reports[reportType]={text,reportType,manual:false,sourceSignature:v.reportJob.sourceSignature,generation:v.reportJob.generation,revision:p.revision,generatedAt:at,updatedAt:at};
+ p.data=clone(validated);v.professionalReport=p;v.reportJob.status='done';v.reportJob.finalRevision=p.revision;v.reportJob.updatedAt=at;delete v.reportJob.error;delete v.reportJob.retryAt;
+ v.runnerAI={version:1,status:'done',sourceSignature:reportSourceSignature(v),generatedAt:at,items:clone(memory&&Array.isArray(memory.items)?memory.items:[])};touch(v);return true;
+}
 function complete(s,visitId,day){const v=getVisit(s,visitId);if(v.status==='completed')return v.id;if(!dateValid(day))fail('Date de visite invalide.');if(!v.conclusion.trim())fail('Ajoute une conclusion avant de terminer.');for(const [p,rows] of Object.entries(v.sixP))rows.forEach((row,i)=>{if(row.action.trim())actionFrom6P(s,visitId,p,i)});
  v.status='completed';v.completedDate=day;v.completedAt=now();touch(v);delete v.runnerAI;v.runnerMemory=analyzeReport(v);
+ createReportJob(s,visitId);
  if(s.stores.some(x=>String(x.id)===v.storeId)){if(!s.visits)s.visits={};const history=s.visits[v.storeId]||(s.visits[v.storeId]={lastVisit:'',history:[]});if(!Array.isArray(history.history))history.history=[];if(!history.history.includes(day))history.history.push(day);history.history.sort();history.lastVisit=history.history[history.history.length-1]||''}return v.id;
 }
 /* V231 — suppression d'une visite enregistrée par erreur.
@@ -271,10 +351,22 @@ function optionalReport(r){if(r===undefined)return;if(!object(r))fail('Compte re
  for(const scope of Object.keys(r)){if(!REPORT_SCOPES.includes(scope))fail('Champ compte rendu inconnu.');
   const allowed=scope==='shared'?REPORT_SHARED:REPORT_FIELDS,block=r[scope];if(!object(block))fail('Compte rendu invalide.');
   for(const key of Object.keys(block)){if(!Object.hasOwn(allowed,key))fail('Champ compte rendu inconnu.');if(typeof block[key]!=='string')fail('Compte rendu invalide.')}}}
+function optionalReportSource(src){
+ if(!object(src)||src.version!==1||typeof src.visitId!=='string'||typeof src.storeId!=='string'||!dateValid(src.completedDate)||!object(src.store)||!Array.isArray(src.reports)||!src.reports.length||src.reports.length>2)fail('Sources du compte rendu invalides.');
+ if(src.compact!==undefined&&src.compact!==true)fail('Manifeste source invalide.');strings(src.store,['enseigne','ville','channel']);const types=new Set();
+ for(const report of src.reports){if(!object(report)||!REPORT_TYPES.includes(report.reportType)||types.has(report.reportType)||!Array.isArray(report.entries))fail('Sources du compte rendu invalides.');types.add(report.reportType);
+  for(const entry of report.entries){strings(entry,src.compact?['source','family']:['source','family','text']);if(!entry.source||(!src.compact&&!entry.text.trim())||!FAMILY_VALUES.includes(entry.family))fail('Source terrain invalide.')}}
+}
+function optionalProfessionalReport(v){
+ const p=v.professionalReport;if(p!==undefined){if(!object(p)||p.version!==1||!Number.isSafeInteger(p.revision)||p.revision<0||!object(p.reports))fail('Compte rendu professionnel invalide.');
+  for(const [key,row] of Object.entries(p.reports)){if(!REPORT_TYPES.includes(key)||!object(row)||typeof row.text!=='string'||typeof row.manual!=='boolean'||typeof row.sourceSignature!=='string'||!Number.isSafeInteger(row.revision)||row.revision<0||!Number.isFinite(Date.parse(row.generatedAt)))fail('Compte rendu professionnel invalide.');}}
+ const j=v.reportJob;if(j!==undefined){if(!object(j)||j.version!==1||!JOB_STATUSES.includes(j.status)||j.visitId!==v.id||j.storeId!==v.storeId||!dateValid(j.completedDate)||typeof j.localSourceSignature!=='string'||typeof j.sourceSignature!=='string'||(j.sourceSignature&&!/^sha256-[a-f0-9]{64}$/.test(j.sourceSignature))||!Number.isSafeInteger(j.generation)||j.generation<0||!Number.isSafeInteger(j.finalRevision)||j.finalRevision<0||typeof j.jobId!=='string'||typeof j.accessToken!=='string'||(j.accessToken&&!/^[a-f0-9]{64}$/.test(j.accessToken))||!Number.isFinite(Date.parse(j.createdAt))||!Number.isFinite(Date.parse(j.updatedAt)))fail('Tâche de compte rendu invalide.');optionalReportSource(j.source);if(j.source.visitId!==v.id||j.source.storeId!==v.storeId||j.source.completedDate!==j.completedDate)fail('Tâche de compte rendu incohérente.');}
+ if(v.reportSourceHistory!==undefined){if(!Array.isArray(v.reportSourceHistory))fail('Historique des sources invalide.');for(const snap of v.reportSourceHistory){if(!object(snap)||!Number.isSafeInteger(snap.generation)||!Number.isFinite(Date.parse(snap.capturedAt)))fail('Historique des sources invalide.');optionalReportSource(snap.source);}}
+}
 function validate(s){const b=s.businessV2;if(b===undefined)return s;if(!object(b)||b.version!==2||!Number.isSafeInteger(b.revision)||b.revision<0||!object(b.storeSnapshots)||!Array.isArray(b.visits)||!Array.isArray(b.actions))fail('Données Visit/Action V2 invalides.');
  const stores=new Set(s.stores.map(x=>String(x.id)));for(const [key,snap] of Object.entries(b.storeSnapshots)){strings(snap,['id','enseigne','ville','adresse']);if(key!==snap.id)fail('Instantané magasin incohérent.');stores.add(key)}
  const visits=new Map(),actions=new Map(),drafts=new Set(),sources=new Set();for(const [rows,map] of [[b.visits,visits],[b.actions,actions]])for(const x of rows){if(!object(x)||typeof x.id!=='string'||!x.id||map.has(x.id)||!stores.has(x.storeId))fail('Identifiant métier ou magasin invalide.');strings(x,['createdAt','updatedAt']);if(!Number.isFinite(Date.parse(x.createdAt))||!Number.isFinite(Date.parse(x.updatedAt)))fail('Horodatage invalide.');map.set(x.id,x)}
- for(const v of b.visits){if(!['draft','completed'].includes(v.status)||!Number.isInteger(v.step)||v.step<0||v.step>5)fail('État visite invalide.');strings(v,['conclusion']);if(v.activeFamily!==undefined&&!FAMILIES.includes(v.activeFamily))fail('Famille invalide.');optionalReport(v.report);strings(v.preparation,Object.keys(PREP));strings(v.arrival,['positives','opportunities']);if(!Array.isArray(v.arrival.checks)||v.arrival.checks.length!==CHECKS.length||v.arrival.checks.some(x=>typeof x!=='boolean')||!Array.isArray(v.arrival.anomalies))fail('Relevé 360° invalide.');
+ for(const v of b.visits){if(!['draft','completed'].includes(v.status)||!Number.isInteger(v.step)||v.step<0||v.step>5)fail('État visite invalide.');strings(v,['conclusion']);if(v.activeFamily!==undefined&&!FAMILIES.includes(v.activeFamily))fail('Famille invalide.');optionalReport(v.report);optionalProfessionalReport(v);strings(v.preparation,Object.keys(PREP));strings(v.arrival,['positives','opportunities']);if(!Array.isArray(v.arrival.checks)||v.arrival.checks.length!==CHECKS.length||v.arrival.checks.some(x=>typeof x!=='boolean')||!Array.isArray(v.arrival.anomalies))fail('Relevé 360° invalide.');
   if(v.status==='draft'){if(drafts.has(v.storeId)||v.completedAt!==null||v.completedDate!==null)fail('Brouillon incohérent ou dupliqué.');drafts.add(v.storeId)}else if(!dateValid(v.completedDate)||!v.conclusion.trim()||!Number.isFinite(Date.parse(v.completedAt)))fail('Clôture invalide.');
   function link(row,source,description){if(row.actionId===null)return;const a=actions.get(row.actionId);if(!a||a.visitId!==v.id||a.source!==source||a.description!==description)fail('Action liée incohérente.');if(source.startsWith('6p:')&&(a.owner!==row.owner||a.dueDate!==row.dueDate))fail('Responsable ou échéance désynchronisé.')}
   const anomalyIds=new Set();for(const row of v.arrival.anomalies){strings(row,['id','text']);optionalFamily(row);if(!row.id||anomalyIds.has(row.id))fail('Anomalie dupliquée.');anomalyIds.add(row.id);link(row,'360:'+row.id,row.text)}
@@ -284,6 +376,6 @@ function validate(s){const b=s.businessV2;if(b===undefined)return s;if(!object(b
   const parts=a.source.split(':');if(parts[0]==='6p'){const rows=v.sixP[parts[1]],row=rows&&rows[Number(parts[2])];if(!row||row.actionId!==a.id||a.category!==SIX_P[parts[1]].label)fail('Source 6P invalide.')}else if(parts[0]==='360'){if(!v.arrival.anomalies.some(x=>x.id===parts.slice(1).join(':')&&x.actionId===a.id)||a.category!=='360°')fail('Source anomalie invalide.')}else fail('Source action inconnue.');
  }return s;
 }
-const api={SIX_P,CHECKS,PREP,FAMILIES,FAMILY_LABELS,FAMILY_VALUES,REPORT_SHARED,REPORT_FIELDS,MEMORY_LABELS,reportSourceEntries,reportSourceSignature,aiMemoryOf,analyzeReport,reportMemoryOf,reportMemoryFor,reportMemoryLines,clone,empty,data,start,getVisit,editVisit,edit6P,addAnomaly,editAnomaly,setAnomalyFamily,editReport,reportOf,actionFrom6P,actionFromAnomaly,editAction,complete,removeVisit,validate,dateValid};
+const api={SIX_P,CHECKS,PREP,FAMILIES,FAMILY_LABELS,FAMILY_VALUES,REPORT_SHARED,REPORT_FIELDS,MEMORY_LABELS,REPORT_TYPES,JOB_STATUSES,professionalRevision,reportTypes,frozenReportSource,sourceForReportJob,preserveReportSource,createReportJob,reportJobGuard,updateReportJob,professionalReportOf,editProfessionalReport,applyProfessionalReport,reportSourceEntries,reportSourceSignature,aiMemoryOf,analyzeReport,reportMemoryOf,reportMemoryFor,reportMemoryLines,clone,empty,data,start,getVisit,editVisit,edit6P,addAnomaly,editAnomaly,setAnomalyFamily,editReport,reportOf,actionFrom6P,actionFromAnomaly,editAction,complete,removeVisit,validate,dateValid};
 root.StoreRunnerVisitModel=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

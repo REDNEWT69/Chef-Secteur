@@ -1,6 +1,5 @@
-/* Store Runner V1 — Sortie magasin : rapport local hors ligne + génération IA.
-   La génération de CE compte rendu reste déclenchée par son bouton. V277.1 gère séparément
-   l'enrichissement automatique de la mémoire après clôture, sans modifier les notes source. */
+/* Store Runner — sortie magasin. Les rapports professionnels sont persistés séparément
+   des notes terrain. La clôture crée le job serveur ; cette surface lit et édite le résultat. */
 (function(root){
 'use strict';
 const SHEET_ID='srReportSheet',VISIT_BTN_ID='srReportBtn',QUICK_BTN_ID='srReportQuickBtn',SHARE_BTN_ID='srReportSharePhotos',AI_BTN_ID='srReportAI',EDIT_BTN_ID='srReportEdit';
@@ -38,6 +37,7 @@ Ne pas réciter une checklist. Chaque paragraphe doit faire ressortir un constat
 };
 function norm(v){return String(v==null?'':v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim()}
 function skeletonFor(enseigne){const n=norm(enseigne);for(const key of Object.keys(FAMILY_OF_BRAND))if(FAMILY_OF_BRAND[key].indexOf(n)>=0)return key;return 'grands-magasins'}
+function skeletonForStore(store){return store&&store.channel==='cuisiniste'?'cuisinistes':skeletonFor(store&&store.enseigne)}
 function model(){if(root.StoreRunnerVisitModel)return root.StoreRunnerVisitModel;try{if(typeof module!=='undefined'&&module.exports&&typeof require==='function')return require('./store-runner-visit-model.js')}catch(e){}return null}
 function text(v){return String(v==null?'':v).trim()}
 function orPlaceholder(v){return text(v)||PLACEHOLDER}
@@ -48,11 +48,11 @@ function photoStats(photos,families){const keep=keeper(families),rows=(photos||[
 function photoLine(photos,families){const s=photoStats(photos,families);if(!s.total)return '> **Photos :** '+PLACEHOLDER;let bits=[];if(s.before)bits.push(s.before+' avant');if(s.after)bits.push(s.after+' après');if(s.other)bits.push(s.other+' sans moment');return '> **Photos :** '+bits.join(' / ')+' jointe'+(s.total>1?'s':'')+' à ce message.'}
 function tidy(body){return body.split('\n').map(l=>l.replace(/[ \t]+$/,'')).join('\n').replace(/\n{3,}/g,'\n\n').replace(/\s+$/,'')+'\n'}
 function visitDate(v){return text(v.completedDate)||text(v.createdAt).slice(0,10)}
-function storeOf(state,v){const b=state.businessV2||{};return (b.storeSnapshots&&b.storeSnapshots[v.storeId])||(state.stores||[]).find(s=>String(s.id)===String(v.storeId))||{}}
+function storeOf(state,v){const b=state.businessV2||{},live=(state.stores||[]).find(s=>String(s.id)===String(v.storeId))||{},snapshot=b.storeSnapshots&&b.storeSnapshots[v.storeId];return snapshot?{...live,...snapshot,channel:snapshot.channel||live.channel||''}:live}
 function merge(report,key,families){return families.map(f=>text(report[f]&&report[f][key])).filter(Boolean).join('\n\n')}
 function appendLegacy(out,label,value){const v=text(value);return v?out+'\n### '+label+'\n'+v+'\n':out}
 function build(state,visitId,family,photos){
- const M=model();if(!M)throw new Error('Modèle de visite indisponible.');const b=(state&&state.businessV2)||{},v=(b.visits||[]).find(x=>x.id===visitId);if(!v)throw new Error('Visite introuvable.');const store=storeOf(state,v),skeleton=skeletonFor(store.enseigne),report=M.reportOf(v);const families=MERGED[skeleton]?['blanc','brun']:[M.FAMILIES.indexOf(family)>=0?family:'brun'],keep=keeper(families);const merged=!!MERGED[skeleton];const value=key=>merged?merge(report,key,families):text(report[families[0]][key]);const title=skeleton==='cuisinistes'?'# COMPTE RENDU DE VISITE — CUISINISTE':skeleton==='buying-groups'?'# COMPTE RENDU DE VISITE — BUYING GROUP':'# COMPTE RENDU DE VISITE';const head='**Magasin :** '+text(store.enseigne)+' '+text(store.ville)+' — '+visitDate(v)+(merged?'':' — Famille '+families[0].toUpperCase());
+ const M=model();if(!M)throw new Error('Modèle de visite indisponible.');const b=(state&&state.businessV2)||{},v=(b.visits||[]).find(x=>x.id===visitId);if(!v)throw new Error('Visite introuvable.');const store=storeOf(state,v),skeleton=skeletonForStore(store),report=M.reportOf(v);const families=MERGED[skeleton]?['blanc','brun']:[M.FAMILIES.indexOf(family)>=0?family:'brun'],keep=keeper(families);const merged=!!MERGED[skeleton];const value=key=>merged?merge(report,key,families):text(report[families[0]][key]);const title=skeleton==='cuisinistes'?'# COMPTE RENDU DE VISITE — CUISINISTE':skeleton==='buying-groups'?'# COMPTE RENDU DE VISITE — BUYING GROUP':'# COMPTE RENDU DE VISITE';const head='**Magasin :** '+text(store.enseigne)+' '+text(store.ville)+' — '+visitDate(v)+(merged?'':' — Famille '+families[0].toUpperCase());
  let out=title+'\n'+head+'\n\n### Contexte magasin\n'+orPlaceholder(report.shared&&report.shared.context)+'\n\n### Note terrain\n'+orPlaceholder(value('team'))+'\n';
  out+='\n'+photoLine(photos,families)+'\n';
  out=appendLegacy(out,'Actions réalisées',value('actions'));
@@ -63,7 +63,7 @@ function build(state,visitId,family,photos){
  return tidy(out)
 }
 function buildAIPayload(state,visitId,family,photos){
- const M=model();if(!M)throw new Error('Modèle de visite indisponible.');const b=(state&&state.businessV2)||{},v=(b.visits||[]).find(x=>x.id===visitId);if(!v)throw new Error('Visite introuvable.');const store=storeOf(state,v),skeleton=skeletonFor(store.enseigne),report=M.reportOf(v),families=MERGED[skeleton]?['blanc','brun']:[M.FAMILIES.indexOf(family)>=0?family:'brun'],keep=keeper(families),merged=!!MERGED[skeleton],value=key=>merged?merge(report,key,families):text(report[families[0]][key]);
+ const M=model();if(!M)throw new Error('Modèle de visite indisponible.');const b=(state&&state.businessV2)||{},v=(b.visits||[]).find(x=>x.id===visitId);if(!v)throw new Error('Visite introuvable.');const store=storeOf(state,v),skeleton=skeletonForStore(store),report=M.reportOf(v),families=MERGED[skeleton]?['blanc','brun']:[M.FAMILIES.indexOf(family)>=0?family:'brun'],keep=keeper(families),merged=!!MERGED[skeleton],value=key=>merged?merge(report,key,families):text(report[families[0]][key]);
  const anomalies=((v.arrival&&v.arrival.anomalies)||[]).filter(a=>keep(a.family)&&text(a.text)).map(a=>text(a.text));
  const legacyObservations=sixPRows(M,v,keep).filter(e=>text(e.row.comment)||text(e.row.action)||e.row.status==='correct'||e.row.status==='opportunity').map(e=>({theme:e.label,item:e.item,status:text(e.row.status),comment:text(e.row.comment),action:text(e.row.action)}));
  const openActions=((b.actions)||[]).filter(a=>a.visitId===v.id&&['done','cancelled'].indexOf(a.status)<0).map(a=>({description:text(a.description),owner:text(a.owner),dueDate:text(a.dueDate),status:text(a.status)}));
@@ -194,7 +194,7 @@ DONNEES_SOURCE :
 ${source}`
 }
 function cleanAIText(value){let s=text(value);s=s.replace(/^```(?:markdown|md|text)?\s*/i,'').replace(/\s*```$/,'').trim();s=s.replace(/^(?:Voici|Voilà)\s+(?:le|ton|votre)\s+(?:compte rendu|résumé)[^\n]*\n+/i,'').trim();return s}
-let sheet=null,activeVisit='',activeTab='blanc',aiDrafts=Object.create(null),generating=false;
+let sheet=null,activeVisit='',activeTab='blanc',aiDrafts=Object.create(null),generating=false,refreshSequence=0,editSaving=Promise.resolve(true);
 /* ---------------------------------------------------------------------------
    V235 — partage photo par lots depuis « Sortie magasin ».
 
@@ -251,9 +251,9 @@ function visitById(id){return (((state().businessV2||{}).visits)||[]).find(v=>v.
 function draftFor(storeId){const rows=((state().businessV2||{}).visits)||[];return rows.filter(v=>String(v.storeId)===String(storeId)&&v.status==='draft').sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')))[0]||null}
 function say(msg,error){const box=sheet&&sheet.querySelector('#srReportStatus');if(box){box.textContent=msg||'';box.classList.toggle('sr-reportError',!!error)}}
 function draftKey(v,skeleton){return v.id+':'+(MERGED[skeleton]?'merged':activeTab)}
-function currentDraftKey(){const v=visitById(activeVisit);if(!v)return'';return draftKey(v,skeletonFor(storeOf(state(),v).enseigne))}
+function currentDraftKey(){const v=visitById(activeVisit);if(!v)return'';return draftKey(v,skeletonForStore(storeOf(state(),v)))}
 function ensureStyle(){if(!root.document||root.document.getElementById('sr-report-style'))return;const s=el('style');s.id='sr-report-style';s.textContent='#'+SHEET_ID+'{box-sizing:border-box;width:min(720px,calc(100vw - 20px));max-width:calc(100vw - 20px);max-height:calc(100dvh - 20px);overflow:auto;padding:16px;border-radius:24px;border:1px solid #d9dce3;background:#fff;color:#1d1d1f}#'+SHEET_ID+'::backdrop{background:rgba(17,24,39,.45)}.sr-reportHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.sr-reportHead h2{margin:0;font-size:20px}.sr-reportHead p{margin:4px 0 0;color:#667085;font-size:12px}.sr-reportTabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 8px}.sr-reportTab{min-height:44px;border:1px solid #d3d9e3;border-radius:13px;background:#f4f6fa;color:#454b56;font-weight:800;font-size:12px}.sr-reportTab[aria-selected=true]{background:#1428a0;border-color:#1428a0;color:#fff}#srReportText{width:100%;box-sizing:border-box;min-height:300px;border:1px solid #d9dee8;border-radius:14px;padding:10px;font:400 12px ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.45;background:#fbfcff;color:#1d1d1f;-webkit-text-fill-color:#1d1d1f;resize:vertical}#srReportText:not([readonly]){background:#fff;border-color:#8eb6ff;box-shadow:0 0 0 3px rgba(20,40,160,.08)}.sr-reportStatus{min-height:18px;font-size:12px;color:#315b9d;margin:8px 0}.sr-reportStatus.sr-reportError{color:#b42318}.sr-reportActions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px}.sr-reportBtn{min-height:48px;border-radius:14px;font-weight:800}.sr-reportAI{background:linear-gradient(180deg,#1428a0,#0f1f7d);color:#fff;border:0}.sr-reportAI:disabled{opacity:.62}.sr-reportEdit{background:#fff;color:#1428a0;border:1px solid #ccd4ef}.sr-reportCopy{background:#1428a0;color:#fff;border:0}.sr-reportPhotos{background:#eef0f4;color:#1d1d1f;border:0}.sr-reportPhotos:disabled{opacity:.55}.sr-reportClose{background:#eef0f4;color:#1d1d1f;border:0}#'+VISIT_BTN_ID+',#'+QUICK_BTN_ID+'{min-height:44px}';root.document.head.appendChild(s)}
-function ensureSheet(){if(sheet)return sheet;if(!root.document)return null;ensureStyle();sheet=el('dialog');sheet.id=SHEET_ID;sheet.setAttribute('aria-labelledby','srReportTitle');sheet.innerHTML='<div class="sr-reportHead"><div><h2 id="srReportTitle">Sortie magasin</h2><p id="srReportSubtitle"></p></div></div><div id="srReportTabs" class="sr-reportTabs"></div><textarea id="srReportText" rows="18" readonly aria-label="Compte rendu à copier"></textarea><p id="srReportStatus" class="sr-reportStatus" role="status"></p><div class="sr-reportActions"></div>';const actions=sheet.querySelector('.sr-reportActions'),ai=btn('✨ Générer avec l’IA',generateAI,'sr-reportBtn sr-reportAI'),edit=btn('Modifier le texte',toggleEdit,'sr-reportBtn sr-reportEdit'),copyBtn=btn('Copier le compte rendu',copy,'sr-reportBtn sr-reportCopy'),share=btn('Aucune photo pour cette visite.',sharePhotos,'sr-reportBtn sr-reportPhotos');ai.id=AI_BTN_ID;edit.id=EDIT_BTN_ID;share.id=SHARE_BTN_ID;share.disabled=true;actions.append(ai,edit,copyBtn,share,btn('Fermer',close,'sr-reportBtn sr-reportClose'));const area=sheet.querySelector('#srReportText');area.addEventListener('input',()=>{const k=area.dataset.draftKey;if(k&&!area.readOnly)aiDrafts[k]=area.value});sheet.addEventListener('cancel',e=>{e.preventDefault();close()});root.document.body.appendChild(sheet);return sheet}
+function ensureSheet(){if(sheet)return sheet;if(!root.document)return null;ensureStyle();sheet=el('dialog');sheet.id=SHEET_ID;sheet.setAttribute('aria-labelledby','srReportTitle');sheet.innerHTML='<div class="sr-reportHead"><div><h2 id="srReportTitle">Sortie magasin</h2><p id="srReportSubtitle"></p></div></div><div id="srReportTabs" class="sr-reportTabs"></div><textarea id="srReportText" rows="18" readonly aria-label="Compte rendu à copier"></textarea><p id="srReportStatus" class="sr-reportStatus" role="status"></p><div class="sr-reportActions"></div>';const actions=sheet.querySelector('.sr-reportActions'),ai=btn('✨ Régénérer le compte rendu',generateAI,'sr-reportBtn sr-reportAI'),edit=btn('Modifier le texte',toggleEdit,'sr-reportBtn sr-reportEdit'),copyBtn=btn('Copier le compte rendu',copy,'sr-reportBtn sr-reportCopy'),share=btn('Aucune photo pour cette visite.',sharePhotos,'sr-reportBtn sr-reportPhotos');ai.id=AI_BTN_ID;edit.id=EDIT_BTN_ID;share.id=SHARE_BTN_ID;share.disabled=true;actions.append(ai,edit,copyBtn,share,btn('Fermer',close,'sr-reportBtn sr-reportClose'));const area=sheet.querySelector('#srReportText');area.addEventListener('input',()=>{const k=area.dataset.draftKey;if(k&&!area.readOnly){aiDrafts[k]=area.value;persistFinalEdit(area)}});sheet.addEventListener('cancel',e=>{e.preventDefault();close()});root.document.body.appendChild(sheet);return sheet}
 /* V235 — une photo sans famille n'appartient plus ni à BRUN ni à BLANC : reprise dans
    les deux, elle produisait un doublon entre les deux comptes rendus et entre les lots
    de partage. `listStrictByFamily` est la lecture dédiée ; si un module plus ancien est
@@ -269,10 +269,49 @@ function ensureSheet(){if(sheet)return sheet;if(!root.document)return null;ensur
 function ofVisit(rows,visitId){const id=String(visitId==null?'':visitId);if(!id)return [];return (Array.isArray(rows)?rows:[]).filter(r=>r&&r.visitId!=null&&String(r.visitId)===id)}
 async function photosFor(storeId,visitId,family,merged){const api=root.StorePhotosV1;if(!api)return [];try{let rows=[];if(merged&&typeof api.list==='function')rows=await api.list(storeId);else if(typeof api.listStrictByFamily==='function')rows=await api.listStrictByFamily(storeId,family);else if(typeof api.listByFamily==='function')rows=(await api.listByFamily(storeId,family)).filter(r=>String(r&&r.family||'')===String(family||''));return ofVisit(rows,visitId)}catch(e){return []}}
 function updatePhotoButton(photos,merged){const b=sheet&&sheet.querySelector('#'+SHARE_BTN_ID);if(!b)return;b.hidden=false;const st=shareState(photos,merged);b.disabled=!st.total||!st.remaining;b.textContent=shareButtonLabel(st.total,st.remaining,st.batch,merged,activeTab)}
-function updateAIButton(merged){const b=sheet&&sheet.querySelector('#'+AI_BTN_ID);if(!b)return;b.textContent=merged?'✨ Générer le compte rendu':'✨ Générer le résumé '+activeTab.toUpperCase()}
-function updateEditButton(){const area=sheet&&sheet.querySelector('#srReportText'),b=sheet&&sheet.querySelector('#'+EDIT_BTN_ID);if(!area||!b)return;b.textContent=area.readOnly?'Modifier le texte':'Terminer la modification'}
-async function refresh(){const v=visitById(activeVisit);if(!v){say('Visite introuvable.',true);return}const store=storeOf(state(),v),skeleton=skeletonFor(store.enseigne),merged=!!MERGED[skeleton];sheet.querySelector('#srReportSubtitle').textContent=text(store.enseigne)+' '+text(store.ville)+' · '+visitDate(v)+(merged?' · un seul compte rendu':' · deux comptes rendus');const tabs=sheet.querySelector('#srReportTabs');tabs.replaceChildren();tabs.hidden=merged;if(!merged){const M=model();for(const family of M.FAMILIES){const b=btn(family.toUpperCase(),()=>{activeTab=family;say('');refresh()},'sr-reportTab');b.setAttribute('role','tab');b.setAttribute('aria-selected',activeTab===family?'true':'false');b.dataset.family=family;tabs.append(b)}}const photos=await photosFor(v.storeId,v.id,activeTab,merged),key=draftKey(v,skeleton),area=sheet.querySelector('#srReportText');area.dataset.draftKey=key;area.readOnly=true;area.value=Object.prototype.hasOwnProperty.call(aiDrafts,key)?aiDrafts[key]:build(state(),v.id,activeTab,photos);updatePhotoButton(photos,merged);updateAIButton(merged);updateEditButton()}
-function toggleEdit(){const area=sheet&&sheet.querySelector('#srReportText');if(!area)return false;area.readOnly=!area.readOnly;updateEditButton();if(!area.readOnly){area.focus();area.setSelectionRange(area.value.length,area.value.length);say('Tu peux corriger le texte avant de le copier dans Slack.')}else{const k=area.dataset.draftKey;if(k)aiDrafts[k]=area.value;say('Modifications conservées pour cette sortie magasin.')}return true}
+function visitsAPI(){return root.StoreRunnerVisits}
+function savedReport(v){const api=visitsAPI();return api&&typeof api.reportFor==='function'?api.reportFor(v.id,activeTab):null}
+function reportStatus(v){
+ const job=v&&v.reportJob;if(job&&job.obsolete)return 'Compte rendu modifié et enregistré.';
+ if(!job)return v&&v.status==='draft'?'Le compte rendu sera préparé automatiquement à la clôture.':'';
+ if(job.status==='done')return 'Compte rendu enregistré. Relis-le avant de le copier.';
+ if(job.status==='failed')return 'Le compte rendu existant et les notes sont conservés. Tu peux régénérer le compte rendu.';
+ if(root.navigator&&root.navigator.onLine===false)return 'Visite clôturée. Le compte rendu sera repris au retour du réseau.';
+ return job.status==='processing'?'Compte rendu en préparation sur le serveur. Tu peux quitter l’application.':'Visite clôturée. Compte rendu en attente de traitement.';
+}
+function updateAIButton(merged){const b=sheet&&sheet.querySelector('#'+AI_BTN_ID);if(!b)return;const v=visitById(activeVisit);b.textContent='✨ Régénérer le compte rendu';b.disabled=generating||!v||v.status!=='completed';b.title=v&&v.status==='draft'?'Termine la visite pour préparer son compte rendu.':''}
+function updateEditButton(){const area=sheet&&sheet.querySelector('#srReportText'),b=sheet&&sheet.querySelector('#'+EDIT_BTN_ID);if(!area||!b)return;b.textContent=area.readOnly?'Modifier le texte':'Terminer la modification';b.disabled=!(visitById(activeVisit)||{}).completedDate}
+async function localReport(v,photos){
+ const old=build(state(),v.id,activeTab,photos);
+ if(!await ensureReportRenderer())return old;
+ const M=model(),source=v.reportJob&&M&&typeof M.sourceForReportJob==='function'?M.sourceForReportJob(v):(v.reportJob&&v.reportJob.source||(v.status==='completed'&&M&&typeof M.frozenReportSource==='function'?M.frozenReportSource(state(),v):null));
+ if(!source)return old;
+ const channel=skeletonForStore(storeOf(state(),v)),type=channel==='cuisinistes'?'cuisiniste':channel==='buying-groups'?'buying-groups':activeTab;
+ return root.StoreRunnerReportRenderer.fallback(source,type)||old;
+}
+async function refresh(){
+ const sequence=++refreshSequence,v=visitById(activeVisit);if(!v){say('Visite introuvable.',true);return}
+ const store=storeOf(state(),v),skeleton=skeletonForStore(store),merged=!!MERGED[skeleton];
+ sheet.querySelector('#srReportSubtitle').textContent=text(store.enseigne)+' '+text(store.ville)+' · '+visitDate(v)+(merged?' · un seul compte rendu':'');
+ const tabs=sheet.querySelector('#srReportTabs');tabs.replaceChildren();tabs.hidden=merged;
+ if(!merged){const M=model();for(const family of M.FAMILIES){const b=btn(family.toUpperCase(),()=>{activeTab=family;say('');refresh()},'sr-reportTab');b.setAttribute('role','tab');b.setAttribute('aria-selected',activeTab===family?'true':'false');b.dataset.family=family;tabs.append(b)}}
+ const photos=await photosFor(v.storeId,v.id,activeTab,merged),key=draftKey(v,skeleton),area=sheet.querySelector('#srReportText');
+ const stored=savedReport(v),value=stored?stored.text:(Object.prototype.hasOwnProperty.call(aiDrafts,key)?aiDrafts[key]:await localReport(v,photos));
+ if(sequence!==refreshSequence)return;
+ if(!area.readOnly&&area.dataset.draftKey===key)return;
+ area.dataset.draftKey=key;area.dataset.visitId=v.id;area.dataset.reportFamily=activeTab;area.readOnly=true;area.value=value;
+ updatePhotoButton(photos,merged);updateAIButton(merged);updateEditButton();say(reportStatus(visitById(v.id)));
+}
+function persistFinalEdit(area){
+ const id=area.dataset.visitId,family=area.dataset.reportFamily,api=visitsAPI(),value=area.value;
+ if(!id||!api||typeof api.saveFinalReport!=='function')return Promise.resolve(false);
+ editSaving=api.saveFinalReport(id,family,value).then(ok=>{if(!ok)say('Modification non enregistrée. Garde cette fenêtre ouverte et réessaie.',true);return !!ok}).catch(e=>{say('Modification non enregistrée : '+e.message,true);return false});
+ return editSaving;
+}
+async function toggleEdit(){const area=sheet&&sheet.querySelector('#srReportText');if(!area)return false;
+ if(area.readOnly){area.readOnly=false;updateEditButton();area.focus();area.setSelectionRange(area.value.length,area.value.length);say('Modifie le compte rendu. Les notes terrain originales restent conservées.');return true}
+ const ok=await persistFinalEdit(area);if(!ok)return false;area.readOnly=true;updateEditButton();say('Compte rendu modifié et enregistré.');return true;
+}
 /* V238 — le terrain ne doit plus lire « HTTP 500 · {"error":...} ». Quand le Worker a
    déjà dépensé sa seconde tentative sur une réponse IA restée vide, le module JSON V225
    rend la phrase métier ; sinon on garde le message d'origine, qui reste utile pour un
@@ -297,7 +336,16 @@ function aiFailureMessage(e){
    verrou — lecture des photos, construction de la charge utile, appel IA — vit dans le
    même `try`, et le `finally` rend toujours le bouton et libère le verrou. */
 async function generateAI(){const v=visitById(activeVisit);if(!v){say('Visite introuvable.',true);return false}
- if(generating){say('Génération déjà en cours, patiente quelques secondes.');return false}const store=storeOf(state(),v),skeleton=skeletonFor(store.enseigne),merged=!!MERGED[skeleton],button=sheet&&sheet.querySelector('#'+AI_BTN_ID),area=sheet&&sheet.querySelector('#srReportText');if(typeof root.callAIGateway!=='function'||!root.aiConfig||!root.aiConfig.gateway){say('IA en ligne indisponible. Le rapport local reste utilisable et modifiable.',true);return false}const oldLabel=button&&button.textContent;generating=true;if(button){button.disabled=true;button.textContent='✨ Génération en cours…'}say('Génération du compte rendu à partir de tes seules notes terrain…');try{const photos=await photosFor(v.storeId,v.id,activeTab,merged),payload=buildAIPayload(state(),v.id,activeTab,photos),key=draftKey(v,skeleton);const response=await root.callAIGateway({mode:'assistant',message:aiPrompt(payload),context:{task:'visit_report',visit:payload}}),generated=cleanAIText(response&&response.text);if(!generated||generated.length<80)throw new Error('réponse trop courte');if(skeleton==='grands-magasins'&&!/^(?:⚫|⚪)?\s*Résumé\s+(BRUN|BLANC)\b/i.test(generated))throw new Error('format de résumé inattendu');if(skeleton==='grands-magasins'&&!/(?:Formation|Plan d[’']action)\s*\/\s*prochain passage/i.test(generated))throw new Error('bloc plan d’action / prochain passage manquant');aiDrafts[key]=generated;if(area){area.dataset.draftKey=key;area.value=generated;area.readOnly=true}updateEditButton();say((merged?'Compte rendu':'Résumé '+activeTab.toUpperCase())+(response&&response.repaired?' généré après une réparation automatique.':(response&&Number(response.attempts)>1?' généré après une seconde tentative.':' généré.'))+' Relis-le, corrige si besoin, puis copie-le dans Slack.');return true}catch(e){say(aiFailureMessage(e),true);return false}finally{generating=false;if(button){button.disabled=false;button.textContent=oldLabel||'✨ Générer avec l’IA';updateAIButton(merged)}}}
+ if(generating){say('Génération déjà en cours, patiente quelques secondes.');return false}
+ if(v.status!=='completed'){say('Termine la visite pour préparer automatiquement son compte rendu.');return false}
+ const button=sheet&&sheet.querySelector('#'+AI_BTN_ID);generating=true;if(button){button.disabled=true;button.textContent='✨ Préparation…'}
+ try{
+  if(!await editSaving)return false;
+  const api=visitsAPI();if(!api||typeof api.requestReportRegeneration!=='function')throw new Error('service de compte rendu indisponible');
+  const ok=await api.requestReportRegeneration(v.id);if(!ok)throw new Error('préparation non enregistrée');
+  await ensureAutoAI();say('Compte rendu en préparation. Tu peux quitter l’application.');return true;
+ }catch(e){say(aiFailureMessage(e),true);return false}finally{generating=false;if(button){button.disabled=false;updateAIButton(false)}}
+}
 async function copy(){const area=sheet&&sheet.querySelector('#srReportText');if(!area)return false;try{if(root.navigator&&root.navigator.clipboard&&root.navigator.clipboard.writeText){await root.navigator.clipboard.writeText(area.value);say('Compte rendu copié.');return true}}catch(e){}const wasReadonly=area.readOnly;try{area.readOnly=false;area.select();const ok=root.document.execCommand&&root.document.execCommand('copy');area.readOnly=wasReadonly;if(ok){say('Compte rendu copié.');return true}}catch(e){area.readOnly=wasReadonly}say('Copie impossible ici. Sélectionne le texte et copie-le à la main.',true);return false}
 /* V235 — un lot à la fois, et la progression n'avance qu'après une promesse résolue.
    `navigator.share` rejette avec `AbortError` quand l'utilisateur referme la feuille
@@ -305,7 +353,7 @@ async function copy(){const area=sheet&&sheet.querySelector('#srReportText');if(
    Le verrou `sharing` empêche un double tap d'ouvrir deux feuilles sur le même lot. */
 async function sharePhotos(){const v=visitById(activeVisit);if(!v){say('Visite introuvable.',true);return false}
  if(sharing){say('Partage déjà en cours, termine la feuille ouverte.');return false}
- const store=storeOf(state(),v),skeleton=skeletonFor(store.enseigne),merged=!!MERGED[skeleton],api=root.StorePhotosV1;
+ const store=storeOf(state(),v),skeleton=skeletonForStore(store),merged=!!MERGED[skeleton],api=root.StorePhotosV1;
  if(!api||typeof api.shareRecords!=='function'||(!merged&&typeof api.listStrictByFamily!=='function'&&typeof api.listByFamily!=='function')||(merged&&typeof api.list!=='function')){say('Partage photo indisponible ici. Ouvre Photos magasin pour les télécharger une par une.',true);return false}
  const familyKey=shareFamilyKey(merged),FAM=merged?'':' '+activeTab.toUpperCase();
  sharing=true;
@@ -313,7 +361,7 @@ async function sharePhotos(){const v=visitById(activeVisit);if(!v){say('Visite i
   const rows=await photosFor(v.storeId,v.id,activeTab,merged);
   updatePhotoButton(rows,merged);
   const area=sheet&&sheet.querySelector('#srReportText'),key=currentDraftKey();
-  if(area&&!Object.prototype.hasOwnProperty.call(aiDrafts,key))area.value=build(state(),v.id,activeTab,rows);
+  if(area&&area.readOnly&&!savedReport(v)&&!Object.prototype.hasOwnProperty.call(aiDrafts,key))area.value=await localReport(v,rows);
   if(!rows.length){say(emptyShareLabel(merged,activeTab));return false}
   const done=sharedSet(v.id,familyKey),batch=nextShareBatch(rows,done,SHARE_BATCH_MAX);
   if(!batch.length){say('Toutes les photos'+FAM+' ont été partagées');return false}
@@ -336,31 +384,39 @@ async function sharePhotos(){const v=visitById(activeVisit);if(!v){say('Visite i
   }
  }finally{sharing=false}
 }
-function close(){if(sheet&&sheet.open)sheet.close()}
+async function close(){const area=sheet&&sheet.querySelector('#srReportText');if(area&&!area.readOnly&&!await persistFinalEdit(area))return false;if(sheet&&sheet.open)sheet.close();return true}
 async function open(visitId){const v=visitById(String(visitId||''));if(!v)return false;ensureSheet();activeVisit=v.id;const M=model();activeTab=M&&M.FAMILIES.indexOf(v.activeFamily)>=0?v.activeFamily:'brun';say('');if(typeof sheet.showModal==='function'&&!sheet.open)sheet.showModal();else sheet.setAttribute('open','');await refresh();return true}
 function fromVisitDialog(){const api=root.StoreRunnerVisits,id=api&&typeof api.activeVisitId==='function'?api.activeVisitId():'';if(!id)return false;open(id);return true}
-function fromQuickSheet(){const start=root.document&&root.document.getElementById('srQuickStart'),storeId=start&&start.dataset?start.dataset.srStart:'',draft=storeId?draftFor(storeId):null;if(!draft){ensureSheet();say('Démarre la visite avant de générer le compte rendu.',true);if(typeof root.alert==='function')root.alert('Démarre la visite avant de générer le compte rendu.');return false}open(draft.id);return true}
+function fromQuickSheet(){const start=root.document&&root.document.getElementById('srQuickStart'),storeId=start&&start.dataset?start.dataset.srStart:'',draft=storeId?(draftFor(storeId)||(((state().businessV2||{}).visits)||[]).filter(v=>String(v.storeId)===String(storeId)&&v.status==='completed').sort((a,b)=>String(b.completedAt||'').localeCompare(String(a.completedAt||'')))[0]):null;if(!draft){ensureSheet();say('Démarre la visite avant de générer le compte rendu.',true);if(typeof root.alert==='function')root.alert('Démarre la visite avant de générer le compte rendu.');return false}open(draft.id);return true}
 function installButtons(){if(!root.document)return false;ensureStyle();let done=0;const head=root.document.querySelector('#srVisitDialog .sr-head');if(head&&!root.document.getElementById(VISIT_BTN_ID)){const b=btn('📤 Sortie magasin',fromVisitDialog,'secondary');b.id=VISIT_BTN_ID;const fermer=[...head.querySelectorAll('button')].find(x=>x.textContent==='Fermer');if(fermer)head.insertBefore(b,fermer);else head.appendChild(b);done++}const actions=root.document.querySelector('#storeQuickSheet .sheetActions');if(actions&&!root.document.getElementById(QUICK_BTN_ID)){const b=btn('📤 Sortie magasin',fromQuickSheet,'secondary');b.id=QUICK_BTN_ID;const photo=root.document.getElementById('storePhotosQuickBtn');if(photo&&photo.parentNode===actions)photo.insertAdjacentElement('afterend',b);else actions.appendChild(b);done++}return done>0}
 function boot(){ensureSheet();installButtons()}
-let autoAILoading=null;
+let autoAILoading=null,rendererLoading=null;
 function hasPendingAI(){
- try{const b=root.state&&root.state.businessV2,rows=b&&Array.isArray(b.visits)?b.visits:[];return rows.some(v=>v&&v.status==='completed'&&v.runnerAI&&v.runnerAI.status==='pending')}catch(e){return false}
+ try{const b=root.state&&root.state.businessV2,rows=b&&Array.isArray(b.visits)?b.visits:[];return rows.some(v=>v&&v.status==='completed'&&((v.reportJob&&['pending','processing'].includes(v.reportJob.status))||(v.runnerAI&&v.runnerAI.status==='pending')))}catch(e){return false}
+}
+function loadReportModule(path,key){return new Promise(resolve=>{if(!root.document){resolve(false);return}const script=root.document.createElement('script'),rev=root.__STORE_RUNNER_BUILD_REV||'reports-v1';script.src=path+'?rev='+encodeURIComponent(rev);script.async=true;script.onload=()=>resolve(!!root[key]);script.onerror=()=>resolve(false);(root.document.head||root.document.documentElement).appendChild(script)})}
+function ensureReportRenderer(){
+ if(root.StoreRunnerReportRenderer)return Promise.resolve(true);
+ if(!rendererLoading)rendererLoading=loadReportModule('./store-runner-report-renderer.js','StoreRunnerReportRenderer').then(ok=>{rendererLoading=null;return ok});
+ return rendererLoading;
 }
 function ensureAutoAI(){
  if(root.StoreRunnerReportAIAutoV2771)return Promise.resolve(true);
  if(autoAILoading)return autoAILoading;
- if(!root.document)return Promise.resolve(false);
- autoAILoading=new Promise(resolve=>{const script=root.document.createElement('script'),rev=root.__STORE_RUNNER_BUILD_REV||'v2771';script.src='./runner-report-ai-auto-v2771.js?rev='+encodeURIComponent(rev);script.async=true;script.dataset.srAutoAiV2771='1';script.onload=()=>{autoAILoading=null;resolve(!!root.StoreRunnerReportAIAutoV2771)};script.onerror=()=>{autoAILoading=null;resolve(false)};(root.document.head||root.document.documentElement).appendChild(script)});
+ autoAILoading=ensureReportRenderer().then(ok=>ok?loadReportModule('./runner-report-ai-auto-v2771.js','StoreRunnerReportAIAutoV2771'):false).then(ok=>{autoAILoading=null;return ok});
  return autoAILoading;
 }
 function bootAutoAI(){
  if(hasPendingAI()&&(!root.navigator||root.navigator.onLine!==false))ensureAutoAI();
 }
-const api={FAMILY_OF_BRAND,skeletonFor,build,buildAIPayload,aiPrompt,cleanAIText,aiFailureMessage,open,installButtons};root.StoreRunnerVisitReport=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;if(root.document){
+const api={ensureAutoAI,ensureReportRenderer,FAMILY_OF_BRAND,skeletonFor,skeletonForStore,build,buildAIPayload,aiPrompt,cleanAIText,aiFailureMessage,open,installButtons};root.StoreRunnerVisitReport=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;if(root.document){
  if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
  root.document.addEventListener('store-runner:data-restored',()=>{installButtons();bootAutoAI()});
  root.document.addEventListener('store-runner:planning-updated',installButtons);
  root.document.addEventListener('store-runner:visit-completed',()=>{ensureAutoAI()});
+ root.document.addEventListener('store-runner:visit-report-requested',()=>{ensureAutoAI()});
+ root.document.addEventListener('store-runner:visit-report-updated',()=>{if(sheet&&sheet.open){const area=sheet.querySelector('#srReportText');if(area&&area.readOnly)refresh()}});
+ root.document.addEventListener('visibilitychange',()=>{if(root.document.visibilityState==='visible')bootAutoAI()});
  if(root.addEventListener)root.addEventListener('online',bootAutoAI);
  root.setTimeout&&root.setTimeout(bootAutoAI,1200);
 }
