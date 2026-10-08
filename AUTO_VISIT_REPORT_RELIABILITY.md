@@ -249,3 +249,20 @@ Pour les échecs HTTP de Gemini uniquement, le job expose un diagnostic maîtris
 **Jamais** de corps de réponse Google, de notes source, de prompt ou de clé API.
 Les jobs déjà échoués restent inchangés ; seule une future génération afficherait
 le nouveau code HTTP. Le backend Cloudflare doit être déployé séparément de Pages.
+
+
+### Rejet V278 expliqué sans exposer les notes
+
+Le validateur partagé renvoie plusieurs erreurs fixes. Le Worker ne stocke et
+n'affiche que leur **catégorie autorisée**, par exemple
+`source_context_missing` (« citation incomplète ou sortie de son contexte »),
+`source_quote_missing` ou `cleanup_semantics_changed`.
+Il n'enregistre jamais le texte brut, la proposition IA, le prompt ni le corps
+de réponse fournisseur dans le champ `error`.
+
+Une fixture synthétique sans ponctuation reproduit un cas de rejet :
+une citation partielle prélevée dans une longue note doit rester refusée tant
+que ses limites sémantiques ne sont pas établies. Le test démontre le diagnostic,
+**pas** une cause confirmée des échecs terrain antérieurs. La correction de
+cette règle exige un exemple d'erreur précis et des tests métier dédiés,
+pour protéger les négations, les attributions et les accords commerciaux.
