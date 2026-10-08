@@ -91,7 +91,9 @@ const REPORT_ROLES=new Set(('vendeur vendeuse vendeurs vendeuses client clients 
 function professionalRewrite(proposed,quote,context){
  const output=text(proposed),q=text(quote);
  if(!output||output.length>1400||/[\r\n]|``|⸻|\p{Extended_Pictographic}|(?:^|\s)(?:#{1,6}\s|\*\s|>\s|-\s)|\*\*|__|---/u.test(output))return false;
- const sourceNumbers=exactTokens(q).map(tokenKey),outputNumbers=exactTokens(output).map(tokenKey);
+ const numberWords={deux:'2',trois:'3',quatre:'4',cinq:'5',six:'6',sept:'7',huit:'8',neuf:'9',dix:'10',onze:'11',douze:'12',treize:'13',quatorze:'14',quinze:'15',seize:'16',vingt:'20',trente:'30',quarante:'40',cinquante:'50',soixante:'60',cent:'100',mille:'1000'};
+ const factTokens=v=>[...exactTokens(v).map(tokenKey),...words(v).filter(x=>numberWords[x]).map(x=>numberWords[x])];
+ const sourceNumbers=factTokens(q),outputNumbers=factTokens(output);
  if(outputNumbers.some(x=>!sourceNumbers.includes(x)))return false;
  // A short quotation is one atomic claim: preserve all its references/prices.
  if(q.length<160&&sourceNumbers.some(x=>!outputNumbers.includes(x)))return false;
