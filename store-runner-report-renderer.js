@@ -70,7 +70,7 @@ function completeEvidence(quote,sourceText){
 function spokenEvidence(quote,sourceText){
  const source=text(sourceText).replace(/\s+/g,' '),q=text(quote).replace(/\s+/g,' ');
  if(words(q).length<3||q.length>1400)return false;
- const risk=new Set(('aucun aucune non pas jamais ni ne n selon si sous seulement malgre peut pourrait souhaite envisage refuse refusee refus prevu prevue prevoit annule annulee incertain incertaine condition reserve reserves attente estime indique mais sauf apres apre dapres vendeur vendeuse responsable retour').split(' '));
+ const risk=new Set(('aucun aucune non pas jamais ni ne n selon si sous seulement malgre peut pourrait souhaite envisage refuse refusee refus prevu prevue prevoit annule annulee incertain incertaine condition reserve reserves attente estime indique affirme dit signale mais sauf apres apre dapres retour').split(' '));
  let pos=0;
  while(pos<source.length){
   const start=source.indexOf(q,pos);if(start<0)return false;const end=start+q.length;pos=start+1;
