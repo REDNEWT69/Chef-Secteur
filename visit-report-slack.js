@@ -275,7 +275,7 @@ function reportStatus(v){
  const job=v&&v.reportJob;if(job&&job.obsolete)return 'Compte rendu modifié et enregistré.';
  if(!job)return v&&v.status==='draft'?'Le compte rendu sera préparé automatiquement à la clôture.':'';
  if(job.status==='done')return 'Compte rendu enregistré. Relis-le avant de le copier.';
- if(job.status==='failed')return 'Le compte rendu existant et les notes sont conservés. Tu peux régénérer le compte rendu.';
+ if(job.status==='failed'){const reason=text(job.error).trim();return 'Échec du compte rendu automatique'+(reason?' : '+reason:'')+' Les notes sont conservées. Tu peux régénérer le compte rendu.';}
  if(root.navigator&&root.navigator.onLine===false)return 'Visite clôturée. Le compte rendu sera repris au retour du réseau.';
  return job.status==='processing'?'Compte rendu en préparation sur le serveur. Tu peux quitter l’application.':'Visite clôturée. Compte rendu en attente de traitement.';
 }
