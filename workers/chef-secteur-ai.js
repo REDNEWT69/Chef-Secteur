@@ -261,8 +261,12 @@ async function callGemini(env, system, user, maxTokens, options = {}) {
     }
   );
   const data = await response.json().catch(() => ({}));
-  // Do not propagate provider errors: they may contain note text or other secrets.
-  if (!response.ok) throw new Error('Gemini HTTP ' + response.status);
+  // Persist only controlled provider diagnostics: never the provider error body or notes.
+  if (!response.ok) {
+    throw aiError(AI_PROVIDER_UNAVAILABLE, 'Gemini HTTP ' + response.status, {
+      provider: 'gemini', httpStatus: response.status
+    });
+  }
   const candidate = data && Array.isArray(data.candidates) ? data.candidates[0] : null;
   const parts = candidate && candidate.content && Array.isArray(candidate.content.parts) ? candidate.content.parts : [];
   const answerText = parts.map(part => part && typeof part.text === 'string' ? part.text : '').join('').trim();
@@ -617,6 +621,13 @@ function jobFailure(err) {
     report_truncated: 'Le moteur IA a renvoyé un JSON tronqué.', report_processing_uncertain: 'Traitement interrompu : une régénération explicite est nécessaire.',
     report_invalid_result: 'La réponse IA ne respecte pas les sources ou le format attendu.'
   };
+  const diagnostics = err && err.diagnostics && typeof err.diagnostics === 'object' ? err.diagnostics : {};
+  const httpStatus = Number(diagnostics.httpStatus);
+  // Only the bounded numeric status and a known provider label are safe to expose.
+  if (code === 'ai_provider_unavailable' && diagnostics.provider === 'gemini'
+    && Number.isInteger(httpStatus) && httpStatus >= 400 && httpStatus <= 599) {
+    return { code, provider: 'gemini', httpStatus, message: 'Gemini a renvoyé une erreur HTTP ' + httpStatus + '.' };
+  }
   return { code: Object.hasOwn(messages, code) ? code : 'report_invalid_result', message: messages[code] || messages.report_invalid_result };
 }
 
@@ -630,12 +641,26 @@ async function oneJobInference(env, source) {
     const options = { ...VISIT_REPORT_OPTIONS, signal: controller.signal };
     const message = REPORTS.buildPrompt(source);
     let inference;
-    // Choose exactly one provider for the immutable job. No paid fallback, empty
-    // retry or JSON repair; the failed job remains readable and source notes intact.
-    if (env && env.GEMINI_API_KEY) inference = callGemini(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
-    else if (env && env.GROQ_API_KEY) inference = callGroq(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
-    else if (hasWorkersAI(env)) inference = callWorkersAI(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
-    else throw jobError('ai_no_provider', 'Aucun moteur IA disponible.');
+    // Exactly one provider per durable job. Explicit opt-in permits a safe switch
+    // from Gemini to Groq without deleting secrets or triggering a paid fallback.
+    const selected = String((env && env.REPORT_AI_PROVIDER) || '').trim().toLowerCase();
+    if (selected && !['gemini', 'groq', 'workers-ai'].includes(selected)) {
+      throw jobError('ai_no_provider', 'Sélection du moteur IA invalide.');
+    }
+    if (selected === 'gemini' && !(env && env.GEMINI_API_KEY)
+      || selected === 'groq' && !(env && env.GROQ_API_KEY)
+      || selected === 'workers-ai' && !hasWorkersAI(env)) {
+      throw jobError('ai_no_provider', 'Le moteur IA sélectionné n’est pas configuré.');
+    }
+    if (selected === 'gemini' || !selected && env && env.GEMINI_API_KEY) {
+      inference = callGemini(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
+    } else if (selected === 'groq' || !selected && env && env.GROQ_API_KEY) {
+      inference = callGroq(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
+    } else if (selected === 'workers-ai' || !selected && hasWorkersAI(env)) {
+      inference = callWorkersAI(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
+    } else {
+      throw jobError('ai_no_provider', 'Aucun moteur IA disponible.');
+    }
     let answer;
     try { answer = await Promise.race([inference, expired]); }
     catch (err) { throw err && err.code ? err : jobError('ai_provider_unavailable', 'Moteur IA indisponible.'); }
