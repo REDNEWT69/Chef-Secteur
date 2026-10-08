@@ -97,6 +97,14 @@ function voiceNote(raw,quote,rewritten,section='showroom'){
  );
  assert.doesNotThrow(()=>R.validate(f.doc,f.source),'professional rewrite may change word order');
 }
+{
+ const f=voiceNote(
+  'Samsung en showroom et du coup un four présent',
+  'Samsung en showroom et du coup un four présent',
+  'Samsung dispose d’un four en showroom.'
+ );
+ assert.doesNotThrow(()=>R.validate(f.doc,f.source),'spoken filler words may be removed in clean prose');
+}
 for(const [raw,quote,spoken] of [
  ['aucun contrat validé', 'contrat validé', 'Le contrat est validé.'],
  ['selon le vendeur LG est mieux placé', 'LG est mieux placé', 'LG est mieux placé.'],
