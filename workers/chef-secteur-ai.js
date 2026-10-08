@@ -1,6 +1,6 @@
 // Cloudflare Worker - passerelle IA sécurisée pour Store Runner
-// Moteur principal : Cloudflare Workers AI via le binding `AI`.
-// Secours facultatif : Groq via le secret GROQ_API_KEY.
+// Jobs de comptes rendus : Gemini prioritaire si configuré, puis Groq, puis Workers AI.
+// Autres routes IA : comportement historique Workers AI + secours Groq inchangé.
 // Aucune clé API ne doit être placée dans GitHub Pages ou dans le navigateur.
 import { DurableObject } from 'cloudflare:workers';
 import '../store-runner-report-renderer.js';
@@ -15,6 +15,7 @@ const ALLOWED_ORIGINS = new Set([
 
 const DEFAULT_WORKERS_AI_MODEL = '@cf/google/gemma-4-26b-a4b-it';
 const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-20b';
+const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
 
 function cors(origin) {
   const headers = {
@@ -113,6 +114,10 @@ function workersAIModel(env) {
 
 function groqModel(env) {
   return String((env && env.GROQ_MODEL) || DEFAULT_GROQ_MODEL);
+}
+
+function geminiModel(env) {
+  return String((env && env.GEMINI_MODEL) || DEFAULT_GEMINI_MODEL);
 }
 
 function buildMessages(system, user, userOnly = false) {
@@ -225,6 +230,47 @@ async function callWorkersAI(env, system, user, maxTokens, options = {}) {
     finishReason: envelopeFinishReason(data),
     model,
     provider: 'cloudflare-workers-ai'
+  };
+}
+
+// Gemini is only used for durable report jobs. API credentials stay in the Worker,
+// never in the PWA. An API error is reduced to a status code before it is persisted.
+async function callGemini(env, system, user, maxTokens, options = {}) {
+  if (!env || !env.GEMINI_API_KEY) throw new Error('Secret GEMINI_API_KEY absent du Worker Cloudflare.');
+  const model = geminiModel(env);
+  const payload = {
+    systemInstruction: { parts: [{ text: system }] },
+    contents: [{ role: 'user', parts: [{ text: user }] }],
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: maxTokens || 900,
+      thinkingConfig: { thinkingLevel: 'low' },
+      responseMimeType: 'application/json'
+    }
+  };
+  const response = await fetch(
+    'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent',
+    {
+      method: 'POST',
+      headers: {
+        'x-goog-api-key': env.GEMINI_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload),
+      signal: options.signal
+    }
+  );
+  const data = await response.json().catch(() => ({}));
+  // Do not propagate provider errors: they may contain note text or other secrets.
+  if (!response.ok) throw new Error('Gemini HTTP ' + response.status);
+  const candidate = data && Array.isArray(data.candidates) ? data.candidates[0] : null;
+  const parts = candidate && candidate.content && Array.isArray(candidate.content.parts) ? candidate.content.parts : [];
+  const answerText = parts.map(part => part && typeof part.text === 'string' ? part.text : '').join('').trim();
+  return {
+    text: answerText,
+    finishReason: candidate ? String(candidate.finishReason || '') : '',
+    model,
+    provider: 'gemini'
   };
 }
 
@@ -584,15 +630,17 @@ async function oneJobInference(env, source) {
     const options = { ...VISIT_REPORT_OPTIONS, signal: controller.signal };
     const message = REPORTS.buildPrompt(source);
     let inference;
-    // Exactly one configured provider per job. No fallback, empty retry or JSON repair.
-    if (hasWorkersAI(env)) inference = callWorkersAI(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
+    // Choose exactly one provider for the immutable job. No paid fallback, empty
+    // retry or JSON repair; the failed job remains readable and source notes intact.
+    if (env && env.GEMINI_API_KEY) inference = callGemini(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
     else if (env && env.GROQ_API_KEY) inference = callGroq(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
+    else if (hasWorkersAI(env)) inference = callWorkersAI(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
     else throw jobError('ai_no_provider', 'Aucun moteur IA disponible.');
     let answer;
     try { answer = await Promise.race([inference, expired]); }
     catch (err) { throw err && err.code ? err : jobError('ai_provider_unavailable', 'Moteur IA indisponible.'); }
     if (!answer.text) throw jobError('ai_empty_response', 'Réponse IA vide.');
-    if (String(answer.finishReason || '').toLowerCase() === 'length') throw jobError('report_truncated', 'JSON tronqué.');
+    if (['length', 'max_tokens'].includes(String(answer.finishReason || '').toLowerCase())) throw jobError('report_truncated', 'JSON tronqué.');
     return { answer, result: REPORTS.validate(answer.text, source) };
   } finally {
     clearTimeout(timeout);

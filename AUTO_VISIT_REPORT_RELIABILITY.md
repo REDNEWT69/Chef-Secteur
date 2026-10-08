@@ -162,7 +162,7 @@ appel. Il n'existe pas de garantie exactly-once d'un fournisseur externe.
 
 ## PWA, déploiement et recette
 
-Build proposé `20261008-r79-report-job-error-276`, version produit affichée
+Build proposé `20261008-r80-gemini-report-jobs-276`, version produit affichée
 276 conservée. Aucun script de démarrage ajouté, budget 79 inchangé. Renderer,
 coordinateur et adaptateur JSON historique sont précachés pour le chargement à la
 demande hors ligne. Le bump accompagne index/SW/manifest/version.
@@ -223,3 +223,14 @@ et le maintien de la confirmation. Toutes les assertions de suppression et de
 protection des photos sont conservées. Les 13 cas suppression/jobs concernés
 passent localement après correction ; la CI complète est relancée sur le nouveau
 HEAD.
+
+
+## Provider Gemini 3.8 Flash (backend-only)
+
+Le Worker choisit un seul moteur par job : Gemini si `GEMINI_API_KEY` est défini,
+Groq sinon si `GROQ_API_KEY` est défini, Workers AI sinon si le binding `AI` existe.
+Modèle par défaut : `gemini-3.8-flash` (option `GEMINI_MODEL`). Aucun fallback payant,
+aucune seconde tentative automatique sur réponse vide, quota ou panne. Les notes source
+restent locales et le job en échec conserve son code d'erreur contrôlé.
+Le déploiement du frontend GitHub Pages ne publie pas `workers/chef-secteur-ai.js` :
+redéployer le Worker Cloudflare indépendamment après validation.
