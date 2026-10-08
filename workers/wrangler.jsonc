@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "chef-secteur-ai",
+  "main": "chef-secteur-ai.js",
+  "compatibility_date": "2026-10-07",
+  "keep_vars": true,
+  // Dashboard-managed routes remain external; verify workers.dev policy before deploy.
+  "workers_dev": false,
+  // Keep the existing production route and secrets when deploying. Account and zone
+  // identifiers are deliberately omitted: the live dashboard configuration is external
+  // to this repository and must be inspected before an authorized deployment.
+  "ai": { "binding": "AI" },
+  "durable_objects": {
+    "bindings": [{ "name": "REPORT_JOBS", "class_name": "VisitReportJob" }]
+  },
+  "migrations": [{ "tag": "report-jobs-v1", "new_sqlite_classes": ["VisitReportJob"] }]
+}

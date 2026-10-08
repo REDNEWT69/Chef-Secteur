@@ -9,14 +9,11 @@ const path=require('node:path');
 const vm=require('node:vm');
 
 const ROOT=path.join(__dirname,'..');
-const SOURCE=fs.readFileSync(path.join(ROOT,'workers/chef-secteur-ai.js'),'utf8');
+const SOURCE=fs.readFileSync(path.join(ROOT,'workers/chef-secteur-ai.js'),'utf8').replace(/\r\n/g,'\n');
 assert.match(SOURCE,/^export default \{/m,'le Worker doit rester un module ES exportant son handler');
 
 function loadWorker(){
-  const sandbox={Response,Request,Headers,URL,console,fetch:async()=>{throw new Error('fetch non simulé')},module:{exports:{}}};
-  sandbox.globalThis=sandbox;
-  vm.runInNewContext(SOURCE.replace(/^export default \{/m,'module.exports = {'),sandbox,{filename:'chef-secteur-ai.js'});
-  return sandbox.module.exports;
+  return require('./helpers/worker-loader.cjs').loadWorker();
 }
 const worker=loadWorker();
 const ORIGIN='https://store-runner.fr';

@@ -75,7 +75,6 @@ function makeGetRequest(origin=''){
 }
 
 async function exerciseProviderRouting(){
-  const transformed=worker.replace('export default {','module.exports = {');
   let fetchCalls=0;
   const sandbox={
     module:{exports:{}},
@@ -92,8 +91,7 @@ async function exerciseProviderRouting(){
       };
     }
   };
-  vm.runInNewContext(transformed,sandbox,{filename:'chef-secteur-ai.js'});
-  const handler=sandbox.module.exports;
+  const handler=require('./helpers/worker-loader.cjs').loadWorker(sandbox);
 
   let blockedWorkersCalls=0;
   const blockedEnv={

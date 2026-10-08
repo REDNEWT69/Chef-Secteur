@@ -22,11 +22,8 @@ const CHARS_PER_TOKEN=3.2; // français
 
 /* ------------------------------------------------------------------ outillage Worker */
 function loadWorker(fetchImpl){
-  const sandbox={Response,Request,Headers,URL,console:{warn(){},log(){},error(){}},
-    fetch:fetchImpl||(async()=>{throw new Error('fetch non simulé')}),module:{exports:{}}};
-  sandbox.globalThis=sandbox;
-  vm.runInNewContext(SOURCE.replace(/^export default \{/m,'module.exports = {'),sandbox,{filename:'chef-secteur-ai.js'});
-  return sandbox.module.exports;
+  return require('./helpers/worker-loader.cjs').loadWorker({console:{warn(){},log(){},error(){}},
+    ...(fetchImpl?{fetch:fetchImpl}:{})});
 }
 /* Moteur de test. `workers` est la file des enveloppes rendues par le binding AI, `groq`
    celle des contenus rendus par le repli. `seen` compte les appels FOURNISSEUR réels. */
@@ -320,7 +317,7 @@ console.log('PASS 3+5 · réponse vide rattrapée en 2 tentatives, sur BLANC com
   assert.match(SLACK,/finally\{generating=false;if\(button\)\{button\.disabled=false/,
     'le bouton reste verrouillé jusqu’à la fin, second essai compris, puis réactivé');
   // Le second essai vit DANS l'appel passerelle : le verrou le couvre sans rien changer.
-  assert(generateAI.indexOf('await root.callAIGateway({')<generateAI.indexOf('finally'),
+  assert(generateAI.indexOf('await api.requestReportRegeneration')>0&&generateAI.indexOf('await api.requestReportRegeneration')<generateAI.indexOf('finally'),
     'l’appel IA, et donc le second essai, vit sous le verrou');
   console.log('PASS 10 · double tap : un seul flux, bouton verrouillé pendant le second essai');
 }
@@ -466,7 +463,7 @@ console.log('PASS 3+5 · réponse vide rattrapée en 2 tentatives, sur BLANC com
   assert.match(SOURCE,/const VISIT_REPORT_MAX_ATTEMPTS = 2;/,'le plafond de tentatives doit rester une constante lisible');
   assert.match(MODULE,/BUDGET MAXIMAL/,'le budget d’appels doit rester documenté dans le module client');
   assert.match(SLACK,/Le rapport local est conservé/,'le repli conserve toujours le rapport local');
-  assert.match(SLACK,/' généré après une seconde tentative\.'/,'le succès après second essai doit être dit discrètement');
+  assert.match(SLACK,/Compte rendu enregistré\. Relis-le avant de le copier\./,'le succès du job est annoncé sans exposer les diagnostics du fournisseur');
   console.log('PASS 15 · aucun journal sensible, routes proofread/assistant et contrats V232 intacts');
 }
 
