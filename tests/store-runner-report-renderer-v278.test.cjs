@@ -156,13 +156,14 @@ for(const [raw,quote,spoken] of [
  assert.match(values,/Julien a formé Léa/);
  assert.match(values,/Samsung TV disponible et LG TV en rupture/);
  assert.doesNotMatch(values,/Samsung 999 € et TV LG 899 €|Léa a formé Julien|Samsung TV en rupture et LG TV disponible|Baisse inventée de 70 %/);
- assert.match(values,/premiere visite le rayon TV manque de personnel/);
+ assert.doesNotMatch(values,/premiere visite le rayon TV manque de personnel/); // Original still preserved in immutable visit notes
  const delivered=R.validateDelivered(outcome,source);
  assert.deepEqual(delivered.reports,outcome.reports);
  const shown=R.render(delivered.reports[0],source);
  assert.match(shown,/Relecture nécessaire/);
  assert.match(shown,/Notes terrain/);
- assert.match(shown,/premiere visite/);
+ assert.doesNotMatch(shown,/premiere visite le rayon TV manque/);
+ assert.match(shown,/Les notes complètes restent dans la fiche visite/);
  assert.equal(JSON.stringify(source.reports[0].entries),JSON.stringify(structuredClone(source.reports[0].entries)));
 }
 {
@@ -175,8 +176,38 @@ for(const [raw,quote,spoken] of [
  assert.doesNotThrow(()=>R.validateDelivered(partial,f.source));
 }
 
+// Long unpunctuated source already partly extracted: do not duplicate its
+// entire original text inside the copied professional report.
+{
+ const long='visite equipe une machine Samsung est en exposition et '+
+ 'un conseiller presente les appareils et communication des offres au responsable '+
+ 'situation magasin compliquee sur plusieurs familles de produit '+
+ 'le rayon reste sous effectif des grandes tailles sont actuellement installees '+
+ 'verification a prevoir au prochain passage et suivi a confirmer apres reunion';
+ const source={version:1,visitId:'synthetic-long-no-dup',storeId:'synthetic',completedDate:'2026-10-09',store:{enseigne:'Magasin fictif',ville:'Test',channel:'retail'},
+  reports:[{reportType:'brun',entries:[
+    {source:'report.brun.commercial',family:'brun',text:'Samsung est exposé en rayon.'},
+    {source:'report.brun.long',family:'brun',text:long}
+  ]}]};
+ const input={version:1,reports:[{reportType:'brun',items:[
+  {section:'merchandising',text:'Samsung est exposé en rayon.',source:'report.brun.commercial',quote:'Samsung est exposé en rayon.'},
+  {section:'tv',text:'Texte halluciné absent du terrain.',source:'report.brun.long',quote:'texte inexistant'}
+ ]}]};
+ const result=R.validateBestEffort(input,source);
+ assert.equal(result.quality.status,'partial');
+ assert(result.quality.omittedItems>=2);
+ assert.equal(result.reports[0].items.length,1);
+ assert(!result.reports[0].items.some(x=>x.text===long));
+ const delivered=R.validateDelivered(result,source);
+ const shown=R.render(delivered.reports[0],source);
+ assert.match(shown,/Samsung est exposé/);
+ assert.match(shown,/Les notes complètes restent dans la fiche visite/);
+ assert.doesNotMatch(shown,/situation magasin compliquee/);
+ assert.equal(source.reports[0].entries[1].text,long,'source must remain available for manual review');
+}
+
 const frozen=JSON.stringify(samples.cuisiniste.source),fallback=R.fallback(samples.cuisiniste.source,'cuisiniste');assert.match(fallback,/📝 Notes terrain/);assert.match(fallback,/RS68A882/);assert.equal(JSON.stringify(samples.cuisiniste.source),frozen);
 const mem=R.memory(R.validate(samples.cuisiniste.doc,samples.cuisiniste.source),{...samples.cuisiniste.source,sourceSignature:'sig'});assert.equal(mem.sourceSignature,'sig');assert(mem.items.some(i=>i.kind==='product'&&i.text==='RS68A882'));for(const i of mem.items)assert(samples.cuisiniste.source.reports[0].entries[0].text.includes(i.text));
-const prompt=R.buildPrompt(samples.cuisiniste.source);assert.match(prompt,/visit-report-v278-3/);assert.match(prompt,/Cite une phrase entière/);assert.match(prompt,/aucun contrat validé/);assert.doesNotMatch(prompt,/Darty Bourgoin/);
+const prompt=R.buildPrompt(samples.cuisiniste.source);assert.match(prompt,/visit-report-v278-4/);assert.match(prompt,/Cite une phrase entière/);assert.match(prompt,/aucun contrat validé/);assert.doesNotMatch(prompt,/Darty Bourgoin/);
 const noteSource=fs.readFileSync(require.resolve('../note-proofreader-v221.js'),'utf8');assert.match(noteSource,/input\.closest\('#srVisitDialog'\)/);assert.doesNotMatch(noteSource,/new root\.MutationObserver/);
 (async()=>{const a=await R.sourceSignature({b:2,a:1}),b=await R.sourceSignature({a:1,b:2});assert.equal(a,b);assert.match(a,/^sha256-[a-f0-9]{64}$/);assert.notEqual(a,await R.sourceSignature({a:1,b:3}));console.log('PASS V278 golden BRUN/BLANC/cuisiniste, immutable quotes, facts, attribution, commercial nuance, fallback and SHA-256');})().catch(e=>{console.error(e);process.exitCode=1});
