@@ -240,7 +240,7 @@ function naturalRewrite(proposed,quote,context){
  if(names.length>1&&JSON.stringify(names)!==JSON.stringify(appearing))return false;
  if(person(p).some(x=>!qw.includes(x)&&!noNames.has(x)&&!((x==='dual'||x==='cook')&&qw.includes('dualcook'))))return false;
  const roles=w=>w.map(x=>SPELL[x]||x).filter(x=>REPORT_ROLES.has(x));
- if(roles(qw).length&&JSON.stringify(roles(qw))!==JSON.stringify(roles(pw)))return false;
+ if(JSON.stringify(roles(qw))!==JSON.stringify(roles(pw)))return false;
  const neg=w=>w.filter(x=>/^(?:pas|aucun|aucune|jamais|sans|non|ni)$/.test(x)).length;
  if(neg(qw)!==neg(pw))return false;
  // Compare commercial status in order, not just a count: switched actors,
