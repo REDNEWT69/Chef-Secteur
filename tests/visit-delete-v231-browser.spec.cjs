@@ -74,6 +74,19 @@ test('Une visite erronée se supprime proprement depuis sa consultation, à 390 
   await deleteButton.tap();
   await expect(page.locator('#srVisitDialog .sr-status')).toContainText('Visite supprimée');
 
+  // La tâche d'une autre visite peut progresser après la suppression : elle reste
+  // durable, mais sa sauvegarde technique ne remplace pas la confirmation affichée.
+  const progress=await page.evaluate(async()=>{
+    const v=state.businessV2.visits.find(x=>x.storeId==='ste'),j=v.reportJob;
+    const expected={generation:j.generation,completedDate:j.completedDate,sourceSignature:j.sourceSignature};
+    const retryAt=Date.now()+60000;
+    const applied=await StoreRunnerVisits.persistReportJob(v.id,expected,{status:'processing',retryAt});
+    return{applied,durable:ChefReliability.load(__chefStorage).businessV2.visits.find(x=>x.id===v.id).reportJob.retryAt===retryAt};
+  });
+  expect(progress).toEqual({applied:true,durable:true});
+  await expect(page.locator('#srVisitDialog .sr-status')).toContainText('Visite supprimée');
+
+
   const after=await page.evaluate(()=>({
     visits:state.businessV2.visits.map(v=>({id:v.id,storeId:v.storeId,date:v.completedDate})),
     actions:state.businessV2.actions.length,

@@ -25,7 +25,7 @@ function create(options){
   }
   for(const [key,value] of Object.entries(next.visits||{}))if(JSON.stringify(value)!==JSON.stringify(beforeHistory[key]))historyChanges[key]=M.clone(value);
   draft=next;baseRevision=revision(current);allowedRaw=raw;
-  options.onStatus('saving');
+  options.onStatus('saving',undefined,intent);
   try{
    R.validateState(next);if(reason)R.checkpoint(reason,db,R.capture(options.getState(),db));R.save(next,db);allowedRaw=db.getItem(R.keys.MAIN);
    if(typeof db.flush==='function')await db.flush();
@@ -37,8 +37,8 @@ function create(options){
    // aucun champ. Dans ce cas merged===next mais la façade contient une révision
    // antérieure : la remettre à jour avant publication évite un faux autre-onglet.
    if(JSON.stringify(merged)!==db.getItem(R.keys.MAIN)){R.save(merged,db);if(typeof db.flush==='function')await db.flush()}
-   options.setState(merged);draft=null;baseRevision=null;allowedRaw=null;historyChanges={};options.onStatus('saved');
-  }catch(e){options.onStatus('error',e.message);throw e}
+   options.setState(merged);draft=null;baseRevision=null;allowedRaw=null;historyChanges={};options.onStatus('saved',undefined,intent);
+  }catch(e){options.onStatus('error',e.message,intent);throw e}
  }).finally(()=>{pending--});queue=result.catch(()=>{});return result}
  return {edit,flush:()=>edit(),hasPending:()=>!!draft||pending>0,invalidate(){epoch++;draft=null;baseRevision=null;allowedRaw=null;historyChanges={}}};
 }

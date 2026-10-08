@@ -205,3 +205,19 @@ une validation du fournisseur réel.
 La vérification du bit exécutable Android est propre à Linux : elle est laissée
 à la CI, sans modifier le test. Les résultats GitHub sur le HEAD final sont
 rapportés dans la PR et le compte rendu de livraison.
+
+## Régression de concurrence trouvée en CI
+
+La première CI complète a révélé qu’une sauvegarde effective du job d’une autre
+visite pouvait remplacer « Visite supprimée » par « Enregistré localement ».
+Les écritures de jobs passent désormais leur contexte à la notification de la
+queue : elles restent durables, mais leurs statuts techniques positifs ne
+remplacent pas le message de l’action utilisateur. Une erreur disque reste
+visible. Les opérations manuelles gardent leurs notifications habituelles.
+
+Le test navigateur de suppression force maintenant la progression du job d’une
+visite conservée après suppression : il vérifie à la fois sa persistance réelle
+et le maintien de la confirmation. Toutes les assertions de suppression et de
+protection des photos sont conservées. Les 13 cas suppression/jobs concernés
+passent localement après correction ; la CI complète est relancée sur le nouveau
+HEAD.
