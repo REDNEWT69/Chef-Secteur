@@ -80,7 +80,7 @@ function spokenEvidence(quote,sourceText){
   if(/[.!?;]/.test(q)||/[.!?;]/.test(source.slice(Math.max(0,start-110),start).split(/(?<=[.!?;])/).pop()||''))continue;
   const before=source.slice(Math.max(0,start-95),start).split(/[.!?;]/).pop();
   const after=source.slice(end,end+65).split(/[.!?;]/)[0];
-  if(risk.test(before)||risk.test(after))continue;
+  if(risk.test(plain(before))||risk.test(plain(after)))continue;
   return true;
  }
  return false;
@@ -88,7 +88,7 @@ function spokenEvidence(quote,sourceText){
 const PARAPHRASE_RISK=new Set(('pas aucun aucune non ne n jamais ni moins plus si sous ou et par pour avec chez ete possible souhaite confirmer confirme confirmee reserve eventuel eventuelle refuse refusee refus acceptee accepte valide validee annule annulee realise realisee prevu prevue selon estime juge trouve indique signale seulement forcement').split(' '));
 const REPORT_BRANDS=new Set(('samsung lg hisense haier rowenta bosch siemens miele tcl bsh darty boulanger schmidt electrolux whirlpool').split(' '));
 const REPORT_ROLES=new Set(('vendeur vendeuse vendeurs vendeuses client clients responsable directeur directrice gerant gerante concepteur').split(' '));
-function professionalRewrite(proposed,quote){
+function professionalRewrite(proposed,quote,context){
  const output=text(proposed),q=text(quote);
  if(!output||output.length>1400||/[\r\n]|``|⸻|\p{Extended_Pictographic}|(?:^|\s)(?:#{1,6}\s|\*\s|>\s|-\s)|\*\*|__|---/u.test(output))return false;
  const sourceNumbers=exactTokens(q).map(tokenKey),outputNumbers=exactTokens(output).map(tokenKey);
@@ -96,13 +96,19 @@ function professionalRewrite(proposed,quote){
  // A short quotation is one atomic claim: preserve all its references/prices.
  if(q.length<160&&sourceNumbers.some(x=>!outputNumbers.includes(x)))return false;
  const qwords=words(q),pwords=words(output);
+ const qplain=plain(q),pplain=plain(output);
+ // Do not turn an ambiguous American/combiné appliance into a confirmed refrigerator without a cold-category context.
+ if(/\brefrigerateur\b/.test(pplain)&&!/\brefrigerateur\b/.test(qplain)&&/\b(?:americain|combine)\b/.test(qplain)&&!/cuisiniste|froid|showroom|refriger|congel|multiportes/.test(context))return false;
+ // Never erase a specific appliance or contract type from a short observation.
+ const factNouns=['refrigerateur','four','contrat','formation','micro-ondes','porte','lavage','seche-linge','aspirateur'];
+ if(factNouns.some(noun=>new RegExp('\\b'+noun+'\\b').test(qplain)&&!new RegExp('\\b'+noun+'\\b').test(pplain)))return false;
  // Brand identity, merchant attribution and uncertainty must not drift.
  const anchors=seq=>seq.map(x=>SPELL[x]||x).filter(x=>REPORT_BRANDS.has(x)||REPORT_ROLES.has(x)||PARAPHRASE_RISK.has(x));
  const qAnchors=anchors(qwords),pAnchors=anchors(pwords);
  if(JSON.stringify(qAnchors)!==JSON.stringify(pAnchors))return false;
  // Preserve explicit product names and people; never introduce a new proper name.
  const names=v=>(v.match(/(?<![\p{L}\p{N}])[\p{Lu}][\p{L}\p{N}-]+/gu)||[]).map(plain).filter(x=>!STOP.has(x)&&!REPORT_BRANDS.has(x));
- const qNames=new Set(names(q));if(names(output).some(x=>!qNames.has(x)))return false;
+ const qNames=new Set([...names(q),...qwords]);if(names(output).some(x=>!qNames.has(x)))return false;
  // An actual paraphrase must still visibly overlap its source. Grammatical
  // connectors and neutral description may differ; new figures or identities may not.
  const originals=new Set(meaningful(q)),content=meaningful(output);
@@ -181,7 +187,7 @@ function validate(raw,source){
    const src=bySource.get(item.source),quote=text(item.quote),proposed=text(item.text);
    if(!src||quote.length<4||quote.length>1400||!text(src.text).replace(/\s+/g,' ').includes(quote.replace(/\s+/g,' ')))fail('citation absente des notes');
    if(!completeEvidence(quote,src.text)&&!spokenEvidence(quote,src.text))fail('citation privée de son contexte');
-   if(!validCleanup(proposed,quote,context)&&!professionalRewrite(proposed,quote))fail('faits, attribution ou nuance modifiés');
+   if(!validCleanup(proposed,quote,context)&&!professionalRewrite(proposed,quote,context))fail('faits, attribution ou nuance modifiés');
    if(!validTopic(item.section,quote))fail('rubrique sans preuve métier');
    const key=item.section+'|'+item.source+'|'+plain(quote);if(duplicates.has(key))continue;duplicates.add(key);
    items.push({section:item.section,text:proposed,source:item.source,quote});
