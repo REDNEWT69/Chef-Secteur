@@ -110,7 +110,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
     ['empty', { response: '' }, 'ai_empty_response'],
     ['truncated JSON', { response: '{"version":1,"reports":[' }, 'report_invalid_result'],
     ['provider truncation', { response: JSON.stringify(result()), finish_reason: 'length' }, 'report_truncated'],
-    ['invented price', { response: JSON.stringify(result(RAW.replace('749', '899'))) }, 'report_invalid_result'],
+
     ['empty structured report', { response: JSON.stringify({ version: 1, reports: [{ reportType: 'cuisiniste', items: [] }] }) }, 'report_invalid_result']
   ]) {
     const f = setup(response);
@@ -119,7 +119,20 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
     assert.equal(status.status, 'failed', name); assert.equal(status.error.code, expected, name);
     assert.equal(f.calls.length, 1, name + ': no fallback or repair'); assert(!('result' in status));
   }
-  console.log('PASS jobs · empty, truncated, ungrounded and empty business JSON fail without paid repair/fallback');
+  console.log('PASS jobs · empty, truncated and empty business JSON fail without paid repair/fallback');
+
+  // A price invented by the provider is not published; the original note is
+  // preserved for manual review, without an extra inference or another provider.
+  const inventedPrice = setup({ response: JSON.stringify(result(RAW.replace('749', '899'))) });
+  const inventedPending = await (await inventedPrice.post(first)).json();
+  await inventedPrice.env.REPORT_JOBS.get(inventedPending.jobId).alarm();
+  const inventedStatus = await (await inventedPrice.get(inventedPending.jobId)).json();
+  assert.equal(inventedStatus.status, 'done');
+  assert.equal(inventedStatus.result.quality.status, 'source-only');
+  assert.equal(inventedStatus.result.reports[0].items[0].text, RAW);
+  assert(!JSON.stringify(inventedStatus.result).includes('899 €'));
+  assert.equal(inventedPrice.calls.length, 1);
+  console.log('PASS jobs · invented product price downgraded to immutable source, one inference');
 
   // Natural field dictation: a grounded partial quote is valid when adjacent
   // notes do not alter its meaning, even if the dictation has no punctuation.
@@ -156,13 +169,13 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   const unsafePending = await (await unsafeJob.post(await body(unsafeSource))).json();
   await unsafeJob.env.REPORT_JOBS.get(unsafePending.jobId).alarm();
   const unsafeStatus = await (await unsafeJob.get(unsafePending.jobId)).json();
-  assert.equal(unsafeStatus.status, 'failed');
-  assert.equal(unsafeStatus.error.code, 'report_invalid_result');
-  assert.equal(unsafeStatus.error.reasonCode, 'source_context_missing');
-  assert.equal(unsafeStatus.error.provider, 'cloudflare-workers-ai');
-  assert.match(unsafeStatus.error.message, /citation incomplète/);
-  assert(!JSON.stringify(unsafeStatus).includes(unsafeDictation));
+  assert.equal(unsafeStatus.status, 'done');
+  assert.equal(unsafeStatus.result.quality.status, 'source-only');
+  assert.equal(unsafeStatus.result.reports[0].items[0].section, 'notes');
+  assert.equal(unsafeStatus.result.reports[0].items[0].text, unsafeDictation);
   assert(!('source' in unsafeStatus));
+  assert.equal(unsafeJob.calls.length, 1);
+
 
   const fullDictation = {
     version: 1, reports: [{ reportType: 'cuisiniste', items: [{
