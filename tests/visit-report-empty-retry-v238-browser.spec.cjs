@@ -8,7 +8,7 @@ for(const [label,result] of [['vide',''],['tronqué','{"version":1,"reports":[']
  test('BLANC : résultat '+label+' rejeté, clôture et données exactes conservées',async({page})=>{
   const transport=await H.installJobs(page,{mutate(response){response.result=result}});
   const {id,note}=await H.seedAndComplete(page,'blanc');await H.jobState(page,id,'failed');const sheet=await H.openReport(page,id,'blanc');
-  await expect(sheet.locator('#srReportStatus')).toContainText('notes sont conservés');await expect(sheet.locator('#srReportText')).toHaveValue(/749 €/);
+  await expect(sheet.locator('#srReportStatus')).toContainText('Les notes sont conservées');await expect(sheet.locator('#srReportText')).toHaveValue(/749 €/);
   const status=await sheet.locator('#srReportStatus').textContent();expect(status).not.toMatch(/HTTP|provider|finishReason|ai_empty_response/);
   await expect(sheet.locator('#srReportAI')).toBeEnabled();expect(transport.calls).toHaveLength(1);
   const stored=await page.evaluate(()=>({status:state.businessV2.visits[0].status,note:StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).blanc.team}));
