@@ -113,7 +113,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
     ['invented price', { response: JSON.stringify(result(RAW.replace('749', '899'))) }, 'report_invalid_result'],
     ['empty structured report', { response: JSON.stringify({ version: 1, reports: [{ reportType: 'cuisiniste', items: [] }] }) }, 'report_invalid_result']
   ]) {
-    const f = setup(response); f.env.GROQ_API_KEY = 'synthetic-key';
+    const f = setup(response);
     const p = await (await f.post(first)).json(); await f.env.REPORT_JOBS.get(p.jobId).alarm();
     const status = await (await f.get(p.jobId)).json();
     assert.equal(status.status, 'failed', name); assert.equal(status.error.code, expected, name);
@@ -121,7 +121,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   }
   console.log('PASS jobs · empty, truncated, ungrounded and empty business JSON fail without paid repair/fallback');
 
-  const outage = setup(() => { throw new Error('source-secret-must-not-leak'); }); outage.env.GROQ_API_KEY = 'synthetic-key';
+  const outage = setup(() => { throw new Error('source-secret-must-not-leak'); });
   const o = await (await outage.post(first)).json(); await outage.env.REPORT_JOBS.get(o.jobId).alarm();
   const outageStatus = await (await outage.get(o.jobId)).json();
   assert.equal(outageStatus.error.code, 'ai_provider_unavailable'); assert(!JSON.stringify(outageStatus).includes('source-secret'));
@@ -131,7 +131,27 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   const t = await (await timeout.post(first)).json(); await timeout.env.REPORT_JOBS.get(t.jobId).alarm();
   assert.equal((await (await timeout.get(t.jobId)).json()).error.code, 'report_provider_timeout');
   assert.equal(timeout.calls.length, 1);
-  console.log('PASS jobs · provider timeout/outage, controlled diagnostics and no hidden Groq fallback');
+  console.log('PASS jobs · provider timeout/outage, controlled diagnostics and one provider per job');
+
+  const groqCalls = [];
+  const both = setup({ response: '' }, {
+    fetch: async request => {
+      groqCalls.push(await request.clone().json());
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result()) }, finish_reason: 'stop' }] }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+  });
+  both.env.GROQ_API_KEY = 'synthetic-key';
+  const bothJob = await (await both.post(first)).json();
+  await both.env.REPORT_JOBS.get(bothJob.jobId).alarm();
+  const bothStatus = await (await both.get(bothJob.jobId)).json();
+  assert.equal(bothStatus.status, 'done');
+  assert.equal(bothStatus.provider, 'groq');
+  assert.equal(groqCalls.length, 1, 'Groq is the single provider when its secret is configured');
+  assert.equal(both.calls.length, 0, 'Workers AI must not be called for durable reports when Groq is configured');
+  assert.equal(groqCalls[0].max_completion_tokens, 2600);
+  assert.equal(groqCalls[0].include_reasoning, false);
+  console.log('PASS jobs · Groq is preferred for durable reports when configured, with no second provider call');
 
   const uncertain = setup(), u = await (await uncertain.post(first)).json(), storage = uncertain.stores.get(u.jobId);
   const record = await storage.get('job'); record.status = 'processing'; await storage.put('job', record);
