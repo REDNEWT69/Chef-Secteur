@@ -162,7 +162,7 @@ appel. Il n'existe pas de garantie exactly-once d'un fournisseur externe.
 
 ## PWA, déploiement et recette
 
-Build proposé `20261008-r81-natural-dictation-276`, version produit affichée
+Build proposé `20261008-r82-dictation-gemini-diagnostics-276`, version produit affichée
 276 conservée. Aucun script de démarrage ajouté, budget 79 inchangé. Renderer,
 coordinateur et adaptateur JSON historique sont précachés pour le chargement à la
 demande hors ligne. Le bump accompagne index/SW/manifest/version.
@@ -234,3 +234,49 @@ aucune seconde tentative automatique sur réponse vide, quota ou panne. Les note
 restent locales et le job en échec conserve son code d'erreur contrôlé.
 Le déploiement du frontend GitHub Pages ne publie pas `workers/chef-secteur-ai.js` :
 redéployer le Worker Cloudflare indépendamment après validation.
+
+
+## Diagnostic fournisseur et sélection explicite (R81)
+
+Le job durable conserve **un seul** appel fournisseur et aucune reprise payante silencieuse.
+Le champ optionnel `REPORT_AI_PROVIDER` (variable texte du Worker, pas un secret)
+peut sélectionner `gemini`, `groq` ou `workers-ai`. Sans ce champ, la priorité
+reste Gemini → Groq → Workers AI. Un fournisseur explicitement sélectionné mais non
+configuré échoue sans basculer silencieusement vers un autre moteur.
+
+Pour les échecs HTTP de Gemini uniquement, le job expose un diagnostic maîtrisé :
+`error.provider='gemini'`, `error.httpStatus` (400–599) et message équivalent.
+**Jamais** de corps de réponse Google, de notes source, de prompt ou de clé API.
+Les jobs déjà échoués restent inchangés ; seule une future génération afficherait
+le nouveau code HTTP. Le backend Cloudflare doit être déployé séparément de Pages.
+
+
+### Rejet V278 expliqué sans exposer les notes
+
+Le validateur partagé renvoie plusieurs erreurs fixes. Le Worker ne stocke et
+n'affiche que leur **catégorie autorisée**, par exemple
+`source_context_missing` (« citation incomplète ou sortie de son contexte »),
+`source_quote_missing` ou `cleanup_semantics_changed`.
+Il n'enregistre jamais le texte brut, la proposition IA, le prompt ni le corps
+de réponse fournisseur dans le champ `error`.
+
+Une fixture synthétique sans ponctuation reproduit un cas de rejet :
+une citation partielle prélevée dans une longue note doit rester refusée tant
+que ses limites sémantiques ne sont pas établies. Le test démontre le diagnostic,
+**pas** une cause confirmée des échecs terrain antérieurs. La correction de
+cette règle exige un exemple d'erreur précis et des tests métier dédiés,
+pour protéger les négations, les attributions et les accords commerciaux.
+
+
+### V278 — réconciliation de la dictée naturelle et du diagnostic Gemini (#547)
+
+Le correctif conserve les diagnostics contrôlés de #546 sur le Worker, tout en
+assouplissant l'extraction de citations issues de notes dictées sans ponctuation
+et en permettant une reformulation professionnelle bornée. Les tests protègent
+les chiffres, références, marques, rôles, négations et nuances commerciales.
+Gemini reste le fournisseur prioritaire sans paramètre explicite. Aucun fallback
+payant automatique, aucune altération des notes originales.
+
+Build front-end : `20261008-r82-dictation-gemini-diagnostics-276`. Le Worker Cloudflare doit être redéployé
+séparément après la fusion autorisée. Les tests simulés ne garantissent pas
+encore la recette du compte rendu terrain sur Android avec Gemini.
