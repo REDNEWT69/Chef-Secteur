@@ -126,6 +126,55 @@ for(const [raw,quote,spoken] of [
  assert.throws(()=>R.validate(f.doc,f.source),/rejeté/,'paraphrase must not invent a number');
 }
 
+// #548 : lengthy, natural field notes must survive mixed-quality AI output.
+// No genuine user notes, store data or personal details in this fixture.
+{
+ const source={version:1,visitId:'synthetic-long-brun',storeId:'test-brun',
+  completedDate:'2026-10-08',store:{enseigne:'Magasin test',ville:'Ville test',channel:'retail'},
+  reports:[{reportType:'brun',entries:[
+   {source:'report.brun.team',family:'brun',text:'TV Samsung présent dans le rayon.'},
+   {source:'report.brun.prices',family:'brun',text:'TV Samsung 899 € et TV LG 999 € exposées.'},
+   {source:'report.brun.roles',family:'brun',text:'Julien a formé Léa en rayon TV.'},
+   {source:'report.brun.stock',family:'brun',text:'Samsung TV disponible et LG TV en rupture.'},
+   {source:'report.brun.dictation',family:'brun',text:'premiere visite le rayon TV manque de personnel et du coup il y a une baisse des ventes selon un vendeur des deux marques pas de formation prévue et le responsable est absent pendant la visite'}
+  ]}]};
+ const doc={version:1,reports:[{reportType:'brun',items:[
+  {section:'tv',text:'La TV Samsung est présente dans le rayon.',source:'report.brun.team',quote:'TV Samsung présent dans le rayon.'},
+  {section:'tv',text:'TV Samsung 999 € et TV LG 899 € exposées.',source:'report.brun.prices',quote:'TV Samsung 899 € et TV LG 999 € exposées.'},
+  {section:'training',text:'Léa a formé Julien en rayon TV.',source:'report.brun.roles',quote:'Julien a formé Léa en rayon TV.'},
+  {section:'tv',text:'Samsung TV en rupture et LG TV disponible.',source:'report.brun.stock',quote:'Samsung TV disponible et LG TV en rupture.'},
+  {section:'tv',text:'Baisse inventée de 70 % des ventes TV.',source:'report.brun.dictation',quote:'informations inventées absentes de la dictée'}
+ ]}]};
+ const outcome=R.validateBestEffort(doc,source);
+ assert.equal(outcome.quality.status,'partial');
+ assert.equal(outcome.quality.acceptedItems,1);
+ assert(outcome.quality.sourceOnlyItems>=3);
+ assert(outcome.quality.omittedItems>=1);
+ const values=outcome.reports[0].items.map(i=>i.text).join('\n');
+ assert.match(values,/La TV Samsung est présente/);
+ assert.match(values,/Samsung 899 € et TV LG 999 €/);
+ assert.match(values,/Julien a formé Léa/);
+ assert.match(values,/Samsung TV disponible et LG TV en rupture/);
+ assert.doesNotMatch(values,/Samsung 999 € et TV LG 899 €|Léa a formé Julien|Samsung TV en rupture et LG TV disponible|Baisse inventée de 70 %/);
+ assert.match(values,/premiere visite le rayon TV manque de personnel/);
+ const delivered=R.validateDelivered(outcome,source);
+ assert.deepEqual(delivered.reports,outcome.reports);
+ const shown=R.render(delivered.reports[0],source);
+ assert.match(shown,/Relecture nécessaire/);
+ assert.match(shown,/Notes terrain/);
+ assert.match(shown,/premiere visite/);
+ assert.equal(JSON.stringify(source.reports[0].entries),JSON.stringify(structuredClone(source.reports[0].entries)));
+}
+{
+ const raw='TV Samsung 899 € et TV LG 999 € exposées.';
+ const f=one(raw,'tv','brun','TV Samsung 999 € et TV LG 899 € exposées.');
+ const partial=R.validateBestEffort(f.doc,f.source);
+ assert.equal(partial.quality.status,'source-only');
+ assert.equal(partial.reports[0].items[0].text,raw);
+ assert.equal(partial.reports[0].items[0].section,'notes');
+ assert.doesNotThrow(()=>R.validateDelivered(partial,f.source));
+}
+
 const frozen=JSON.stringify(samples.cuisiniste.source),fallback=R.fallback(samples.cuisiniste.source,'cuisiniste');assert.match(fallback,/📝 Notes terrain/);assert.match(fallback,/RS68A882/);assert.equal(JSON.stringify(samples.cuisiniste.source),frozen);
 const mem=R.memory(R.validate(samples.cuisiniste.doc,samples.cuisiniste.source),{...samples.cuisiniste.source,sourceSignature:'sig'});assert.equal(mem.sourceSignature,'sig');assert(mem.items.some(i=>i.kind==='product'&&i.text==='RS68A882'));for(const i of mem.items)assert(samples.cuisiniste.source.reports[0].entries[0].text.includes(i.text));
 const prompt=R.buildPrompt(samples.cuisiniste.source);assert.match(prompt,/visit-report-v278-2/);assert.match(prompt,/Cite une phrase entière/);assert.match(prompt,/aucun contrat validé/);assert.doesNotMatch(prompt,/Darty Bourgoin/);
