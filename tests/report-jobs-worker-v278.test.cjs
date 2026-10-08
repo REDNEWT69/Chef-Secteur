@@ -135,8 +135,9 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
 
   const groqCalls = [];
   const both = setup({ response: '' }, {
-    fetch: async request => {
-      groqCalls.push(await request.clone().json());
+    fetch: async (url, init) => {
+      assert.equal(url, 'https://api.groq.com/openai/v1/chat/completions');
+      groqCalls.push(JSON.parse(init.body));
       return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result()) }, finish_reason: 'stop' }] }),
         { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
