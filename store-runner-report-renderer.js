@@ -86,7 +86,7 @@ function spokenEvidence(quote,sourceText){
  }
  return false;
 }
-const PARAPHRASE_RISK=new Set(('pas aucun aucune non ne n jamais ni moins plus si sous ou et par pour avec chez ete peut peux pouvait pourrait doivent doit possible souhaite confirmer confirme confirmee reserve eventuel eventuelle refuse refusee refus acceptee accepte valide validee annule annulee realise realisee prevu prevue selon estime juge trouve indique signale seulement forcement').split(' '));
+const PARAPHRASE_RISK=new Set(('pas aucun aucune non ne n jamais ni moins plus si sous ou par pour avec chez ete peut peux pouvait pourrait doivent doit possible souhaite confirmer confirme confirmee reserve eventuel eventuelle refuse refusee refus acceptee accepte valide validee annule annulee realise realisee prevu prevue selon estime juge trouve indique signale seulement forcement').split(' '));
 const REPORT_BRANDS=new Set(('samsung lg hisense haier rowenta bosch siemens miele tcl bsh darty boulanger schmidt electrolux whirlpool').split(' '));
 const REPORT_ROLES=new Set(('vendeur vendeuse vendeurs vendeuses client clients responsable directeur directrice gerant gerante concepteur').split(' '));
 function professionalRewrite(proposed,quote,context){
