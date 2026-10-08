@@ -30,6 +30,8 @@ for(const fact of ['RS68A882','Bruno','Dual Cook','multiportes','BSH','pas ferm�
 assert.doesNotMatch(kitchen,/accord validé|collaboration acceptée|contrat accepté|contrat refusé/);
 // Dirty dictation: corrections are allowed only when semantic words remain grounded.
 {const f=one('vendeur trouve image tro sombre','notes','brun','Le vendeur trouve l’image trop sombre.');assert.equal(R.validate(f.doc,f.source).reports[0].items[0].text,'Le vendeur trouve l’image trop sombre.')}
+{const f=one('Formation pr Bruno.','training','cuisiniste','Formation pour Bruno.');assert.doesNotThrow(()=>R.validate(f.doc,f.source))}
+{const f=one('le vendeur di LG mieux placé.','competition','brun','Le vendeur dit LG mieux placé.');assert.doesNotThrow(()=>R.validate(f.doc,f.source))}
 {const f=one('un américain Samsung présent','showroom','cuisiniste','Un réfrigérateur américain Samsung présent.');assert.doesNotThrow(()=>R.validate(f.doc,f.source));f.doc.reports[0].items[0].text='Un américain de Samsung était présent.';assert.throws(()=>R.validate(f.doc,f.source),/rejeté/)}
 {const f=one('un combiné Samsung présent','notes','brun','Un réfrigérateur combiné Samsung présent.');assert.throws(()=>R.validate(f.doc,f.source),/rejeté/);f.source.reports[0].entries.push({source:'report.shared.context',family:'',text:'Rayon froid'});assert.doesNotThrow(()=>R.validate(f.doc,f.source))}
 for(const [quote,wrong,section,type] of [
@@ -57,7 +59,13 @@ for(const [quote,wrong,section,type] of [
  ['Samsung peut être choisi si LG est absent.','Samsung si peut être choisi LG est absent.','competition','brun'],
  ['Samsung est possible, LG est confirmé.','Samsung est confirmé, LG est possible.','competition','brun'],
  ['Samsung, pas LG.','Samsung pas, LG.','competition','brun'],
- ['Samsung ne collabore avec LG.','Samsung collabore avec LG.','competition','brun']
+ ['Samsung ne collabore avec LG.','Samsung collabore avec LG.','competition','brun'],
+ ['Bruno a formé Léa.','Bruno a été formé par Léa.','training','cuisiniste'],
+ ['Samsung a remplacé LG.','Samsung a été remplacé par LG.','competition','brun'],
+ ['Bruno a été formé par Léa.','Bruno a formé Léa.','training','cuisiniste'],
+ ['Formation prévue ou réalisée.','Formation prévue et réalisée.','training','brun'],
+ ['Formation pour Bruno.','Formation par Bruno.','training','cuisiniste'],
+ ['Samsung est présent avec LG.','Samsung est présent pour LG.','competition','brun']
 ]){const f=one(quote,section,type,wrong);assert.throws(()=>R.validate(f.doc,f.source),/rejeté/,wrong)}
 {const f=one('Samsung présent dans le rayon TV.','contract','cuisiniste');assert.throws(()=>R.validate(f.doc,f.source),/rubrique/)}
 for(const quote of ['Samsung présent dans le showroom.','Formation prévue.','Formation pas réalisée.']){const f=one(quote,'actionsDone');assert.throws(()=>R.validate(f.doc,f.source),/rubrique/)}

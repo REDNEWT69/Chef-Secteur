@@ -124,7 +124,9 @@ sûres. Aucun diagnostic commercial n'est produit artificiellement.
 - Références, chiffres, prix, noms, marques, dates et ordinaux vérifiés par citation.
 - Nettoyage borné : aucun nouveau mot porteur d'un fait, ni inversion des sujets
   ou de la comparaison ; les paraphrases ambitieuses sont volontairement refusées.
-- Avis humains attribués, négation/possibilité/incertitude conservées ; un contrat
+- Avis humains attribués, voix active/passive, alternatives et responsabilités
+  conservées ; les abréviations de dictée connues restent corrigeables.
+- Négation/possibilité/incertitude conservées ; un contrat
   non validé n'est pas un refus, une ouverture commerciale n'est pas un accord.
 - Qualification « réfrigérateur américain/combiné » uniquement avec contexte
   électroménager confirmé ; sans preuve, le terme original reste prudent.
