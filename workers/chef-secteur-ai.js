@@ -612,6 +612,31 @@ function publicJob(job) {
     ...(status === 'done' ? { result, provider, model } : {}), ...(error ? { error } : {}) };
 }
 
+// Shared renderer errors only contain one of these fixed, safe validation labels.
+// Never persist or return the model's generated text, original notes, or provider bodies.
+const REPORT_VALIDATION_REASONS = Object.freeze({
+  'sources invalides': ['sources_invalid', 'sources invalides'],
+  'familles source dupliquées': ['source_families_duplicate', 'familles de rapports en double'],
+  'réponse vide': ['output_empty', 'réponse vide'],
+  'JSON vide ou tronqué': ['json_invalid', 'JSON invalide ou tronqué'],
+  'schéma ou familles inattendus': ['schema_invalid', 'structure ou familles inattendues'],
+  'rapport dupliqué ou inconnu': ['report_family_invalid', 'famille de rapport invalide'],
+  'trop de faits': ['too_many_items', 'trop de faits extraits'],
+  'fait non conforme': ['item_invalid', 'structure d’un fait invalide'],
+  'citation absente des notes': ['source_quote_missing', 'citation absente des notes originales'],
+  'citation privée de son contexte': ['source_context_missing', 'citation incomplète ou sortie de son contexte'],
+  'faits, attribution ou nuance modifiés': ['cleanup_semantics_changed', 'formulation trop éloignée des notes originales'],
+  'rubrique sans preuve métier': ['section_unsupported', 'rubrique non justifiée par les notes'],
+  'rapport vide': ['report_empty', 'rapport sans faits exploitables']
+});
+function safeReportValidationReason(err) {
+  const prefix = 'Compte rendu IA rejeté : ';
+  const message = err && typeof err.message === 'string' ? err.message : '';
+  if (!message.startsWith(prefix)) return null;
+  const fixed = REPORT_VALIDATION_REASONS[message.slice(prefix.length)];
+  return fixed ? { reasonCode: fixed[0], label: fixed[1] } : null;
+}
+
 function jobFailure(err) {
   const code = err && err.code ? String(err.code) : 'report_invalid_result';
   // Provider messages can echo notes or credentials. Persist only controlled diagnostics.
@@ -621,6 +646,15 @@ function jobFailure(err) {
     report_truncated: 'Le moteur IA a renvoyé un JSON tronqué.', report_processing_uncertain: 'Traitement interrompu : une régénération explicite est nécessaire.',
     report_invalid_result: 'La réponse IA ne respecte pas les sources ou le format attendu.'
   };
+  const rejection = safeReportValidationReason(err);
+  if (code === 'report_invalid_result' && rejection) {
+    const provider = ['gemini', 'groq', 'cloudflare-workers-ai'].includes(err.reportProvider) ? err.reportProvider : null;
+    return {
+      code, reasonCode: rejection.reasonCode,
+      ...(provider ? { provider } : {}),
+      message: 'Réponse IA rejetée : ' + rejection.label + '.'
+    };
+  }
   const diagnostics = err && err.diagnostics && typeof err.diagnostics === 'object' ? err.diagnostics : {};
   const httpStatus = Number(diagnostics.httpStatus);
   // Only the bounded numeric status and a known provider label are safe to expose.
@@ -666,7 +700,13 @@ async function oneJobInference(env, source) {
     catch (err) { throw err && err.code ? err : jobError('ai_provider_unavailable', 'Moteur IA indisponible.'); }
     if (!answer.text) throw jobError('ai_empty_response', 'Réponse IA vide.');
     if (['length', 'max_tokens'].includes(String(answer.finishReason || '').toLowerCase())) throw jobError('report_truncated', 'JSON tronqué.');
-    return { answer, result: REPORTS.validate(answer.text, source) };
+    // Keep the exact private exception only in memory. The persisted message is a
+    // fixed allowlisted explanation from safeReportValidationReason().
+    try { return { answer, result: REPORTS.validate(answer.text, source) }; }
+    catch (err) {
+      if (err && safeReportValidationReason(err)) err.reportProvider = answer.provider;
+      throw err;
+    }
   } finally {
     clearTimeout(timeout);
   }
