@@ -162,7 +162,7 @@ appel. Il n'existe pas de garantie exactly-once d'un fournisseur externe.
 
 ## PWA, déploiement et recette
 
-Build proposé `20261008-r81-report-provider-diagnostics-276`, version produit affichée
+Build proposé `20261008-r82-dictation-gemini-diagnostics-276`, version produit affichée
 276 conservée. Aucun script de démarrage ajouté, budget 79 inchangé. Renderer,
 coordinateur et adaptateur JSON historique sont précachés pour le chargement à la
 demande hors ligne. Le bump accompagne index/SW/manifest/version.
@@ -266,3 +266,17 @@ que ses limites sémantiques ne sont pas établies. Le test démontre le diagnos
 **pas** une cause confirmée des échecs terrain antérieurs. La correction de
 cette règle exige un exemple d'erreur précis et des tests métier dédiés,
 pour protéger les négations, les attributions et les accords commerciaux.
+
+
+### V278 — réconciliation de la dictée naturelle et du diagnostic Gemini (#547)
+
+Le correctif conserve les diagnostics contrôlés de #546 sur le Worker, tout en
+assouplissant l'extraction de citations issues de notes dictées sans ponctuation
+et en permettant une reformulation professionnelle bornée. Les tests protègent
+les chiffres, références, marques, rôles, négations et nuances commerciales.
+Gemini reste le fournisseur prioritaire sans paramètre explicite. Aucun fallback
+payant automatique, aucune altération des notes originales.
+
+Build front-end : `20261008-r82-dictation-gemini-diagnostics-276`. Le Worker Cloudflare doit être redéployé
+séparément après la fusion autorisée. Les tests simulés ne garantissent pas
+encore la recette du compte rendu terrain sur Android avec Gemini.

@@ -75,8 +75,59 @@ for(const [quote,status] of [['Formation réalisée.','done'],['Formation prévu
 for(const raw of ['', '{}', '{"version":1,"reports":['])assert.throws(()=>R.validate(raw,samples.brun.source),/rejeté/);
 {const f=one('Samsung présent.');f.doc.reports[0].items[0].quote='Samsung absent.';assert.throws(()=>R.validate(f.doc,f.source),/citation/)}
 for(const [full,quote] of [['Aucun contrat validé.','contrat validé.'],['Aucun\ncontrat validé.','contrat validé.'],['Selon le vendeur, LG est mieux placé.','LG est mieux placé.'],['D’après le vendeur,\nLG est mieux placé.','LG est mieux placé.'],['Le magasin n’est pas fermé à l’idée de retravailler.','fermé à l’idée de retravailler.']]){const f=one(full);Object.assign(f.doc.reports[0].items[0],{quote,text:quote});assert.throws(()=>R.validate(f.doc,f.source),/contexte/)}
+// Everyday field dictation: no punctuation and informal word order are normal inputs.
+function voiceNote(raw,quote,rewritten,section='showroom'){
+ const f=one(raw,section,'cuisiniste',rewritten);
+ f.doc.reports[0].items[0].quote=quote;
+ return f;
+}
+{
+ const f=voiceNote(
+  'premier passage magasin rayon Samsung un four présent en showroom formation produit prévue ensuite',
+  'Samsung un four présent en showroom',
+  'Un four Samsung est présent en showroom.'
+ );
+ assert.doesNotThrow(()=>R.validate(f.doc,f.source),'a spoken note may have no punctuation or strict word order');
+}
+{
+ const f=voiceNote(
+  'on a vu avec équipe Samsung trois fours dans le showroom et du coup une formation prévue',
+  'Samsung trois fours dans le showroom',
+  'Trois fours Samsung sont dans le showroom.'
+ );
+ assert.doesNotThrow(()=>R.validate(f.doc,f.source),'professional rewrite may change word order');
+}
+{
+ const f=voiceNote(
+  'Samsung en showroom et du coup un four présent',
+  'Samsung en showroom et du coup un four présent',
+  'Samsung dispose d’un four en showroom.'
+ );
+ assert.doesNotThrow(()=>R.validate(f.doc,f.source),'spoken filler words may be removed in clean prose');
+}
+for(const [raw,quote,spoken] of [
+ ['aucun contrat validé', 'contrat validé', 'Le contrat est validé.'],
+ ['selon le vendeur LG est mieux placé', 'LG est mieux placé', 'LG est mieux placé.'],
+ ['le magasin n est pas fermé à idée de travailler avec Samsung', 'fermé à idée de travailler avec Samsung', 'Le magasin est fermé à idée de travailler avec Samsung.']
+]){
+ const f=voiceNote(raw,quote,spoken,'notes');
+ assert.throws(()=>R.validate(f.doc,f.source),/citation privée de son contexte/,'never drop adjacent business reservations in dictated notes');
+}
+{
+ const f=voiceNote('Samsung moins représenté que LG', 'Samsung moins représenté que LG', 'LG est moins représenté que Samsung.','competition');
+ assert.throws(()=>R.validate(f.doc,f.source),/rejeté/,'paraphrase cannot invert competitor comparisons');
+}
+{
+ const f=voiceNote('Un réfrigérateur Samsung présent en showroom','Un réfrigérateur Samsung présent en showroom','Un américain Samsung est présent en showroom.','showroom');
+ assert.throws(()=>R.validate(f.doc,f.source),/rejeté/,'paraphrase cannot drop the explicit refrigerator product category');
+}
+{
+ const f=voiceNote('Samsung un four dans le showroom','Samsung un four dans le showroom','Samsung expose quatre fours dans le showroom.','showroom');
+ assert.throws(()=>R.validate(f.doc,f.source),/rejeté/,'paraphrase must not invent a number');
+}
+
 const frozen=JSON.stringify(samples.cuisiniste.source),fallback=R.fallback(samples.cuisiniste.source,'cuisiniste');assert.match(fallback,/📝 Notes terrain/);assert.match(fallback,/RS68A882/);assert.equal(JSON.stringify(samples.cuisiniste.source),frozen);
 const mem=R.memory(R.validate(samples.cuisiniste.doc,samples.cuisiniste.source),{...samples.cuisiniste.source,sourceSignature:'sig'});assert.equal(mem.sourceSignature,'sig');assert(mem.items.some(i=>i.kind==='product'&&i.text==='RS68A882'));for(const i of mem.items)assert(samples.cuisiniste.source.reports[0].entries[0].text.includes(i.text));
-const prompt=R.buildPrompt(samples.cuisiniste.source);assert.match(prompt,/visit-report-v278-1/);assert.match(prompt,/phrase entière exacte/);assert.match(prompt,/aucun contrat validé/);assert.doesNotMatch(prompt,/Darty Bourgoin/);
+const prompt=R.buildPrompt(samples.cuisiniste.source);assert.match(prompt,/visit-report-v278-2/);assert.match(prompt,/Cite une phrase entière/);assert.match(prompt,/aucun contrat validé/);assert.doesNotMatch(prompt,/Darty Bourgoin/);
 const noteSource=fs.readFileSync(require.resolve('../note-proofreader-v221.js'),'utf8');assert.match(noteSource,/input\.closest\('#srVisitDialog'\)/);assert.doesNotMatch(noteSource,/new root\.MutationObserver/);
 (async()=>{const a=await R.sourceSignature({b:2,a:1}),b=await R.sourceSignature({a:1,b:2});assert.equal(a,b);assert.match(a,/^sha256-[a-f0-9]{64}$/);assert.notEqual(a,await R.sourceSignature({a:1,b:3}));console.log('PASS V278 golden BRUN/BLANC/cuisiniste, immutable quotes, facts, attribution, commercial nuance, fallback and SHA-256');})().catch(e=>{console.error(e);process.exitCode=1});

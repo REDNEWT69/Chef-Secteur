@@ -121,30 +121,48 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   }
   console.log('PASS jobs · empty, truncated, ungrounded and empty business JSON fail without paid repair/fallback');
 
-  // A punctuation-free field dictation is a single source sentence. A partial
-  // quotation currently fails the strict context rule; expose that safe reason
-  // instead of hiding it as a generic invalid report.
+  // Natural field dictation: a grounded partial quote is valid when adjacent
+  // notes do not alter its meaning, even if the dictation has no punctuation.
   const dictated = 'Premiere visite avec une responsable magasin un four Samsung present en showroom formation produit prevue';
   const extracted = 'un four Samsung present en showroom';
-  const invalidDictation = {
+  const extractedDoc = {
     version: 1, reports: [{ reportType: 'cuisiniste', items: [{
       section: 'showroom', text: extracted,
       source: 'report.cuisiniste.showroom', quote: extracted
     }] }]
   };
   const dictatedSource = source(dictated);
-  const dictatedJob = setup({ response: JSON.stringify(invalidDictation) });
-  const dictatedPayload = await body(dictatedSource);
-  const dictatedPending = await (await dictatedJob.post(dictatedPayload)).json();
+  const dictatedJob = setup({ response: JSON.stringify(extractedDoc) });
+  const dictatedPending = await (await dictatedJob.post(await body(dictatedSource))).json();
   await dictatedJob.env.REPORT_JOBS.get(dictatedPending.jobId).alarm();
   const dictatedStatus = await (await dictatedJob.get(dictatedPending.jobId)).json();
-  assert.equal(dictatedStatus.status, 'failed');
-  assert.equal(dictatedStatus.error.code, 'report_invalid_result');
-  assert.equal(dictatedStatus.error.reasonCode, 'source_context_missing');
-  assert.equal(dictatedStatus.error.provider, 'cloudflare-workers-ai');
-  assert.match(dictatedStatus.error.message, /citation incomplète/);
+  assert.equal(dictatedStatus.status, 'done', 'a contextual spoken excerpt must not be rejected only for missing punctuation');
+  assert.equal(dictatedStatus.result.reports[0].items[0].text, extracted);
   assert(!JSON.stringify(dictatedStatus).includes(dictated));
   assert(!('source' in dictatedStatus));
+
+  // In contrast, a clipped contractual negation must still fail, and the
+  // diagnostic only returns a fixed safe reason, never the original notes.
+  const unsafeDictation = 'aucun contrat validé et un four Samsung present en showroom';
+  const unsafeExcerpt = 'contrat validé';
+  const unsafeDoc = {
+    version: 1, reports: [{ reportType: 'cuisiniste', items: [{
+      section: 'contract', text: unsafeExcerpt,
+      source: 'report.cuisiniste.showroom', quote: unsafeExcerpt
+    }] }]
+  };
+  const unsafeSource = source(unsafeDictation);
+  const unsafeJob = setup({ response: JSON.stringify(unsafeDoc) });
+  const unsafePending = await (await unsafeJob.post(await body(unsafeSource))).json();
+  await unsafeJob.env.REPORT_JOBS.get(unsafePending.jobId).alarm();
+  const unsafeStatus = await (await unsafeJob.get(unsafePending.jobId)).json();
+  assert.equal(unsafeStatus.status, 'failed');
+  assert.equal(unsafeStatus.error.code, 'report_invalid_result');
+  assert.equal(unsafeStatus.error.reasonCode, 'source_context_missing');
+  assert.equal(unsafeStatus.error.provider, 'cloudflare-workers-ai');
+  assert.match(unsafeStatus.error.message, /citation incomplète/);
+  assert(!JSON.stringify(unsafeStatus).includes(unsafeDictation));
+  assert(!('source' in unsafeStatus));
 
   const fullDictation = {
     version: 1, reports: [{ reportType: 'cuisiniste', items: [{
@@ -154,8 +172,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   };
   assert.doesNotThrow(() => Report.validate(fullDictation, dictatedSource),
     'absence of punctuation itself is not an invalid source');
-  console.log('PASS jobs · controlled diagnostics distinguish contextless dictation quotes from provider errors');
-
+  console.log('PASS jobs · natural spoken evidence accepted, missing contractual negation rejected with controlled diagnostics');
 
   const outage = setup(() => { throw new Error('source-secret-must-not-leak'); });
   const o = await (await outage.post(first)).json(); await outage.env.REPORT_JOBS.get(o.jobId).alarm();
