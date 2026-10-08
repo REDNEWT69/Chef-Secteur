@@ -154,6 +154,66 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   assert.equal(groqCalls[0].include_reasoning, false);
   console.log('PASS jobs · Groq is preferred for durable reports when configured, with no second provider call');
 
+  // A Gemini key selects one request to Google, even when Groq and Workers AI are also available.
+  const geminiCalls = [];
+  const gemini = setup({ response: '' }, {
+    fetch: async (url, init) => {
+      const payload = JSON.parse(init.body);
+      geminiCalls.push({ url, payload, key: init.headers['x-goog-api-key'] });
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: JSON.stringify(result()) }] }, finishReason: 'STOP' }]
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+  });
+  gemini.env.GEMINI_API_KEY = 'synthetic-gemini-key';
+  gemini.env.GROQ_API_KEY = 'synthetic-groq-key';
+  const geminiJob = await (await gemini.post(first)).json();
+  await gemini.env.REPORT_JOBS.get(geminiJob.jobId).alarm();
+  const geminiStatus = await (await gemini.get(geminiJob.jobId)).json();
+  assert.equal(geminiStatus.status, 'done');
+  assert.equal(geminiStatus.provider, 'gemini');
+  assert.equal(geminiStatus.model, 'gemini-3.8-flash');
+  assert.equal(geminiCalls.length, 1, 'only one Gemini request per durable job');
+  assert.equal(gemini.calls.length, 0, 'Workers AI is not called when Gemini is configured');
+  assert.equal(groqCalls.length, 1, 'Gemini does not trigger a hidden Groq fallback');
+  assert.match(geminiCalls[0].url, /^https:\/\/generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-3\.8-flash:generateContent$/);
+  assert.equal(geminiCalls[0].key, 'synthetic-gemini-key');
+  assert.equal(geminiCalls[0].payload.generationConfig.maxOutputTokens, 2600);
+  assert.equal(geminiCalls[0].payload.generationConfig.responseMimeType, 'application/json');
+  assert.equal(geminiCalls[0].payload.generationConfig.thinkingConfig.thinkingLevel, 'low');
+  assert.match(geminiCalls[0].payload.contents[0].parts[0].text, /RS68A882/);
+  assert.match(geminiCalls[0].payload.systemInstruction.parts[0].text, /JSON/);
+  await gemini.env.REPORT_JOBS.get(geminiJob.jobId).alarm();
+  assert.equal(geminiCalls.length, 1, 'alarm redelivery must not bill a second Gemini call');
+
+  // Provider failures are controlled, retain field notes, and never leak provider bodies.
+  const geminiError = setup({ response: '' }, {
+    fetch: async (url, init) => {
+      return new Response(JSON.stringify({ error: { message: 'synthetic-secret-in-provider-error' } }),
+        { status: 429, headers: { 'Content-Type': 'application/json' } });
+    }
+  });
+  geminiError.env.GEMINI_API_KEY = 'synthetic-gemini-key';
+  geminiError.env.GROQ_API_KEY = 'synthetic-groq-key';
+  const failedGeminiJob = await (await geminiError.post(first)).json();
+  await geminiError.env.REPORT_JOBS.get(failedGeminiJob.jobId).alarm();
+  const failedGeminiStatus = await (await geminiError.get(failedGeminiJob.jobId)).json();
+  assert.equal(failedGeminiStatus.status, 'failed');
+  assert.equal(failedGeminiStatus.error.code, 'ai_provider_unavailable');
+  assert(!JSON.stringify(failedGeminiStatus).includes('synthetic-secret-in-provider-error'));
+
+  const geminiTruncated = setup({ response: '' }, {
+    fetch: async () => new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: JSON.stringify(result()) }] }, finishReason: 'MAX_TOKENS' }]
+    }), { status: 200 })
+  });
+  geminiTruncated.env.GEMINI_API_KEY = 'synthetic-gemini-key';
+  const truncatedGeminiJob = await (await geminiTruncated.post(first)).json();
+  await geminiTruncated.env.REPORT_JOBS.get(truncatedGeminiJob.jobId).alarm();
+  const truncatedGeminiStatus = await (await geminiTruncated.get(truncatedGeminiJob.jobId)).json();
+  assert.equal(truncatedGeminiStatus.error.code, 'report_truncated');
+  console.log('PASS jobs · Gemini is the single selected provider, validates JSON, and errors stay controlled');
+
   const uncertain = setup(), u = await (await uncertain.post(first)).json(), storage = uncertain.stores.get(u.jobId);
   const record = await storage.get('job'); record.status = 'processing'; await storage.put('job', record);
   uncertain.objects.delete(u.jobId); await uncertain.env.REPORT_JOBS.get(u.jobId).alarm();
