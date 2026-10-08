@@ -584,9 +584,12 @@ async function oneJobInference(env, source) {
     const options = { ...VISIT_REPORT_OPTIONS, signal: controller.signal };
     const message = REPORTS.buildPrompt(source);
     let inference;
-    // Exactly one configured provider per job. No fallback, empty retry or JSON repair.
-    if (hasWorkersAI(env)) inference = callWorkersAI(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
-    else if (env && env.GROQ_API_KEY) inference = callGroq(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
+    // Exactly one configured provider per job. Durable visit reports prefer Groq
+    // when its secret is configured because the field recipe has already shown empty
+    // Workers AI responses in production. We still keep the one-provider guarantee:
+    // there is no paid fallback or second inference for the same job.
+    if (env && env.GROQ_API_KEY) inference = callGroq(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
+    else if (hasWorkersAI(env)) inference = callWorkersAI(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
     else throw jobError('ai_no_provider', 'Aucun moteur IA disponible.');
     let answer;
     try { answer = await Promise.race([inference, expired]); }
