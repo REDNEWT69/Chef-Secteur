@@ -162,7 +162,7 @@ appel. Il n'existe pas de garantie exactly-once d'un fournisseur externe.
 
 ## PWA, déploiement et recette
 
-Build proposé `20261008-r82-dictation-gemini-diagnostics-276`, version produit affichée
+Build proposé `20261008-r83-partial-report-safety-276`, version produit affichée
 276 conservée. Aucun script de démarrage ajouté, budget 79 inchangé. Renderer,
 coordinateur et adaptateur JSON historique sont précachés pour le chargement à la
 demande hors ligne. Le bump accompagne index/SW/manifest/version.
@@ -277,6 +277,33 @@ les chiffres, références, marques, rôles, négations et nuances commerciales.
 Gemini reste le fournisseur prioritaire sans paramètre explicite. Aucun fallback
 payant automatique, aucune altération des notes originales.
 
-Build front-end : `20261008-r82-dictation-gemini-diagnostics-276`. Le Worker Cloudflare doit être redéployé
+Build front-end : `20261008-r83-partial-report-safety-276`. Le Worker Cloudflare doit être redéployé
 séparément après la fusion autorisée. Les tests simulés ne garantissent pas
 encore la recette du compte rendu terrain sur Android avec Gemini.
+
+
+### #548 — validation partielle et conservation intégrale des sources (r83)
+
+L'inférence payante reste unique. Le Worker applique `validateBestEffort` : la
+structure du JSON est vérifiée, puis chaque observation est contrôlée
+individuellement. Les citations hors source ou hors contexte sont écartées.
+Une reformulation dont la relation commerciale ou l'attribution ne peut être
+prouvée **n'est jamais publiée telle quelle** : seule sa citation source,
+inchangée, est conservée sous « Notes terrain ». En cas d'item écarté ou
+d'absence de faits sûrs, la note originale correspondante est ajoutée pour
+éviter toute disparition silencieuse d'informations.
+
+Le navigateur vérifie à son tour le résultat du Worker via
+`validateDelivered` avant de l'enregistrer. Les résultats portent un état
+`complete`, `partial` ou `source-only` et des compteurs bornés. Le texte
+copiable avertit d'une relecture nécessaire lorsqu'une observation n'a pas pu
+être reformulée ; la fiche de visite distingue aussi ces situations. Il ne
+s'agit pas d'une seconde validation IA ni d'une garantie d'exhaustivité
+sémantique : un utilisateur doit relire les textes avant diffusion.
+
+La validation stricte antérieure `validate()` et ses tests golden restent
+disponibles comme contrat de référence. Tests de régression synthétiques :
+BRUN long, inversion de prix, d'attribution, de disponibilité, citation inventée,
+résultat `source-only` et contrôle client indépendant. Pas d'appel réel
+Gemini/Groq et aucune modification de leur configuration. Worker Cloudflare
+à redéployer séparément seulement après recette et fusion approuvées.

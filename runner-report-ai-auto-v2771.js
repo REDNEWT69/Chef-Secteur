@@ -50,7 +50,7 @@ async function reconcileVisit(visitId){
   if(!await visits().persistReportJob(id,expected,{jobId:result.jobId,status:result.status==='done'?'processing':result.status,error:result.error&&result.error.message||'',retryAt:result.status==='failed'?0:Date.now()+POLL_MS}))return false;
   if(result.status==='failed')return false;if(result.status!=='done'){if(visible())schedule(POLL_MS);return true}
   const source={...snapshot,sourceSignature:job.sourceSignature};let validated;
-  try{validated=renderer().validate(result.result,source)}catch(e){await failed(id,expected,'Le résultat IA ne respecte pas les notes sources. Le rapport précédent est conservé.');return false}
+  try{validated=renderer().validateDelivered(result.result,source)}catch(e){await failed(id,expected,'Le résultat IA ne respecte pas les notes sources. Le rapport précédent est conservé.');return false}
   const reports={};for(const report of validated.reports)reports[report.reportType]=renderer().render(report,source);
   const memory=renderer().memory(validated,source);return await visits().applyReportResult(id,expected,validated,reports,memory);
  }catch(e){

@@ -702,7 +702,7 @@ async function oneJobInference(env, source) {
     if (['length', 'max_tokens'].includes(String(answer.finishReason || '').toLowerCase())) throw jobError('report_truncated', 'JSON tronqué.');
     // Keep the exact private exception only in memory. The persisted message is a
     // fixed allowlisted explanation from safeReportValidationReason().
-    try { return { answer, result: REPORTS.validate(answer.text, source) }; }
+    try { return { answer, result: REPORTS.validateBestEffort(answer.text, source) }; }
     catch (err) {
       if (err && safeReportValidationReason(err)) err.reportProvider = answer.provider;
       throw err;
