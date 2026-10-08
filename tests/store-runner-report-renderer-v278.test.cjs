@@ -186,11 +186,11 @@ for(const [raw,quote,spoken] of [
  'verification a prevoir au prochain passage et suivi a confirmer apres reunion';
  const source={version:1,visitId:'synthetic-long-no-dup',storeId:'synthetic',completedDate:'2026-10-09',store:{enseigne:'Magasin fictif',ville:'Test',channel:'retail'},
   reports:[{reportType:'brun',entries:[
-    {source:'report.brun.commercial',family:'brun',text:'Samsung est exposé en rayon.'},
+    {source:'report.brun.commercial',family:'brun',text:'TV Samsung est présente en rayon.'},
     {source:'report.brun.long',family:'brun',text:long}
   ]}]};
  const input={version:1,reports:[{reportType:'brun',items:[
-  {section:'merchandising',text:'Samsung est exposé en rayon.',source:'report.brun.commercial',quote:'Samsung est exposé en rayon.'},
+  {section:'tv',text:'TV Samsung est présente en rayon.',source:'report.brun.commercial',quote:'TV Samsung est présente en rayon.'},
   {section:'tv',text:'Texte halluciné absent du terrain.',source:'report.brun.long',quote:'texte inexistant'}
  ]}]};
  const result=R.validateBestEffort(input,source);
@@ -200,7 +200,7 @@ for(const [raw,quote,spoken] of [
  assert(!result.reports[0].items.some(x=>x.text===long));
  const delivered=R.validateDelivered(result,source);
  const shown=R.render(delivered.reports[0],source);
- assert.match(shown,/Samsung est exposé/);
+ assert.match(shown,/TV Samsung est présente/);
  assert.match(shown,/Les notes complètes restent dans la fiche visite/);
  assert.doesNotMatch(shown,/situation magasin compliquee/);
  assert.equal(source.reports[0].entries[1].text,long,'source must remain available for manual review');
