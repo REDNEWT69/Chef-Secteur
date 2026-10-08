@@ -1,5 +1,5 @@
 // Cloudflare Worker - passerelle IA sécurisée pour Store Runner
-// Jobs de comptes rendus : Gemini prioritaire si configuré, puis Groq, puis Workers AI.
+// Jobs de comptes rendus : Gemini par défaut, OpenAI uniquement si REPORT_AI_PROVIDER=openai ; puis Groq/Workers AI.
 // Autres routes IA : comportement historique Workers AI + secours Groq inchangé.
 // Aucune clé API ne doit être placée dans GitHub Pages ou dans le navigateur.
 import { DurableObject } from 'cloudflare:workers';
@@ -16,6 +16,7 @@ const ALLOWED_ORIGINS = new Set([
 const DEFAULT_WORKERS_AI_MODEL = '@cf/google/gemma-4-26b-a4b-it';
 const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-20b';
 const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
+const DEFAULT_OPENAI_MODEL = 'gpt-5.6-terra';
 
 function cors(origin) {
   const headers = {
@@ -118,6 +119,10 @@ function groqModel(env) {
 
 function geminiModel(env) {
   return String((env && env.GEMINI_MODEL) || DEFAULT_GEMINI_MODEL);
+}
+
+function openaiModel(env) {
+  return String((env && env.OPENAI_MODEL) || DEFAULT_OPENAI_MODEL).trim();
 }
 
 function buildMessages(system, user, userOnly = false) {
@@ -275,6 +280,78 @@ async function callGemini(env, system, user, maxTokens, options = {}) {
     finishReason: candidate ? String(candidate.finishReason || '') : '',
     model,
     provider: 'gemini'
+  };
+}
+
+
+// V279 — OpenAI is opt-in for durable visit-report jobs only. All credentials
+// stay in the Worker. Its native Responses API uses an independently validated
+// JSON schema, so the existing client/Worker evidence checks stay authoritative.
+const OPENAI_REPORT_JSON_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['version', 'reports'],
+  properties: {
+    version: { type: 'integer', enum: [1] },
+    reports: {
+      type: 'array', items: {
+        type: 'object', additionalProperties: false, required: ['reportType', 'items'],
+        properties: {
+          reportType: { type: 'string' },
+          items: {
+            type: 'array', items: {
+              type: 'object', additionalProperties: false,
+              required: ['section', 'text', 'source', 'quote'],
+              properties: {
+                section: { type: 'string' }, text: { type: 'string' },
+                source: { type: 'string' }, quote: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+};
+async function callOpenAIReport(env, system, user, maxTokens, options = {}) {
+  if (!env || !env.OPENAI_API_KEY) {
+    throw aiError(AI_NO_PROVIDER, 'OpenAI non configuré.', { provider: 'openai' });
+  }
+  const model = openaiModel(env);
+  const payload = {
+    model,
+    instructions: system,
+    input: user,
+    reasoning: { effort: 'none' },
+    text: { format: { type: 'json_schema', name: 'store_runner_visit_report', strict: true, schema: OPENAI_REPORT_JSON_SCHEMA } },
+    max_output_tokens: maxTokens || 2600,
+    store: false
+  };
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + env.OPENAI_API_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload),
+    signal: options.signal
+  });
+  const data = await response.json().catch(() => ({}));
+  // Never leak provider response bodies, notes, headers or API credentials.
+  if (!response.ok) {
+    throw aiError(AI_PROVIDER_UNAVAILABLE, 'OpenAI HTTP ' + response.status, {
+      provider: 'openai', httpStatus: response.status
+    });
+  }
+  const output = Array.isArray(data.output) ? data.output : [];
+  const answerText = output.filter(item => item && item.type === 'message' && item.role === 'assistant')
+    .flatMap(item => Array.isArray(item.content) ? item.content : [])
+    .filter(part => part && part.type === 'output_text' && typeof part.text === 'string')
+    .map(part => part.text).join('').trim();
+  const truncated = data.status === 'incomplete' && data.incomplete_details
+    && data.incomplete_details.reason === 'max_output_tokens';
+  return {
+    text: answerText,
+    finishReason: truncated ? 'max_tokens' : String(data.status || ''),
+    model, provider: 'openai'
   };
 }
 
@@ -648,7 +725,7 @@ function jobFailure(err) {
   };
   const rejection = safeReportValidationReason(err);
   if (code === 'report_invalid_result' && rejection) {
-    const provider = ['gemini', 'groq', 'cloudflare-workers-ai'].includes(err.reportProvider) ? err.reportProvider : null;
+    const provider = ['gemini', 'groq', 'openai', 'cloudflare-workers-ai'].includes(err.reportProvider) ? err.reportProvider : null;
     return {
       code, reasonCode: rejection.reasonCode,
       ...(provider ? { provider } : {}),
@@ -658,9 +735,10 @@ function jobFailure(err) {
   const diagnostics = err && err.diagnostics && typeof err.diagnostics === 'object' ? err.diagnostics : {};
   const httpStatus = Number(diagnostics.httpStatus);
   // Only the bounded numeric status and a known provider label are safe to expose.
-  if (code === 'ai_provider_unavailable' && diagnostics.provider === 'gemini'
+  if (code === 'ai_provider_unavailable' && ['gemini', 'openai'].includes(diagnostics.provider)
     && Number.isInteger(httpStatus) && httpStatus >= 400 && httpStatus <= 599) {
-    return { code, provider: 'gemini', httpStatus, message: 'Gemini a renvoyé une erreur HTTP ' + httpStatus + '.' };
+    return { code, provider: diagnostics.provider, httpStatus,
+      message: (diagnostics.provider === 'gemini' ? 'Gemini' : 'OpenAI') + ' a renvoyé une erreur HTTP ' + httpStatus + '.' };
   }
   return { code: Object.hasOwn(messages, code) ? code : 'report_invalid_result', message: messages[code] || messages.report_invalid_result };
 }
@@ -678,15 +756,18 @@ async function oneJobInference(env, source) {
     // Exactly one provider per durable job. Explicit opt-in permits a safe switch
     // from Gemini to Groq without deleting secrets or triggering a paid fallback.
     const selected = String((env && env.REPORT_AI_PROVIDER) || '').trim().toLowerCase();
-    if (selected && !['gemini', 'groq', 'workers-ai'].includes(selected)) {
+    if (selected && !['gemini', 'groq', 'workers-ai', 'openai'].includes(selected)) {
       throw jobError('ai_no_provider', 'Sélection du moteur IA invalide.');
     }
     if (selected === 'gemini' && !(env && env.GEMINI_API_KEY)
       || selected === 'groq' && !(env && env.GROQ_API_KEY)
+      || selected === 'openai' && !(env && env.OPENAI_API_KEY)
       || selected === 'workers-ai' && !hasWorkersAI(env)) {
       throw jobError('ai_no_provider', 'Le moteur IA sélectionné n’est pas configuré.');
     }
-    if (selected === 'gemini' || !selected && env && env.GEMINI_API_KEY) {
+    if (selected === 'openai') {
+      inference = callOpenAIReport(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
+    } else if (selected === 'gemini' || !selected && env && env.GEMINI_API_KEY) {
       inference = callGemini(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
     } else if (selected === 'groq' || !selected && env && env.GROQ_API_KEY) {
       inference = callGroq(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
