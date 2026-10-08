@@ -257,7 +257,7 @@ function validateBestEffort(raw,source){
   // append short, uncovered entries. Longer unmatched notes remain in the
   // immutable visit source and trigger explicit manual-review notice.
   if(reportOmitted||!items.length){
-   const alreadyCovered=items.some(item=>item.section!=='notes');
+   const alreadyCovered=items.length>0;
    for(const entry of inputs.entries){
     const raw=text(entry.text);if(!raw)continue;
     const key=entry.source+'|'+plain(raw);
