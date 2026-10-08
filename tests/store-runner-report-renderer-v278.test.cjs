@@ -227,6 +227,7 @@ for(const [raw,section,type,wrong] of [
  ['Samsung présent, LG absent.','competition','brun','Samsung absent, LG présent.'],
  ['Samsung a remplacé LG.','competition','brun','Samsung a été remplacé par LG.'],
  ['Bruno a formé Léa.','training','cuisiniste','Léa a formé Bruno.'],
+ ['Bruno a formé Léa.','training','cuisiniste','Le responsable Bruno a formé Léa.'],
  ['Formation pour Bruno.','training','cuisiniste','Formation par Bruno.'],
  ['Formation prévue ou réalisée.','training','brun','Formation prévue et réalisée.'],
  ['Samsung est le 3e choix.','tv','brun','Samsung est le 4e choix.'],
@@ -240,6 +241,14 @@ for(const [raw,section,type,wrong] of [
  assert.equal(rejected.reports[0].items[0].text,raw,'raw source must survive');
 }
 
+{
+ const raw='une visite en rayon tv sans difficulté particulière';
+ const f=one(raw,'notes','brun',raw);
+ const validated=R.validateBestEffort(f.doc,f.source);
+ assert.equal(validated.quality.status,'source-only','a verbatim dictation must not count as AI-authored prose');
+ assert.equal(validated.quality.acceptedItems,0);
+ assert.equal(validated.quality.sourceOnlyItems,1);
+}
 const frozen=JSON.stringify(samples.cuisiniste.source),fallback=R.fallback(samples.cuisiniste.source,'cuisiniste');assert.match(fallback,/📝 Notes terrain/);assert.match(fallback,/RS68A882/);assert.equal(JSON.stringify(samples.cuisiniste.source),frozen);
 const mem=R.memory(R.validate(samples.cuisiniste.doc,samples.cuisiniste.source),{...samples.cuisiniste.source,sourceSignature:'sig'});assert.equal(mem.sourceSignature,'sig');assert(mem.items.some(i=>i.kind==='product'&&i.text==='RS68A882'));for(const i of mem.items)assert(samples.cuisiniste.source.reports[0].entries[0].text.includes(i.text));
 const prompt=R.buildPrompt(samples.cuisiniste.source);assert.match(prompt,/visit-report-v278-5/);assert.match(prompt,/Cite une phrase entière/);assert.match(prompt,/aucun contrat validé/);assert.doesNotMatch(prompt,/Darty Bourgoin/);
