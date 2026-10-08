@@ -265,7 +265,7 @@ function validateBestEffort(raw,source){
     // This exact passage has already been included, possibly by another
     // source entry. Never reprint it as an additional raw note.
     if(items.some(item=>plain(item.quote)===plain(raw)||plain(item.text)===plain(raw)))continue;
-    if(alreadyCovered&&raw.length>220){
+    if(alreadyCovered&&raw.length>150){
      // Do NOT silently drop the underlying source: it remains in the visit,
      // and the report explicitly flags that a source entry needs review.
      reportOmitted++;continue;
