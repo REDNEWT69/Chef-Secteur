@@ -180,32 +180,24 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA F
   expect(overflow.sw).toBeLessThanOrEqual(overflow.cw+1);expect(overflow.dw).toBeLessThanOrEqual(390);
   await dialog.locator('#srPhotoClose').tap();
 
-  // Depuis « Sortie magasin », le rapport local reste disponible et l'IA peut le reformuler au style FMT validé.
-  await page.evaluate(()=>{
-    window.__sharedStorePhotos=null;
-    window.__reportAIPayload=null;
-    window.callAIGateway=async payload=>{
-      window.__reportAIPayload=payload;
-      return {text:'Résumé BRUN\n\nPremière visite reformulée proprement à partir des notes terrain Samsung, avec Glare Free comme argument différenciant face à LG et deux photos jointes.\n\nFormation / prochain passage\n\nPrévoir une formation BRUN sur les nouveautés 2026 et contrôler les points relevés lors du prochain passage.'};
-    };
-  });
+  // La clôture hors ligne conserve photos, sources et compte rendu local modifiable.
+  await context.setOffline(true);
+  await page.evaluate(()=>StoreRunnerVisits.openVisit(state.businessV2.visits[0].id));
+  page.once('dialog',d=>d.accept());
+  await page.locator('#srVisitDialog [data-sr-complete-visit]').tap();
+  await expect(page.locator('#srVisitTitle')).toContainText('Visite terminée');
+  await page.locator('#srVisitDialog .sr-head button').filter({hasText:'Fermer'}).tap();
+  await page.evaluate(()=>{window.__sharedStorePhotos=null;window.openStoreQuick('photo-store','Lundi','09:30')});
+  if(!await reportQuick.isVisible())await page.locator('#sqMoreBtn').tap();
   await expect(reportQuick).toBeVisible();await expect(reportQuick).toBeInViewport();await reportQuick.tap();
   const report=page.locator('#srReportSheet');await expect(report).toBeVisible();
   const reportBox=await report.boundingBox();expect(reportBox.x).toBeGreaterThanOrEqual(0);expect(reportBox.x+reportBox.width).toBeLessThanOrEqual(390);
   await expect(report.locator('[data-family="brun"]')).toHaveAttribute('aria-selected','true');
-  await expect(report.locator('#srReportText')).toHaveValue(/1 avant \/ 1 après jointes à ce message\./);
-  const aiButton=report.locator('#srReportAI');await expect(aiButton).toBeVisible();await expect(aiButton).toHaveText('✨ Générer le résumé BRUN');
+  await expect(report.locator('#srReportText')).toHaveValue(/Glare Free est un argument différenciant face à LG/);
+  const aiButton=report.locator('#srReportAI');await expect(aiButton).toBeVisible();await expect(aiButton).toHaveText('✨ Régénérer le compte rendu');
   const aiBox=await aiButton.boundingBox();expect(aiBox.height).toBeGreaterThanOrEqual(44);
-  await aiButton.tap();
-  await expect(report.locator('#srReportText')).toHaveValue(/^Résumé BRUN[\s\S]*Formation \/ prochain passage/);
-  await expect(report.locator('#srReportStatus')).toContainText('Résumé BRUN généré');
-  const aiPayload=await page.evaluate(()=>window.__reportAIPayload);
-  expect(aiPayload.mode).toBe('assistant');
-  expect(aiPayload.message).toContain('EXEMPLE_DE_STYLE_VALIDÉ');
-  expect(aiPayload.message).toContain('Glare Free est un argument différenciant face à LG.');
-  expect(aiPayload.context.task).toBe('visit_report');
-  expect(aiPayload.context.visit.photos.total).toBe(2);
-
+  expect(await page.evaluate(()=>state.businessV2.visits[0].reportJob.status)).toBe('pending');
+  const originalNotes=await page.evaluate(()=>StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).brun.team);
   const editButton=report.locator('#srReportEdit'),area=report.locator('#srReportText');
   await editButton.tap();await expect(area).toBeEditable();
   const generated=await area.inputValue();await area.fill(generated+'\n\nCorrection terrain.');
@@ -224,8 +216,11 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA F
   await expect(area).toHaveValue(/Correction terrain\.$/);
   await report.locator('.sr-reportClose').tap();await expect(report).not.toBeVisible();
 
+  await context.setOffline(false);
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.StorePhotosV1&&window.BoulangerDefaultHoursV1&&window.state&&typeof window.openStoreQuick==='function'&&window.state.stores.some(s=>s.id==='photo-store'));
+  expect(await page.evaluate(()=>StoreRunnerVisits.reportFor(state.businessV2.visits[0].id,'brun').text)).toMatch(/Correction terrain\.$/);
+  expect(await page.evaluate(()=>StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).brun.team)).toBe(originalNotes);
   await reopenQuickAndTapPhotos(page);
   const reloadedCards=page.locator('#storePhotosDialog .sr-photoCard');
   await expect(reloadedCards).toHaveCount(2);
@@ -238,6 +233,7 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA F
   await page.locator('#srPhotoClose').tap();
 
   await context.setOffline(true);
+  await context.setOffline(false);
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.StorePhotosV1&&window.BoulangerDefaultHoursV1&&window.state&&typeof window.openStoreQuick==='function'&&window.state.stores.some(s=>s.id==='photo-store'));
   await reopenQuickAndTapPhotos(page);

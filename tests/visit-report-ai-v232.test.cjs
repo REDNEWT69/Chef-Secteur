@@ -173,12 +173,10 @@ function counting(answers){
   const lock=generateAI.indexOf('generating=true'),firstAwait=generateAI.indexOf('await'),tryBlock=generateAI.indexOf('try{');
   assert(lock>0&&firstAwait>0,'le verrou et le premier await doivent exister');
   assert(lock<firstAwait,'le verrou generating=true doit précéder le premier await de generateAI');
-  assert(tryBlock<generateAI.indexOf('photosFor'),'la lecture des photos doit vivre dans le try protégé par le verrou');
-  assert(tryBlock<generateAI.indexOf('buildAIPayload'),'la construction de la charge utile doit vivre dans le même try');
-  // Le contrôle de disponibilité de la passerelle est synchrone et reste avant le verrou :
-  // on cible donc l'appel lui-même, pas la première mention du nom.
-  assert(tryBlock<generateAI.indexOf('await root.callAIGateway({'),'l’appel IA doit vivre dans le même try');
-  assert.match(SLACK,/response&&response\.repaired\?' généré après une réparation automatique\.'/,'le retour doit distinguer une réparation');
+  assert(tryBlock<generateAI.indexOf('await api.requestReportRegeneration'),'le job doit être créé dans le try protégé');
+  assert(tryBlock<generateAI.indexOf('await ensureAutoAI()'),'le chargement asynchrone reste sous le verrou');
+  assert(!generateAI.includes('callAIGateway'),'aucun appel fournisseur dépendant du téléphone');
+  assert.match(SLACK,/persistFinalEdit\(area\)/,'une édition finale est persistée, sans mutation des notes');
   assert(!/console\.(log|warn|info)\([^)]*noteTerrain/.test(SLACK+MODULE),'aucune note terrain brute journalisée');
   console.log('PASS 6 · aucune invention, rapport local conservé, bouton réactivé, pas de double appel');
 })();

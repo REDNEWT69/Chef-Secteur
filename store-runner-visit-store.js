@@ -17,7 +17,12 @@ function create(options){
   const next=M.clone(current);if(draft)next.businessV2=M.clone(draft.businessV2);
   if(Object.keys(historyChanges).length)next.visits=Object.assign({},next.visits,M.clone(historyChanges));
   const beforeHistory=M.clone(next.visits||{});
-  M.data(next);if(change){change(next);next.businessV2.revision++}
+  M.data(next);if(change){const changed=change(next);
+   // Une réponse devenue obsolète/supprimée n'est pas une sauvegarde utilisateur.
+   // Ne pas écraser son message ni créer une révision pour un no-op distant.
+   if(changed===false&&!draft)return false;
+   if(changed!==false)next.businessV2.revision++;
+  }
   for(const [key,value] of Object.entries(next.visits||{}))if(JSON.stringify(value)!==JSON.stringify(beforeHistory[key]))historyChanges[key]=M.clone(value);
   draft=next;baseRevision=revision(current);allowedRaw=raw;
   options.onStatus('saving');
@@ -28,7 +33,10 @@ function create(options){
    // Preserve unrelated profile/calendar changes made while IndexedDB was committing.
    const latest=options.getState(),merged=M.clone(latest);merged.businessV2=next.businessV2;
    if(Object.keys(historyChanges).length)merged.visits=Object.assign({},merged.visits,M.clone(historyChanges));
-   if(JSON.stringify(merged)!==JSON.stringify(next)){R.save(merged,db);if(typeof db.flush==='function')await db.flush()}
+   // Le noyau peut sauvegarder son ancien état pendant le flush sans modifier
+   // aucun champ. Dans ce cas merged===next mais la façade contient une révision
+   // antérieure : la remettre à jour avant publication évite un faux autre-onglet.
+   if(JSON.stringify(merged)!==db.getItem(R.keys.MAIN)){R.save(merged,db);if(typeof db.flush==='function')await db.flush()}
    options.setState(merged);draft=null;baseRevision=null;allowedRaw=null;historyChanges={};options.onStatus('saved');
   }catch(e){options.onStatus('error',e.message);throw e}
  }).finally(()=>{pending--});queue=result.catch(()=>{});return result}

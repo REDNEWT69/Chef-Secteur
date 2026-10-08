@@ -21,7 +21,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - run: npm install --no-save --no-package-lock miniflare@4.20260730.0
       - run: node tests/syntax.test.cjs
+      - run: node tests/store-runner-report-renderer-v278.test.cjs
+      - run: node tests/report-jobs-worker-v278.test.cjs
+      - run: node tests/report-jobs-runtime-v278.test.cjs
       - run: node tests/backups.test.cjs
       - run: node tests/recovery-journal-quota-v240.test.cjs
       - run: node tests/storage-engine-v256.test.cjs
