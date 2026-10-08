@@ -232,6 +232,7 @@ function validateBestEffort(raw,source){
   if(!keysOnly(report,['reportType','items'])||!types.includes(report.reportType)||seen.has(report.reportType)||!Array.isArray(report.items))fail('rapport dupliqué ou inconnu');
   seen.add(report.reportType);
   const inputs=reportFor(source,report.reportType),bySource=new Map(inputs.entries.map(e=>[e.source,e])),context=sourceContext(source,inputs);
+  if(!report.items.length&&inputs.entries.some(e=>text(e.text)))fail('rapport vide');
   const items=[],duplicates=new Set();let reportRaw=0,reportOmitted=0,reportAccepted=0;
   for(const item of report.items){
    if(++processed>MAX_ITEMS){reportOmitted++;continue}
@@ -268,14 +269,58 @@ function validateBestEffort(raw,source){
   quality:{status:sourceOnly||omitted?(accepted?'partial':'source-only'):'complete',
    acceptedItems:accepted,sourceOnlyItems:sourceOnly,omittedItems:omitted}};
 }
+// The phone independently verifies the already-safe server output. Never
+// call the strict V278 validator on a partial result: doing so would reject
+// the exact source quotations preserved to avoid losing field observations.
+function validateDelivered(raw,source){
+ const doc=parse(raw),types=expectedTypes(source);
+ if(!keysOnly(doc,['version','reports','quality'])||doc.version!==VERSION||!Array.isArray(doc.reports)||doc.reports.length!==types.length)fail('schéma ou familles inattendus');
+ const seen=new Set(),reports=[];
+ for(const report of doc.reports){
+  if(!keysOnly(report,['reportType','items','review'])||!types.includes(report.reportType)||seen.has(report.reportType)||!Array.isArray(report.items))fail('rapport dupliqué ou inconnu');
+  seen.add(report.reportType);
+  const entries=reportFor(source,report.reportType).entries,bySource=new Map(entries.map(e=>[e.source,e])),context=sourceContext(source,{entries}),items=[];
+  if(report.items.length>MAX_ITEMS+entries.length)fail('trop de faits');
+  for(const item of report.items){
+   if(!keysOnly(item,['section','text','source','quote'])||!ORDER[report.reportType].includes(item.section)||['text','source','quote'].some(k=>typeof item[k]!=='string'))fail('fait non conforme');
+   const src=bySource.get(item.source),quote=text(item.quote),proposed=text(item.text);
+   if(!src||!quote||!text(src.text).replace(/\s+/g,' ').includes(quote.replace(/\s+/g,' ')))fail('citation absente des notes');
+   if(item.section==='notes'&&proposed===quote&&
+       (quote===text(src.text)||completeEvidence(quote,src.text)||spokenEvidence(quote,src.text))){
+    items.push({section:'notes',text:quote,source:item.source,quote});continue;
+   }
+   if(quote.length<4||quote.length>1400||(!completeEvidence(quote,src.text)&&!spokenEvidence(quote,src.text)))fail('citation privée de son contexte');
+   if(!validTopic(item.section,quote))fail('rubrique sans preuve métier');
+   if(!(validCleanup(proposed,quote,context)||professionalRewrite(proposed,quote,context))||!safeBusinessRelations(proposed,quote))fail('faits, attribution ou nuance modifiés');
+   items.push({section:item.section,text:proposed,source:item.source,quote});
+  }
+  if(!items.length&&entries.some(e=>text(e.text)))fail('rapport vide');
+  const r={reportType:report.reportType,items};
+  if(report.review){
+   const v=report.review;
+   if(!keysOnly(v,['sourceOnly','omitted'])||!Number.isInteger(v.sourceOnly)||!Number.isInteger(v.omitted)||v.sourceOnly<0||v.omitted<0||v.sourceOnly>200||v.omitted>200)fail('fait non conforme');
+   r.review={sourceOnly:v.sourceOnly,omitted:v.omitted};
+  }
+  reports.push(r);
+ }
+ const counts={acceptedItems:0,sourceOnlyItems:0,omittedItems:0};
+ for(const report of reports){
+  counts.sourceOnlyItems+=report.items.filter(i=>i.section==='notes').length;
+  counts.acceptedItems+=report.items.filter(i=>i.section!=='notes').length;
+  counts.omittedItems+=report.review&&report.review.omitted||0;
+ }
+ return {version:VERSION,reports,quality:{
+  status:counts.sourceOnlyItems||counts.omittedItems?(counts.acceptedItems?'partial':'source-only'):'complete',...counts}};
+}
 function label(section,type){if(type==='cuisiniste'){if(section==='context')return'🏬 Suivi magasin';if(section==='competition')return'🆚 Concurrence';if(section==='training')return'🍳 Formation réalisée / prévue'}return LABELS[section]}
 function storeName(source){return[text(source&&source.store&&source.store.enseigne),text(source&&source.store&&source.store.ville)].filter(Boolean).join(' ')}
 function render(doc,source){
  if(!doc||!TYPES.includes(doc.reportType)||!Array.isArray(doc.items))throw new Error('Rapport structuré invalide');
  const type=doc.reportType,name=storeName(source),head=type==='cuisiniste'?'🟠 COMPTE RENDU CUISINISTE':type==='buying-groups'?'🟠 COMPTE RENDU BUYING GROUP':(type==='brun'?'⚫ Résumé BRUN':'⚪ Résumé BLANC');
  const lines=[head+(name?' – '+name:'')],day=text(source&&source.completedDate||source&&source.date);
- if(doc.review&&(doc.review.sourceOnly||doc.review.omitted))lines.push('','⚠️ Relecture nécessaire : '+doc.review.sourceOnly+' extrait(s) repris des notes originales, '+doc.review.omitted+' proposition(s) IA écartée(s).');
+ 
  if(type==='cuisiniste'&&/^\d{4}-\d{2}-\d{2}$/.test(day))lines.push('','Date : '+day.slice(8,10)+'/'+day.slice(5,7)+'/'+day.slice(0,4));
+ if(doc.review&&(doc.review.sourceOnly||doc.review.omitted))lines.push('','⚠️ Relecture nécessaire : '+doc.review.sourceOnly+' extrait(s) repris des notes originales, '+doc.review.omitted+' proposition(s) IA écartée(s).');
  let sections=0;
  for(const section of ORDER[type]){
   const rows=doc.items.filter(i=>i.section===section&&text(i.text));if(!rows.length)continue;
@@ -325,6 +370,6 @@ Sections autorisées dans l'ordre local: ${JSON.stringify(schemas)}
 SOURCES_IMMUABLES:
 ${JSON.stringify(source)}`;
 }
-const api={VERSION,PROMPT_VERSION,MAX_ITEMS,TYPES,LABELS,ORDER,canonicalJSON,canonical:canonicalJSON,sourceSignature,reportsFor,buildPrompt,validate,validateBestEffort,render,fallback,memory,validCleanup,validTopic};
+const api={VERSION,PROMPT_VERSION,MAX_ITEMS,TYPES,LABELS,ORDER,canonicalJSON,canonical:canonicalJSON,sourceSignature,reportsFor,buildPrompt,validate,validateBestEffort,validateDelivered,render,fallback,memory,validCleanup,validTopic};
 root.StoreRunnerReportRenderer=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
