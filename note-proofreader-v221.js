@@ -2,7 +2,6 @@
 'use strict';
 const DEFAULT_GATEWAY='https://chef-secteur-ai.rednewtizi.workers.dev';
 const PRIMARY_BRAND='Sam'+'sung';
-let visitObserver=null;
 
 function text(v){return String(v==null?'':v).trim()}
 function cleanReply(value){
@@ -79,6 +78,9 @@ function ensureStyle(){
 }
 function attach(labelNode,input,options){
   options=options||{};if(!root.document||!labelNode||!input||input.disabled||input.readOnly||input.dataset.noteProofreader==='1')return false;
+  /* V278: field notes are the source of truth. Never offer an AI replacement in
+     the visit notebook, even when an older host still calls this public helper. */
+  if(typeof input.closest==='function'&&input.closest('#srVisitDialog'))return false;
   ensureStyle();input.dataset.noteProofreader='1';input.setAttribute('spellcheck','true');input.setAttribute('autocorrect','on');
   const row=root.document.createElement('div');row.className='sr-noteProof';
   const button=root.document.createElement('button');button.type='button';button.className='secondary sr-noteProofBtn';button.textContent='✨ Corriger';
@@ -129,12 +131,11 @@ function labelFor(field){
 }
 function enhanceVisitNotes(){
   if(!root.document)return 0;const dialog=root.document.getElementById('srVisitDialog');if(!dialog)return 0;let count=0;
-  dialog.querySelectorAll('.sr-field textarea').forEach(input=>{const field=input.closest('.sr-field');if(field&&attach(field,input,{label:labelFor(field)}))count++});
+  dialog.querySelectorAll('.sr-field textarea').forEach(input=>{input.setAttribute('spellcheck','true');count++});
   return count
 }
 function boot(){
   if(!root.document)return false;const dialog=root.document.getElementById('srVisitDialog');if(!dialog)return false;enhanceVisitNotes();
-  if(!visitObserver&&typeof root.MutationObserver==='function'){visitObserver=new root.MutationObserver(()=>enhanceVisitNotes());visitObserver.observe(dialog,{childList:true,subtree:true})}
   return true
 }
 const api={buildPrompt,cleanReply,errorText,retryAfterMs,correct,attach,enhanceVisitNotes,boot};root.StoreRunnerNoteProofreader=api;
