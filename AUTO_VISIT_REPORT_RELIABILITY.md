@@ -162,7 +162,7 @@ appel. Il n'existe pas de garantie exactly-once d'un fournisseur externe.
 
 ## PWA, déploiement et recette
 
-Build proposé `20261008-r82-dictation-gemini-diagnostics-276`, version produit affichée
+Build proposé `20261008-r83-partial-report-safety-276`, version produit affichée
 276 conservée. Aucun script de démarrage ajouté, budget 79 inchangé. Renderer,
 coordinateur et adaptateur JSON historique sont précachés pour le chargement à la
 demande hors ligne. Le bump accompagne index/SW/manifest/version.
@@ -277,6 +277,6 @@ les chiffres, références, marques, rôles, négations et nuances commerciales.
 Gemini reste le fournisseur prioritaire sans paramètre explicite. Aucun fallback
 payant automatique, aucune altération des notes originales.
 
-Build front-end : `20261008-r82-dictation-gemini-diagnostics-276`. Le Worker Cloudflare doit être redéployé
+Build front-end : `20261008-r83-partial-report-safety-276`. Le Worker Cloudflare doit être redéployé
 séparément après la fusion autorisée. Les tests simulés ne garantissent pas
 encore la recette du compte rendu terrain sur Android avec Gemini.
