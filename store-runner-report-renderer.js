@@ -70,7 +70,7 @@ function completeEvidence(quote,sourceText){
 function spokenEvidence(quote,sourceText){
  const source=text(sourceText).replace(/\s+/g,' '),q=text(quote).replace(/\s+/g,' ');
  if(words(q).length<3||q.length>1400)return false;
- const risk=/\b(?:aucun|aucune|non|pas|jamais|ni|ne|n|selon|si|sous|seulement|malgre|peut|pourrait|souhaite|envisage|refuse|refus|prevu|prevoit|annule|incertain|condition|reserve|attente|estime|indique)\b/i;
+ const risk=new Set(('aucun aucune non pas jamais ni ne n selon si sous seulement malgre peut pourrait souhaite envisage refuse refusee refus prevu prevue prevoit annule annulee incertain incertaine condition reserve reserves attente estime indique mais sauf').split(' '));
  let pos=0;
  while(pos<source.length){
   const start=source.indexOf(q,pos);if(start<0)return false;const end=start+q.length;pos=start+1;
@@ -80,7 +80,8 @@ function spokenEvidence(quote,sourceText){
   if(/[.!?;]/.test(q)||/[.!?;]/.test(source.slice(Math.max(0,start-110),start).split(/(?<=[.!?;])/).pop()||''))continue;
   const before=source.slice(Math.max(0,start-95),start).split(/[.!?;]/).pop();
   const after=source.slice(end,end+65).split(/[.!?;]/)[0];
-  if(risk.test(plain(before))||risk.test(plain(after)))continue;
+  const preceding=words(before).slice(-6),following=words(after).slice(0,2);
+  if(preceding.some(x=>risk.has(x))||following.some(x=>risk.has(x)))continue;
   return true;
  }
  return false;
@@ -99,6 +100,7 @@ function professionalRewrite(proposed,quote,context){
  if(q.length<160&&sourceNumbers.some(x=>!outputNumbers.includes(x)))return false;
  const qwords=words(q),pwords=words(output);
  const qplain=plain(q),pplain=plain(output);
+ if(/americain\s+(?:de|chez)\s+samsung/.test(pplain)&&!/americain\s+(?:de|chez)\s+samsung/.test(qplain))return false;
  // Do not turn an ambiguous American/combiné appliance into a confirmed refrigerator without a cold-category context.
  if(/\brefrigerateur\b/.test(pplain)&&!/\brefrigerateur\b/.test(qplain)&&/\b(?:americain|combine)\b/.test(qplain)&&!/cuisiniste|froid|showroom|refriger|congel|multiportes/.test(context))return false;
  // Never erase a specific appliance or contract type from a short observation.
