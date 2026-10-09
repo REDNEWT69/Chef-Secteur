@@ -23,7 +23,7 @@ test('Android 390 px : visite clôturée sans ancien job, Groq enregistrable en 
  const free='⚫ Résumé BRUN – Enseigne-Test Ville-Test\n\nSamsung 77S92H présenté au rayon TV.';
  const calls=await mockGroq(page,()=>({text:free}));
  const sheet=await H.openReport(page,id);
- await expect(sheet.locator('#srReportFreeTest')).toHaveText('✨ Génération auto (Groq)');
+ await expect(sheet.locator('#srReportFreeTest')).toHaveText('🧪 Génération auto');
  await expect(sheet.locator('#srReportAI')).toHaveCount(0);
  expect(transport.calls).toHaveLength(0);
  await sheet.locator('#srReportFreeTest').tap();
