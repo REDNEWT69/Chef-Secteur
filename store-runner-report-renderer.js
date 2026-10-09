@@ -295,6 +295,17 @@ function editorialFigures(proposed,sourceText){
  for(const t of proposedTokens){const n=available.get(t)||0;if(!n)return false;available.set(t,n-1)}
  return true;
 }
+function editorialCommercialGuard(item,sourceText){
+ // Unlike lexical grading, this only catches a high-risk explicitly negated
+ // contractual outcome. 'Aucun contrat validé' must never become 'contrat validé'.
+ if(item.section==='contract'){
+  const q=plain(sourceText),p=plain(item.text);
+  const barred=/\b(?:aucun|pas|non|sans)\b.{0,45}\b(?:contrat|accord)\b.{0,50}\b(?:valide|signe|accepte|conclu)\b/.test(q);
+  const affirmed=/\b(?:contrat|accord)\b.{0,50}\b(?:valide|signe|accepte|conclu)\b/.test(p);
+  if(barred&&affirmed&&!/\b(?:aucun|pas|non|sans|ni|absence)\b/.test(p))return false;
+ }
+ return true;
+}
 function editorialSentence(value){
  const v=text(value);
  if(!v||v.length>1800||/<[^>]*>|[\r\n]|\x60{3}|⸻|\p{Extended_Pictographic}|(?:^|\s)(?:#{1,6}\s|\*\s|>\s|-\s)|\*\*|__|---/u.test(v))return '';
@@ -316,7 +327,7 @@ function validateEditorial(raw,source){
    if(!keysOnly(item,['section','text','source','quote'])||!ORDER[report.reportType].includes(item.section)||
       typeof item.text!=='string'||typeof item.source!=='string'||typeof item.quote!=='string'){skipped++;continue}
    const src=bySource.get(item.source),sentence=editorialSentence(item.text);
-   if(!src||!sentence||!editorialFigures(sentence,allNotes)){skipped++;continue}
+   if(!src||!sentence||!editorialFigures(sentence,allNotes)||!editorialCommercialGuard(item,src.text)){skipped++;continue}
    const key=item.source+'|'+plain(sentence);if(duplicate.has(key))continue;duplicate.add(key);
    // Inexact quotations are not grounds for rejecting fluent prose.
    // Replace their provenance with the untouched source entry.
@@ -326,12 +337,8 @@ function validateEditorial(raw,source){
    items.push({section:isRaw?'notes':item.section,text:isRaw?quote:sentence,source:item.source,quote});
    if(isRaw)rawCount++;else cleanCount++;
   }
-  if(!items.length){
-   for(const entry of entries.slice(0,MAX_ITEMS)){
-    const original=text(entry.text);if(!original)continue;
-    items.push({section:'notes',text:original,source:entry.source,quote:original});rawCount++;
-   }
-  }
+  // A completely unusable generation fails cleanly instead of presenting the
+  // entire unedited dictation as a 'successful' AI report.
   if(!items.length&&entries.some(x=>text(x.text)))fail('rapport vide');
   accepted+=cleanCount;sourceOnly+=rawCount;omitted+=skipped;
   reports.push({reportType:report.reportType,items,
@@ -359,7 +366,7 @@ function validateEditorialDelivered(doc,source){
       !ORDER[report.reportType].includes(item.section)||
       typeof item.text!=='string'||typeof item.source!=='string'||typeof item.quote!=='string')fail('fait non conforme');
    const src=bySource.get(item.source),sentence=editorialSentence(item.text),quoted=text(item.quote);
-   if(!src||!sentence||!editorialFigures(sentence,allNotes)||!quoted||
+   if(!src||!sentence||!editorialFigures(sentence,allNotes)||!editorialCommercialGuard(item,src.text)||!quoted||
       !text(src.text).replace(/\s+/g,' ').includes(quoted.replace(/\s+/g,' ')))fail('fait non conforme');
    if(item.section==='notes'&&plain(sentence)===plain(quoted))reportRaw++;
    else accepted++;
