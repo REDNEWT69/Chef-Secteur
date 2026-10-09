@@ -72,8 +72,12 @@ const result = { version: 1, reports: [{ reportType: 'cuisiniste', items: [{ sec
     // survive server process lifetime as well as client lifetime.
     mf = new Miniflare(options);
     const restored = await (await get(job.jobId)).json();
-    assert.equal(restored.status, 'done'); assert.deepEqual(restored.result.reports, result.reports);
-    assert.equal(restored.result.quality.status, 'complete');
+    assert.equal(restored.status, 'done');
+    assert.equal(restored.result.reports[0].items[0].text, RAW);
+    assert.equal(restored.result.reports[0].items[0].section, 'notes', 'verbatim AI output is not a professional rewrite');
+    assert.equal(restored.result.quality.status, 'source-only');
+    assert.equal(restored.result.quality.mode, 'editorial');
+    assert.doesNotThrow(() => Report.validateDelivered(restored.result, source));
     assert.equal((await post()).status, 200); assert.equal(calls, 1);
     console.log('PASS workerd · real SQLite/alarm processes with no client, concurrent duplicate POST, result survives runtime restart, one provider invocation');
   } finally {
