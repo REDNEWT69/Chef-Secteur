@@ -1,4 +1,4 @@
-const BUILD_REV = "20261009-r85-editorial-autonomy-276";
+const BUILD_REV = "20261009-r86-editorial-coverage-276";
 /* V261.2 hotfix : même révision applicative, nouveau namespace de cache afin que les
    PWA déjà installées récupèrent le correctif de capacité à la source (visit-counting.js)
    sans mélanger ancien et nouveau shell. Le BUILD_REV reste V261 : aucune migration. */
