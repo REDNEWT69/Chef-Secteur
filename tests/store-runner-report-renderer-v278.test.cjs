@@ -253,4 +253,21 @@ const frozen=JSON.stringify(samples.cuisiniste.source),fallback=R.fallback(sampl
 const mem=R.memory(R.validate(samples.cuisiniste.doc,samples.cuisiniste.source),{...samples.cuisiniste.source,sourceSignature:'sig'});assert.equal(mem.sourceSignature,'sig');assert(mem.items.some(i=>i.kind==='product'&&i.text==='RS68A882'));for(const i of mem.items)assert(samples.cuisiniste.source.reports[0].entries[0].text.includes(i.text));
 const prompt=R.buildPrompt(samples.cuisiniste.source);assert.match(prompt,/visit-report-v280-editorial-autonomy/);assert.match(prompt,/AUTONOME/);assert.match(prompt,/BLANC signifie électroménager/);assert.match(prompt,/contrat signé/);assert.doesNotMatch(prompt,/Darty Bourgoin/);
 const noteSource=fs.readFileSync(require.resolve('../note-proofreader-v221.js'),'utf8');assert.match(noteSource,/input\.closest\('#srVisitDialog'\)/);assert.doesNotMatch(noteSource,/new root\.MutationObserver/);
+
+const editorialSource={reports:[{reportType:'brun',entries:[{source:'visit',text:'Premier contact avec Enzo directeur adjoint. Le vendeur TV est pro TCL mais il propose Samsung pour SmartThings. Le magasin manque de barres de son Samsung Q et les clients commandent sur Amazon. TV Samsung 85U7005H visible en entrée.'}]}]};
+const editorialDoc={version:1,reports:[{reportType:'brun',items:[
+ {section:'notes',text:'Premier échange avec Enzo, directeur adjoint du magasin.',source:'visit',quote:'Premier contact avec Enzo directeur adjoint.'},
+ {section:'tv',text:'Le vendeur, davantage orienté TCL, recommande aussi Samsung pour SmartThings.',source:'visit',quote:'Le vendeur TV est pro TCL mais il propose Samsung pour SmartThings.'},
+ {section:'audio',text:'Le manque de barres de son Samsung de série Q pousse certains clients à commander sur Amazon.',source:'visit',quote:'Le magasin manque de barres de son Samsung Q et les clients commandent sur Amazon.'}
+]}]};
+const editorial=R.validateEditorial(JSON.stringify(editorialDoc),editorialSource);
+assert.equal(editorial.quality.mode,'editorial');
+assert.equal(editorial.quality.acceptedItems,3);
+assert.equal(editorial.quality.sourceOnlyItems,0);
+assert.equal(R.validateDelivered(editorial,editorialSource).quality.status,'complete');
+const madeUp=JSON.parse(JSON.stringify(editorialDoc));madeUp.reports[0].items[1].text+=' à 999 €';
+const protectedReport=R.validateEditorial(JSON.stringify(madeUp),editorialSource);
+assert.equal(protectedReport.quality.omittedItems,1);
+assert.equal(protectedReport.quality.acceptedItems,2);
+console.log('PASS V280 editorial freedom: semantic rewrite and audio grouping, invented price blocked');
 (async()=>{const a=await R.sourceSignature({b:2,a:1}),b=await R.sourceSignature({a:1,b:2});assert.equal(a,b);assert.match(a,/^sha256-[a-f0-9]{64}$/);assert.notEqual(a,await R.sourceSignature({a:1,b:3}));console.log('PASS V278 golden BRUN/BLANC/cuisiniste, immutable quotes, facts, attribution, commercial nuance, fallback and SHA-256');})().catch(e=>{console.error(e);process.exitCode=1});
