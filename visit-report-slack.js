@@ -310,16 +310,12 @@ async function testFreePreview(){
  const token=++freeTestSequence,key=currentDraftKey();
  freeTestRunning=true;btn.disabled=true;btn.textContent='🧪 Rédaction libre en cours…';
  panel.hidden=false;result.value='';sheet.querySelector('#srReportFreeStatus').textContent='Une seule génération Groq, sans filtre de rubriques ni validation des phrases. Résultat non enregistré.';
- const ctrl=new AbortController(),timeout=root.setTimeout(()=>ctrl.abort(),70000);
  try{
+  if(!await ensureAutoAI()||!root.StoreRunnerReportAIAutoV2771||
+    typeof root.StoreRunnerReportAIAutoV2771.freePreview!=='function')throw Error('Passerelle IA indisponible.');
   const signature=await R.sourceSignature(source);
-  const url=new URL(config.gateway,root.location&&root.location.href||'https://store-runner.fr/');
-  url.pathname='/api/ai';url.search='';url.hash='';
-  const res=await root.fetch(url.href,{method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({mode:'report_free_preview',source,reportType:type,sourceSignature:signature}),signal:ctrl.signal,cache:'no-store'});
-  const data=await res.json().catch(()=>({}));
+  const data=await root.StoreRunnerReportAIAutoV2771.freePreview(source,type,signature);
   if(freeTestSequence!==token||!sheet.open||key!==currentDraftKey())return false;
-  if(!res.ok||data.mode!=='report_free_preview'||data.reportType!==type||!text(data.text))throw Error(data.error||'Résultat indisponible.');
   result.value=data.text;
   sheet.querySelector('#srReportFreeStatus').textContent='Résultat brut Groq · non enregistré, non vérifié. Compare avec ton rapport habituel ci-dessus.';
   return true;
@@ -329,7 +325,7 @@ async function testFreePreview(){
     'Essai impossible : '+(e&&e.message||'erreur réseau')+' Le rapport habituel est conservé.';
   return false;
  }finally{
-  root.clearTimeout(timeout);freeTestRunning=false;
+  freeTestRunning=false;
   if(btn){btn.disabled=false;btn.textContent='🧪 Tester IA libre (non enregistré)'}
  }
 }
