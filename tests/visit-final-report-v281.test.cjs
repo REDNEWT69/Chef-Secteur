@@ -16,6 +16,9 @@ function make(enseigne='Darty',channel='grands-magasins'){
  const newBrun='⚫ Résumé BRUN – Darty Ville test\nCompte rendu corrigé sur ChatGPT.\nFormation prévue vendredi.';
  const saved=M.editProfessionalReport(state,id,'brun',newBrun);
  assert.equal(saved.text,newBrun);
+ assert.equal(M.reportOf(visit).brun.team,'Ancienne dictée BRUN.','typing has not yet replaced the terrain note');
+ M.editProfessionalReport(state,id,'brun',newBrun,true);
+
  assert.equal(M.reportOf(visit).brun.team,newBrun,'the REAL stored terrain field is overwritten with final report');
  assert.equal(M.effectiveTerrainNote(visit,'brun'),newBrun);
  assert.equal(M.professionalReportOf(visit,'brun').text,newBrun);
@@ -29,7 +32,7 @@ function make(enseigne='Darty',channel='grands-magasins'){
  const reloaded=M.clone(state);M.validate(reloaded);
  assert.equal(M.reportOf(M.getVisit(reloaded,id)).brun.team,newBrun,'survives app reload and backups');
  const newBlanc='⚪ Résumé BLANC – Darty Ville test\nLa zone cuisson a été contrôlée.';
- M.editProfessionalReport(state,id,'blanc',newBlanc);
+ M.editProfessionalReport(state,id,'blanc',newBlanc,true);
  assert.equal(M.reportOf(visit).blanc.team,newBlanc);
  assert.equal(M.reportOf(visit).brun.team,newBrun);
  M.validate(state);
@@ -41,18 +44,18 @@ function make(enseigne='Darty',channel='grands-magasins'){
  assert.equal(M.applyProfessionalReport(state,id,expected,{version:1,reports:[],quality:{status:'complete'}},generated,{items:[]}),true);
  assert.equal(M.reportOf(visit).brun.team,'Ancienne dictée BRUN.','IA alone does not overwrite terrain text until manually saved');
  const manual='Rapport ChatGPT prioritaire sur génération IA.';
- M.editProfessionalReport(state,id,'brun',manual);
+ M.editProfessionalReport(state,id,'brun',manual,true);
  assert.equal(M.reportOf(visit).brun.team,manual);
  assert.equal(M.applyProfessionalReport(state,id,expected,{version:1},generated,{items:[]}),false,'old asynchronous job cannot overwrite final');
  M.validate(state);
 }
 {
  const {state,id,visit}=make('Schmidt','cuisiniste');
- M.editProfessionalReport(state,id,'cuisiniste','Compte rendu Schmidt corrigé et collé dans Sortie magasin.');
+ M.editProfessionalReport(state,id,'cuisiniste','Compte rendu Schmidt corrigé et collé dans Sortie magasin.',true);
  assert.equal(M.reportOf(visit).shared.context,'Compte rendu Schmidt corrigé et collé dans Sortie magasin.');
  assert.equal(M.effectiveTerrainNote(visit,'cuisiniste'),M.reportOf(visit).shared.context);
  assert.equal(M.reportOf(visit).brun.team,'');
  assert.equal(M.reportOf(visit).blanc.team,'');
  M.validate(state);
 }
-console.log('PASS V281: collage Sortie magasin stocké réellement dans Note terrain BRUN/BLANC, relu après sauvegarde, source précédente protégée, aucune écriture IA tardive, cuisiniste');
+console.log('PASS V281: finish-edit transfers report into terrain; drafts do not, original source preserved and AI stale results rejected');
