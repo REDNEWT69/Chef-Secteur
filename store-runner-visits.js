@@ -145,24 +145,16 @@ function cuisinisteReport(host,v){
 }
 function report(host,v){
  if(isCuisinisteStoreId(v.storeId)){cuisinisteReport(host,v);return}
- const data=M.reportOf(v),family=shownFamily(v),families=visitFamilies(v),block=data[family];
+ const family=shownFamily(v),families=visitFamilies(v);
  const saved=v.status==='completed'?M.professionalReportOf(v,family):null;
  const hasFinal=!!(saved&&typeof saved.text==='string');
- const finalNote=v.status==='completed'?M.effectiveTerrainNote(v,family):block.team;
+ const finalNote=hasFinal?M.effectiveTerrainNote(v,family):M.unifiedTerrainNote(v,family);
  if(v.status==='draft')runnerMemory(host,v.storeId,{family,excludeVisitId:v.id,previous:true,limit:6});
- if(!hasFinal){
-  const intro=element('section',undefined,'sr-terrainIntro');intro.append(element('h3','Carnet terrain · '+family.toUpperCase()),element('p','Note seulement ce que TeamHaven ne capte pas : retour vendeur, perception de la marque, concurrence, opportunité, formation ou point à revoir.'));host.append(intro);
-  const contextLabel=families.length>1?'Contexte magasin · facultatif, commun BLANC / BRUN':'Contexte magasin · facultatif';
-  const context=field(host,contextLabel,data.shared.context,value=>save(s=>M.editReport(s,v.id,'shared','context',value)),'textarea',v.status==='completed');context.rows=3;
- }
- const note=field(host,'Note terrain '+family.toUpperCase(),finalNote,value=>save(s=>M.editReport(s,v.id,family,'team',value)),'textarea',v.status==='completed');note.rows=8;note.dataset.srTerrainFamily=family;note.dataset.srTerrainSource=hasFinal?'final':'raw';note.placeholder='Ex. vendeur rencontré, ce qu’il t’a dit, perception de la marque, concurrence, produit remarqué, problème ou opportunité…';
- if(hasFinal)host.append(element('p','Rapport validé dans Sortie magasin et enregistré dans Note terrain '+family.toUpperCase()+'.','sr-hint'));
- else {
-  host.append(element('p','Tu peux dicter directement avec le micro du clavier. Pas de cases à remplir pour le plaisir de remplir des cases.','sr-hint'));
-  const next=field(host,'Prochain passage / formation '+family.toUpperCase(),block.training,value=>save(s=>M.editReport(s,v.id,family,'training',value)),'textarea',v.status==='completed');next.rows=4;next.placeholder='Ex. revoir le mural, former l’équipe, suivre une objection SAV…';
- }
+ const note=field(host,'Note terrain '+family.toUpperCase(),finalNote,value=>save(s=>M.editReport(s,v.id,family,'team',value)),'textarea',v.status==='completed');note.rows=14;note.dataset.srTerrainFamily=family;note.dataset.srTerrainSource=hasFinal?'final':'raw';note.placeholder='Ex. vendeur rencontré, ce qu’il t’a dit, perception de la marque, concurrence, produit remarqué, problème ou opportunité…';
+ if(hasFinal)host.append(element('p','Compte rendu final enregistré depuis Sortie magasin.','sr-hint'));
+ else host.append(element('p','Note ici tous les constats, actions, formations et points à suivre.','sr-hint'));
  const photo=button('📷 Photos '+family.toUpperCase(),()=>openPhotos(v),'sr-photoEntry');photo.dataset.family=family;host.append(photo);
- if(!hasFinal)legacyReport(host,block);
+
  if(v.status==='draft'){
   if(families.length>1)host.append(element('p','Quand tu sors du magasin, utilise « 📤 Sortie magasin » en haut : le texte et les photos seront déjà séparés BLANC / BRUN.','sr-terrainExitHint'));
   const finish=button('Terminer la visite',()=>completeVisit(v),'primary');finish.dataset.srCompleteVisit=v.id;host.append(finish)
@@ -313,7 +305,7 @@ async function reopenVisit(v,ask){
   const live=M.getVisit(s,visitId);if(live.status!=='completed')return;
   const day=live.completedDate,storeId=String(live.storeId);
   if(day!==localDay())throw Error('Seule une visite terminée aujourd’hui peut être réouverte.');
-  M.preserveReportSource(live);live.status='draft';live.completedAt=null;live.completedDate=null;delete live.runnerMemory;delete live.runnerAI;if(live.reportJob)live.reportJob.obsolete=true;live.updatedAt=new Date().toISOString();normalizeVisitFamily(s,live);
+  M.preserveReportSource(live);live.status='draft';live.completedAt=null;live.completedDate=null;delete live.runnerMemory;delete live.runnerAI;if(live.reportJob)live.reportJob.obsolete=true;live.updatedAt=new Date().toISOString();normalizeVisitFamily(s,live);M.compactTerrainFields(s,visitId);
   const otherSameDay=(s.businessV2&&s.businessV2.visits||[]).some(x=>x.id!==live.id&&String(x.storeId)===storeId&&x.status==='completed'&&x.completedDate===day);
   const legacy=s.visits&&s.visits[storeId];
   if(legacy&&Array.isArray(legacy.history)&&!otherSameDay){legacy.history=legacy.history.filter(x=>x!==day);legacy.history.sort();legacy.lastVisit=legacy.history[legacy.history.length-1]||''}
@@ -347,9 +339,9 @@ async function start(storeId){
    return recent.id;
   }
  }
- let id;await save(s=>{id=M.start(s,key);const v=M.getVisit(s,id);if(v.status==='draft'&&v.step!==3)M.editVisit(s,id,'step',null,3);normalizeVisitFamily(s,v)},()=>{activeId=id;previewFamily=activeFamily(current());viewStep=3;render()});return id
+ let id;await save(s=>{id=M.start(s,key);const v=M.getVisit(s,id);if(v.status==='draft'&&v.step!==3)M.editVisit(s,id,'step',null,3);normalizeVisitFamily(s,v);M.compactTerrainFields(s,id)},()=>{activeId=id;previewFamily=activeFamily(current());viewStep=3;render()});return id
 }
-function openVisit(visitId){const v=domain().visits.find(x=>x.id===String(visitId));if(!v)return false;show();activeId=v.id;previewFamily=activeFamily(v);viewStep=3;render();if(v.status==='draft'&&v.activeFamily!==activeFamily(v))save(s=>normalizeVisitFamily(s,M.getVisit(s,v.id)),()=>{previewFamily=activeFamily(current());render()});return true}
+function openVisit(visitId){const v=domain().visits.find(x=>x.id===String(visitId));if(!v)return false;show();activeId=v.id;previewFamily=activeFamily(v);viewStep=3;render();if(v.status==='draft')save(s=>{const live=M.getVisit(s,v.id);const normalized=normalizeVisitFamily(s,live),compact=M.compactTerrainFields(s,v.id);return !!(normalized||compact)},()=>{previewFamily=activeFamily(current());render()});return true}
 function openHub(){show();save(undefined,hub);return true}
 async function close(){if(!await save())return;releaseRunner();dialog.close();if(opener&&opener.isConnected)opener.focus();if(typeof window.renderAll==='function')window.renderAll()}
 function memoryFor(storeId){const id=String(storeId||''),b=domain();const visits=(b.visits||[]).filter(v=>String(v.storeId)===id&&v.status==='completed').slice().sort((a,b)=>String(b.completedAt||b.completedDate||'').localeCompare(String(a.completedAt||a.completedDate||'')));const actions=(b.actions||[]).filter(a=>String(a.storeId)===id&&!['done','cancelled'].includes(a.status)).slice().sort((a,b)=>String(a.dueDate||'9999-12-31').localeCompare(String(b.dueDate||'9999-12-31'))||String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));return{visits,actions}}
