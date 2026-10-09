@@ -126,24 +126,9 @@ function editCuisinisteReport(state,visitId,value){
  M.editReport(state,visitId,'shared','context',value);
  for(const family of M.FAMILIES)for(const key of Object.keys(M.REPORT_FIELDS||{}))M.editReport(state,visitId,family,key,'');
 }
-/* V281 — le rapport final collé ou généré dans Sortie magasin doit aussi être
-   CONSULTABLE dans la visite d'origine. La dictée terrain reste inchangée :
-   jamais de copie inverse vers report.shared, report.brun ou report.blanc. */
-function finalReportInVisit(host,v,family){
- if(v.status!=='completed')return false;
- const final=M.professionalReportOf(v,family),value=final&&typeof final.text==='string'?final.text.trim():'';
- if(!value)return false;
- const type=final.reportType||family||'brun',title=type==='cuisiniste'?'CUISINISTE':type==='buying-groups'?'CENTRALE':type.toUpperCase();
- const box=element('section',undefined,'sr-finalReportInVisit');
- box.dataset.srFinalVisit=v.id;box.dataset.srFinalFamily=type;
- box.append(element('h3','Compte rendu final · '+title));
- box.append(element('p',final.manual?'Texte collé ou corrigé dans Sortie magasin':'Compte rendu automatique enregistré','sr-finalReportOrigin'));
- const content=element('div',value,'sr-finalReportText');content.setAttribute('role','document');box.append(content);
- host.append(box);return true;
-}
 function cuisinisteReport(host,v){
- if(v.status==='completed')finalReportInVisit(host,v,'cuisiniste');
- const note=field(host,'Rapport magasin',cuisinisteReportText(v),value=>save(s=>editCuisinisteReport(s,v.id,value)),'textarea',v.status==='completed');
+ const final=v.status==='completed'&&M.effectiveTerrainNote(v,'cuisiniste');
+ const note=field(host,'Rapport magasin',final||cuisinisteReportText(v),value=>save(s=>editCuisinisteReport(s,v.id,value)),'textarea',v.status==='completed');
  note.rows=10;note.placeholder='Ex. interlocuteur rencontré, retour showroom, références proposées, concurrence, formation, action ou point à suivre…';
  host.append(element('p','Tu peux dicter directement avec le micro du clavier. Un seul rapport pour le magasin.','sr-hint'));
  const photo=button('📷 Photos',()=>openPhotos(v),'sr-photoEntry');host.append(photo);
@@ -159,13 +144,14 @@ function cuisinisteReport(host,v){
 function report(host,v){
  if(isCuisinisteStoreId(v.storeId)){cuisinisteReport(host,v);return}
  const data=M.reportOf(v),family=shownFamily(v),families=visitFamilies(v),block=data[family];
- if(v.status==='completed')finalReportInVisit(host,v,family);
+ const finalNote=v.status==='completed'?M.effectiveTerrainNote(v,family):block.team;
  if(v.status==='draft')runnerMemory(host,v.storeId,{family,excludeVisitId:v.id,previous:true,limit:6});
  const intro=element('section',undefined,'sr-terrainIntro');intro.append(element('h3','Carnet terrain · '+family.toUpperCase()),element('p','Note seulement ce que TeamHaven ne capte pas : retour vendeur, perception de la marque, concurrence, opportunité, formation ou point à revoir.'));host.append(intro);
  const contextLabel=families.length>1?'Contexte magasin · facultatif, commun BLANC / BRUN':'Contexte magasin · facultatif';
  const context=field(host,contextLabel,data.shared.context,value=>save(s=>M.editReport(s,v.id,'shared','context',value)),'textarea',v.status==='completed');context.rows=3;
- const note=field(host,'Note terrain '+family.toUpperCase(),block.team,value=>save(s=>M.editReport(s,v.id,family,'team',value)),'textarea',v.status==='completed');note.rows=8;note.placeholder='Ex. vendeur rencontré, ce qu’il t’a dit, perception de la marque, concurrence, produit remarqué, problème ou opportunité…';
- host.append(element('p','Tu peux dicter directement avec le micro du clavier. Pas de cases à remplir pour le plaisir de remplir des cases.','sr-hint'));
+ const note=field(host,'Note terrain '+family.toUpperCase(),finalNote,value=>save(s=>M.editReport(s,v.id,family,'team',value)),'textarea',v.status==='completed');note.rows=8;note.dataset.srTerrainFamily=family;note.dataset.srTerrainSource=v.status==='completed'&&M.professionalReportOf(v,family)&&String(M.professionalReportOf(v,family).text||'').trim()!==''?'final':'raw';note.placeholder='Ex. vendeur rencontré, ce qu’il t’a dit, perception de la marque, concurrence, produit remarqué, problème ou opportunité…';
+ if(v.status==='completed'&&note.dataset.srTerrainSource==='final')host.append(element('p','Compte rendu final de Sortie magasin affiché ici. Les notes dictées à l’origine restent sauvegardées.','sr-hint'));
+ else host.append(element('p','Tu peux dicter directement avec le micro du clavier. Pas de cases à remplir pour le plaisir de remplir des cases.','sr-hint'));
  const next=field(host,'Prochain passage / formation '+family.toUpperCase(),block.training,value=>save(s=>M.editReport(s,v.id,family,'training',value)),'textarea',v.status==='completed');next.rows=4;next.placeholder='Ex. revoir le mural, former l’équipe, suivre une objection SAV…';
  const photo=button('📷 Photos '+family.toUpperCase(),()=>openPhotos(v),'sr-photoEntry');photo.dataset.family=family;host.append(photo);
  legacyReport(host,block);
