@@ -156,13 +156,14 @@ for(const [raw,quote,spoken] of [
  assert.match(values,/Julien a formé Léa/);
  assert.match(values,/Samsung TV disponible et LG TV en rupture/);
  assert.doesNotMatch(values,/Samsung 999 € et TV LG 899 €|Léa a formé Julien|Samsung TV en rupture et LG TV disponible|Baisse inventée de 70 %/);
- assert.match(values,/premiere visite le rayon TV manque de personnel/);
+ assert.doesNotMatch(values,/premiere visite le rayon TV manque de personnel/); // Original still preserved in immutable visit notes
  const delivered=R.validateDelivered(outcome,source);
  assert.deepEqual(delivered.reports,outcome.reports);
  const shown=R.render(delivered.reports[0],source);
  assert.match(shown,/Relecture nécessaire/);
  assert.match(shown,/Notes terrain/);
- assert.match(shown,/premiere visite/);
+ assert.doesNotMatch(shown,/premiere visite le rayon TV manque/);
+ assert.match(shown,/Les notes complètes restent dans la fiche visite/);
  assert.equal(JSON.stringify(source.reports[0].entries),JSON.stringify(structuredClone(source.reports[0].entries)));
 }
 {
@@ -175,8 +176,81 @@ for(const [raw,quote,spoken] of [
  assert.doesNotThrow(()=>R.validateDelivered(partial,f.source));
 }
 
+// Long unpunctuated source already partly extracted: do not duplicate its
+// entire original text inside the copied professional report.
+{
+ const long='visite equipe une machine Samsung est en exposition et '+
+ 'un conseiller presente les appareils et communication des offres au responsable '+
+ 'situation magasin compliquee sur plusieurs familles de produit '+
+ 'le rayon reste sous effectif des grandes tailles sont actuellement installees '+
+ 'verification a prevoir au prochain passage et suivi a confirmer apres reunion';
+ const source={version:1,visitId:'synthetic-long-no-dup',storeId:'synthetic',completedDate:'2026-10-09',store:{enseigne:'Magasin fictif',ville:'Test',channel:'retail'},
+  reports:[{reportType:'brun',entries:[
+    {source:'report.brun.commercial',family:'brun',text:'TV Samsung est présente en rayon.'},
+    {source:'report.brun.long',family:'brun',text:long}
+  ]}]};
+ const input={version:1,reports:[{reportType:'brun',items:[
+  {section:'tv',text:'TV Samsung est présente en rayon.',source:'report.brun.commercial',quote:'TV Samsung est présente en rayon.'},
+  {section:'tv',text:'Texte halluciné absent du terrain.',source:'report.brun.long',quote:'texte inexistant'}
+ ]}]};
+ const result=R.validateBestEffort(input,source);
+ assert.equal(result.quality.status,'partial');
+ assert(result.quality.omittedItems>=2);
+ assert.equal(result.reports[0].items.length,1);
+ assert(!result.reports[0].items.some(x=>x.text===long));
+ const delivered=R.validateDelivered(result,source);
+ const shown=R.render(delivered.reports[0],source);
+ assert.match(shown,/TV Samsung est présente/);
+ assert.match(shown,/Les notes complètes restent dans la fiche visite/);
+ assert.doesNotMatch(shown,/situation magasin compliquee/);
+ assert.equal(source.reports[0].entries[1].text,long,'source must remain available for manual review');
+}
+
+// #550 follow-up: professional idiomatic rewrites should pass, while
+// identical fact figures, personal actors, caveats and source remain binding.
+for(const [raw,section,type,rewrite] of [
+ ['vend moin de télé par rapports a l année dernier','tv','brun','Les ventes de téléviseurs sont en baisse par rapport à l’année dernière.'],
+ ['formation sur la parti rgb avec alexandre','training','brun','Formation sur la technologie RGB avec Alexandre.'],
+ ['le vendeur et pro lg','competition','brun','Le vendeur privilégie LG.'],
+ ['premiere visite concluente prise de contacts avec bruno','context','cuisiniste','Première visite concluante, prise de contact avec Bruno.'],
+ ['un américain samsung present','showroom','cuisiniste','Un réfrigérateur américain Samsung est présent.'],
+ ['un four dualcook present en showroom','showroom','cuisiniste','Un four Dual Cook est présent en showroom.']
+]){
+ const f=one(raw,section,type,rewrite);
+ const accepted=R.validateBestEffort(f.doc,f.source);
+ assert.equal(accepted.quality.acceptedItems,1, 'professional field rewrite should be accepted: '+raw);
+ assert.equal(accepted.quality.sourceOnlyItems,0, 'do not print raw dictation when clean reformulation exists');
+ assert.equal(accepted.reports[0].items[0].text,rewrite);
+ assert.equal(R.validateDelivered(accepted,f.source).reports[0].items[0].text,rewrite);
+}
+for(const [raw,section,type,wrong] of [
+ ['Samsung présent, LG absent.','competition','brun','Samsung absent, LG présent.'],
+ ['Samsung a remplacé LG.','competition','brun','Samsung a été remplacé par LG.'],
+ ['Bruno a formé Léa.','training','cuisiniste','Léa a formé Bruno.'],
+ ['Bruno a formé Léa.','training','cuisiniste','Le responsable Bruno a formé Léa.'],
+ ['Formation pour Bruno.','training','cuisiniste','Formation par Bruno.'],
+ ['Formation prévue ou réalisée.','training','brun','Formation prévue et réalisée.'],
+ ['Samsung est le 3e choix.','tv','brun','Samsung est le 4e choix.'],
+ ['Le vendeur indique une baisse des ventes TV.','tv','brun','Les ventes TV sont en baisse.'],
+ ['Aucun contrat validé.','contract','cuisiniste','Le contrat est validé.'],
+ ['Le magasin n est pas fermé à idée de travailler avec Samsung','context','cuisiniste','Le magasin a accepté de retravailler avec Samsung.']
+]){
+ const f=one(raw,section,type,wrong);
+ const rejected=R.validateBestEffort(f.doc,f.source);
+ assert.equal(rejected.quality.acceptedItems,0,'unsafe paraphrase should not pass: '+wrong);
+ assert.equal(rejected.reports[0].items[0].text,raw,'raw source must survive');
+}
+
+{
+ const raw='une visite en rayon tv sans difficulté particulière';
+ const f=one(raw,'notes','brun',raw);
+ const validated=R.validateBestEffort(f.doc,f.source);
+ assert.equal(validated.quality.status,'source-only','a verbatim dictation must not count as AI-authored prose');
+ assert.equal(validated.quality.acceptedItems,0);
+ assert.equal(validated.quality.sourceOnlyItems,1);
+}
 const frozen=JSON.stringify(samples.cuisiniste.source),fallback=R.fallback(samples.cuisiniste.source,'cuisiniste');assert.match(fallback,/📝 Notes terrain/);assert.match(fallback,/RS68A882/);assert.equal(JSON.stringify(samples.cuisiniste.source),frozen);
 const mem=R.memory(R.validate(samples.cuisiniste.doc,samples.cuisiniste.source),{...samples.cuisiniste.source,sourceSignature:'sig'});assert.equal(mem.sourceSignature,'sig');assert(mem.items.some(i=>i.kind==='product'&&i.text==='RS68A882'));for(const i of mem.items)assert(samples.cuisiniste.source.reports[0].entries[0].text.includes(i.text));
-const prompt=R.buildPrompt(samples.cuisiniste.source);assert.match(prompt,/visit-report-v278-3/);assert.match(prompt,/Cite une phrase entière/);assert.match(prompt,/aucun contrat validé/);assert.doesNotMatch(prompt,/Darty Bourgoin/);
+const prompt=R.buildPrompt(samples.cuisiniste.source);assert.match(prompt,/visit-report-v278-5/);assert.match(prompt,/Cite une phrase entière/);assert.match(prompt,/aucun contrat validé/);assert.doesNotMatch(prompt,/Darty Bourgoin/);
 const noteSource=fs.readFileSync(require.resolve('../note-proofreader-v221.js'),'utf8');assert.match(noteSource,/input\.closest\('#srVisitDialog'\)/);assert.doesNotMatch(noteSource,/new root\.MutationObserver/);
 (async()=>{const a=await R.sourceSignature({b:2,a:1}),b=await R.sourceSignature({a:1,b:2});assert.equal(a,b);assert.match(a,/^sha256-[a-f0-9]{64}$/);assert.notEqual(a,await R.sourceSignature({a:1,b:3}));console.log('PASS V278 golden BRUN/BLANC/cuisiniste, immutable quotes, facts, attribution, commercial nuance, fallback and SHA-256');})().catch(e=>{console.error(e);process.exitCode=1});
