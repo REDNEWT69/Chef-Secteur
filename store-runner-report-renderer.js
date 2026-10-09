@@ -479,8 +479,8 @@ function validateFreeDelivered(doc,source){
   seen.add(r.reportType);
   const written=text(r.text),original=reportFor(source,r.reportType).entries.map(e=>text(e.text)).join(' ');
   if(!written||written.length>20000)fail('rapport vide');
-  const refs=x=>new Set(String(x).match(/\\b(?:[A-Z]{1,5}\\d[A-Z0-9/-]*|\\d{2,3}[A-Z][A-Z0-9/-]{2,})\\b/g)||[]);
-  const numbers=x=>new Set([...String(x).matchAll(/\\b(\\d+(?:[,.]\\d+)?)\\s*(€|euros?|%)/gi)].map(m=>m[1].replace(',','.')+'|'+(m[2]==='%'?'%':'€')));
+  const refs=x=>new Set(String(x).match(/\b(?:[A-Z]{1,5}\d[A-Z0-9/-]*|\d{2,3}[A-Z][A-Z0-9/-]{2,})\b/g)||[]);
+  const numbers=x=>new Set([...String(x).matchAll(/\b(\d+(?:[,.]\d+)?)\s*(€|euros?|%)/gi)].map(m=>m[1].replace(',','.')+'|'+(m[2]==='%'?'%':'€')));
   for(const fn of [refs,numbers]){
    const a=fn(original),b=fn(written);
    if([...a].some(x=>!b.has(x))||[...b].some(x=>!a.has(x)))fail('faits, attribution ou nuance modifiés');
