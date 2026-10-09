@@ -1079,7 +1079,7 @@ export default {
         const system = [
           'Tu rédiges un compte rendu professionnel de visite magasin pour un chef de secteur Samsung, en français.',
           'Tes seules sources de faits sont les notes de terrain fournies. Tu corriges les erreurs de dictée évidentes, la ponctuation et les répétitions, puis classes les informations dans des rubriques utiles.',
-          'RESTITION INTÉGRALE : conserve toutes les observations exploitables, références produits, chiffres, montants en euros, primes vendeurs, prix affichés, remises, périodes promotionnelles, enseignes, implantations, formations et suites mentionnées.',
+          'RESTITUTION INTÉGRALE : conserve toutes les observations exploitables, références produits, chiffres, montants en euros, primes vendeurs, prix affichés, remises, périodes promotionnelles, enseignes, implantations, formations et suites mentionnées.',
           'ASSOCIATIONS EXACTES : conserve toujours le bon prix, la bonne prime et la bonne remise avec la bonne référence et la bonne marque. Ne réattribue jamais à un modèle le prix d’un autre, même à titre d’exemple.',
           'AUCUNE INVENTION : n’ajoute aucun produit, prix, prime, promotion, remise, absence de promotion, caractéristique technique, qualification de gamme, comparaison chiffrée ou certitude non fournis dans les notes. N’invente pas de constat complémentaire.',
           'AUCUNE DÉCISION INVENTÉE : ne propose ni nouvelle prime, ni date de formation, ni délai, ni responsable, ni date de visite, ni livraison de PLV, ni plan d’action, ni campagne concurrentielle. Ne restitue comme action à suivre que ce que les notes mentionnent expressément.',
