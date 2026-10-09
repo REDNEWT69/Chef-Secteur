@@ -223,6 +223,8 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
     }
   });
   both.env.GROQ_API_KEY = 'synthetic-key';
+  both.env.GROQ_MODEL = 'openai/gpt-oss-120b';
+  both.env.REPORT_AI_PROVIDER = 'groq';
   const bothJob = await (await both.post(first)).json();
   await both.env.REPORT_JOBS.get(bothJob.jobId).alarm();
   const bothStatus = await (await both.get(bothJob.jobId)).json();
@@ -230,9 +232,62 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   assert.equal(bothStatus.provider, 'groq');
   assert.equal(groqCalls.length, 1, 'Groq is the single provider when its secret is configured');
   assert.equal(both.calls.length, 0, 'Workers AI must not be called for durable reports when Groq is configured');
-  assert.equal(groqCalls[0].max_completion_tokens, 2600);
+  assert.equal(groqCalls[0].max_completion_tokens, 4096,
+    'long reports need headroom for answer and GPT-OSS reasoning');
   assert.equal(groqCalls[0].include_reasoning, false);
-  console.log('PASS jobs · Groq is preferred for durable reports when configured, with no second provider call');
+  assert.equal(groqCalls[0].response_format.type, 'json_schema');
+  assert.equal(groqCalls[0].response_format.json_schema.name, 'store_runner_visit_report');
+  assert.equal(groqCalls[0].response_format.json_schema.strict, true,
+    'schema decoding must be enforced, not just requested in a prompt');
+  const strictSchema = groqCalls[0].response_format.json_schema.schema;
+  assert.equal(strictSchema.additionalProperties, false);
+  assert.deepEqual(strictSchema.required, ['version', 'reports']);
+  assert.deepEqual(strictSchema.properties.reports.items.required, ['reportType', 'items']);
+  assert.deepEqual(strictSchema.properties.reports.items.properties.items.items.required,
+    ['section', 'text', 'source', 'quote']);
+  assert.equal(groqCalls[0].model, 'openai/gpt-oss-120b');
+  console.log('PASS jobs · Groq 120B strict JSON schema, 4096 output tokens, one request and no hidden paid fallback');
+
+  // Regression: a historical Gitem-like buying-groups visit is a single merged
+  // report, not a BRUN/BLANC duplicate. The mocked model obeys strict schema,
+  // and the Worker validates its original quotation before marking it done.
+  const buyingQuote = 'Selon le vendeur, TCL est davantage exposée que Samsung ; une meilleure présentation Samsung est en discussion.';
+  const buyingSource = {
+    version: 1, visitId: 'synthetic-historical-visit', storeId: 'synthetic-buying-group',
+    completedDate: '2026-10-07',
+    store: { enseigne: 'Enseigne synthétique', ville: 'Ville test', channel: 'buying-groups' },
+    reports: [{ reportType: 'buying-groups', entries: [{
+      source: 'report.shared.context', family: '', text: buyingQuote
+    }] }]
+  };
+  const buyingOutput = { version: 1, reports: [{
+    reportType: 'buying-groups', items: [{
+      section: 'competition',
+      text: 'Selon le vendeur, TCL bénéficie actuellement d’une visibilité supérieure à Samsung ; un rééquilibrage est envisagé.',
+      source: 'report.shared.context', quote: buyingQuote
+    }]
+  }] };
+  const buyingCalls = [];
+  const buying = setup({ response: '' }, {
+    fetch: async (url, init) => {
+      assert.equal(url, 'https://api.groq.com/openai/v1/chat/completions');
+      const request = JSON.parse(init.body); buyingCalls.push(request);
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(buyingOutput) },
+        finish_reason: 'stop' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+  });
+  buying.env.GROQ_API_KEY = 'synthetic-key';
+  buying.env.GROQ_MODEL = 'openai/gpt-oss-120b';
+  buying.env.REPORT_AI_PROVIDER = 'groq';
+  const buyingJob = await (await buying.post(await body(buyingSource))).json();
+  await buying.env.REPORT_JOBS.get(buyingJob.jobId).alarm();
+  const buyingResult = await (await buying.get(buyingJob.jobId)).json();
+  assert.equal(buyingResult.status, 'done');
+  assert.equal(buyingResult.provider, 'groq');
+  assert.equal(buyingResult.result.reports[0].reportType, 'buying-groups');
+  assert.equal(buyingCalls.length, 1, 'no second inference for an old buying-group visit');
+  assert.equal(buyingCalls[0].response_format.json_schema.strict, true);
+  console.log('PASS jobs · a historical buying-group visit uses one strict Groq JSON report');
 
   // A Gemini key selects one request to Google, even when Groq and Workers AI are also available.
   const geminiCalls = [];
