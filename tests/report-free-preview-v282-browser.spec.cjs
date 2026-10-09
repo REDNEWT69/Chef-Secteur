@@ -1,46 +1,59 @@
-/* V282 comparison of strict report and unsaved freeform output, mobile 390px.
-   The provider response is simulated; no confidential notes or real paid calls. */
+/* V287: the formerly unsaved free Groq preview is now the only visible
+   report generation button. Successful output is persisted per family without
+   overwriting the original field notes or starting legacy durable jobs. */
 const {test,expect}=require('@playwright/test');
 const H=require('./helpers/report-jobs-browser.cjs');
 test.use({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1,serviceWorkers:'block'});
-test('Sortie magasin : essai IA libre sans JSON visible à part, note et rapport habituel inchangés',async({page})=>{
+test('Android : Génération auto Groq enregistre le texte, conserve les notes et survit au rechargement',async({page})=>{
  const errors=[],previewCalls=[];page.on('pageerror',e=>errors.push(e.message));
- await H.installJobs(page);
- const {id,note}=await H.seedAndComplete(page);
- await H.jobState(page,id,'done');
+ const durable=await H.installJobs(page);
+ const {id,note}=await H.seedAndComplete(page,'brun',{},'manual-groq');
+ expect(await page.evaluate(id=>state.businessV2.visits.find(v=>v.id===id).reportJob.obsolete,id)).toBe(true);
+ expect(durable.calls).toHaveLength(0);
  const sheet=await H.openReport(page,id);
- const original=await sheet.locator('#srReportText').inputValue();
- const free='🏬 Concurrence\nSamsung 77S92H : rapport rédigé librement. Prix comparés préservés.';
+ const free='⚫ Résumé BRUN — Enseigne-Test Ville-Test\n\nSamsung 77S92H présenté en magasin. Formation à confirmer.';
  await page.route(url=>url.pathname==='/api/ai',async route=>{
   const incoming=JSON.parse(route.request().postData()||'{}');previewCalls.push(incoming);
   await route.fulfill({status:200,contentType:'application/json',
    body:JSON.stringify({mode:'report_free_preview',reportType:incoming.reportType,text:free,
     model:'openai/gpt-oss-120b',provider:'groq',
-    audit:{missingReferences:[],unexpectedReferences:['55X9999'],missingPrices:['679'],
-      unexpectedPrices:[],missingPercentages:[],unexpectedPercentages:[],unexpectedDates:['15 novembre']}})});
+    audit:{missingReferences:[],unexpectedReferences:[],missingPrices:[],
+      unexpectedPrices:[],missingPercentages:[],unexpectedPercentages:[],unexpectedDates:[]}})});
  });
  const button=sheet.locator('#srReportFreeTest');
- await expect(button).toBeVisible();await expect(sheet.locator('#srReportFreeBox')).toBeHidden();
+ await expect(button).toHaveText(/Génération auto \(Groq\)/);
+ await expect(sheet.locator('#srReportAI')).toHaveCount(0);
+ await expect(sheet.locator('#srReportFreeBox')).toHaveCount(0);
  await button.tap();
- await expect(sheet.locator('#srReportFreeBox')).toBeVisible();
- await expect(sheet.locator('#srReportFreeText')).toHaveValue(free);
- await expect(sheet.locator('#srReportFreeStatus')).toContainText('non enregistré, non vérifié');
- await expect(sheet.locator('#srReportFreeStatus')).toContainText('références nouvelles à vérifier : 55X9999');
- await expect(sheet.locator('#srReportFreeStatus')).toContainText('montants oubliés : 679');
- await expect(sheet.locator('#srReportFreeStatus')).toContainText('dates nouvelles à vérifier : 15 novembre');
+ await expect(sheet.locator('#srReportText')).toHaveValue(free);
+ await expect(sheet.locator('#srReportStatus')).toContainText('Compte rendu Groq enregistré');
  expect(previewCalls).toHaveLength(1);
  expect(previewCalls[0].mode).toBe('report_free_preview');
  expect(previewCalls[0].reportType).toBe('brun');
- expect(previewCalls[0].source.reports[0].entries.some(e=>e.text.includes('77S92H'))).toBe(true);
  expect(previewCalls[0].sourceSignature).toMatch(/^sha256-[a-f0-9]{64}$/);
- await expect(sheet.locator('#srReportText')).toHaveValue(original);
+ expect(previewCalls[0].source.reports[0].entries.some(e=>e.text.includes('77S92H'))).toBe(true);
  expect(await page.evaluate(()=>StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).brun.team)).toBe(note);
- // The experiment must not trigger another durable paid job.
- expect(await page.evaluate(()=>state.businessV2.visits[0].reportJob.status)).toBe('done');
- await sheet.getByRole('button',{name:'Fermer',exact:true}).tap();
+ expect(await page.evaluate(id=>StoreRunnerVisits.reportFor(id,'brun').text,id)).toBe(free);
+ expect(durable.calls).toHaveLength(0);
+ await page.evaluate(async()=>__chefStorage.flush());
+ await page.reload({waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>window.StoreRunnerVisits&&window.StoreRunnerVisitReport&&window.StoreRunnerBoot?.settled());
  await H.openReport(page,id);
- await expect(sheet.locator('#srReportFreeBox')).toBeHidden();
- await expect(sheet.locator('#srReportFreeText')).toHaveValue('');
- await expect(sheet.locator('#srReportText')).toHaveValue(original);
+ await expect(page.locator('#srReportText')).toHaveValue(free);
+ expect(await page.evaluate(()=>StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).brun.team)).toBe(note);
  expect(errors).toEqual([]);
+});
+test('Android : réponse Groq échouée ne remplace pas un compte rendu précédent',async({page})=>{
+ const durable=await H.installJobs(page);
+ const {id,note}=await H.seedAndComplete(page,'brun',{},'manual-groq');
+ const sheet=await H.openReport(page,id);
+ await page.route(url=>url.pathname==='/api/ai',async route=>{
+  await route.fulfill({status:500,contentType:'application/json',
+   body:JSON.stringify({error:'Groq indisponible'})});
+ });
+ await sheet.locator('#srReportFreeTest').tap();
+ await expect(sheet.locator('#srReportStatus')).toContainText('Génération Groq impossible');
+ expect(await page.evaluate(id=>StoreRunnerVisits.reportFor(id,'brun'),id)).toBe(null);
+ expect(await page.evaluate(()=>StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).brun.team)).toBe(note);
+ expect(durable.calls).toHaveLength(0);
 });
