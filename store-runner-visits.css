@@ -116,3 +116,10 @@
 .sr-contactSave{background:#1537b6;border-color:#1537b6!important;color:#fff}
 .sr-contactCancel{background:#fff;color:#455468}
 .sr-contactDelete{background:#fff5f4;color:#a42318}
+
+/* V282: two equal quick actions atop the active visit; contacts expand full width. */
+.sr-contactsShortcut{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:8px;row-gap:8px}
+.sr-visitStoreBtn{width:100%;min-height:46px!important;border:1px solid #d5dff1;border-radius:13px;background:#f6f7fb;color:#163b94;font-size:13px;font-weight:800;text-align:center;padding:10px 8px;white-space:normal}
+.sr-contactsToggle{min-width:0;text-align:center;padding:10px 8px;font-size:13px}
+.sr-contactsToggle::after{float:none;margin-left:5px}
+.sr-contactsPanel{grid-column:1/-1;min-width:0;margin-top:0}

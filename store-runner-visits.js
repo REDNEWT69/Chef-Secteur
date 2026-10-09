@@ -95,6 +95,19 @@ async function saveStoreContact(storeId,rows){
   return true;
  }catch(e){s.storeContacts=before;message('Contact non enregistré : '+e.message,true);return false}
 }
+/* The existing edit-store dialog opens as a second modal above the visit.
+   Keeping the visit dialog mounted preserves text, family selection and scroll.
+   Flush queued terrain edits before opening so nothing can be lost. */
+async function openStoreFromVisit(v){
+ if(!v||!storeFor(v.storeId)||!window.state||!Array.isArray(window.state.stores)||
+    !window.state.stores.some(s=>String(s.id)===String(v.storeId))){
+  message('La fiche de ce magasin archivé n’est plus modifiable.',true);return false
+ }
+ if(typeof window.openStore!=='function'){message('Fiche magasin indisponible.',true);return false}
+ if(!await save())return false;
+ try{window.openStore(v.storeId);return true}
+ catch(e){message('Impossible d’ouvrir la fiche magasin : '+e.message,true);return false}
+}
 function contactsShortcut(host,v){
  const store=storeFor(v.storeId),id=String(v.storeId),rows=storeContacts(id);
  const box=element('section',undefined,'sr-contactsShortcut');
@@ -103,6 +116,10 @@ function contactsShortcut(host,v){
   contactsOpen=!contactsOpen;contactEditIndex=-1;render();
  },'sr-contactsToggle');
  toggle.dataset.srContactsToggle=id;toggle.setAttribute('aria-expanded',contactsOpen?'true':'false');box.append(toggle);
+ const storeButton=button('🏬 Fiche magasin',()=>openStoreFromVisit(v),'sr-visitStoreBtn');
+ storeButton.dataset.srVisitStore=id;
+ storeButton.title='Consulter ou modifier la fiche du magasin sans quitter cette visite';
+ box.append(storeButton);
  if(!contactsOpen){host.append(box);return}
  const panel=element('div',undefined,'sr-contactsPanel');panel.dataset.srContactsPanel=id;
  panel.append(element('h3','Contacts · '+(store?store.enseigne+' '+store.ville:'Magasin archivé')));
