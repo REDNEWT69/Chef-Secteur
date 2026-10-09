@@ -21,7 +21,7 @@ test('Android : Génération auto Groq enregistre le texte, conserve les notes e
       unexpectedPrices:[],missingPercentages:[],unexpectedPercentages:[],unexpectedDates:[]}})});
  });
  const button=sheet.locator('#srReportFreeTest');
- await expect(button).toHaveText('🧪 ✨ Génération auto');
+ await expect(button).toHaveText('✨ Génération auto');
  await expect(button).toHaveClass(/sr-reportFree/); // same light-blue free-test button
  await expect(button).not.toHaveClass(/sr-reportAI/); // don't restore the old dark legacy button
  await expect(sheet.locator('#srReportAI')).toHaveCount(0);
