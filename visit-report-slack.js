@@ -326,7 +326,7 @@ async function generateGroqReport(){
   ||M.frozenReportSource(state(),v);
  if(!source){say('Notes originales indisponibles.',true);return false}
  const row=(source.reports||[]).find(r=>r.reportType===type);
- if(!row||(row.entries||[]).every(e=>!text(e.text))){say('Aucune note originale pour cette famille.',true);return false}
+ if(!row||!(row.entries||[]).some(e=>text(e.text)&&(!['brun','blanc'].includes(type)||e.family===type||e.family==='both'))){say('Aucune note originale propre à cette famille.',true);return false}
  const token=++freeTestSequence,key=currentDraftKey();
  freeTestRunning=true;button.disabled=true;button.textContent='✨ Groq rédige le compte rendu…';
  say('Génération Groq en cours. Garde cette fenêtre ouverte jusqu’à l’enregistrement.');
