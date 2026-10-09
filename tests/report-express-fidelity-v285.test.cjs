@@ -49,8 +49,8 @@ const source={
  const env={GROQ_API_KEY:'fake-unit-secret',GROQ_MODEL:'openai/gpt-oss-120b',REPORT_AI_PROVIDER:'groq'};
  const signature=await Report.sourceSignature(source);
  const body={mode:'report_free_preview',source,reportType:'brun',sourceSignature:signature};
- const call=async()=>worker.fetch(new Request(ORIGIN+'/api/ai',{method:'POST',
-  headers:{Origin:ORIGIN,'Content-Type':'application/json'},body:JSON.stringify(body)}),env);
+ const call=async(payload=body)=>worker.fetch(new Request(ORIGIN+'/api/ai',{method:'POST',
+  headers:{Origin:ORIGIN,'Content-Type':'application/json'},body:JSON.stringify(payload)}),env);
  const before=JSON.stringify(source);
  const ok=await call(),okResult=await ok.json();
  assert.equal(ok.status,200);
@@ -87,7 +87,32 @@ const source={
  assert.ok(badResult.audit.unexpectedPercentages.includes('20'));
  assert.ok(badResult.audit.unexpectedDates.includes('15 novembre'));
  assert.ok(badResult.audit.unexpectedDates.includes('15 octobre'));
+ const blancNotes='VS15 et VS70 massifiés en rayon aspirateurs. Four Samsung NV7B45 en bon plan à 649 €. Aucun autre four Samsung sur le mur cuisson.';
+ const blancSource={...source,visitId:'visit-blanc-synthetic',
+  reports:[{reportType:'blanc',entries:[{source:'report.blanc.display',family:'blanc',text:blancNotes}]}]};
+ reply='⚪ Résumé BLANC – Darty Chalon. Les aspirateurs Samsung VS15 et VS70 sont massifiés. Le four NV7B45 est à 649 €. Aucun autre four Samsung dans le mur cuisson.';
+ const blancResponse=await call({mode:'report_free_preview',source:blancSource,reportType:'blanc',
+  sourceSignature:await Report.sourceSignature(blancSource)});
+ const blanc=await blancResponse.json();
+ assert.equal(blancResponse.status,200);
+ assert.deepEqual(blanc.audit.missingReferences,[]);
+ assert.deepEqual(blanc.audit.unexpectedReferences,[]);
+ assert.deepEqual(blanc.audit.missingPrices,[]);
+ assert.deepEqual(blanc.audit.unexpectedPrices,[]);
+
+ const cuisineNotes='BJ : RF65DG960EG ou RF59C701EB1, RF65 pour 9 mois. LTDP : RB34C671ESA. Demande SAV porte RF48A401EB4 abîmée.';
+ const cuisineSource={...source,visitId:'visit-cuisine-synthetic',
+  reports:[{reportType:'cuisiniste',entries:[{source:'report.cuisiniste.team',family:'cuisiniste',text:cuisineNotes}]}]};
+ reply='Cuisiniste : BJ souhaite RF65DG960EG ou RF59C701EB1, avec une durée de 9 mois pour le RF65. LTDP souhaite RB34C671ESA. Demande SAV pour la porte du RF48A401EB4 abîmée.';
+ const cuisineResponse=await call({mode:'report_free_preview',source:cuisineSource,reportType:'cuisiniste',
+  sourceSignature:await Report.sourceSignature(cuisineSource)});
+ const cuisine=await cuisineResponse.json();
+ assert.equal(cuisineResponse.status,200);
+ assert.deepEqual(cuisine.audit.missingReferences,[]);
+ assert.deepEqual(cuisine.audit.unexpectedReferences,[]);
+ assert.equal(cuisine.text,reply,'no altering optional source-based report output');
+
  assert.equal(JSON.stringify(source),before);
- assert.equal(requests.length,2,'one Groq call per explicit test');
+ assert.equal(requests.length,4,'one Groq request per explicitly requested report');
  console.log('PASS V285 · Groq express preserves facts, flags invented models/prices/promos/dates, no source mutation or extra call');
 })().catch(e=>{console.error(e);process.exitCode=1});
