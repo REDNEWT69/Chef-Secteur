@@ -281,6 +281,16 @@ function professionalReportOf(v,family){
  const p=v&&v.professionalReport,reports=object(p)&&object(p.reports)?p.reports:{},key=Object.hasOwn(reports,'cuisiniste')?'cuisiniste':Object.hasOwn(reports,'buying-groups')?'buying-groups':family||v&&v.activeFamily||'brun';
  return object(reports[key])?clone(reports[key]):null;
 }
+/* V281 — la sortie magasin validée prime dans la lecture du carnet terrain.
+   La dictée brute reste sous v.report pour la traçabilité et la signature des
+   travaux IA. Ne jamais la remplacer dans un objet de visite terminée. */
+function effectiveTerrainNote(v,family){
+ const raw=reportOf(v);
+ if(!v||v.status!=='completed')return family==='cuisiniste'||family==='buying-groups'?'':raw[family]&&raw[family].team||'';
+ const final=professionalReportOf(v,family);
+ if(final&&typeof final.text==='string'&&final.text.trim())return final.text;
+ return family==='cuisiniste'||family==='buying-groups'?'':raw[family]&&raw[family].team||'';
+}
 function editProfessionalReport(s,visitId,family,value){
  const v=getVisit(s,visitId);if(v.status!=='completed')fail('Termine la visite avant de modifier son compte rendu.');if(typeof value!=='string'||!REPORT_TYPES.includes(family))fail('Compte rendu professionnel invalide.');
  const p=object(v.professionalReport)?v.professionalReport:{version:1,revision:0,reports:{}};v.professionalReport=p;p.revision++;
@@ -376,6 +386,6 @@ function validate(s){const b=s.businessV2;if(b===undefined)return s;if(!object(b
   const parts=a.source.split(':');if(parts[0]==='6p'){const rows=v.sixP[parts[1]],row=rows&&rows[Number(parts[2])];if(!row||row.actionId!==a.id||a.category!==SIX_P[parts[1]].label)fail('Source 6P invalide.')}else if(parts[0]==='360'){if(!v.arrival.anomalies.some(x=>x.id===parts.slice(1).join(':')&&x.actionId===a.id)||a.category!=='360°')fail('Source anomalie invalide.')}else fail('Source action inconnue.');
  }return s;
 }
-const api={SIX_P,CHECKS,PREP,FAMILIES,FAMILY_LABELS,FAMILY_VALUES,REPORT_SHARED,REPORT_FIELDS,MEMORY_LABELS,REPORT_TYPES,JOB_STATUSES,professionalRevision,reportTypes,frozenReportSource,sourceForReportJob,preserveReportSource,createReportJob,reportJobGuard,updateReportJob,professionalReportOf,editProfessionalReport,applyProfessionalReport,reportSourceEntries,reportSourceSignature,aiMemoryOf,analyzeReport,reportMemoryOf,reportMemoryFor,reportMemoryLines,clone,empty,data,start,getVisit,editVisit,edit6P,addAnomaly,editAnomaly,setAnomalyFamily,editReport,reportOf,actionFrom6P,actionFromAnomaly,editAction,complete,removeVisit,validate,dateValid};
+const api={SIX_P,CHECKS,PREP,FAMILIES,FAMILY_LABELS,FAMILY_VALUES,REPORT_SHARED,REPORT_FIELDS,MEMORY_LABELS,REPORT_TYPES,JOB_STATUSES,professionalRevision,reportTypes,frozenReportSource,sourceForReportJob,preserveReportSource,createReportJob,reportJobGuard,updateReportJob,professionalReportOf,effectiveTerrainNote,editProfessionalReport,applyProfessionalReport,reportSourceEntries,reportSourceSignature,aiMemoryOf,analyzeReport,reportMemoryOf,reportMemoryFor,reportMemoryLines,clone,empty,data,start,getVisit,editVisit,edit6P,addAnomaly,editAnomaly,setAnomalyFamily,editReport,reportOf,actionFrom6P,actionFromAnomaly,editAction,complete,removeVisit,validate,dateValid};
 root.StoreRunnerVisitModel=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
