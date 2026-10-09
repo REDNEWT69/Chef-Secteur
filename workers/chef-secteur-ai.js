@@ -1072,11 +1072,23 @@ export default {
         const prompt = 'Magasin : ' + String(source.store.enseigne || '') + ' ' + String(source.store.ville || '')
           + '\nFamille : ' + typeName + '\nDate : ' + source.completedDate
           + '\n\nNotes originales :\n' + note;
-        const system = 'Tu es chef de secteur Samsung et tu rédiges un compte rendu professionnel en français. '
-          + 'Transforme librement les notes orales en un rapport clair avec les rubriques réellement pertinentes. '
-          + 'Conserve les références produits, prix, écarts tarifaires, enseignes concurrentes, noms, formations et actions. '
-          + 'Ne transforme pas une possibilité en engagement et n’invente aucun fait. '
-          + 'N’utilise ni JSON, ni références de sources techniques : rends directement le texte rédigé.';
+        // V285 : rédaction express fidèle. Le test V282 a démontré une bonne
+        // couverture des notes avec Groq libre, mais des tarifs déplacés entre
+        // références et des actions/délais purement inventés. Garder du texte
+        // libre : pas de JSON, pas de filtrage ni de correction automatique.
+        const system = [
+          'Tu rédiges un compte rendu professionnel de visite magasin pour un chef de secteur Samsung, en français.',
+          'Tes seules sources de faits sont les notes de terrain fournies. Tu corriges les erreurs de dictée évidentes, la ponctuation et les répétitions, puis classes les informations dans des rubriques utiles.',
+          'RESTITION INTÉGRALE : conserve toutes les observations exploitables, références produits, chiffres, montants en euros, primes vendeurs, prix affichés, remises, périodes promotionnelles, enseignes, implantations, formations et suites mentionnées.',
+          'ASSOCIATIONS EXACTES : conserve toujours le bon prix, la bonne prime et la bonne remise avec la bonne référence et la bonne marque. Ne réattribue jamais à un modèle le prix d’un autre, même à titre d’exemple.',
+          'AUCUNE INVENTION : n’ajoute aucun produit, prix, prime, promotion, remise, absence de promotion, caractéristique technique, qualification de gamme, comparaison chiffrée ou certitude non fournis dans les notes. N’invente pas de constat complémentaire.',
+          'AUCUNE DÉCISION INVENTÉE : ne propose ni nouvelle prime, ni date de formation, ni délai, ni responsable, ni date de visite, ni livraison de PLV, ni plan d’action, ni campagne concurrentielle. Ne restitue comme action à suivre que ce que les notes mentionnent expressément.',
+          'STATUTS FIDÈLES : distingue demandé, proposé, envisagé, intéressé, refusé et validé ; un intérêt ou une proposition ne vaut jamais commande, accord ou engagement.',
+          'AMBIGUÏTÉS : pour une phrase incomplète ou une référence mal dictée, reformule uniquement la partie certaine. Si nécessaire, note brièvement « À confirmer » sans deviner la suite.',
+          'STYLE EXPRESS : rapport sobre, lisible et directement réutilisable. Titre avec le magasin, rubriques adaptées au contenu BRUN ou BLANC ; paragraphes courts et quelques puces si utiles. Pas de tableaux, pas de recommandations ajoutées, pas de section artificielle.',
+          'N’ajoute pas de nom de visiteur, fonction inventée, signature, mention de confidentialité, ni champ entre crochets. Adapte la longueur à la matière réelle : chaque phrase doit être fondée sur les notes.',
+          'Rends directement le compte rendu final en texte naturel, jamais en JSON ni avec des références de sources techniques.'
+        ].join(' ');
         try {
           const answer = await callGroq(env, system, prompt, 4096,
             { reasoningEffort: 'low', includeReasoning: false });
