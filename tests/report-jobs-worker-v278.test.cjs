@@ -218,7 +218,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
     fetch: async (url, init) => {
       assert.equal(url, 'https://api.groq.com/openai/v1/chat/completions');
       groqCalls.push(JSON.parse(init.body));
-      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result()) }, finish_reason: 'stop' }] }),
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'Le réfrigérateur américain Samsung RS68A882 est exposé en showroom au prix de 749 €.' }, finish_reason: 'stop' }] }),
         { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
   });
@@ -235,18 +235,11 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   assert.equal(groqCalls[0].max_completion_tokens, 4096,
     'long reports need headroom for answer and GPT-OSS reasoning');
   assert.equal(groqCalls[0].include_reasoning, false);
-  assert.equal(groqCalls[0].response_format.type, 'json_schema');
-  assert.equal(groqCalls[0].response_format.json_schema.name, 'store_runner_visit_report');
-  assert.equal(groqCalls[0].response_format.json_schema.strict, true,
-    'schema decoding must be enforced, not just requested in a prompt');
-  const strictSchema = groqCalls[0].response_format.json_schema.schema;
-  assert.equal(strictSchema.additionalProperties, false);
-  assert.deepEqual(strictSchema.required, ['version', 'reports']);
-  assert.deepEqual(strictSchema.properties.reports.items.required, ['reportType', 'items']);
-  assert.deepEqual(strictSchema.properties.reports.items.properties.items.items.required,
-    ['section', 'text', 'source', 'quote']);
+  assert.equal(groqCalls[0].response_format, undefined, 'l’IA libre ne force pas le JSON');
+  assert.equal(bothStatus.result.quality.mode, 'free');
+  assert.equal(bothStatus.result.reports[0].text, 'Le réfrigérateur américain Samsung RS68A882 est exposé en showroom au prix de 749 €.');
   assert.equal(groqCalls[0].model, 'openai/gpt-oss-120b');
-  console.log('PASS jobs · Groq 120B strict JSON schema, 4096 output tokens, one request and no hidden paid fallback');
+  console.log('PASS jobs · Groq 120B free prose, 4096 output tokens, one request and no hidden paid fallback');
 
   // Regression: a historical Gitem-like buying-groups visit is a single merged
   // report, not a BRUN/BLANC duplicate. The mocked model obeys strict schema,
@@ -272,7 +265,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
     fetch: async (url, init) => {
       assert.equal(url, 'https://api.groq.com/openai/v1/chat/completions');
       const request = JSON.parse(init.body); buyingCalls.push(request);
-      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(buyingOutput) },
+      return new Response(JSON.stringify({ choices: [{ message: { content: buyingOutput.reports[0].items[0].text },
         finish_reason: 'stop' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
   });
@@ -286,8 +279,9 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   assert.equal(buyingResult.provider, 'groq');
   assert.equal(buyingResult.result.reports[0].reportType, 'buying-groups');
   assert.equal(buyingCalls.length, 1, 'no second inference for an old buying-group visit');
-  assert.equal(buyingCalls[0].response_format.json_schema.strict, true);
-  console.log('PASS jobs · a historical buying-group visit uses one strict Groq JSON report');
+  assert.equal(buyingCalls[0].response_format, undefined);
+  assert.equal(buyingResult.result.quality.mode, 'free');
+  console.log('PASS jobs · a historical buying-group visit uses one free Groq report');
 
   // A Gemini key selects one request to Google, even when Groq and Workers AI are also available.
   const geminiCalls = [];
@@ -362,7 +356,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
       assert.equal(url, 'https://api.groq.com/openai/v1/chat/completions');
       selectedCalls.push(JSON.parse(init.body));
       return new Response(JSON.stringify({
-        choices: [{ message: { content: JSON.stringify(result()) }, finish_reason: 'stop' }]
+        choices: [{ message: { content: 'Le réfrigérateur américain Samsung RS68A882 est exposé en showroom au prix de 749 €.' }, finish_reason: 'stop' }]
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
   });
