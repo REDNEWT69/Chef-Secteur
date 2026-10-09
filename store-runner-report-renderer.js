@@ -3,7 +3,7 @@
    Raw dictated notes live in the immutable visit source, not the generated report. */
 (function(root){
 'use strict';
-const VERSION=1,PROMPT_VERSION='visit-report-v286-groq-express-auto',MAX_ITEMS=36;
+const VERSION=1,PROMPT_VERSION='visit-report-v280-editorial-autonomy',MAX_ITEMS=36;
 const TYPES=['brun','blanc','cuisiniste','buying-groups'];
 const LABELS={context:'🏬 Contexte magasin',tv:'📺 TV / Présence Samsung',challenge:'🏆 Challenge / Prime vendeur',competition:'🆚 Concurrence / Retour vendeur',offers:'🏷️ ODR / Offres Samsung',training:'🎓 Formation',blackFriday:'🛍️ Black Friday',audio:'🔊 Audio / Barres de son',merchandising:'🏬 Merchandising / Massification',omni:'📱 Suivi OMNI',laundry:'🧺 Lavage',cooking:'🍳 Cuisson',cold:'❄️ Froid',vacuum:'🧹 Aspiration',smallAppliances:'☕ Petit électroménager',showroom:'❄️ Point produits / Showroom',contract:'📑 Contrat d’exposition',service:'🛠️ SAV / ADV',products:'📦 Point produits',newsletter:'📰 Newsletter',market:'🏬 Contexte marché',actionsDone:'🛠️ Actions réalisées',positives:'✅ Points positifs',focus:'⚠️ Points à travailler',actions:'🎯 Plan d’action / prochain passage',summary:'📝 Synthèse',notes:'📝 Notes terrain'};
 const ORDER={
