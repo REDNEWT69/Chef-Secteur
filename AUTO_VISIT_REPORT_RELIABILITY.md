@@ -350,8 +350,9 @@ contrôle indépendant côté Android/navigateur, une seule inférence par job.
 La citation `quote` ne bloque plus une reformulation : lorsqu'elle est
 incorrecte, le Worker utilise l'entrée originale comme preuve hors affichage.
 Il ne réinsère aucune dictée brute lorsqu'il a déjà des passages professionnels.
-La dictée brute ne reste affichée qu'en cas de génération totalement inutilisable,
-ou si Gemini a simplement recopié un extrait.
+Une génération totalement inutilisable échoue proprement : elle ne remplace pas
+le rapport précédent par la dictée brute. Un extrait simplement recopié par
+Gemini reste identifié comme source seulement et nécessite une relecture.
 
 Les validateurs stricts pré-V280 restent présents pour **les anciens rapports**,
 mais ne sont plus sur la voie des nouvelles générations.
