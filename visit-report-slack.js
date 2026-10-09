@@ -2,7 +2,7 @@
    des notes terrain. La clôture crée le job serveur ; cette surface lit et édite le résultat. */
 (function(root){
 'use strict';
-const SHEET_ID='srReportSheet',VISIT_BTN_ID='srReportBtn',QUICK_BTN_ID='srReportQuickBtn',SHARE_BTN_ID='srReportSharePhotos',AI_BTN_ID='srReportAI',EDIT_BTN_ID='srReportEdit';
+const SHEET_ID='srReportSheet',VISIT_BTN_ID='srReportBtn',QUICK_BTN_ID='srReportQuickBtn',SHARE_BTN_ID='srReportSharePhotos',AI_BTN_ID='srReportAI',EDIT_BTN_ID='srReportEdit',FREE_BTN_ID='srReportFreeTest';
 const PLACEHOLDER='[Non renseigné par le FMT]';
 const PRIMARY_BRAND='Sam'+'sung';
 const FAMILY_OF_BRAND={
@@ -253,7 +253,8 @@ function say(msg,error){const box=sheet&&sheet.querySelector('#srReportStatus');
 function draftKey(v,skeleton){return v.id+':'+(MERGED[skeleton]?'merged':activeTab)}
 function currentDraftKey(){const v=visitById(activeVisit);if(!v)return'';return draftKey(v,skeletonForStore(storeOf(state(),v)))}
 function ensureStyle(){if(!root.document||root.document.getElementById('sr-report-style'))return;const s=el('style');s.id='sr-report-style';s.textContent='#'+SHEET_ID+'{box-sizing:border-box;width:min(720px,calc(100vw - 20px));max-width:calc(100vw - 20px);max-height:calc(100dvh - 20px);overflow:auto;padding:16px;border-radius:24px;border:1px solid #d9dce3;background:#fff;color:#1d1d1f}#'+SHEET_ID+'::backdrop{background:rgba(17,24,39,.45)}.sr-reportHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.sr-reportHead h2{margin:0;font-size:20px}.sr-reportHead p{margin:4px 0 0;color:#667085;font-size:12px}.sr-reportTabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 8px}.sr-reportTab{min-height:44px;border:1px solid #d3d9e3;border-radius:13px;background:#f4f6fa;color:#454b56;font-weight:800;font-size:12px}.sr-reportTab[aria-selected=true]{background:#1428a0;border-color:#1428a0;color:#fff}#srReportText{width:100%;box-sizing:border-box;min-height:300px;border:1px solid #d9dee8;border-radius:14px;padding:10px;font:400 12px ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.45;background:#fbfcff;color:#1d1d1f;-webkit-text-fill-color:#1d1d1f;resize:vertical}#srReportText:not([readonly]){background:#fff;border-color:#8eb6ff;box-shadow:0 0 0 3px rgba(20,40,160,.08)}.sr-reportStatus{min-height:18px;font-size:12px;color:#315b9d;margin:8px 0}.sr-reportStatus.sr-reportError{color:#b42318}.sr-reportActions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px}.sr-reportBtn{min-height:48px;border-radius:14px;font-weight:800}.sr-reportAI{background:linear-gradient(180deg,#1428a0,#0f1f7d);color:#fff;border:0}.sr-reportAI:disabled{opacity:.62}.sr-reportEdit{background:#fff;color:#1428a0;border:1px solid #ccd4ef}.sr-reportCopy{background:#1428a0;color:#fff;border:0}.sr-reportPhotos{background:#eef0f4;color:#1d1d1f;border:0}.sr-reportPhotos:disabled{opacity:.55}.sr-reportClose{background:#eef0f4;color:#1d1d1f;border:0}#'+VISIT_BTN_ID+',#'+QUICK_BTN_ID+'{min-height:44px}';root.document.head.appendChild(s)}
-function ensureSheet(){if(sheet)return sheet;if(!root.document)return null;ensureStyle();sheet=el('dialog');sheet.id=SHEET_ID;sheet.setAttribute('aria-labelledby','srReportTitle');sheet.innerHTML='<div class="sr-reportHead"><div><h2 id="srReportTitle">Sortie magasin</h2><p id="srReportSubtitle"></p></div></div><div id="srReportTabs" class="sr-reportTabs"></div><textarea id="srReportText" rows="18" readonly aria-label="Compte rendu à copier"></textarea><p id="srReportStatus" class="sr-reportStatus" role="status"></p><div class="sr-reportActions"></div>';const actions=sheet.querySelector('.sr-reportActions'),ai=btn('✨ Régénérer le compte rendu',generateAI,'sr-reportBtn sr-reportAI'),edit=btn('Modifier le texte',toggleEdit,'sr-reportBtn sr-reportEdit'),copyBtn=btn('Copier le compte rendu',copy,'sr-reportBtn sr-reportCopy'),share=btn('Aucune photo pour cette visite.',sharePhotos,'sr-reportBtn sr-reportPhotos');ai.id=AI_BTN_ID;edit.id=EDIT_BTN_ID;share.id=SHARE_BTN_ID;share.disabled=true;actions.append(ai,edit,copyBtn,share,btn('Fermer',close,'sr-reportBtn sr-reportClose'));const area=sheet.querySelector('#srReportText');area.addEventListener('input',()=>{const k=area.dataset.draftKey;if(k&&!area.readOnly){aiDrafts[k]=area.value;persistFinalEdit(area)}});sheet.addEventListener('cancel',e=>{e.preventDefault();close()});root.document.body.appendChild(sheet);return sheet}
+function ensureFreeStyle(){if(!root.document||root.document.getElementById('sr-report-free-css'))return;const st=el('style');st.id='sr-report-free-css';st.textContent='.sr-reportFree{background:#f0f5fc;color:#1428a0;border:1px solid #c7d6f5}.sr-reportFree:disabled{opacity:.6}.sr-reportFreeBox{margin:12px 0;padding:12px;border:1px solid #cbd9ee;border-radius:14px;background:#f8fbff}.sr-reportFreeBox[hidden]{display:none}.sr-reportFreeBox h3{font-size:15px;margin:0 0 8px}.sr-reportFreeBox p{font-size:12px;line-height:1.4;color:#4b586a;margin:0 0 8px}.sr-reportFreeBox textarea{box-sizing:border-box;width:100%;min-height:260px;border:1px solid #d5dce7;border-radius:10px;padding:10px;font:400 13px ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.5;resize:vertical;color:#1d2939;background:#fff}.sr-reportFreeBox button{width:100%;margin-top:8px}';root.document.head.appendChild(st)}
+function ensureSheet(){if(sheet)return sheet;if(!root.document)return null;ensureStyle();ensureFreeStyle();sheet=el('dialog');sheet.id=SHEET_ID;sheet.setAttribute('aria-labelledby','srReportTitle');sheet.innerHTML='<div class="sr-reportHead"><div><h2 id="srReportTitle">Sortie magasin</h2><p id="srReportSubtitle"></p></div></div><div id="srReportTabs" class="sr-reportTabs"></div><textarea id="srReportText" rows="18" readonly aria-label="Compte rendu à copier"></textarea><p id="srReportStatus" class="sr-reportStatus" role="status"></p><div class="sr-reportActions"></div>';const actions=sheet.querySelector('.sr-reportActions'),ai=btn('✨ Régénérer le compte rendu',generateAI,'sr-reportBtn sr-reportAI'),free=btn('🧪 Tester IA libre (non enregistré)',testFreePreview,'sr-reportBtn sr-reportFree'),edit=btn('Modifier le texte',toggleEdit,'sr-reportBtn sr-reportEdit'),copyBtn=btn('Copier le compte rendu',copy,'sr-reportBtn sr-reportCopy'),share=btn('Aucune photo pour cette visite.',sharePhotos,'sr-reportBtn sr-reportPhotos');ai.id=AI_BTN_ID;free.id=FREE_BTN_ID;edit.id=EDIT_BTN_ID;share.id=SHARE_BTN_ID;share.disabled=true;actions.append(ai,free,edit,copyBtn,share,btn('Fermer',close,'sr-reportBtn sr-reportClose'));const freeBox=el('section',undefined,'sr-reportFreeBox');freeBox.id='srReportFreeBox';freeBox.hidden=true;freeBox.innerHTML='<h3>Essai IA libre · Groq</h3><p id="srReportFreeStatus" role="status">Texte expérimental, non vérifié et non enregistré.</p><textarea id="srReportFreeText" rows="14" readonly aria-label="Résultat brut du test IA libre"></textarea>';freeBox.append(btn('Copier cet essai',copyFreePreview,'sr-reportBtn sr-reportEdit'));actions.insertAdjacentElement('afterend',freeBox);const area=sheet.querySelector('#srReportText');area.addEventListener('input',()=>{const k=area.dataset.draftKey;if(k&&!area.readOnly){aiDrafts[k]=area.value;persistFinalEdit(area)}});sheet.addEventListener('cancel',e=>{e.preventDefault();close()});root.document.body.appendChild(sheet);return sheet}
 /* V235 — une photo sans famille n'appartient plus ni à BRUN ni à BLANC : reprise dans
    les deux, elle produisait un doublon entre les deux comptes rendus et entre les lots
    de partage. `listStrictByFamily` est la lecture dédiée ; si un module plus ancien est
@@ -284,6 +285,60 @@ function reportStatus(v){
  if(root.navigator&&root.navigator.onLine===false)return 'Visite clôturée. Le compte rendu sera repris au retour du réseau.';
  return job.status==='processing'?'Compte rendu en préparation sur le serveur. Tu peux quitter l’application.':'Visite clôturée. Compte rendu en attente de traitement.';
 }
+/* One-click experiment: free prose from Groq only, never replaces an existing
+   Sortie magasin report, notes terrain or Runner business memory. No storage. */
+let freeTestRunning=false,freeTestSequence=0;
+function clearFreePreview(){
+ freeTestSequence++;
+ if(!sheet)return;
+ const area=sheet.querySelector('#srReportFreeText'),box=sheet.querySelector('#srReportFreeBox');
+ if(area)area.value='';if(box)box.hidden=true;
+}
+async function testFreePreview(){
+ const v=visitById(activeVisit),panel=sheet&&sheet.querySelector('#srReportFreeBox');
+ const result=sheet&&sheet.querySelector('#srReportFreeText'),btn=sheet&&sheet.querySelector('#'+FREE_BTN_ID);
+ if(!v||v.status!=='completed'||!panel||!result||freeTestRunning)return false;
+ if(root.navigator&&root.navigator.onLine===false){say('Connexion nécessaire pour cet essai Groq.',true);return false}
+ const M=model(),R=root.StoreRunnerReportRenderer,config=root.aiConfig;
+ if(!M||!R||!config||!config.gateway){say('Connexion IA non configurée.',true);return false}
+ const store=storeOf(state(),v),kind=skeletonForStore(store);
+ const type=kind==='cuisinistes'?'cuisiniste':kind==='buying-groups'?'buying-groups':activeTab;
+ const source=typeof M.sourceForReportJob==='function'?M.sourceForReportJob(v):M.frozenReportSource(state(),v);
+ if(!source){say('Notes sources indisponibles.',true);return false}
+ const row=(source.reports||[]).find(r=>r.reportType===type);
+ if(!row||(row.entries||[]).every(e=>!text(e.text))){say('Aucune note originale pour cette famille.',true);return false}
+ const token=++freeTestSequence,key=currentDraftKey();
+ freeTestRunning=true;btn.disabled=true;btn.textContent='🧪 Rédaction libre en cours…';
+ panel.hidden=false;result.value='';sheet.querySelector('#srReportFreeStatus').textContent='Une seule génération Groq, sans filtre de rubriques ni validation des phrases. Résultat non enregistré.';
+ const ctrl=new AbortController(),timeout=root.setTimeout(()=>ctrl.abort(),70000);
+ try{
+  const signature=await R.sourceSignature(source);
+  const url=new URL(config.gateway,root.location&&root.location.href||'https://store-runner.fr/');
+  url.pathname='/api/ai';url.search='';url.hash='';
+  const res=await root.fetch(url.href,{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({mode:'report_free_preview',source,reportType:type,sourceSignature:signature}),signal:ctrl.signal,cache:'no-store'});
+  const data=await res.json().catch(()=>({}));
+  if(freeTestSequence!==token||!sheet.open||key!==currentDraftKey())return false;
+  if(!res.ok||data.mode!=='report_free_preview'||data.reportType!==type||!text(data.text))throw Error(data.error||'Résultat indisponible.');
+  result.value=data.text;
+  sheet.querySelector('#srReportFreeStatus').textContent='Résultat brut Groq · non enregistré, non vérifié. Compare avec ton rapport habituel ci-dessus.';
+  return true;
+ }catch(e){
+  if(freeTestSequence===token&&sheet.open)sheet.querySelector('#srReportFreeStatus').textContent=
+    e&&e.name==='AbortError'?'Essai trop long. Ton rapport habituel est conservé.':
+    'Essai impossible : '+(e&&e.message||'erreur réseau')+' Le rapport habituel est conservé.';
+  return false;
+ }finally{
+  root.clearTimeout(timeout);freeTestRunning=false;
+  if(btn){btn.disabled=false;btn.textContent='🧪 Tester IA libre (non enregistré)'}
+ }
+}
+async function copyFreePreview(){
+ const area=sheet&&sheet.querySelector('#srReportFreeText');if(!area||!area.value)return false;
+ try{await root.navigator.clipboard.writeText(area.value);sheet.querySelector('#srReportFreeStatus').textContent='Essai IA libre copié, sans modifier la visite.';return true}
+ catch(e){area.focus();area.select();sheet.querySelector('#srReportFreeStatus').textContent='Sélectionne et copie le texte manuellement.';return false}
+}
+
 function updateAIButton(merged){const b=sheet&&sheet.querySelector('#'+AI_BTN_ID);if(!b)return;const v=visitById(activeVisit);b.textContent='✨ Régénérer le compte rendu';b.disabled=generating||!v||v.status!=='completed';b.title=v&&v.status==='draft'?'Termine la visite pour préparer son compte rendu.':''}
 function updateEditButton(){const area=sheet&&sheet.querySelector('#srReportText'),b=sheet&&sheet.querySelector('#'+EDIT_BTN_ID);if(!area||!b)return;b.textContent=area.readOnly?'Modifier le texte':'Terminer la modification';b.disabled=!(visitById(activeVisit)||{}).completedDate}
 async function localReport(v,photos){
@@ -297,7 +352,7 @@ async function localReport(v,photos){
 async function refresh(){
  const sequence=++refreshSequence,v=visitById(activeVisit);if(!v){say('Visite introuvable.',true);return}
  const store=storeOf(state(),v),skeleton=skeletonForStore(store),merged=!!MERGED[skeleton];
- sheet.querySelector('#srReportSubtitle').textContent=text(store.enseigne)+' '+text(store.ville)+' · '+visitDate(v)+(merged?' · un seul compte rendu':'');
+ clearFreePreview();sheet.querySelector('#srReportSubtitle').textContent=text(store.enseigne)+' '+text(store.ville)+' · '+visitDate(v)+(merged?' · un seul compte rendu':'');
  const tabs=sheet.querySelector('#srReportTabs');tabs.replaceChildren();tabs.hidden=merged;
  if(!merged){const M=model();for(const family of M.FAMILIES){const b=btn(family.toUpperCase(),()=>{activeTab=family;say('');refresh()},'sr-reportTab');b.setAttribute('role','tab');b.setAttribute('aria-selected',activeTab===family?'true':'false');b.dataset.family=family;tabs.append(b)}}
  const photos=await photosFor(v.storeId,v.id,activeTab,merged),key=draftKey(v,skeleton),area=sheet.querySelector('#srReportText');
@@ -389,8 +444,8 @@ async function sharePhotos(){const v=visitById(activeVisit);if(!v){say('Visite i
   }
  }finally{sharing=false}
 }
-async function close(){const area=sheet&&sheet.querySelector('#srReportText');if(area&&!area.readOnly){if(!await persistFinalEdit(area,true))return false}else if(!await editSaving)return false;if(sheet&&sheet.open)sheet.close();return true}
-async function open(visitId){const v=visitById(String(visitId||''));if(!v)return false;ensureSheet();activeVisit=v.id;const M=model();activeTab=M&&M.FAMILIES.indexOf(v.activeFamily)>=0?v.activeFamily:'brun';say('');if(typeof sheet.showModal==='function'&&!sheet.open)sheet.showModal();else sheet.setAttribute('open','');await refresh();return true}
+async function close(){clearFreePreview();const area=sheet&&sheet.querySelector('#srReportText');if(area&&!area.readOnly){if(!await persistFinalEdit(area,true))return false}else if(!await editSaving)return false;if(sheet&&sheet.open)sheet.close();return true}
+async function open(visitId){const v=visitById(String(visitId||''));if(!v)return false;ensureSheet();clearFreePreview();activeVisit=v.id;const M=model();activeTab=M&&M.FAMILIES.indexOf(v.activeFamily)>=0?v.activeFamily:'brun';say('');if(typeof sheet.showModal==='function'&&!sheet.open)sheet.showModal();else sheet.setAttribute('open','');await refresh();return true}
 function fromVisitDialog(){const api=root.StoreRunnerVisits,id=api&&typeof api.activeVisitId==='function'?api.activeVisitId():'';if(!id)return false;open(id);return true}
 function fromQuickSheet(){const start=root.document&&root.document.getElementById('srQuickStart'),storeId=start&&start.dataset?start.dataset.srStart:'',draft=storeId?(draftFor(storeId)||(((state().businessV2||{}).visits)||[]).filter(v=>String(v.storeId)===String(storeId)&&v.status==='completed').sort((a,b)=>String(b.completedAt||'').localeCompare(String(a.completedAt||'')))[0]):null;if(!draft){ensureSheet();say('Démarre la visite avant de générer le compte rendu.',true);if(typeof root.alert==='function')root.alert('Démarre la visite avant de générer le compte rendu.');return false}open(draft.id);return true}
 function installButtons(){if(!root.document)return false;ensureStyle();let done=0;const head=root.document.querySelector('#srVisitDialog .sr-head');if(head&&!root.document.getElementById(VISIT_BTN_ID)){const b=btn('📤 Sortie magasin',fromVisitDialog,'secondary');b.id=VISIT_BTN_ID;const fermer=[...head.querySelectorAll('button')].find(x=>x.textContent==='Fermer');if(fermer)head.insertBefore(b,fermer);else head.appendChild(b);done++}const actions=root.document.querySelector('#storeQuickSheet .sheetActions');if(actions&&!root.document.getElementById(QUICK_BTN_ID)){const b=btn('📤 Sortie magasin',fromQuickSheet,'secondary');b.id=QUICK_BTN_ID;const photo=root.document.getElementById('storePhotosQuickBtn');if(photo&&photo.parentNode===actions)photo.insertAdjacentElement('afterend',b);else actions.appendChild(b);done++}return done>0}
