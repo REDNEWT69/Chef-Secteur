@@ -14,7 +14,8 @@ function source(raw = RAW) {
     reports: [{ reportType: 'cuisiniste', entries: [{ source: 'report.cuisiniste.showroom', family: 'cuisiniste', text: raw }] }] };
 }
 function result(raw = RAW) {
-  return { version: 1, reports: [{ reportType: 'cuisiniste', items: [{ section: 'showroom', text: raw,
+  const editorial = raw === RAW ? 'Le réfrigérateur américain Samsung RS68A882 est exposé en showroom au prix de 749 €.' : raw;
+  return { version: 1, reports: [{ reportType: 'cuisiniste', items: [{ section: 'showroom', text: editorial,
     source: 'report.cuisiniste.showroom', quote: raw }] }] };
 }
 async function body(value = source(), extras = {}) {
@@ -98,7 +99,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   ];
   const retailResult = { version: 1, reports: retail.reports.map(report => ({ reportType: report.reportType, items: [{
     section: report.reportType === 'brun' ? 'tv' : 'laundry', source: report.entries[0].source,
-    text: report.entries[0].text, quote: report.entries[0].text
+    text: report.reportType === 'brun' ? 'Le rayon TV dispose d’une présence Samsung OLED.' : 'Trois modèles Samsung sont exposés au rayon lavage au prix de 749 €.', quote: report.entries[0].text
   }] })) };
   const multi = setup({ response: JSON.stringify(retailResult) }), m = await (await multi.post(await body(retail))).json();
   await multi.env.REPORT_JOBS.get(m.jobId).alarm();
@@ -133,6 +134,20 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   assert(!JSON.stringify(inventedStatus).includes('899 €'));
   assert.equal(inventedPrice.calls.length, 1);
   console.log('PASS jobs · invented price fails without raw-note copy or a second inference');
+
+  // V280: a verbatim Gemini result must not be persisted as a successful report.
+  const verbatimRaw = { version: 1, reports: [{ reportType: 'cuisiniste', items: [{
+    section: 'showroom', text: RAW, source: 'report.cuisiniste.showroom', quote: RAW
+  }] }] };
+  const verbatimJob = setup({ response: JSON.stringify(verbatimRaw) });
+  const verbatimPending = await (await verbatimJob.post(first)).json();
+  await verbatimJob.env.REPORT_JOBS.get(verbatimPending.jobId).alarm();
+  const verbatimStatus = await (await verbatimJob.get(verbatimPending.jobId)).json();
+  assert.equal(verbatimStatus.status, 'failed');
+  assert.equal(verbatimStatus.error.code, 'report_invalid_result');
+  assert(!('result' in verbatimStatus));
+  assert.equal(verbatimJob.calls.length, 1, 'no paid correction attempt');
+  console.log('PASS jobs · verbatim AI output fails without duplicating notes');
 
   // Natural field dictation: a grounded partial quote is valid when adjacent
   // notes do not alter its meaning, even if the dictation has no punctuation.
