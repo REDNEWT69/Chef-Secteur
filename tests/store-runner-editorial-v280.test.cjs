@@ -162,4 +162,29 @@ const rejectedContract=R.validateEditorial(falselySigned,kitchenSource);
 assert.equal(rejectedContract.quality.omittedItems,1,'a pending or unsigned contract must never become signed');
 assert(!R.render(rejectedContract.reports[0],kitchenSource).includes('Le contrat d’exposition est signé.'));
 
+
+// Reject copying a dictated sentence with nothing more than capital letters,
+// accents or commas, while allowing genuinely rewritten professional prose.
+const punctuationCopy=structuredClone(report);
+punctuationCopy.reports[0].items[0].text=
+ 'Beaucoup de vendeur de Boulanger Steel ont suivi leur directeur à Boulanger Villard.';
+const punctuationResult=R.validateEditorial(punctuationCopy,source);
+assert.equal(punctuationResult.quality.acceptedItems,8);
+assert.equal(punctuationResult.quality.omittedItems,1);
+assert.equal(R.validateDelivered(punctuationResult,source).quality.status,'partial');
+
+// A model must not bypass an unsigned expo contract safeguard by placing its
+// invented signed agreement under "Contexte" instead of "Contrat".
+const misclassifiedContract=structuredClone(kitchenResult);
+misclassifiedContract.reports[0].items[2].section='context';
+misclassifiedContract.reports[0].items[2].text='Le contrat d’exposition est signé.';
+const rejectedMisclassified=R.validateEditorial(misclassifiedContract,kitchenSource);
+assert.equal(rejectedMisclassified.quality.omittedItems,1);
+assert(!R.render(rejectedMisclassified.reports[0],kitchenSource).includes('Le contrat d’exposition est signé.'));
+const forgedDelivered=structuredClone(kitchen);
+forgedDelivered.reports[0].items[2].section='context';
+forgedDelivered.reports[0].items[2].text='Le contrat d’exposition est signé.';
+assert.throws(()=>R.validateDelivered(forgedDelivered,kitchenSource),/rejeté/,
+ 'mobile-side validation rejects invented signed contracts irrespective of section');
+
 console.log('PASS V280 autonomous prose, semantic BLANC/BRUN sections, source provenance, figures, browser verification and no duplicates');
