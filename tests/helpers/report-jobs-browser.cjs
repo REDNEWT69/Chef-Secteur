@@ -34,7 +34,10 @@ async function seedAndComplete(page,family='brun',storeOverrides={}){
  const dialog=page.locator('#srVisitDialog');await expect(dialog).toBeVisible();
  const note=family==='blanc'?'Samsung présent dans le rayon lavage à 749 €.':'Samsung présent dans le rayon TV avec la 77S92H.';
  await dialog.locator('label.sr-field').filter({hasText:storeOverrides.channel==='cuisiniste'?'Rapport magasin':'Note terrain '+family.toUpperCase()}).locator('textarea').fill(note);
- if(storeOverrides.channel!=='cuisiniste')await dialog.locator('label.sr-field').filter({hasText:'Prochain passage / formation '+family.toUpperCase()}).locator('textarea').fill('Confirmer la formation au prochain passage.');
+ // V281: the separate training field is gone. Training and follow-up are
+ // written in the single terrain note; tests using legacy field storage
+ // must do so explicitly through the model migration scenarios.
+ if(storeOverrides.channel!=='cuisiniste')await dialog.locator('label.sr-field').filter({hasText:'Note terrain '+family.toUpperCase()}).locator('textarea').fill(note+'\nConfirmer la formation au prochain passage.');
  page.once('dialog',dialog=>dialog.accept());await dialog.getByRole('button',{name:'Terminer la visite',exact:true}).click();
  await page.waitForFunction(()=>state.businessV2.visits[0].status==='completed');
  const id=await page.evaluate(()=>state.businessV2.visits[0].id);
