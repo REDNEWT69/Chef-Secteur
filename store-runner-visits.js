@@ -127,10 +127,12 @@ function editCuisinisteReport(state,visitId,value){
  for(const family of M.FAMILIES)for(const key of Object.keys(M.REPORT_FIELDS||{}))M.editReport(state,visitId,family,key,'');
 }
 function cuisinisteReport(host,v){
- const final=v.status==='completed'&&M.effectiveTerrainNote(v,'cuisiniste');
- const note=field(host,'Rapport magasin',final||cuisinisteReportText(v),value=>save(s=>editCuisinisteReport(s,v.id,value)),'textarea',v.status==='completed');
+ const saved=v.status==='completed'?M.professionalReportOf(v,'cuisiniste'):null;
+ const hasFinal=!!(saved&&typeof saved.text==='string');
+ const final=v.status==='completed'?M.effectiveTerrainNote(v,'cuisiniste'):'';
+ const note=field(host,'Rapport magasin',hasFinal?final:cuisinisteReportText(v),value=>save(s=>editCuisinisteReport(s,v.id,value)),'textarea',v.status==='completed');
  note.rows=10;note.placeholder='Ex. interlocuteur rencontré, retour showroom, références proposées, concurrence, formation, action ou point à suivre…';
- host.append(element('p','Tu peux dicter directement avec le micro du clavier. Un seul rapport pour le magasin.','sr-hint'));
+ host.append(element('p',hasFinal?'Compte rendu final enregistré depuis Sortie magasin.':'Tu peux dicter directement avec le micro du clavier. Un seul rapport pour le magasin.','sr-hint'));
  const photo=button('📷 Photos',()=>openPhotos(v),'sr-photoEntry');host.append(photo);
  if(v.status==='draft'){
   const finish=button('Terminer la visite',()=>completeVisit(v),'primary');finish.dataset.srCompleteVisit=v.id;host.append(finish)
@@ -144,24 +146,30 @@ function cuisinisteReport(host,v){
 function report(host,v){
  if(isCuisinisteStoreId(v.storeId)){cuisinisteReport(host,v);return}
  const data=M.reportOf(v),family=shownFamily(v),families=visitFamilies(v),block=data[family];
+ const saved=v.status==='completed'?M.professionalReportOf(v,family):null;
+ const hasFinal=!!(saved&&typeof saved.text==='string');
  const finalNote=v.status==='completed'?M.effectiveTerrainNote(v,family):block.team;
  if(v.status==='draft')runnerMemory(host,v.storeId,{family,excludeVisitId:v.id,previous:true,limit:6});
- const intro=element('section',undefined,'sr-terrainIntro');intro.append(element('h3','Carnet terrain · '+family.toUpperCase()),element('p','Note seulement ce que TeamHaven ne capte pas : retour vendeur, perception de la marque, concurrence, opportunité, formation ou point à revoir.'));host.append(intro);
- const contextLabel=families.length>1?'Contexte magasin · facultatif, commun BLANC / BRUN':'Contexte magasin · facultatif';
- const context=field(host,contextLabel,data.shared.context,value=>save(s=>M.editReport(s,v.id,'shared','context',value)),'textarea',v.status==='completed');context.rows=3;
- const note=field(host,'Note terrain '+family.toUpperCase(),finalNote,value=>save(s=>M.editReport(s,v.id,family,'team',value)),'textarea',v.status==='completed');note.rows=8;note.dataset.srTerrainFamily=family;note.dataset.srTerrainSource=v.status==='completed'&&M.professionalReportOf(v,family)&&String(M.professionalReportOf(v,family).text||'').trim()!==''?'final':'raw';note.placeholder='Ex. vendeur rencontré, ce qu’il t’a dit, perception de la marque, concurrence, produit remarqué, problème ou opportunité…';
- if(v.status==='completed'&&note.dataset.srTerrainSource==='final')host.append(element('p','Compte rendu final de Sortie magasin affiché ici. Les notes dictées à l’origine restent sauvegardées.','sr-hint'));
- else host.append(element('p','Tu peux dicter directement avec le micro du clavier. Pas de cases à remplir pour le plaisir de remplir des cases.','sr-hint'));
- const next=field(host,'Prochain passage / formation '+family.toUpperCase(),block.training,value=>save(s=>M.editReport(s,v.id,family,'training',value)),'textarea',v.status==='completed');next.rows=4;next.placeholder='Ex. revoir le mural, former l’équipe, suivre une objection SAV…';
+ if(!hasFinal){
+  const intro=element('section',undefined,'sr-terrainIntro');intro.append(element('h3','Carnet terrain · '+family.toUpperCase()),element('p','Note seulement ce que TeamHaven ne capte pas : retour vendeur, perception de la marque, concurrence, opportunité, formation ou point à revoir.'));host.append(intro);
+  const contextLabel=families.length>1?'Contexte magasin · facultatif, commun BLANC / BRUN':'Contexte magasin · facultatif';
+  const context=field(host,contextLabel,data.shared.context,value=>save(s=>M.editReport(s,v.id,'shared','context',value)),'textarea',v.status==='completed');context.rows=3;
+ }
+ const note=field(host,'Note terrain '+family.toUpperCase(),finalNote,value=>save(s=>M.editReport(s,v.id,family,'team',value)),'textarea',v.status==='completed');note.rows=8;note.dataset.srTerrainFamily=family;note.dataset.srTerrainSource=hasFinal?'final':'raw';note.placeholder='Ex. vendeur rencontré, ce qu’il t’a dit, perception de la marque, concurrence, produit remarqué, problème ou opportunité…';
+ if(hasFinal)host.append(element('p','Rapport validé dans Sortie magasin et enregistré dans Note terrain '+family.toUpperCase()+'.','sr-hint'));
+ else {
+  host.append(element('p','Tu peux dicter directement avec le micro du clavier. Pas de cases à remplir pour le plaisir de remplir des cases.','sr-hint'));
+  const next=field(host,'Prochain passage / formation '+family.toUpperCase(),block.training,value=>save(s=>M.editReport(s,v.id,family,'training',value)),'textarea',v.status==='completed');next.rows=4;next.placeholder='Ex. revoir le mural, former l’équipe, suivre une objection SAV…';
+ }
  const photo=button('📷 Photos '+family.toUpperCase(),()=>openPhotos(v),'sr-photoEntry');photo.dataset.family=family;host.append(photo);
- legacyReport(host,block);
+ if(!hasFinal)legacyReport(host,block);
  if(v.status==='draft'){
   if(families.length>1)host.append(element('p','Quand tu sors du magasin, utilise « 📤 Sortie magasin » en haut : le texte et les photos seront déjà séparés BLANC / BRUN.','sr-terrainExitHint'));
   const finish=button('Terminer la visite',()=>completeVisit(v),'primary');finish.dataset.srCompleteVisit=v.id;host.append(finish)
  }else{
   host.append(element('p','Visite terminée le '+v.completedDate,'sr-completed'));
   runnerRemark(host,v);
-  runnerMemory(host,v.storeId,{family,onlyVisitId:v.id,history:true});
+  if(!hasFinal)runnerMemory(host,v.storeId,{family,onlyVisitId:v.id,history:true});
   if(v.completedDate===localDay()){const reopen=button('↩ Réouvrir cette visite',()=>reopenVisit(v,true),'secondary');reopen.dataset.srReopenVisit=v.id;host.append(reopen)}
   dangerZone(host,v);
  }
