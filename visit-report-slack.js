@@ -276,7 +276,13 @@ function reportStatus(v){
  const job=v&&v.reportJob;if(job&&job.obsolete)return 'Compte rendu modifié et enregistré.';
  if(!job)return v&&v.status==='draft'?'Le compte rendu sera préparé automatiquement à la clôture.':'';
  if(job.status==='done'){
-  const quality=v&&v.professionalReport&&v.professionalReport.data&&v.professionalReport.data.quality;
+  const payload=v&&v.professionalReport&&v.professionalReport.data;
+  const quality=payload&&payload.quality;
+  if(quality&&quality.mode==='groq-freeform'){
+   const reports=payload.reports||[];
+   const family=reports.find(r=>r.reportType===activeTab)||reports.length===1&&reports[0];
+   return 'Compte rendu Groq enregistré · rédaction libre, à relire. '+expressAuditNotice(family&&family.audit);
+  }
   if(quality&&quality.status==='source-only')return 'Rapport à relire : seules les notes originales ont été conservées, sans reformulation fiable.';
   if(quality&&quality.status==='partial')return 'Compte rendu partiellement reformulé : certains passages sont repris des notes originales. Vérifie-les avant de copier.';
   return 'Compte rendu enregistré. Relis-le avant de le copier.';
