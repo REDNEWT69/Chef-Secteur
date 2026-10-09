@@ -1038,6 +1038,61 @@ export default {
         }, 200, origin);
       }
 
+      // V282 experiment: one explicit, unsaved, freeform Groq preview.
+      // This deliberately bypasses both the 36-item citation JSON schema and
+      // editorial filtering, without modifying any durable visit/report job.
+      // The submitted source must match the canonical immutable snapshot.
+      if (mode === 'report_free_preview') {
+        const source = body && body.source, reportType = String(body.reportType || '');
+        if (!source || typeof source !== 'object' || Array.isArray(source)
+          || !JOB_TYPES.has(reportType) || source.version !== 1
+          || typeof source.visitId !== 'string' || !source.visitId
+          || typeof source.storeId !== 'string' || !source.storeId
+          || !validDate(source.completedDate)
+          || !source.store || typeof source.store !== 'object'
+          || !Array.isArray(source.reports) || source.reports.length > 4
+          || JSON.stringify(source).length > 64000) {
+          return json({ error: 'Notes de visite invalides ou trop volumineuses.' }, 400, origin);
+        }
+        const report = source.reports.find(r => r && r.reportType === reportType && Array.isArray(r.entries));
+        if (!report || report.entries.length > 96
+          || report.entries.some(e => !e || typeof e.text !== 'string' || e.text.length > 20000)) {
+          return json({ error: 'Famille ou notes indisponibles.' }, 400, origin);
+        }
+        if (typeof body.sourceSignature !== 'string'
+          || body.sourceSignature !== await REPORTS.sourceSignature(source)) {
+          return json({ error: 'Les notes ont changé : rouvre le compte rendu.' }, 409, origin);
+        }
+        if (!env.GROQ_API_KEY) {
+          return json({ error: 'Groq n’est pas configuré sur le Worker.' }, 503, origin);
+        }
+        const note = report.entries.map(e => e.text.trim()).filter(Boolean).join('\n\n');
+        if (!note) return json({ error: 'Aucune note à reformuler dans cette famille.' }, 400, origin);
+        const typeName = { brun: 'BRUN', blanc: 'BLANC', cuisiniste: 'CUISINISTE', 'buying-groups': 'BUYING GROUP' }[reportType];
+        const prompt = 'Magasin : ' + String(source.store.enseigne || '') + ' ' + String(source.store.ville || '')
+          + '\nFamille : ' + typeName + '\nDate : ' + source.completedDate
+          + '\n\nNotes originales :\n' + note;
+        const system = 'Tu es chef de secteur Samsung et tu rédiges un compte rendu professionnel en français. '
+          + 'Transforme librement les notes orales en un rapport clair avec les rubriques réellement pertinentes. '
+          + 'Conserve les références produits, prix, écarts tarifaires, enseignes concurrentes, noms, formations et actions. '
+          + 'Ne transforme pas une possibilité en engagement et n’invente aucun fait. '
+          + 'N’utilise ni JSON, ni références de sources techniques : rends directement le texte rédigé.';
+        try {
+          const answer = await callGroq(env, system, prompt, 4096,
+            { reasoningEffort: 'low', includeReasoning: false });
+          if (!answer.text || ['length', 'max_tokens'].includes(String(answer.finishReason || '').toLowerCase())) {
+            return json({ error: 'Texte incomplet : essaie avec des notes plus courtes.' }, 502, origin);
+          }
+          // NO report validation, NO business memory, NO persistence, NO raw
+          // provider error. User compares this text with the usual report.
+          return json({ mode: 'report_free_preview', reportType, text: answer.text,
+            provider: answer.provider, model: answer.model }, 200, origin);
+        } catch (e) {
+          // Provider errors may quote confidential notes. Never return them.
+          return json({ error: 'Test IA libre indisponible. Les rapports existants ne sont pas modifiés.' }, 502, origin);
+        }
+      }
+
       if (mode === 'visit_report') {
         const message = String(body.message || '').trim().slice(0, 24000);
         if (!message) return json({ error: 'Message vide.' }, 400, origin);

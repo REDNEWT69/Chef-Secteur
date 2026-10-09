@@ -28,6 +28,25 @@ async function request(url,options){
   if(!response.ok){const err=Error(data&&data.error&&data.error.message||'Tâche distante indisponible.');err.httpStatus=response.status;throw err}return data;
  }finally{root.clearTimeout(timeout)}
 }
+/* V282 experimental report preview: existing network boundary, no durable job
+   or state mutation. Separate from automatic report reconciliation. */
+async function freePreview(source,reportType,sourceSignature){
+ if(!online()||!root.aiConfig||!root.aiConfig.gateway)throw Error('Connexion IA indisponible.');
+ const controller=new AbortController(),timeout=root.setTimeout(()=>controller.abort(),70000);
+ try{
+  const url=new URL(root.aiConfig.gateway,root.location&&root.location.href||'https://store-runner.fr/');
+  url.pathname='/api/ai';url.search='';url.hash='';
+  const response=await root.fetch(url.href,{method:'POST',
+   headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({mode:'report_free_preview',source,reportType,sourceSignature}),
+   signal:controller.signal,cache:'no-store'});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw Error(data&&data.error||'Essai IA libre indisponible.');
+  if(!data||data.mode!=='report_free_preview'||data.reportType!==reportType||
+     typeof data.text!=='string'||!data.text.trim())throw Error('Texte IA libre indisponible.');
+  return data;
+ }finally{root.clearTimeout(timeout)}
+}
 function boundResponse(result,job){return !!(result&&result.protocolVersion===1&&typeof result.jobId==='string'&&result.jobId&&model().JOB_STATUSES.includes(result.status)&&result.visitId===job.visitId&&result.storeId===job.storeId&&result.completedDate===job.completedDate&&result.sourceSignature===job.sourceSignature&&result.generation===job.generation)}
 async function failed(id,expected,error){return visits().persistReportJob(id,expected,{status:'failed',error:String(error||'Le compte rendu automatique reste à régénérer.').slice(0,240),retryAt:0})}
 async function reconcileVisit(visitId){
@@ -77,6 +96,6 @@ function boot(){
  root.document.addEventListener('store-runner:visit-completed',resume);root.document.addEventListener('store-runner:visit-report-requested',resume);root.document.addEventListener('store-runner:data-restored',resume);
  root.document.addEventListener('visibilitychange',()=>{if(visible())resume();else if(timer){root.clearTimeout(timer);timer=null}});if(root.addEventListener)root.addEventListener('online',resume);
 }
-const api={payloadFor,promptFor,reconcileVisit,enrichVisit:reconcileVisit,scan,pendingIds};root.StoreRunnerReportAIAutoV2771=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={payloadFor,promptFor,reconcileVisit,enrichVisit:reconcileVisit,scan,pendingIds,freePreview};root.StoreRunnerReportAIAutoV2771=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()}
 })(typeof window!=='undefined'?window:globalThis);
