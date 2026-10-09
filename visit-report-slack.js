@@ -307,15 +307,15 @@ async function refresh(){
  area.dataset.draftKey=key;area.dataset.visitId=v.id;area.dataset.reportFamily=activeTab;area.readOnly=true;area.value=value;
  updatePhotoButton(photos,merged);updateAIButton(merged);updateEditButton();say(reportStatus(visitById(v.id)));
 }
-function persistFinalEdit(area){
+function persistFinalEdit(area,finalize=false){
  const id=area.dataset.visitId,family=area.dataset.reportFamily,api=visitsAPI(),value=area.value;
  if(!id||!api||typeof api.saveFinalReport!=='function')return Promise.resolve(false);
- editSaving=api.saveFinalReport(id,family,value).then(ok=>{if(!ok)say('Modification non enregistrée. Garde cette fenêtre ouverte et réessaie.',true);return !!ok}).catch(e=>{say('Modification non enregistrée : '+e.message,true);return false});
+ editSaving=api.saveFinalReport(id,family,value,finalize).then(ok=>{if(!ok)say('Modification non enregistrée. Garde cette fenêtre ouverte et réessaie.',true);return !!ok}).catch(e=>{say('Modification non enregistrée : '+e.message,true);return false});
  return editSaving;
 }
 async function toggleEdit(){const area=sheet&&sheet.querySelector('#srReportText');if(!area)return false;
- if(area.readOnly){area.readOnly=false;updateEditButton();area.focus();area.setSelectionRange(area.value.length,area.value.length);say('Modifie le compte rendu. Les notes terrain originales restent conservées.');return true}
- const ok=await persistFinalEdit(area);if(!ok)return false;area.readOnly=true;updateEditButton();say('Compte rendu modifié et enregistré.');return true;
+ if(area.readOnly){area.readOnly=false;updateEditButton();area.focus();area.setSelectionRange(area.value.length,area.value.length);say('Modifie ton compte rendu. « Terminer la modification » mettra à jour Note terrain.');return true}
+ const ok=await persistFinalEdit(area,true);if(!ok)return false;area.readOnly=true;updateEditButton();say('Compte rendu final enregistré dans Note terrain.');return true;
 }
 /* V238 — le terrain ne doit plus lire « HTTP 500 · {"error":...} ». Quand le Worker a
    déjà dépensé sa seconde tentative sur une réponse IA restée vide, le module JSON V225
@@ -389,7 +389,7 @@ async function sharePhotos(){const v=visitById(activeVisit);if(!v){say('Visite i
   }
  }finally{sharing=false}
 }
-async function close(){const area=sheet&&sheet.querySelector('#srReportText');if(area&&!area.readOnly&&!await persistFinalEdit(area))return false;if(sheet&&sheet.open)sheet.close();return true}
+async function close(){const area=sheet&&sheet.querySelector('#srReportText');if(area&&!area.readOnly){if(!await persistFinalEdit(area,true))return false}else if(!await editSaving)return false;if(sheet&&sheet.open)sheet.close();return true}
 async function open(visitId){const v=visitById(String(visitId||''));if(!v)return false;ensureSheet();activeVisit=v.id;const M=model();activeTab=M&&M.FAMILIES.indexOf(v.activeFamily)>=0?v.activeFamily:'brun';say('');if(typeof sheet.showModal==='function'&&!sheet.open)sheet.showModal();else sheet.setAttribute('open','');await refresh();return true}
 function fromVisitDialog(){const api=root.StoreRunnerVisits,id=api&&typeof api.activeVisitId==='function'?api.activeVisitId():'';if(!id)return false;open(id);return true}
 function fromQuickSheet(){const start=root.document&&root.document.getElementById('srQuickStart'),storeId=start&&start.dataset?start.dataset.srStart:'',draft=storeId?(draftFor(storeId)||(((state().businessV2||{}).visits)||[]).filter(v=>String(v.storeId)===String(storeId)&&v.status==='completed').sort((a,b)=>String(b.completedAt||'').localeCompare(String(a.completedAt||'')))[0]):null;if(!draft){ensureSheet();say('Démarre la visite avant de générer le compte rendu.',true);if(typeof root.alert==='function')root.alert('Démarre la visite avant de générer le compte rendu.');return false}open(draft.id);return true}

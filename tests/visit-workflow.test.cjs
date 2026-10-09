@@ -52,7 +52,9 @@ assert(!ui.includes('Méthode 6P'),'la Méthode 6P n’est plus une étape visib
 assert(!ui.includes('function sixP('),'aucun formulaire 6P ne doit être rendu');
 assert(ui.includes('Famille active : '),'le changement BLANC / BRUN doit donner un retour visuel persistant');
 assert(ui.includes("'Note terrain '+family.toUpperCase()"),'une grande note terrain remplace les sous-options');
-assert(ui.includes("'Prochain passage / formation '+family.toUpperCase()"),'le prochain passage reste directement saisissable');
+assert(!ui.includes("const next=field(host,'Prochain passage"),'le prochain passage est désormais saisi uniquement dans Note terrain');
+assert(!ui.includes("const context=field(host,contextLabel"),'le contexte magasin est désormais saisi uniquement dans Note terrain');
+assert(ui.includes('M.compactTerrainFields(s,id)'),'les visites reprises regroupent les anciens champs sans perte');
 assert(ui.includes("const opts={visitId:v.id}"),'les photos restent accessibles directement depuis la visite');
 assert(ui.includes("if(isCuisinisteStoreId(v.storeId))opts.simpleFamily=true;else opts.family=shownFamily(v)"),'Retail conserve le classement BLANC/BRUN tandis que les Cuisinistes ouvrent Photos sans famille');
 console.log('PASS: Visit/Action model legacy, carnet terrain V170, V214 visit close guard/reopen, V233 same-day duplicate guard, history compatibility, store memory surface, V2 backup/restore, invalid data and module ownership.');

@@ -34,7 +34,15 @@ async function seedAndComplete(page,family='brun',storeOverrides={}){
  const dialog=page.locator('#srVisitDialog');await expect(dialog).toBeVisible();
  const note=family==='blanc'?'Samsung présent dans le rayon lavage à 749 €.':'Samsung présent dans le rayon TV avec la 77S92H.';
  await dialog.locator('label.sr-field').filter({hasText:storeOverrides.channel==='cuisiniste'?'Rapport magasin':'Note terrain '+family.toUpperCase()}).locator('textarea').fill(note);
- if(storeOverrides.channel!=='cuisiniste')await dialog.locator('label.sr-field').filter({hasText:'Prochain passage / formation '+family.toUpperCase()}).locator('textarea').fill('Confirmer la formation au prochain passage.');
+ // Historical V232 compatibility: training can still exist in legacy
+ // persisted state even though the V281 screen exposes only Note terrain.
+ // Inject a legacy field through the model to verify that old report jobs
+ // continue to read it without reinstating the deleted input widget.
+ if(storeOverrides.channel!=='cuisiniste')await page.evaluate(({fam})=>{
+   const id=window.state.businessV2.visits[0].id;
+   window.StoreRunnerVisitModel.editReport(window.state,id,fam,'training','Confirmer la formation au prochain passage.');
+   if(typeof save==='function')save();
+ },{fam:family});
  page.once('dialog',dialog=>dialog.accept());await dialog.getByRole('button',{name:'Terminer la visite',exact:true}).click();
  await page.waitForFunction(()=>state.businessV2.visits[0].status==='completed');
  const id=await page.evaluate(()=>state.businessV2.visits[0].id);

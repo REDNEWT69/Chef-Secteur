@@ -33,6 +33,41 @@ function emptyReport(){return{shared:blankScope(REPORT_SHARED),blanc:blankScope(
 function reportOf(v){const src=object(v&&v.report)?v.report:{},out=emptyReport();
  for(const scope of REPORT_SCOPES){const from=object(src[scope])?src[scope]:{};for(const key of Object.keys(out[scope]))if(typeof from[key]==='string')out[scope][key]=from[key]}
  return out}
+/* V281 — un seul carnet terrain par famille. Les anciens champs (contexte,
+   formation, merchandising, actions, OMNI) sont intégrés une fois dans la note
+   sans supprimer leur texte. La lecture historique reste pure et rétrocompatible. */
+const LEGACY_TERRAIN_LABELS={actions:'Actions réalisées',massification:'Merchandising / exposition',omni:'Suivi OMNI',training:'Prochain passage / formation'};
+function unifiedTerrainNote(v,family){
+ const r=reportOf(v),block=r[family]||r.brun,base=block.team.trim(),parts=base?[base]:[];
+ const add=(label,value)=>{
+  const valueText=String(value||'').trim();
+  if(!valueText||parts.some(p=>p===valueText||p.includes(valueText)))return;
+  parts.push(label+':\n'+valueText);
+ };
+ add('Contexte magasin',r.shared.context);
+ for(const key of ['actions','massification','omni','training'])add(LEGACY_TERRAIN_LABELS[key],block[key]);
+ return parts.join('\n\n');
+}
+function terrainFamiliesFor(s,v){
+ const store=(s.stores||[]).find(x=>String(x.id)===String(v.storeId))||(s.businessV2&&s.businessV2.storeSnapshots||{})[v.storeId]||{};
+ const selected=(store.products||[]).map(x=>String(x||'').trim().toLowerCase()).filter(x=>FAMILIES.includes(x));
+ const report=reportOf(v),supplied=FAMILIES.filter(f=>Object.values(report[f]).some(x=>x.trim()));
+ const targets=FAMILIES.filter(f=>selected.includes(f)||supplied.includes(f));
+ return targets.length?targets:[familyOf(v)];
+}
+function compactTerrainFields(s,visitId){
+ const v=getVisit(s,visitId,true),r=reportOf(v);
+ const oldFields=!!r.shared.context.trim()||FAMILIES.some(f=>Object.keys(LEGACY_TERRAIN_LABELS).some(k=>r[f][k].trim()));
+ if(!oldFields)return false;
+ preserveReportSource(v);
+ const targets=terrainFamiliesFor(s,v);
+ for(const family of targets)r[family].team=unifiedTerrainNote(v,family);
+ for(const family of FAMILIES)for(const key of Object.keys(LEGACY_TERRAIN_LABELS))r[family][key]='';
+ r.shared.context='';v.report=r;
+ if(object(v.reportJob))v.reportJob.obsolete=true;
+ if(v.runnerAI&&v.runnerAI.status==='pending')v.runnerAI.status='failed';
+ touch(v);return true;
+}
 /* V277 — mémoire locale, dérivée et traçable. Pas de résumé génératif : chaque texte
    est un extrait intégral ou une référence explicitement citée. Le cache facultatif
    voyage avec la visite ; les sources restent l'autorité (anciens exports compris). */
@@ -281,11 +316,49 @@ function professionalReportOf(v,family){
  const p=v&&v.professionalReport,reports=object(p)&&object(p.reports)?p.reports:{},key=Object.hasOwn(reports,'cuisiniste')?'cuisiniste':Object.hasOwn(reports,'buying-groups')?'buying-groups':family||v&&v.activeFamily||'brun';
  return object(reports[key])?clone(reports[key]):null;
 }
-function editProfessionalReport(s,visitId,family,value){
+/* V281 — a manually saved Sortie magasin report IS the corresponding terrain
+   note, not a second display layer. Older visits with separate report storage
+   continue to display their final text until the next explicit manual save. */
+function effectiveTerrainNote(v,family){
+ const raw=reportOf(v);
+ if(!v||v.status!=='completed')return family==='cuisiniste'||family==='buying-groups'?'':raw[family]&&raw[family].team||'';
+ const final=professionalReportOf(v,family);
+ if(final&&typeof final.text==='string')return final.text;
+ return family==='cuisiniste'||family==='buying-groups'?raw.shared.context:raw[family]&&raw[family].team||'';
+}
+function editProfessionalReport(s,visitId,family,value,finalize=false){
  const v=getVisit(s,visitId);if(v.status!=='completed')fail('Termine la visite avant de modifier son compte rendu.');if(typeof value!=='string'||!REPORT_TYPES.includes(family))fail('Compte rendu professionnel invalide.');
+ // Une saisie intermédiaire sauvegarde un brouillon professionnel. Seule la
+ // validation « Terminer la modification » le transfère au carnet terrain.
+ if(finalize)preserveReportSource(v);
  const p=object(v.professionalReport)?v.professionalReport:{version:1,revision:0,reports:{}};v.professionalReport=p;p.revision++;
- const previous=p.reports[family]||{},at=now();p.reports[family]={...previous,text:value,manual:true,reportType:family,sourceSignature:v.reportJob&&v.reportJob.sourceSignature||previous.sourceSignature||'',revision:p.revision,generatedAt:previous.generatedAt||at,updatedAt:at};
- if(object(v.reportJob))v.reportJob.obsolete=true;if(v.runnerAI&&v.runnerAI.status==='pending')v.runnerAI.status='failed';touch(v);return p.reports[family];
+ const previous=p.reports[family]||{},at=now();
+ p.reports[family]={...previous,text:value,manual:true,reportType:family,sourceSignature:v.reportJob&&v.reportJob.sourceSignature||previous.sourceSignature||'',revision:p.revision,generatedAt:previous.generatedAt||at,updatedAt:at};
+ if(finalize){
+  v.report=reportOf(v);
+  if(family==='brun'||family==='blanc'){
+   // Avant de vider les champs retirés de l'UI, déplacer leurs informations
+   // vers la note de l'AUTRE univers. Un compte rendu déjà validé reste exact.
+   const targets=terrainFamiliesFor(s,v);
+   for(const other of targets){
+    if(other===family)continue;
+    const accepted=professionalReportOf(v,other);
+    if(!(accepted&&accepted.manual))v.report[other].team=unifiedTerrainNote(v,other);
+   }
+   v.report[family].team=value;
+   for(const f of FAMILIES)for(const key of Object.keys(LEGACY_TERRAIN_LABELS))v.report[f][key]='';
+   v.report.shared.context='';
+  }else{
+   v.report.shared.context=value;
+   for(const f of FAMILIES)for(const key of Object.keys(REPORT_FIELDS))v.report[f][key]='';
+  }
+  // Le moteur de suivi et le prochain passage lisent désormais le texte corrigé.
+  v.runnerConclusionSource=family==='cuisiniste'||family==='buying-groups'?'report.shared.context':'report.'+family+'.team';
+  v.runnerMemory=analyzeReport(v);
+ }
+ if(object(v.reportJob))v.reportJob.obsolete=true;
+ if(v.runnerAI)v.runnerAI.status='failed';
+ touch(v);return p.reports[family];
 }
 function applyProfessionalReport(s,visitId,expected,validated,reports,memory){
  const v=getVisit(s,visitId);if(!reportJobGuard(v,expected))return false;
@@ -376,6 +449,6 @@ function validate(s){const b=s.businessV2;if(b===undefined)return s;if(!object(b
   const parts=a.source.split(':');if(parts[0]==='6p'){const rows=v.sixP[parts[1]],row=rows&&rows[Number(parts[2])];if(!row||row.actionId!==a.id||a.category!==SIX_P[parts[1]].label)fail('Source 6P invalide.')}else if(parts[0]==='360'){if(!v.arrival.anomalies.some(x=>x.id===parts.slice(1).join(':')&&x.actionId===a.id)||a.category!=='360°')fail('Source anomalie invalide.')}else fail('Source action inconnue.');
  }return s;
 }
-const api={SIX_P,CHECKS,PREP,FAMILIES,FAMILY_LABELS,FAMILY_VALUES,REPORT_SHARED,REPORT_FIELDS,MEMORY_LABELS,REPORT_TYPES,JOB_STATUSES,professionalRevision,reportTypes,frozenReportSource,sourceForReportJob,preserveReportSource,createReportJob,reportJobGuard,updateReportJob,professionalReportOf,editProfessionalReport,applyProfessionalReport,reportSourceEntries,reportSourceSignature,aiMemoryOf,analyzeReport,reportMemoryOf,reportMemoryFor,reportMemoryLines,clone,empty,data,start,getVisit,editVisit,edit6P,addAnomaly,editAnomaly,setAnomalyFamily,editReport,reportOf,actionFrom6P,actionFromAnomaly,editAction,complete,removeVisit,validate,dateValid};
+const api={SIX_P,CHECKS,PREP,FAMILIES,FAMILY_LABELS,FAMILY_VALUES,REPORT_SHARED,REPORT_FIELDS,MEMORY_LABELS,REPORT_TYPES,JOB_STATUSES,professionalRevision,reportTypes,frozenReportSource,sourceForReportJob,preserveReportSource,createReportJob,reportJobGuard,updateReportJob,professionalReportOf,effectiveTerrainNote,unifiedTerrainNote,compactTerrainFields,editProfessionalReport,applyProfessionalReport,reportSourceEntries,reportSourceSignature,aiMemoryOf,analyzeReport,reportMemoryOf,reportMemoryFor,reportMemoryLines,clone,empty,data,start,getVisit,editVisit,edit6P,addAnomaly,editAnomaly,setAnomalyFamily,editReport,reportOf,actionFrom6P,actionFromAnomaly,editAction,complete,removeVisit,validate,dateValid};
 root.StoreRunnerVisitModel=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
