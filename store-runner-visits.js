@@ -415,8 +415,10 @@ async function completeVisit(v){
    // legacy durable job. The Groq button in Sortie magasin is now the owner.
    // Preserve the job's frozen source and keep older jobs unaffected.
    const done=M.getVisit(s,key);
-   if(done.reportJob){done.reportJob.obsolete=true;done.reportJob.status='failed';done.reportJob.error='';}
-   if(done.runnerAI&&done.runnerAI.status==='pending')done.runnerAI.status='failed';
+   if(window.StoreRunnerReportMode!=='legacy-automatic'){
+    if(done.reportJob){done.reportJob.obsolete=true;done.reportJob.status='failed';done.reportJob.error='';}
+    if(done.runnerAI&&done.runnerAI.status==='pending')done.runnerAI.status='failed';
+   }
   },()=>{viewStep=3;render();if(typeof window.renderAll==='function')window.renderAll();renderQuickMemory();message('Visite enregistrée · ouvre Sortie magasin puis « Génération auto (Groq) » pour créer le rapport.');announceVisit('completed',v)});
  }finally{closingVisits.delete(key)}
 }
