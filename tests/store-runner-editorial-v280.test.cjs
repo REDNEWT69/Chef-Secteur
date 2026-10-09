@@ -85,7 +85,7 @@ fabricated.reports[1].items[4].text='La barre de son Samsung 511 est absente.';
 assert.equal(R.validateEditorial(fabricated,source).quality.omittedItems,1,'protect product references');
 const fakeSource=structuredClone(report);
 fakeSource.reports[1].items[0].source='report.brun.nonexistent';
-assert.equal(R.validateEditorial(fakeSource,source).quality.omittedItems,1);
+assert.equal(R.validateEditorial(fakeSource,source).quality.omittedItems,2,'invalid provenance and uncovered source are both noted');
 const formatted=structuredClone(report);
 formatted.reports[1].items[0].text='<script>danger</script>';
 assert.equal(R.validateEditorial(formatted,source).quality.omittedItems,1);
@@ -97,6 +97,16 @@ const raw=structuredClone(report);
 for(const r of raw.reports)r.items=[];
 assert.throws(()=>R.validateEditorial(raw,source),/rapport vide/);
 
+
+// Even when Gemini writes excellent prose for some sections, leaving out audio
+// must be visible in quality diagnostics rather than silently disappearing.
+const missedAudio=structuredClone(report);
+missedAudio.reports[1].items=missedAudio.reports[1].items.filter(i=>i.source!=='report.brun.audio');
+const audioCoverage=R.validateEditorial(missedAudio,source);
+assert.equal(audioCoverage.quality.status,'partial');
+assert.equal(audioCoverage.quality.omittedItems,1);
+assert.equal(R.validateDelivered(audioCoverage,source).quality.omittedItems,1);
+assert(!R.render(audioCoverage.reports[1],source).includes(source.reports[1].entries[2].text));
 
 // Note-level safety: a figure from another source in the SAME department is
 // not evidence of a figure inside this observation.
