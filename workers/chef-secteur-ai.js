@@ -954,29 +954,48 @@ async function handlePing(env, origin) {
   }, 200, origin);
 }
 
-/* V285 — advisory, source-only comparison for the optional Groq express preview.
-   Never rewrite or silently discard model text. The audit is not proof of factual
-   correctness: it highlights exact refs and numeric commercial facts for review.
-   No storage, second inference, external pricing lookup or hidden business data. */
-function reportExpressAudit(notes, output) {
-  const refs = text => [...new Set((String(text || '').toUpperCase()
-    .match(/\b(?=[A-Z0-9-]{4,22}\b)(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z0-9]+(?:-[A-Z0-9]+)?\b/g) || []))];
-  const amounts = text => [...new Set(([...String(text || '').matchAll(/\b(\d{1,5}(?:[\s\u00a0\u202f]\d{3})?(?:[.,]\d{1,2})?)\s*(?:€|euros?)(?![\p{L}\p{N}])/giu)]
-    .map(m => m[1].replace(/[\s\u00a0\u202f]/g, '').replace(',', '.'))))];
-  const percentages = text => [...new Set(([...String(text || '').matchAll(/\b(\d{1,3}(?:[.,]\d+)?)\s*%/g)]
-    .map(m => m[1].replace(',', '.'))))];
-  // Report headers may legitimately repeat a store's name, date and family.
-  const diff = (a,b) => a.filter(x => !b.includes(x)).slice(0, 20);
-  const inRefs=refs(notes),outRefs=refs(output);
-  const inAmounts=amounts(notes),outAmounts=amounts(output);
-  const inPercents=percentages(notes),outPercents=percentages(output);
+/* V285 — advisory source-only comparison for the opt-in Groq preview.
+   Never rewrite, silently discard, save or auto-approve the model's prose.
+   This is a checklist aid, not a fact-checking guarantee. */
+function reportExpressAudit(notes, output, completedDate) {
+  const uniq = values => [...new Set(values)];
+  const refs = s => uniq(String(s || '').toUpperCase().match(/\b(?=[A-Z0-9-]{4,22}\b)(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z0-9]+(?:-[A-Z0-9]+)?\b/g) || []);
+  const amounts = s => {
+    // Dictation may use « zéro euro » instead of « 0 € ».
+    const spoken=String(s||'').replace(/\bz[ée]ro\s+euros?\b/gi,'0 €');
+    return uniq([...spoken.matchAll(/\b(\d{1,5}(?:[\s\u00a0\u202f]\d{3})?(?:[.,]\d{1,2})?)\s*(?:€|euros?)(?![\p{L}\p{N}])/giu)]
+      .map(m=>m[1].replace(/[\s\u00a0\u202f]/g,'').replace(',','.')));
+  };
+  const percentages = s => uniq([...String(s||'').matchAll(/\b(\d{1,3}(?:[.,]\d+)?)\s*%/g)]
+    .map(m=>m[1].replace(',','.')));
+  const months=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  const monthNames='janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[ée]cembre';
+  const dates = s => {
+    const val=String(s||'').toLowerCase(),result=[];
+    const cleanMonth=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    const add=(day,month)=>result.push(Number(day)+' '+cleanMonth(month));
+    const dateRe=new RegExp('\\b(\\d{1,2})(?:er)?\\s+('+monthNames+')\\b','gi');
+    for(const m of val.matchAll(dateRe))add(m[1],m[2]);
+    const rangeRe=new RegExp('\\b(\\d{1,2})\\s+au\\s+(\\d{1,2})\\s+('+monthNames+')\\b','gi');
+    for(const m of val.matchAll(rangeRe))add(m[1],m[3]);
+    return uniq(result);
+  };
+  const whitelistedDate = () => {
+    const m=String(completedDate||'').match(/^\d{4}-(\d{2})-(\d{2})$/);
+    return m ? Number(m[2])+' '+months[Number(m[1])-1].normalize('NFD').replace(/[\u0300-\u036f]/g,'') : '';
+  };
+  const diff=(a,b)=>a.filter(x=>!b.includes(x)).slice(0,20);
+  const inRefs=refs(notes),outRefs=refs(output),inAmounts=amounts(notes),outAmounts=amounts(output);
+  const inPercents=percentages(notes),outPercents=percentages(output),inDates=dates(notes),outDates=dates(output);
+  const visitDate=whitelistedDate();
   return {
     missingReferences:diff(inRefs,outRefs),
     unexpectedReferences:diff(outRefs,inRefs),
     missingPrices:diff(inAmounts,outAmounts),
     unexpectedPrices:diff(outAmounts,inAmounts),
     missingPercentages:diff(inPercents,outPercents),
-    unexpectedPercentages:diff(outPercents,inPercents)
+    unexpectedPercentages:diff(outPercents,inPercents),
+    unexpectedDates:diff(outDates,inDates.concat(visitDate?[visitDate]:[]))
   };
 }
 
@@ -1122,7 +1141,7 @@ export default {
           // NO report validation, NO business memory, NO persistence, NO raw
           // provider error. User compares this text with the usual report.
           return json({ mode: 'report_free_preview', reportType, text: answer.text,
-            audit: reportExpressAudit(note, answer.text),
+            audit: reportExpressAudit(note, answer.text, source.completedDate),
             provider: answer.provider, model: answer.model }, 200, origin);
         } catch (e) {
           // Provider errors may quote confidential notes. Never return them.
