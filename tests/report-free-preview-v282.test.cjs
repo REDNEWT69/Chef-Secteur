@@ -6,7 +6,10 @@ globalThis.crypto ||= webcrypto;
 const Report = require('../store-runner-report-renderer.js');
 const { loadWorker } = require('./helpers/worker-loader.cjs');
 const ORIGIN='https://store-runner.fr';
-const NOTES='Deuxième passage. Trois têtes de gondole Samsung. Mini LED 65M73H à 679 € et M60H à 349 €. Hisense 75E7S à 679 € contre Samsung 75U7005 à 749 €.';
+const NOTES='Deuxième passage. Trois têtes de gondole Samsung. Mini LED 65M73H à 679 € et M60H à 349 €. Hisense 75E7S à 679 € contre Samsung 75U7005 à 749 €. '
+  + 'Dictée supplémentaire : Samsung 55M74H 0 € prime, Samsung 55S85F 25 €, Hisense 100E7Q 45 €. '
+  + 'PLV absente sur la Neo QLED à côté du 65M73H. TCL remise 15 % du 10 au 20 octobre, rien dit sur les promos Samsung. '
+  + '75R85H proposé mais commande non validée, manque de place. Formation OLED Neo QLED souhaitée, aucune date fixée.';
 const source={version:1,visitId:'v282-fixture',storeId:'shop-fixture',completedDate:'2026-10-09',
  store:{enseigne:'Electro Dépôt',ville:'Ville-Test',channel:'retail'},
  reports:[{reportType:'brun',entries:[{source:'report.brun.team',family:'brun',text:NOTES}]}]};
@@ -33,6 +36,21 @@ const free='🏬 Concurrence / Merchandising\n\nLes trois têtes de gondole Sams
  assert.match(calls[0].messages[1].content,/65M73H à 679/);
  assert.match(calls[0].messages[1].content,/75E7S à 679/);
  assert.match(calls[0].messages[0].content,/directement le texte rédigé/);
+ // V285: prompts for factual field notes remain plain text and source-only.
+ // This checks the guardrails sent to Groq, NOT the model's real compliance.
+ const instruction=calls[0].messages[0].content;
+ assert.match(instruction,/dictée orale imparfaite/);
+ assert.match(instruction,/Conserve chaque référence produit, marque, prix, prime, montant, pourcentage/);
+ assert.match(instruction,/PLV manquante sur une Neo QLED à côté d’un 65M73H/);
+ assert.match(instruction,/Une remise TCL ne prouve jamais qu’aucune promotion Samsung n’existe/);
+ assert.match(instruction,/commande non validée ne signifient jamais commandé/);
+ assert.match(instruction,/N’invente aucune référence, caractéristique technique, prime/);
+ assert.match(instruction,/date de formation, échéance, responsable, engagement/);
+ assert.match(instruction,/sans tableau, sans signature, sans liste de recommandations inventées/);
+ assert.match(calls[0].messages[1].content,/55M74H 0 € prime/);
+ assert.match(calls[0].messages[1].content,/Hisense 100E7Q 45 €/);
+ assert.match(calls[0].messages[1].content,/TCL remise 15 % du 10 au 20 octobre/);
+ assert.match(calls[0].messages[1].content,/commande non validée/);
  assert.equal(JSON.stringify(source),original,'immutable notes unchanged');
  const bad=await req({...payload,sourceSignature:'sha256-'+'0'.repeat(64)});
  assert.equal(bad.status,409);assert.equal(calls.length,1,'tampered sources cost no inference');
