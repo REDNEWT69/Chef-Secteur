@@ -334,6 +334,9 @@ function editProfessionalReport(s,visitId,family,value,finalize=false){
  const p=object(v.professionalReport)?v.professionalReport:{version:1,revision:0,reports:{}};v.professionalReport=p;p.revision++;
  const previous=p.reports[family]||{},at=now();
  p.reports[family]={...previous,text:value,manual:true,reportType:family,sourceSignature:v.reportJob&&v.reportJob.sourceSignature||previous.sourceSignature||'',revision:p.revision,generatedAt:previous.generatedAt||at,updatedAt:at};
+ // A newly saved Groq text must not inherit stale quality/audit metadata
+ // from a previous automatic job. The immutable report notes are untouched.
+ delete p.data;
  if(finalize){
   v.report=reportOf(v);
   if(family==='brun'||family==='blanc'){
