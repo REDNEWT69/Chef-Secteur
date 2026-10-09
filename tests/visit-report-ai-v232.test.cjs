@@ -162,20 +162,17 @@ function counting(answers){
   assert.match(out.text,/- \[Non renseigné par le FMT\]/,'aucun plan d’action inventé');
   // Le prompt de réparation n'autorise aucun ajout.
   assert.match(api.repairPrompt(visit('brun'),'{'),/N’ajoute aucune information\./);
-  // L'interface conserve le rapport local et réactive le bouton dans tous les cas.
-  assert.match(SLACK,/Le rapport local est conservé/,'le repli doit conserver le rapport local');
-  assert.match(SLACK,/finally\{generating=false;if\(button\)\{button\.disabled=false/,'le bouton doit être réactivé quoi qu’il arrive');
-  assert.match(SLACK,/if\(generating\)\{say\('Génération déjà en cours/,'un double tap ne doit pas lancer deux générations');
-  /* Le verrou doit être posé AVANT le premier await. Posé après la lecture des photos, il
-     laissait deux taps rapprochés franchir le contrôle pendant que la première lecture
-     IndexedDB était encore en vol : deux appels IA partaient. */
-  const generateAI=SLACK.slice(SLACK.indexOf('async function generateAI'),SLACK.indexOf('async function copy('));
-  const lock=generateAI.indexOf('generating=true'),firstAwait=generateAI.indexOf('await'),tryBlock=generateAI.indexOf('try{');
-  assert(lock>0&&firstAwait>0,'le verrou et le premier await doivent exister');
-  assert(lock<firstAwait,'le verrou generating=true doit précéder le premier await de generateAI');
-  assert(tryBlock<generateAI.indexOf('await api.requestReportRegeneration'),'le job doit être créé dans le try protégé');
-  assert(tryBlock<generateAI.indexOf('await ensureAutoAI()'),'le chargement asynchrone reste sous le verrou');
-  assert(!generateAI.includes('callAIGateway'),'aucun appel fournisseur dépendant du téléphone');
+  // V287: le bouton Groq qui fonctionne devient le seul chemin visible.
+  // Un double tap ne peut pas lancer deux requêtes ; le résultat est sauvegardé.
+  assert.match(SLACK,/Le rapport local est conservé/);
+  assert.match(SLACK,/finally\\{\\s*freeTestRunning=false;/,'le verrou du bouton est libéré en finally');
+  assert.match(SLACK,/if\\(!v\\|\\|v\\.status!=='completed'\\|\\|!button\\|\\|freeTestRunning\\)return false/,'double tap bloqué');
+  const generator=SLACK.slice(SLACK.indexOf('async function generateGroqReport'),SLACK.indexOf('function updateAIButton'));
+  const lock=generator.indexOf('freeTestRunning=true'),firstAwait=generator.indexOf('await');
+  assert(lock>0&&firstAwait>0&&lock<firstAwait,'verrou avant le premier await');
+  assert(generator.includes('await root.StoreRunnerReportAIAutoV2771.freePreview'),'même service que le test IA libre');
+  assert(generator.includes('await api.saveFinalReport(v.id,type,data.text,false)'),'résultat enregistré sans écraser les notes');
+  assert(!generator.includes('requestReportRegeneration'),'aucun ancien job automatique lancé au clic');
   assert.match(SLACK,/persistFinalEdit\(area\)/,'une édition finale est persistée, sans mutation des notes');
   assert(!/console\.(log|warn|info)\([^)]*noteTerrain/.test(SLACK+MODULE),'aucune note terrain brute journalisée');
   console.log('PASS 6 · aucune invention, rapport local conservé, bouton réactivé, pas de double appel');
