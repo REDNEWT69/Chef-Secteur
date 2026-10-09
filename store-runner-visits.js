@@ -138,7 +138,7 @@ function cuisinisteReport(host,v){
   const finish=button('Terminer la visite',()=>completeVisit(v),'primary');finish.dataset.srCompleteVisit=v.id;host.append(finish)
  }else{
   host.append(element('p','Visite terminée le '+v.completedDate,'sr-completed'));
-  runnerRemark(host,v);
+  if(!hasFinal)runnerRemark(host,v);
   if(v.completedDate===localDay()){const reopen=button('↩ Réouvrir cette visite',()=>reopenVisit(v,true),'secondary');reopen.dataset.srReopenVisit=v.id;host.append(reopen)}
   dangerZone(host,v);
  }
