@@ -305,7 +305,8 @@ function expressAuditNotice(a){
   ['missingPrices','montants oubliés'],
   ['unexpectedPrices','montants nouveaux à vérifier'],
   ['missingPercentages','pourcentages oubliés'],
-  ['unexpectedPercentages','pourcentages nouveaux à vérifier']
+  ['unexpectedPercentages','pourcentages nouveaux à vérifier'],
+  ['unexpectedDates','dates nouvelles à vérifier']
  ];
  const warnings=rules.filter(([key])=>Array.isArray(a[key])&&a[key].length)
   .map(([key,label])=>label+' : '+a[key].slice(0,8).join(', '));
