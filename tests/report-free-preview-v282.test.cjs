@@ -33,6 +33,14 @@ const free='🏬 Concurrence / Merchandising\n\nLes trois têtes de gondole Sams
  assert.match(calls[0].messages[1].content,/65M73H à 679/);
  assert.match(calls[0].messages[1].content,/75E7S à 679/);
  assert.match(calls[0].messages[0].content,/directement le texte rédigé/);
+ // The live Groq preview is the same engine used by the saved button.
+ // Require the report styling in the prompt, not a client-side editorial filter.
+ for(const title of ['⚫ Résumé BRUN','⚪ Résumé BLANC','🏬 Contexte magasin',
+  '🏆 Challenge / Primes vendeurs','🎓 Formation','🎯 Plan d’action / prochain passage']){
+  assert(calls[0].messages[0].content.includes(title),'missing emoji report style: '+title);
+ }
+ assert.match(calls[0].messages[0].content,/Ne crée aucune rubrique vide/);
+
  assert.equal(JSON.stringify(source),original,'immutable notes unchanged');
  const bad=await req({...payload,sourceSignature:'sha256-'+'0'.repeat(64)});
  assert.equal(bad.status,409);assert.equal(calls.length,1,'tampered sources cost no inference');
