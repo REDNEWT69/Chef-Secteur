@@ -777,6 +777,13 @@ async function oneJobInference(env, source) {
     // Exactly one provider per durable job. Explicit opt-in permits a safe switch
     // from Gemini to Groq without deleting secrets or triggering a paid fallback.
     const selected = String((env && env.REPORT_AI_PROVIDER) || '').trim().toLowerCase();
+    // Prefer exact Groq Express preview behavior for new durable visit jobs.
+    // A legacy JSON job is still available through REPORT_AUTO_STYLE=legacy-json.
+    // Explicit alternative provider settings remain available for a rollback.
+    if (env && env.GROQ_API_KEY && (!selected || selected === 'groq')
+      && env.REPORT_AUTO_STYLE !== 'legacy-json') {
+      return await groqExpressJob(env,source,controller.signal,expired);
+    }
     if (selected && !['gemini', 'groq', 'workers-ai', 'openai'].includes(selected)) {
       throw jobError('ai_no_provider', 'Sélection du moteur IA invalide.');
     }
@@ -999,6 +1006,76 @@ function reportExpressAudit(notes, output, completedDate) {
   };
 }
 
+function groqExpressSystem(){
+  return [
+          'Tu reformules les notes dictées d’un chef de secteur Samsung en un compte rendu de visite terrain.',
+          'OBJECTIF : une BASE professionnelle, claire et directement copiable, même si les notes sont orales, mal ponctuées, répétitives ou avec des phrases incomplètes.',
+          'Tu es rédacteur, PAS consultant : tu ne dois ni compléter les faits par des connaissances générales, ni proposer un nouveau plan commercial.',
+          'FIDÉLITÉ ABSOLUE : conserve chaque référence produit exactement, chaque prix, montant de prime, pourcentage, période promotionnelle, marque concurrente, implantation, remarque vendeur, besoin de formation et décision réellement rapportée.',
+          'L’attribution est essentielle : ne déplace pas un prix vers une autre référence, une PLV vers un produit voisin, ou une promotion TCL vers Samsung. Ne déduis jamais l’absence d’une promotion Samsung d’une promotion concurrente.',
+          'Interdiction d’inventer des modèles, prix, remises, comparatifs, visites futures, délais, dates, responsables, décisions, engagements ou actions. Ne transforme jamais une proposition ou un intérêt en commande validée.',
+          'Actions / suivi : mentionne uniquement les actions décidées, proposées ou explicitement à suivre dans les notes, avec leur vrai statut. Ne crée pas de recommandations, de calendrier ni de prochaines étapes supplémentaires.',
+          'Si une information est ambiguë ou tronquée, préserve le sens certain et note brièvement « à confirmer » seulement si nécessaire ; ne devine pas.',
+          'STYLE : français professionnel naturel et concis, rubriques courtes uniquement quand elles sont utiles (Contexte, Primes, Merchandising, Concurrence, Formation, Points à suivre). Aucun tableau, aucune analyse fictive, aucun texte de remplissage.',
+          'La longueur suit la richesse des notes : généralement 150 à 350 mots, sans supprimer une donnée importante pour respecter ce repère. Pas de signature fictive ni de responsable inventé.',
+          'Réponds directement avec le compte rendu rédigé. N’utilise ni JSON, ni références de sources techniques : rends directement le texte rédigé.'
+        ].join('\\n');;
+}
+
+
+/* Exactly the same prompt builder for manual preview and automatic reports. */
+function groqExpressInput(source,report){
+  const note=report.entries.map(e=>e.text.trim()).filter(Boolean).join('\n\n');
+  const typeName={brun:'BRUN',blanc:'BLANC',cuisiniste:'CUISINISTE','buying-groups':'BUYING GROUP'}[report.reportType];
+  const prompt='Magasin : '+String(source.store.enseigne||'')+' '+String(source.store.ville||'')
+    +'\nFamille : '+typeName+'\nDate : '+source.completedDate+'\n\nNotes originales :\n'+note;
+  return {note,prompt};
+}
+function groqExpressMarker(report,index){
+  return '[[SR_REPORT_'+index+'_'+report.reportType.replace(/-/g,'_').toUpperCase()+']]';
+}
+function groqExpressSplit(source,prose){
+  const all=source.reports,output=String(prose||'');
+  if(all.length===1)return [output.trim()];
+  const positions=all.map((r,i)=>{
+    const marker=groqExpressMarker(r,i);
+    const at=output.indexOf(marker);
+    if(at<0||(at>0&&output[at-1]!=='\n')
+      ||(at+marker.length<output.length&&!/[\r\n]/.test(output[at+marker.length])))
+      throw jobError('report_invalid_result','Séparation des familles absente.');
+    return{start:at,end:at+marker.length};
+  });
+  if(output.slice(0,positions[0].start).trim()||positions.some((p,i)=>i&&p.start<=positions[i-1].end))
+    throw jobError('report_invalid_result','Mélange des familles dans le rapport.');
+  return positions.map((p,i)=>output.slice(p.end,positions[i+1]?positions[i+1].start:output.length).trim());
+}
+async function groqExpressJob(env,source,signal,timeout){
+  const inputs=source.reports.map(r=>groqExpressInput(source,r));
+  if(inputs.some(x=>!x.note))throw jobError('report_invalid_result','Notes sources manquantes.');
+  const multi=inputs.length>1;
+  const system=groqExpressSystem()+(multi?
+    '\nPour plusieurs familles, rédige chacune séparément et fais précéder chaque rapport UNIQUEMENT de son marqueur exact. Ne mélange jamais BRUN et BLANC.':'');
+  const prompt=multi?
+    'Rédige les rapports ci-dessous indépendamment, sans JSON. Conserve chaque ligne marqueur avant le texte de sa famille.\n\n'
+    +source.reports.map((r,i)=>groqExpressMarker(r,i)+'\n'+inputs[i].prompt).join('\n\n'):
+    inputs[0].prompt;
+  const call=callGroq(env,system,prompt,4096,{reasoningEffort:'low',includeReasoning:false,signal});
+  let answer;
+  try{answer=await Promise.race([call,timeout]);}
+  catch(err){throw err&&err.code?err:jobError('ai_provider_unavailable','Groq indisponible.');}
+  if(!answer.text)throw jobError('ai_empty_response','Réponse Groq vide.');
+  if(['length','max_tokens'].includes(String(answer.finishReason||'').toLowerCase()))
+    throw jobError('report_truncated','Compte rendu Groq tronqué.');
+  const texts=groqExpressSplit(source,answer.text);
+  const result={version:1,format:'groq-freeform',
+    quality:{mode:'groq-freeform',status:'review-required'},
+    reports:source.reports.map((r,i)=>({
+      reportType:r.reportType,text:texts[i],
+      audit:reportExpressAudit(inputs[i].note,texts[i],source.completedDate)
+    }))};
+  return{answer,result:REPORTS.validateFreeform(result,source)};
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
@@ -1111,27 +1188,9 @@ export default {
         if (!env.GROQ_API_KEY) {
           return json({ error: 'Groq n’est pas configuré sur le Worker.' }, 503, origin);
         }
-        const note = report.entries.map(e => e.text.trim()).filter(Boolean).join('\n\n');
+        const {note,prompt}=groqExpressInput(source,report);
         if (!note) return json({ error: 'Aucune note à reformuler dans cette famille.' }, 400, origin);
-        const typeName = { brun: 'BRUN', blanc: 'BLANC', cuisiniste: 'CUISINISTE', 'buying-groups': 'BUYING GROUP' }[reportType];
-        const prompt = 'Magasin : ' + String(source.store.enseigne || '') + ' ' + String(source.store.ville || '')
-          + '\nFamille : ' + typeName + '\nDate : ' + source.completedDate
-          + '\n\nNotes originales :\n' + note;
-        // V285: faithful field-ready BASE, not a consulting report. Groq keeps
-        // free prose; a second strict JSON conversion would lose original facts.
-        const system = [
-          'Tu reformules les notes dictées d’un chef de secteur Samsung en un compte rendu de visite terrain.',
-          'OBJECTIF : une BASE professionnelle, claire et directement copiable, même si les notes sont orales, mal ponctuées, répétitives ou avec des phrases incomplètes.',
-          'Tu es rédacteur, PAS consultant : tu ne dois ni compléter les faits par des connaissances générales, ni proposer un nouveau plan commercial.',
-          'FIDÉLITÉ ABSOLUE : conserve chaque référence produit exactement, chaque prix, montant de prime, pourcentage, période promotionnelle, marque concurrente, implantation, remarque vendeur, besoin de formation et décision réellement rapportée.',
-          'L’attribution est essentielle : ne déplace pas un prix vers une autre référence, une PLV vers un produit voisin, ou une promotion TCL vers Samsung. Ne déduis jamais l’absence d’une promotion Samsung d’une promotion concurrente.',
-          'Interdiction d’inventer des modèles, prix, remises, comparatifs, visites futures, délais, dates, responsables, décisions, engagements ou actions. Ne transforme jamais une proposition ou un intérêt en commande validée.',
-          'Actions / suivi : mentionne uniquement les actions décidées, proposées ou explicitement à suivre dans les notes, avec leur vrai statut. Ne crée pas de recommandations, de calendrier ni de prochaines étapes supplémentaires.',
-          'Si une information est ambiguë ou tronquée, préserve le sens certain et note brièvement « à confirmer » seulement si nécessaire ; ne devine pas.',
-          'STYLE : français professionnel naturel et concis, rubriques courtes uniquement quand elles sont utiles (Contexte, Primes, Merchandising, Concurrence, Formation, Points à suivre). Aucun tableau, aucune analyse fictive, aucun texte de remplissage.',
-          'La longueur suit la richesse des notes : généralement 150 à 350 mots, sans supprimer une donnée importante pour respecter ce repère. Pas de signature fictive ni de responsable inventé.',
-          'Réponds directement avec le compte rendu rédigé. N’utilise ni JSON, ni références de sources techniques : rends directement le texte rédigé.'
-        ].join('\\n');
+        const system=groqExpressSystem();
         try {
           const answer = await callGroq(env, system, prompt, 4096,
             { reasoningEffort: 'low', includeReasoning: false });
