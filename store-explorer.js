@@ -616,12 +616,22 @@ function install(win){
     const sheet=doc.getElementById('storeQuickSheet');if(!sheet)return;
     /* Borné à la feuille et aux seuls attributs qui signalent ouverture ou changement de magasin :
        l'écriture de la section elle-même ne relance rien. */
-    observer=new win.MutationObserver(()=>{
-      /* Invalidation immédiate, sans attendre l'image suivante : la réouverture ne doit jamais lire un cache périmé. */
-      if(!sheet.classList.contains('open'))invalidatePhotos(doc);
-      schedule();
+    observer=new win.MutationObserver(records=>{
+      /* La source de « Pourquoi ce jour ? » est (magasin, jour), pas seulement
+         magasin. L'ouverture et le changement de jour doivent rafraîchir la fiche
+         avant un frame différé : sinon l'utilisateur peut voir le contexte du
+         magasin précédent, et les tests mobiles lire une fiche encore périmée.
+         Les autres mutations restent regroupées pour limiter les recalculs. */
+      if(!sheet.classList.contains('open')){invalidatePhotos(doc);schedule();return}
+      const contextChanged=records.some(r=>
+        (r.target===sheet&&r.attributeName==='class')||
+        (r.target&&r.target.id==='srQuickStart'&&
+          (r.attributeName==='data-sr-start'||r.attributeName==='data-sr-day')));
+      if(contextChanged){
+        try{renderSection(win)}catch(e){console.warn('Fiche 360 non affichée',e)}
+      }else schedule();
     });
-    observer.observe(sheet,{subtree:true,attributes:true,attributeFilter:['class','data-sr-start']});
+    observer.observe(sheet,{subtree:true,attributes:true,attributeFilter:['class','data-sr-start','data-sr-day']});
   };
   doc.addEventListener('click',e=>onAction(win,e));
   /* Zone d'information de la ligne magasin : ouvre la fiche, sans toucher aux boutons ni au sélecteur. */

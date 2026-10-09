@@ -95,6 +95,9 @@ for (const [label, size] of [['390 px', { width: 390, height: 844 }], ['360 px',
     await page.evaluate(() => window.goTab('planPanel'));
     await expect(page.locator('#planPanel')).toHaveClass(/active/);
     await openCard(page, 'Jeudi', 'why-b');
+    // Attendre la donnée métier, pas seulement une section restée visible
+    // depuis une ouverture précédente (la fiche est mise à jour par observateur).
+    await expect(sec.locator('[data-sr-x-why="none"]')).toBeVisible();
     const read = await sec.evaluate(el => {
       const lead = el.querySelector('[data-sr-x-why]'), r = lead.getBoundingClientRect(), box = el.getBoundingClientRect();
       return { text: lead.textContent, left: r.left, right: r.right, vw: innerWidth, boxRight: box.right, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, full: el.innerText };
@@ -103,6 +106,24 @@ for (const [label, size] of [['390 px', { width: 390, height: 844 }], ['360 px',
     expect(read.overflow).toBeLessThanOrEqual(1);
     expect(read.full, 'aucune justification inventée').not.toMatch(/optimal|meilleur|plus court|plus rapide|idéal/i);
     expect(await page.evaluate(SNAPSHOT), 'ni le planning, ni les visites, ni l’archive ne changent').toBe(before);
+    expect(errors).toEqual([]);
+  });
+
+  test('Pourquoi ce jour : changer de date sur la même fiche ouverte actualise le contexte (' + label + ')',async({page})=>{
+    await page.setViewportSize(size);
+    const errors=await boot(page);
+    const before=await page.evaluate(SNAPSHOT);
+    await openCard(page,'Jeudi','why-b');
+    const lead=page.locator('#srStore360 [data-sr-x-why]');
+    await expect(lead).toContainText('Aucune contrainte ne fixe ce jour');
+    // Même magasin, feuille toujours ouverte : data-sr-start et .open
+    // sont inchangés, seul data-sr-day est modifié.
+    await page.evaluate(()=>window.openStoreQuick('why-b','Lundi'));
+    await expect(lead).toHaveCount(0);
+    await page.evaluate(()=>window.openStoreQuick('why-b','Jeudi'));
+    await expect(lead).toHaveCount(1);
+    await expect(lead).toContainText('très en retard à cette date');
+    expect(await page.evaluate(SNAPSHOT),'le rafraîchissement de fiche reste en lecture seule').toBe(before);
     expect(errors).toEqual([]);
   });
 }
