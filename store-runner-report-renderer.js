@@ -321,12 +321,13 @@ function validateEditorial(raw,source){
   seen.add(report.reportType);
   const entries=reportFor(source,report.reportType).entries;
   const bySource=new Map(entries.map(x=>[x.source,x]));
-  const items=[],duplicate=new Set();let skipped=0,rawCount=0,cleanCount=0;
+  const items=[],duplicate=new Set(),attemptedSources=new Set();let skipped=0,rawCount=0,cleanCount=0;
   for(const item of report.items){
    if(++allCount>MAX_ITEMS){skipped++;continue}
    if(!keysOnly(item,['section','text','source','quote'])||!ORDER[report.reportType].includes(item.section)||
       typeof item.text!=='string'||typeof item.source!=='string'||typeof item.quote!=='string'){skipped++;continue}
    const src=bySource.get(item.source),sentence=editorialSentence(item.text);
+   if(src)attemptedSources.add(item.source);
    if(!src||!sentence||!editorialFigures(sentence,src.text)||!editorialCommercialGuard(item,src.text)){skipped++;continue}
    const key=item.source+'|'+plain(sentence);if(duplicate.has(key))continue;duplicate.add(key);
    // Inexact quotations are not grounds for rejecting fluent prose.
@@ -340,6 +341,10 @@ function validateEditorial(raw,source){
    items.push({section:item.section,text:sentence,source:item.source,quote});
    cleanCount++;
   }
+  // Flag sources not represented in the model output; never inject their raw
+  // dictation back into the formatted report. This is an accounting check,
+  // not a lexical or semantic restriction on Gemini's prose.
+  skipped+=entries.filter(entry=>text(entry.text)&&!attemptedSources.has(entry.source)).length;
   // A completely unusable generation fails cleanly instead of presenting the
   // entire unedited dictation as a 'successful' AI report.
   if(!items.length&&entries.some(x=>text(x.text)))fail('rapport vide');
