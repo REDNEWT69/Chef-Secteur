@@ -42,3 +42,22 @@ test('régénérations rapprochées réutilisent pending/processing ; failed ou 
 test('sauvegarde scellée conserve final, job et sources ; nouveau schéma facultatif vérifié',async()=>{const h=harness();await h.api.reconcileVisit(h.id);h.finish();h.advance(4000);await h.api.reconcileVisit(h.id);const sealed=R.seal(R.capture(h.s,h.disk)),decoded=R.decode(JSON.stringify(sealed),h.s);assert.deepEqual(decoded.state.businessV2.visits,h.s.businessV2.visits);const corrupt=M.clone(h.s);corrupt.businessV2.visits[0].reportJob.accessToken='incorrect';assert.throws(()=>M.validate(corrupt),/Tâche/);const old=M.clone(h.s);delete old.businessV2.visits[0].reportJob;delete old.businessV2.visits[0].professionalReport;assert.doesNotThrow(()=>M.validate(old))});
 test('ancien pending V277.1 migre via le même writer puis poste un seul job serveur',async()=>{const f=fixture(),v=M.getVisit(f.s,f.id);delete v.reportJob;const h=harness(f);await h.api.reconcileVisit(h.id);assert.equal(h.server.calls,1);assert.equal(h.v.reportJob.version,1)});
 test('échec IndexedDB avant POST interdit tout travail distant et garde le brouillon durable',async()=>{const h=harness();h.disk.fail=true;assert.equal(await h.api.reconcileVisit(h.id),false);assert.equal(h.server.calls,0);assert.equal(M.getVisit(R.load(h.disk.restart()),h.id).reportJob.sourceSignature,'')});
+
+
+// V285: the first automatic completion and later regeneration can accept
+// Groq prose directly, without feeding an older automatic report back into AI.
+test('Groq libre automatique enregistre le texte et garde les notes terrain originales',async()=>{
+ const h=harness(),raw=JSON.stringify(h.v.report),source=JSON.stringify(M.sourceForReportJob(h.v));
+ await h.api.reconcileVisit(h.id);
+ const job=[...h.server.jobs.values()][0];
+ job.status='done';
+ job.result={version:1,reports:[{reportType:'cuisiniste',text:'Samsung RS68A882 exposé à 749 €. Revoir la gérante vendredi.'}],quality:{mode:'free',status:'review'}};
+ h.advance(4000);
+ await h.api.reconcileVisit(h.id);
+ assert.equal(h.v.reportJob.status,'done');
+ assert.match(M.professionalReportOf(h.v,'cuisiniste').text,/Samsung RS68A882 exposé à 749 €/);
+ assert.equal(h.v.professionalReport.data.quality.mode,'free');
+ assert.equal(JSON.stringify(h.v.report),raw);
+ assert.equal(JSON.stringify(M.sourceForReportJob(h.v)),source);
+ assert(h.v.runnerMemory.items.length>0,'la mémoire locale existante est conservée');
+});
