@@ -1038,6 +1038,32 @@ export default {
         }, 200, origin);
       }
 
+/* V285 — advisory, source-only comparison for the optional Groq express preview.
+   Never rewrite or silently discard model text. The audit is not proof of factual
+   correctness: it highlights exact refs and numeric commercial facts for review.
+   No storage, second inference, external pricing lookup or hidden business data. */
+function reportExpressAudit(notes, output) {
+  const refs = text => [...new Set((String(text || '').toUpperCase()
+    .match(/\b(?=[A-Z0-9-]{4,22}\b)(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z0-9]+(?:-[A-Z0-9]+)?\b/g) || []))];
+  const amounts = text => [...new Set(([...String(text || '').matchAll(/\b(\d{1,5}(?:[\s\u00a0\u202f]\d{3})?(?:[.,]\d{1,2})?)\s*(?:€|euros?)\b?/gi)]
+    .map(m => m[1].replace(/[\s\u00a0\u202f]/g, '').replace(',', '.'))))];
+  const percentages = text => [...new Set(([...String(text || '').matchAll(/\b(\d{1,3}(?:[.,]\d+)?)\s*%/g)]
+    .map(m => m[1].replace(',', '.'))))];
+  // Report headers may legitimately repeat a store's name, date and family.
+  const diff = (a,b) => a.filter(x => !b.includes(x)).slice(0, 20);
+  const inRefs=refs(notes),outRefs=refs(output);
+  const inAmounts=amounts(notes),outAmounts=amounts(output);
+  const inPercents=percentages(notes),outPercents=percentages(output);
+  return {
+    missingReferences:diff(inRefs,outRefs),
+    unexpectedReferences:diff(outRefs,inRefs),
+    missingPrices:diff(inAmounts,outAmounts),
+    unexpectedPrices:diff(outAmounts,inAmounts),
+    missingPercentages:diff(inPercents,outPercents),
+    unexpectedPercentages:diff(outPercents,inPercents)
+  };
+}
+
       // V282 experiment: one explicit, unsaved, freeform Groq preview.
       // This deliberately bypasses both the 36-item citation JSON schema and
       // editorial filtering, without modifying any durable visit/report job.
@@ -1072,11 +1098,21 @@ export default {
         const prompt = 'Magasin : ' + String(source.store.enseigne || '') + ' ' + String(source.store.ville || '')
           + '\nFamille : ' + typeName + '\nDate : ' + source.completedDate
           + '\n\nNotes originales :\n' + note;
-        const system = 'Tu es chef de secteur Samsung et tu rédiges un compte rendu professionnel en français. '
-          + 'Transforme librement les notes orales en un rapport clair avec les rubriques réellement pertinentes. '
-          + 'Conserve les références produits, prix, écarts tarifaires, enseignes concurrentes, noms, formations et actions. '
-          + 'Ne transforme pas une possibilité en engagement et n’invente aucun fait. '
-          + 'N’utilise ni JSON, ni références de sources techniques : rends directement le texte rédigé.';
+        // V285: faithful field-ready BASE, not a consulting report. Groq keeps
+        // free prose; a second strict JSON conversion would lose original facts.
+        const system = [
+          'Tu reformules les notes dictées d’un chef de secteur Samsung en un compte rendu de visite terrain.',
+          'OBJECTIF : une BASE professionnelle, claire et directement copiable, même si les notes sont orales, mal ponctuées, répétitives ou avec des phrases incomplètes.',
+          'Tu es rédacteur, PAS consultant : tu ne dois ni compléter les faits par des connaissances générales, ni proposer un nouveau plan commercial.',
+          'FIDÉLITÉ ABSOLUE : conserve chaque référence produit exactement, chaque prix, montant de prime, pourcentage, période promotionnelle, marque concurrente, implantation, remarque vendeur, besoin de formation et décision réellement rapportée.',
+          'L’attribution est essentielle : ne déplace pas un prix vers une autre référence, une PLV vers un produit voisin, ou une promotion TCL vers Samsung. Ne déduis jamais l’absence d’une promotion Samsung d’une promotion concurrente.',
+          'Interdiction d’inventer des modèles, prix, remises, comparatifs, visites futures, délais, dates, responsables, décisions, engagements ou actions. Ne transforme jamais une proposition ou un intérêt en commande validée.',
+          'Actions / suivi : mentionne uniquement les actions décidées, proposées ou explicitement à suivre dans les notes, avec leur vrai statut. Ne crée pas de recommandations, de calendrier ni de prochaines étapes supplémentaires.',
+          'Si une information est ambiguë ou tronquée, préserve le sens certain et note brièvement « à confirmer » seulement si nécessaire ; ne devine pas.',
+          'STYLE : français professionnel naturel et concis, rubriques courtes uniquement quand elles sont utiles (Contexte, Primes, Merchandising, Concurrence, Formation, Points à suivre). Aucun tableau, aucune analyse fictive, aucun texte de remplissage.',
+          'La longueur suit la richesse des notes : généralement 150 à 350 mots, sans supprimer une donnée importante pour respecter ce repère. Pas de signature fictive ni de responsable inventé.',
+          'Réponds directement avec le compte rendu rédigé. N’utilise ni JSON, ni références de sources techniques : rends directement le texte rédigé.'
+        ].join('\\n');
         try {
           const answer = await callGroq(env, system, prompt, 4096,
             { reasoningEffort: 'low', includeReasoning: false });
@@ -1086,6 +1122,7 @@ export default {
           // NO report validation, NO business memory, NO persistence, NO raw
           // provider error. User compares this text with the usual report.
           return json({ mode: 'report_free_preview', reportType, text: answer.text,
+            audit: reportExpressAudit(note, answer.text),
             provider: answer.provider, model: answer.model }, 200, origin);
         } catch (e) {
           // Provider errors may quote confidential notes. Never return them.
