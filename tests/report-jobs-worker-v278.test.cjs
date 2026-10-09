@@ -225,6 +225,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   both.env.GROQ_API_KEY = 'synthetic-key';
   both.env.GROQ_MODEL = 'openai/gpt-oss-120b';
   both.env.REPORT_AI_PROVIDER = 'groq';
+  both.env.REPORT_AUTO_STYLE = 'legacy-json';
   const bothJob = await (await both.post(first)).json();
   await both.env.REPORT_JOBS.get(bothJob.jobId).alarm();
   const bothStatus = await (await both.get(bothJob.jobId)).json();
@@ -279,6 +280,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   buying.env.GROQ_API_KEY = 'synthetic-key';
   buying.env.GROQ_MODEL = 'openai/gpt-oss-120b';
   buying.env.REPORT_AI_PROVIDER = 'groq';
+  buying.env.REPORT_AUTO_STYLE = 'legacy-json';
   const buyingJob = await (await buying.post(await body(buyingSource))).json();
   await buying.env.REPORT_JOBS.get(buyingJob.jobId).alarm();
   const buyingResult = await (await buying.get(buyingJob.jobId)).json();
@@ -301,6 +303,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
     }
   });
   gemini.env.GEMINI_API_KEY = 'synthetic-gemini-key';
+  gemini.env.REPORT_AI_PROVIDER = 'gemini';
   gemini.env.GROQ_API_KEY = 'synthetic-groq-key';
   gemini.env.OPENAI_API_KEY = 'synthetic-openai-key';
   const geminiJob = await (await gemini.post(first)).json();
@@ -330,6 +333,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
     }
   });
   geminiError.env.GEMINI_API_KEY = 'synthetic-gemini-key';
+  geminiError.env.REPORT_AI_PROVIDER = 'gemini';
   geminiError.env.GROQ_API_KEY = 'synthetic-groq-key';
   const failedGeminiJob = await (await geminiError.post(first)).json();
   await geminiError.env.REPORT_JOBS.get(failedGeminiJob.jobId).alarm();
@@ -346,6 +350,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
       { status: 503, headers: { 'Content-Type': 'application/json' } })
   });
   geminiUnavailable.env.GEMINI_API_KEY = 'synthetic-key';
+  geminiUnavailable.env.REPORT_AI_PROVIDER = 'gemini';
   const unavailableJob = await (await geminiUnavailable.post(first)).json();
   await geminiUnavailable.env.REPORT_JOBS.get(unavailableJob.jobId).alarm();
   const unavailable = await (await geminiUnavailable.get(unavailableJob.jobId)).json();
@@ -369,6 +374,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   explicit.env.GEMINI_API_KEY = 'synthetic-gemini-key';
   explicit.env.GROQ_API_KEY = 'synthetic-groq-key';
   explicit.env.REPORT_AI_PROVIDER = 'groq';
+  explicit.env.REPORT_AUTO_STYLE = 'legacy-json';
   const explicitJob = await (await explicit.post(first)).json();
   await explicit.env.REPORT_JOBS.get(explicitJob.jobId).alarm();
   const selected = await (await explicit.get(explicitJob.jobId)).json();
