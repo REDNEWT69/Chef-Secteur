@@ -890,7 +890,9 @@ export class VisitReportJob extends DurableObject {
     });
     try {
       const { answer, result } = await oneJobInference(this.env, job.source);
-      job = { ...job, status: 'done', result, provider: answer.provider, model: answer.model, updatedAt: new Date().toISOString() };
+      job = { ...job, status: 'done', result, provider: answer.provider, model: answer.model,
+        promptVersion: result&&result.format==='groq-freeform'?'visit-report-v286-groq-express-auto':job.promptVersion,
+        updatedAt: new Date().toISOString() };
     } catch (err) {
       job = { ...job, status: 'failed', error: jobFailure(err), updatedAt: new Date().toISOString() };
     }
