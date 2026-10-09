@@ -371,6 +371,27 @@ async function callGroq(env, system, user, maxTokens, options = {}) {
   };
   if (isGptOss && options.reasoningEffort) payload.reasoning_effort = options.reasoningEffort;
   if (isGptOss && options.includeReasoning === false) payload.include_reasoning = false;
+  // V280 Groq field fix: strict constrained JSON is for durable report jobs only.
+  // The general assistant's Groq calls keep their historical text configuration.
+  // The existing Worker AND device validators still check facts, citations and
+  // product references. A structurally valid model response is not trusted alone.
+  if (options.structuredReport) {
+    if (isGptOss) {
+      payload.response_format = {
+        type: 'json_schema',
+        json_schema: {
+          name: 'store_runner_visit_report',
+          strict: true,
+          schema: OPENAI_REPORT_JSON_SCHEMA
+        }
+      };
+      // A long BRUN/BLANC/buying-groups source can exhaust a 2600-token
+      // reasoning+completion budget. Reserve headroom without extra requests.
+      payload.max_completion_tokens = Math.max(payload.max_completion_tokens, 4096);
+    } else {
+      payload.response_format = { type: 'json_object' };
+    }
+  }
 
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -770,7 +791,7 @@ async function oneJobInference(env, source) {
     } else if (selected === 'gemini' || !selected && env && env.GEMINI_API_KEY) {
       inference = callGemini(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
     } else if (selected === 'groq' || !selected && env && env.GROQ_API_KEY) {
-      inference = callGroq(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
+      inference = callGroq(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, { ...options, structuredReport: true });
     } else if (selected === 'workers-ai' || !selected && hasWorkersAI(env)) {
       inference = callWorkersAI(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
     } else {
