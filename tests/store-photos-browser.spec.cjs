@@ -220,7 +220,7 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA F
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.StorePhotosV1&&window.BoulangerDefaultHoursV1&&window.state&&typeof window.openStoreQuick==='function'&&window.state.stores.some(s=>s.id==='photo-store'));
   expect(await page.evaluate(()=>StoreRunnerVisits.reportFor(state.businessV2.visits[0].id,'brun').text)).toMatch(/Correction terrain\.$/);
-  expect(await page.evaluate(()=>StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).brun.team)).toBe(originalNotes);
+  expect(await page.evaluate(()=>StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).brun.team)).toBe(generated+'\n\nCorrection terrain.'); // V281: pasted Sortie magasin replaces the actual note
   await reopenQuickAndTapPhotos(page);
   const reloadedCards=page.locator('#storePhotosDialog .sr-photoCard');
   await expect(reloadedCards).toHaveCount(2);
