@@ -155,7 +155,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   const extracted = 'un four Samsung present en showroom';
   const extractedDoc = {
     version: 1, reports: [{ reportType: 'cuisiniste', items: [{
-      section: 'showroom', text: extracted,
+      section: 'showroom', text: 'Un four Samsung est exposé dans le showroom.',
       source: 'report.cuisiniste.showroom', quote: extracted
     }] }]
   };
@@ -165,7 +165,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   await dictatedJob.env.REPORT_JOBS.get(dictatedPending.jobId).alarm();
   const dictatedStatus = await (await dictatedJob.get(dictatedPending.jobId)).json();
   assert.equal(dictatedStatus.status, 'done', 'a contextual spoken excerpt must not be rejected only for missing punctuation');
-  assert.equal(dictatedStatus.result.reports[0].items[0].text, extracted);
+  assert.equal(dictatedStatus.result.reports[0].items[0].text, 'Un four Samsung est exposé dans le showroom.');
   assert(!JSON.stringify(dictatedStatus).includes(dictated));
   assert(!('source' in dictatedStatus));
 
