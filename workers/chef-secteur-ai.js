@@ -954,6 +954,32 @@ async function handlePing(env, origin) {
   }, 200, origin);
 }
 
+/* V285 — advisory, source-only comparison for the optional Groq express preview.
+   Never rewrite or silently discard model text. The audit is not proof of factual
+   correctness: it highlights exact refs and numeric commercial facts for review.
+   No storage, second inference, external pricing lookup or hidden business data. */
+function reportExpressAudit(notes, output) {
+  const refs = text => [...new Set((String(text || '').toUpperCase()
+    .match(/\b(?=[A-Z0-9-]{4,22}\b)(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z0-9]+(?:-[A-Z0-9]+)?\b/g) || []))];
+  const amounts = text => [...new Set(([...String(text || '').matchAll(/\b(\d{1,5}(?:[\s\u00a0\u202f]\d{3})?(?:[.,]\d{1,2})?)\s*(?:€|euros?)(?![\p{L}\p{N}])/giu)]
+    .map(m => m[1].replace(/[\s\u00a0\u202f]/g, '').replace(',', '.'))))];
+  const percentages = text => [...new Set(([...String(text || '').matchAll(/\b(\d{1,3}(?:[.,]\d+)?)\s*%/g)]
+    .map(m => m[1].replace(',', '.'))))];
+  // Report headers may legitimately repeat a store's name, date and family.
+  const diff = (a,b) => a.filter(x => !b.includes(x)).slice(0, 20);
+  const inRefs=refs(notes),outRefs=refs(output);
+  const inAmounts=amounts(notes),outAmounts=amounts(output);
+  const inPercents=percentages(notes),outPercents=percentages(output);
+  return {
+    missingReferences:diff(inRefs,outRefs),
+    unexpectedReferences:diff(outRefs,inRefs),
+    missingPrices:diff(inAmounts,outAmounts),
+    unexpectedPrices:diff(outAmounts,inAmounts),
+    missingPercentages:diff(inPercents,outPercents),
+    unexpectedPercentages:diff(outPercents,inPercents)
+  };
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
@@ -1037,32 +1063,6 @@ export default {
           mode: 'proofread'
         }, 200, origin);
       }
-
-/* V285 — advisory, source-only comparison for the optional Groq express preview.
-   Never rewrite or silently discard model text. The audit is not proof of factual
-   correctness: it highlights exact refs and numeric commercial facts for review.
-   No storage, second inference, external pricing lookup or hidden business data. */
-function reportExpressAudit(notes, output) {
-  const refs = text => [...new Set((String(text || '').toUpperCase()
-    .match(/\b(?=[A-Z0-9-]{4,22}\b)(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z0-9]+(?:-[A-Z0-9]+)?\b/g) || []))];
-  const amounts = text => [...new Set(([...String(text || '').matchAll(/\b(\d{1,5}(?:[\s\u00a0\u202f]\d{3})?(?:[.,]\d{1,2})?)\s*(?:€|euros?)(?![\p{L}\p{N}])/giu)]
-    .map(m => m[1].replace(/[\s\u00a0\u202f]/g, '').replace(',', '.'))))];
-  const percentages = text => [...new Set(([...String(text || '').matchAll(/\b(\d{1,3}(?:[.,]\d+)?)\s*%/g)]
-    .map(m => m[1].replace(',', '.'))))];
-  // Report headers may legitimately repeat a store's name, date and family.
-  const diff = (a,b) => a.filter(x => !b.includes(x)).slice(0, 20);
-  const inRefs=refs(notes),outRefs=refs(output);
-  const inAmounts=amounts(notes),outAmounts=amounts(output);
-  const inPercents=percentages(notes),outPercents=percentages(output);
-  return {
-    missingReferences:diff(inRefs,outRefs),
-    unexpectedReferences:diff(outRefs,inRefs),
-    missingPrices:diff(inAmounts,outAmounts),
-    unexpectedPrices:diff(outAmounts,inAmounts),
-    missingPercentages:diff(inPercents,outPercents),
-    unexpectedPercentages:diff(outPercents,inPercents)
-  };
-}
 
       // V282 experiment: one explicit, unsaved, freeform Groq preview.
       // This deliberately bypasses both the 36-item citation JSON schema and
