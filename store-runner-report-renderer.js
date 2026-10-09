@@ -295,9 +295,10 @@ function editorialFigures(proposed,sourceText){
  return true;
 }
 function editorialCommercialGuard(item,sourceText){
- // Unlike lexical grading, this only catches a high-risk explicitly negated
- // contractual outcome. 'Aucun contrat validé' must never become 'contrat validé'.
- if(item.section==='contract'){
+ // This checks a high-risk explicitly negated contractual outcome in ANY
+ // section: the model may legitimately choose another heading.
+ // 'Aucun contrat validé' must never become 'contrat validé'.
+ {
   const q=plain(sourceText),p=plain(item.text);
   const barred=/\b(?:aucun|pas|non|sans|ni|absence|jamais)\b.{0,45}\b(?:contrat|accord)\b.{0,50}\b(?:valide|signe|accepte|conclu)\b/.test(q)
    || /\b(?:contrat|accord)\b.{0,45}\b(?:non|pas|jamais|ni)\b.{0,25}\b(?:valide|signe|accepte|conclu)\b/.test(q)
@@ -306,6 +307,11 @@ function editorialCommercialGuard(item,sourceText){
   if(barred&&affirmed&&!/\b(?:aucun|pas|non|sans|ni|absence)\b/.test(p))return false;
  }
  return true;
+}
+// A punctuation/case/diacritic-only transcription is not an editorial rewrite.
+// This equality check does not require any overlap for real paraphrases.
+function editorialVerbatim(value){
+ return plain(value).replace(/[^\p{L}\p{N}]+/gu,' ').trim();
 }
 function editorialSentence(value){
  const v=text(value);
@@ -334,7 +340,8 @@ function validateEditorial(raw,source){
    // Replace their provenance with the untouched source entry.
    const quoted=text(item.quote),original=text(src.text);
    const quote=quoted&&original.replace(/\s+/g,' ').includes(quoted.replace(/\s+/g,' '))?quoted:original;
-   const isRaw=plain(sentence)===plain(quote)||plain(sentence)===plain(original);
+   const isRaw=editorialVerbatim(sentence)===editorialVerbatim(quote)||
+    editorialVerbatim(sentence)===editorialVerbatim(original);
    // A provider must not make a verbatim dictation look like a completed report.
    // Keep the original note in the visit source and request manual review instead.
    if(isRaw){skipped++;continue}
