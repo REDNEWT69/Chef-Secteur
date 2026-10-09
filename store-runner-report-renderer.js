@@ -3,7 +3,7 @@
    Raw dictated notes live in the immutable visit source, not the generated report. */
 (function(root){
 'use strict';
-const VERSION=1,PROMPT_VERSION='visit-report-v280-editorial-autonomy',MAX_ITEMS=36;
+const VERSION=1,PROMPT_VERSION='visit-report-v286-groq-express-auto',MAX_ITEMS=36;
 const TYPES=['brun','blanc','cuisiniste','buying-groups'];
 const LABELS={context:'🏬 Contexte magasin',tv:'📺 TV / Présence Samsung',challenge:'🏆 Challenge / Prime vendeur',competition:'🆚 Concurrence / Retour vendeur',offers:'🏷️ ODR / Offres Samsung',training:'🎓 Formation',blackFriday:'🛍️ Black Friday',audio:'🔊 Audio / Barres de son',merchandising:'🏬 Merchandising / Massification',omni:'📱 Suivi OMNI',laundry:'🧺 Lavage',cooking:'🍳 Cuisson',cold:'❄️ Froid',vacuum:'🧹 Aspiration',smallAppliances:'☕ Petit électroménager',showroom:'❄️ Point produits / Showroom',contract:'📑 Contrat d’exposition',service:'🛠️ SAV / ADV',products:'📦 Point produits',newsletter:'📰 Newsletter',market:'🏬 Contexte marché',actionsDone:'🛠️ Actions réalisées',positives:'✅ Points positifs',focus:'⚠️ Points à travailler',actions:'🎯 Plan d’action / prochain passage',summary:'📝 Synthèse',notes:'📝 Notes terrain'};
 const ORDER={
@@ -473,8 +473,37 @@ function validateBestEffort(raw,source){
 // The phone independently verifies the already-safe server output. Never
 // call the strict V278 validator on a partial result: doing so would reject
 // the exact source quotations preserved to avoid losing field observations.
+
+/* Groq free prose protocol: this is transport/schema validation, never a
+   semantic editorial filter. Keep every dictated observation and every
+   generated sentence, even when the advisory audit requests human review. */
+function validateFreeform(doc,source){
+ const types=expectedTypes(source);
+ if(!keysOnly(doc,['version','format','quality','reports'])||doc.version!==VERSION
+    ||doc.format!=='groq-freeform'||!doc.quality
+    ||!keysOnly(doc.quality,['mode','status'])
+    ||doc.quality.mode!=='groq-freeform'||doc.quality.status!=='review-required'
+    ||!Array.isArray(doc.reports)||doc.reports.length!==types.length)
+   fail('schéma ou familles inattendus');
+ const seen=new Set();
+ const auditKeys=['missingReferences','unexpectedReferences','missingPrices',
+   'unexpectedPrices','missingPercentages','unexpectedPercentages','unexpectedDates'];
+ for(const report of doc.reports){
+   if(!keysOnly(report,['reportType','text','audit'])||!types.includes(report.reportType)
+     ||seen.has(report.reportType)||typeof report.text!=='string'
+     ||!report.text.trim()||report.text.length>24000)fail('rapport vide');
+   seen.add(report.reportType);
+   const a=report.audit;
+   if(!a||!keysOnly(a,auditKeys)
+     ||auditKeys.some(key=>!Array.isArray(a[key])||a[key].length>20
+       ||a[key].some(x=>typeof x!=='string'||x.length>120)))fail('fait non conforme');
+ }
+ return doc;
+}
+
 function validateDelivered(raw,source){
  const doc=parse(raw);
+ if(doc&&doc.format==='groq-freeform')return validateFreeform(doc,source);
  if(doc&&doc.quality&&doc.quality.mode==='editorial')return validateEditorialDelivered(doc,source);
  const types=expectedTypes(source);
  if(!keysOnly(doc,['version','reports','quality'])||doc.version!==VERSION||!Array.isArray(doc.reports)||doc.reports.length!==types.length)fail('schéma ou familles inattendus');
@@ -518,6 +547,7 @@ function validateDelivered(raw,source){
 function label(section,type){if(type==='cuisiniste'){if(section==='context')return'🏬 Suivi magasin';if(section==='competition')return'🆚 Concurrence';if(section==='training')return'🍳 Formation réalisée / prévue'}return LABELS[section]}
 function storeName(source){return[text(source&&source.store&&source.store.enseigne),text(source&&source.store&&source.store.ville)].filter(Boolean).join(' ')}
 function render(doc,source){
+ if(doc&&TYPES.includes(doc.reportType)&&typeof doc.text==='string')return doc.text;
  if(!doc||!TYPES.includes(doc.reportType)||!Array.isArray(doc.items))throw new Error('Rapport structuré invalide');
  const type=doc.reportType,name=storeName(source),head=type==='cuisiniste'?'🟠 COMPTE RENDU CUISINISTE':type==='buying-groups'?'🟠 COMPTE RENDU BUYING GROUP':(type==='brun'?'⚫ Résumé BRUN':'⚪ Résumé BLANC');
  const lines=[head+(name?' – '+name:'')],day=text(source&&source.completedDate||source&&source.date);
@@ -549,6 +579,9 @@ function memoryStatus(quote,section){
  return'recorded';
 }
 function memory(validated,source){
+ // The original visit already carries source-derived Runner memory. Do not
+ // turn unverified Groq prose into new actions or product facts.
+ if(validated&&validated.format==='groq-freeform')return{version:1,sourceSignature:text(source&&source.sourceSignature),items:[]};
  const kinds={training:'training',merchandising:'merchandising',tv:'product',cold:'product',cooking:'product',laundry:'product',vacuum:'product',showroom:'product',competition:'objection',focus:'problem',actions:'followup',actionsDone:'action',contract:'followup',context:'contact'},items=[],seen=new Set();
  for(const report of validated.reports||[])for(const item of report.items||[]){
   const kind=kinds[item.section];if(!kind||item.section==='summary')continue;
@@ -579,6 +612,6 @@ Rubriques possibles par type : ${JSON.stringify(schemas)}
 SOURCES_IMMUABLES:
 ${JSON.stringify(source)}`;
 }
-const api={VERSION,PROMPT_VERSION,MAX_ITEMS,TYPES,LABELS,ORDER,canonicalJSON,canonical:canonicalJSON,sourceSignature,reportsFor,buildPrompt,validate,validateBestEffort,validateEditorial,validateDelivered,render,fallback,memory,validCleanup,validTopic};
+const api={VERSION,PROMPT_VERSION,MAX_ITEMS,TYPES,LABELS,ORDER,canonicalJSON,canonical:canonicalJSON,sourceSignature,reportsFor,buildPrompt,validate,validateBestEffort,validateEditorial,validateFreeform,validateDelivered,render,fallback,memory,validCleanup,validTopic};
 root.StoreRunnerReportRenderer=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
