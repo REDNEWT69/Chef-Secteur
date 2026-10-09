@@ -333,3 +333,32 @@ clé absente, idempotence durable, pas de second moteur appelé.
 Aucune qualité de rédaction terrain ni disponibilité du compte OpenAI ne
 peut être garantie sans essai réel autorisé. Comparer un rapport Valence et
 un rapport Schmidt avec les mêmes notes, sans multiplier les régénérations.
+
+
+### V280 — rédaction autonome, fin du filtrage lexical sur les nouveaux rapports
+
+Le parcours actif du Worker utilise désormais `validateEditorial` et non
+`validateBestEffort`. Gemini rédige librement les textes et répartit les
+informations selon leur **sens**, pas selon des mots-clés ou l'ordre exact
+des mots. Le prompt BRUN / BLANC / cuisinistes intègre le vocabulaire métier.
+
+Protections minimales restantes : schéma et provenance réels de la fiche visite,
+aucune référence ou valeur numérique nouvelle par rapport aux notes, format texte
+sans HTML/markdown injecté, conservation intégrale des notes originales,
+contrôle indépendant côté Android/navigateur, une seule inférence par job.
+
+La citation `quote` ne bloque plus une reformulation : lorsqu'elle est
+incorrecte, le Worker utilise l'entrée originale comme preuve hors affichage.
+Il ne réinsère aucune dictée brute lorsqu'il a déjà des passages professionnels.
+La dictée brute ne reste affichée qu'en cas de génération totalement inutilisable,
+ou si Gemini a simplement recopié un extrait.
+
+Les validateurs stricts pré-V280 restent présents pour **les anciens rapports**,
+mais ne sont plus sur la voie des nouvelles générations.
+Cette liberté augmente le risque d'une interprétation IA inexacte :
+les tests prouvent le câblage et les protections déterministes, pas l'absence
+d'hallucinations. Relire tout rapport avant diffusion.
+
+Après fusion, redéployer séparément le Worker Cloudflare et actualiser l'app.
+Vérifier la réécriture réelle d'une visite BLANC et BRUN sans multiplier les
+régénérations payantes.
