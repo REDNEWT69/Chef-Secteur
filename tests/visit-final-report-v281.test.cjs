@@ -58,4 +58,54 @@ function make(enseigne='Darty',channel='grands-magasins'){
  assert.equal(M.reportOf(visit).blanc.team,'');
  M.validate(state);
 }
+
+{
+ const s={schemaVersion:5,stores:[{id:'x',enseigne:'Darty',ville:'Test',products:['brun','blanc']}],visits:{},notes:{}};
+ const id=M.start(s,'x');
+ M.editReport(s,id,'brun','team','Visite en cours : facing à vérifier.');
+ M.editReport(s,id,'brun','training','Former les vendeurs vendredi.');
+ M.editReport(s,id,'brun','massification','TG TV Samsung à reprendre.');
+ M.editReport(s,id,'blanc','team','Électroménager contrôlé.');
+ M.editReport(s,id,'blanc','training','Faire le point sur le SAV.');
+ M.editReport(s,id,'shared','context','Flux important à l’entrée.');
+ const v=M.getVisit(s,id),initial=M.unifiedTerrainNote(v,'brun');
+ assert.match(initial,/facing à vérifier/);
+ assert.match(initial,/Contexte magasin:\nFlux important/);
+ assert.match(initial,/Former les vendeurs vendredi/);
+ assert.match(initial,/TG TV Samsung à reprendre/);
+ assert.equal(M.compactTerrainFields(s,id),true);
+ assert.equal(M.compactTerrainFields(s,id),false,'migration idempotente');
+ const migrated=M.reportOf(v);
+ assert.equal(migrated.brun.team,initial,'exact legacy text is folded into BRUN note');
+ assert.match(migrated.blanc.team,/Faire le point sur le SAV/);
+ assert.match(migrated.blanc.team,/Flux important à l’entrée/);
+ assert.equal(migrated.brun.training,'');
+ assert.equal(migrated.blanc.training,'');
+ assert.equal(migrated.brun.massification,'');
+ assert.equal(migrated.shared.context,'');
+ M.validate(s);
+ const clone=M.clone(s);M.validate(clone);
+ assert.equal(M.reportOf(M.getVisit(clone,id)).brun.team,initial);
+}
+{
+ const s={schemaVersion:5,stores:[{id:'x',enseigne:'Boulanger',ville:'Test',products:['brun']}],visits:{},notes:{}};
+ const id=M.start(s,'x');M.editReport(s,id,'shared','context','Contexte mono BRUN');
+ assert.equal(M.compactTerrainFields(s,id),true);
+ assert.match(M.reportOf(M.getVisit(s,id)).brun.team,/Contexte mono BRUN/);
+ assert.equal(M.reportOf(M.getVisit(s,id)).blanc.team,'','a shared legacy context cannot create a phantom BLANC report');
+}
+{
+ const {state,id,visit}=make();
+ visit.report.shared.context='Contexte magasin ancien.';
+ visit.report.blanc.training='Suivi SAV BLANC au prochain passage.';
+ const pasted='Compte rendu BRUN final, sans ancienne note.';
+ M.editProfessionalReport(state,id,'brun',pasted,true);
+ assert.equal(M.reportOf(visit).brun.team,pasted,'final ChatGPT report must be exact');
+ assert.equal(M.reportOf(visit).shared.context,'');
+ assert.equal(M.reportOf(visit).blanc.training,'');
+ assert.match(M.reportOf(visit).blanc.team,/Suivi SAV BLANC au prochain passage/);
+ assert.match(M.reportOf(visit).blanc.team,/Contexte magasin ancien/);
+ M.validate(state);
+}
+
 console.log('PASS V281: finish-edit transfers report into terrain; drafts do not, original source preserved and AI stale results rejected');
