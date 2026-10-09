@@ -389,7 +389,7 @@ async function sharePhotos(){const v=visitById(activeVisit);if(!v){say('Visite i
   }
  }finally{sharing=false}
 }
-async function close(){const area=sheet&&sheet.querySelector('#srReportText');if(area&&!area.readOnly&&!await persistFinalEdit(area))return false;if(sheet&&sheet.open)sheet.close();return true}
+async function close(){const area=sheet&&sheet.querySelector('#srReportText');if(area&&!area.readOnly){if(!await persistFinalEdit(area))return false}else if(!await editSaving)return false;if(sheet&&sheet.open)sheet.close();return true}
 async function open(visitId){const v=visitById(String(visitId||''));if(!v)return false;ensureSheet();activeVisit=v.id;const M=model();activeTab=M&&M.FAMILIES.indexOf(v.activeFamily)>=0?v.activeFamily:'brun';say('');if(typeof sheet.showModal==='function'&&!sheet.open)sheet.showModal();else sheet.setAttribute('open','');await refresh();return true}
 function fromVisitDialog(){const api=root.StoreRunnerVisits,id=api&&typeof api.activeVisitId==='function'?api.activeVisitId():'';if(!id)return false;open(id);return true}
 function fromQuickSheet(){const start=root.document&&root.document.getElementById('srQuickStart'),storeId=start&&start.dataset?start.dataset.srStart:'',draft=storeId?(draftFor(storeId)||(((state().businessV2||{}).visits)||[]).filter(v=>String(v.storeId)===String(storeId)&&v.status==='completed').sort((a,b)=>String(b.completedAt||'').localeCompare(String(a.completedAt||'')))[0]):null;if(!draft){ensureSheet();say('Démarre la visite avant de générer le compte rendu.',true);if(typeof root.alert==='function')root.alert('Démarre la visite avant de générer le compte rendu.');return false}open(draft.id);return true}
