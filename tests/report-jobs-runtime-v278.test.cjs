@@ -30,7 +30,7 @@ const result = { version: 1, reports: [{ reportType: 'cuisiniste', items: [{ sec
     compatibilityDate: '2026-07-30',
     durableObjects: { REPORT_JOBS: { className: 'VisitReportJob', useSQLite: true } },
     durableObjectsPersist: directory,
-    bindings: { GROQ_API_KEY: 'synthetic-key-no-network' },
+    bindings: { GROQ_API_KEY: 'synthetic-key-no-network', REPORT_AUTO_STYLE: 'legacy-json' },
     log: new Log(LogLevel.ERROR),
     outboundService: async request => {
       assert.equal(new URL(request.url).host, 'api.groq.com');
