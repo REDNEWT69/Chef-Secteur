@@ -165,8 +165,8 @@ function counting(answers){
   // V287: le bouton Groq qui fonctionne devient le seul chemin visible.
   // Un double tap ne peut pas lancer deux requêtes ; le résultat est sauvegardé.
   assert.match(SLACK,/Le rapport local est conservé/);
-  assert.match(SLACK,/finally\\{\\s*freeTestRunning=false;/,'le verrou du bouton est libéré en finally');
-  assert.match(SLACK,/if\\(!v\\|\\|v\\.status!=='completed'\\|\\|!button\\|\\|freeTestRunning\\)return false/,'double tap bloqué');
+  assert.match(SLACK,/finally\{\s*freeTestRunning=false;/,'le verrou du bouton est libéré en finally');
+  assert.match(SLACK,/if\(!v\|\|v\.status!=='completed'\|\|!button\|\|freeTestRunning\)return false/,'double tap bloqué');
   const generator=SLACK.slice(SLACK.indexOf('async function generateGroqReport'),SLACK.indexOf('function updateAIButton'));
   const lock=generator.indexOf('freeTestRunning=true'),firstAwait=generator.indexOf('await');
   assert(lock>0&&firstAwait>0&&lock<firstAwait,'verrou avant le premier await');
