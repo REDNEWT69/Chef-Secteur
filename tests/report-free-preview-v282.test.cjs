@@ -41,12 +41,13 @@ const free='🏬 Concurrence / Merchandising\n\nLes trois têtes de gondole Sams
  const instruction=calls[0].messages[0].content;
  assert.match(instruction,/dictée orale imparfaite/);
  assert.match(instruction,/Conserve chaque référence produit, marque, prix, prime, montant, pourcentage/);
- assert.match(instruction,/PLV manquante sur une Neo QLED à côté d’un 65M73H/);
- assert.match(instruction,/Une remise TCL ne prouve jamais qu’aucune promotion Samsung n’existe/);
+ assert.match(instruction,/si une PLV manque sur un produit situé à côté d’un autre/);
+ assert.match(instruction,/Une promotion concurrente ne prouve jamais l’absence de promotion de notre marque/);
  assert.match(instruction,/commande non validée ne signifient jamais commandé/);
  assert.match(instruction,/N’invente aucune référence, caractéristique technique, prime/);
  assert.match(instruction,/date de formation, échéance, responsable, engagement/);
- assert.match(instruction,/sans tableau, sans signature, sans liste de recommandations inventées/);
+ assert.match(instruction,/sans tableau, sans signature, sans date de rédaction ajoutée/);
+ assert.doesNotMatch(instruction,/55M74H|65M73H|75R85H|100E7Q|TCL/,'les références des tests ne doivent pas polluer le prompt permanent');
  assert.match(calls[0].messages[1].content,/55M74H 0 € prime/);
  assert.match(calls[0].messages[1].content,/Hisense 100E7Q 45 €/);
  assert.match(calls[0].messages[1].content,/TCL remise 15 % du 10 au 20 octobre/);
