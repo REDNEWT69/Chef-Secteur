@@ -337,9 +337,17 @@ function editProfessionalReport(s,visitId,family,value,finalize=false){
  if(finalize){
   v.report=reportOf(v);
   if(family==='brun'||family==='blanc'){
+   // Avant de vider les champs retirés de l'UI, déplacer leurs informations
+   // vers la note de l'AUTRE univers. Un compte rendu déjà validé reste exact.
+   const targets=terrainFamiliesFor(s,v);
+   for(const other of targets){
+    if(other===family)continue;
+    const accepted=professionalReportOf(v,other);
+    if(!(accepted&&accepted.manual))v.report[other].team=unifiedTerrainNote(v,other);
+   }
    v.report[family].team=value;
-   // Le compte rendu définitif remplace les anciens champs du même univers.
-   for(const key of Object.keys(REPORT_FIELDS))if(key!=='team')v.report[family][key]='';
+   for(const f of FAMILIES)for(const key of Object.keys(LEGACY_TERRAIN_LABELS))v.report[f][key]='';
+   v.report.shared.context='';
   }else{
    v.report.shared.context=value;
    for(const f of FAMILIES)for(const key of Object.keys(REPORT_FIELDS))v.report[f][key]='';
