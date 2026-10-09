@@ -91,12 +91,10 @@ formatted.reports[1].items[0].text='<script>danger</script>';
 assert.equal(R.validateEditorial(formatted,source).quality.omittedItems,1);
 assert.equal(R.validateEditorial(report,source).quality.acceptedItems,9,'inputs untouched after error paths');
 
-// A source-only dictation still remains visible if the model fails entirely.
+// No usable prose means an explicit error, not a 'successful' raw transcript.
+// The original dictation remains attached to the visit outside this module.
 const raw=structuredClone(report);
 for(const r of raw.reports)r.items=[];
-const safe=R.validateEditorial(raw,source);
-assert.equal(safe.quality.status,'source-only');
-assert(safe.reports.every(r=>r.items.every(i=>i.section==='notes')));
-assert.doesNotThrow(()=>R.validateDelivered(safe,source));
+assert.throws(()=>R.validateEditorial(raw,source),/rapport vide/);
 
 console.log('PASS V280 autonomous prose, semantic BLANC/BRUN sections, source provenance, figures, browser verification and no duplicates');
