@@ -142,7 +142,9 @@ test('V217 épure la visite selon les familles configurées dans la fiche magasi
   await expect(dialog.locator('.sr-familyBtn')).toHaveText('BLANC');
   await expect(dialog.locator('.sr-familyBtn[data-family="brun"]')).toHaveCount(0);
   await expect(dialog.locator('.sr-familyActive')).toHaveCount(0);
-  await expect(dialog.getByText('Contexte magasin · facultatif',{exact:true})).toBeVisible();
+  await expect(dialog.locator('label.sr-field').filter({hasText:'Note terrain BLANC'})).toHaveCount(1);
+  await expect(dialog.locator('label.sr-field').filter({hasText:'Contexte magasin'})).toHaveCount(0);
+  await expect(dialog.locator('label.sr-field').filter({hasText:'Prochain passage'})).toHaveCount(0);
   await expect(dialog.locator('.sr-terrainExitHint')).toHaveCount(0);
   expect(await page.evaluate(()=>window.state.businessV2.visits.find(v=>v.storeId==='v217-blanc'&&v.status==='draft').activeFamily)).toBe('blanc');
 
