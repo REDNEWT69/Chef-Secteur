@@ -20,6 +20,7 @@ test('Accueil 390px : Google Agenda est immédiatement sous la position, sans no
    unique:document.querySelectorAll('#calendarHomeStatus').length,
    gapBetweenCenters:(line.top+line.height/2)-(gr.top+gr.height/2),
    gpsHeight:gr.height,calendarHeight:cr.height,
+   actionHeight:cal.querySelector('button').getBoundingClientRect().height,
    actionExists:!!cal.querySelector('button'),
    cardExistsInPlanning:!!document.querySelector('#planningGoogleStatusShortcut')
   };
@@ -29,7 +30,9 @@ test('Accueil 390px : Google Agenda est immédiatement sous la position, sans no
  expect(geometry.unique).toBe(1);
  expect(geometry.gapBetweenCenters).toBeGreaterThan(20);
  expect(geometry.gapBetweenCenters).toBeLessThanOrEqual(34);
- expect(geometry.calendarHeight).toBeLessThanOrEqual(34);
+ expect(geometry.gpsHeight).toBeGreaterThanOrEqual(44);
+ expect(geometry.calendarHeight).toBeGreaterThanOrEqual(44);
+ expect(geometry.actionHeight).toBeGreaterThanOrEqual(44);
  expect(geometry.actionExists).toBe(true);
  expect(geometry.cardExistsInPlanning).toBe(false);
  // Live connection state still travels through the exact same existing element.
