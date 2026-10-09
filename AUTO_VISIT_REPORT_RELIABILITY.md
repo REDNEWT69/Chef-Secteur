@@ -307,3 +307,29 @@ BRUN long, inversion de prix, d'attribution, de disponibilité, citation invent�
 résultat `source-only` et contrôle client indépendant. Pas d'appel réel
 Gemini/Groq et aucune modification de leur configuration. Worker Cloudflare
 à redéployer séparément seulement après recette et fusion approuvées.
+
+
+### V279 — option OpenAI pour les rapports de visite
+
+Le secret OPENAI_API_KEY doit rester dans Cloudflare (type Secret). Il ne doit jamais
+être enregistré dans GitHub ou exposé au navigateur. Le réglage OPENAI_MODEL
+est facultatif, avec gpt-5.6-terra par défaut.
+
+Pour tester OpenAI, après fusion autorisée de cette PR et redéploiement
+Cloudflare du Worker, fixer REPORT_AI_PROVIDER=openai. L'absence de ce
+réglage conserve Gemini comme fournisseur prioritaire si sa clé existe ;
+le seul secret OpenAI n'active PAS de nouveaux appels facturables.
+REPORT_AI_PROVIDER=gemini continue à imposer Gemini.
+
+Le Worker utilise OpenAI Responses API avec un schéma JSON structuré,
+max_output_tokens=2600, reasoning.effort=none et store=false. Une seule
+invocation est autorisée par job, sans fallback payant. Le serveur valide
+toujours les sources, puis le navigateur vérifie de nouveau avant enregistrement.
+
+Tests simulés (aucune clé ni dépense réelle) : requête et modèle sélectionnés,
+non-régression Gemini, JSON et sortie incomplète, erreur HTTP 429 sans fuite,
+clé absente, idempotence durable, pas de second moteur appelé.
+
+Aucune qualité de rédaction terrain ni disponibilité du compte OpenAI ne
+peut être garantie sans essai réel autorisé. Comparer un rapport Valence et
+un rapport Schmidt avec les mêmes notes, sans multiplier les régénérations.

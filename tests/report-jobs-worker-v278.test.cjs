@@ -233,6 +233,7 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   });
   gemini.env.GEMINI_API_KEY = 'synthetic-gemini-key';
   gemini.env.GROQ_API_KEY = 'synthetic-groq-key';
+  gemini.env.OPENAI_API_KEY = 'synthetic-openai-key';
   const geminiJob = await (await gemini.post(first)).json();
   await gemini.env.REPORT_JOBS.get(geminiJob.jobId).alarm();
   const geminiStatus = await (await gemini.get(geminiJob.jobId)).json();
@@ -309,6 +310,104 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   await explicit.env.REPORT_JOBS.get(explicitJob.jobId).alarm();
   assert.equal(selectedCalls.length, 1);
   console.log('PASS jobs · explicit Groq selection and safe Gemini 429/503 diagnostics');
+
+  // Explicit OpenAI opt-in: secret remains server-only, structured output
+  // passes the same visit-job validation, without changing Gemini's default.
+  const openaiCalls = [];
+  const openai = setup({ response: '' }, {
+    fetch: async (url, init) => {
+      openaiCalls.push({ url, headers: init.headers, payload: JSON.parse(init.body) });
+      return new Response(JSON.stringify({
+        status: 'completed', output: [
+          { type: 'reasoning', summary: [] },
+          { type: 'message', role: 'assistant', content: [
+            { type: 'output_text', text: JSON.stringify(result()) }
+          ] }
+        ]
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+  });
+  openai.env.REPORT_AI_PROVIDER = 'openai';
+  openai.env.OPENAI_API_KEY = 'synthetic-openai-secret';
+  openai.env.GEMINI_API_KEY = 'synthetic-gemini-secret';
+  openai.env.GROQ_API_KEY = 'synthetic-groq-secret';
+  const openaiJob = await (await openai.post(first)).json();
+  await openai.env.REPORT_JOBS.get(openaiJob.jobId).alarm();
+  const openaiDone = await (await openai.get(openaiJob.jobId)).json();
+  assert.equal(openaiDone.status, 'done');
+  assert.equal(openaiDone.provider, 'openai');
+  assert.equal(openaiDone.model, 'gpt-5.6-terra');
+  assert.equal(openaiCalls.length, 1, 'one paid OpenAI request, even when other secrets are configured');
+  assert.equal(openai.calls.length, 0, 'no Workers AI call after OpenAI');
+  assert.equal(openaiCalls[0].url, 'https://api.openai.com/v1/responses');
+  assert.equal(openaiCalls[0].headers.Authorization, 'Bearer synthetic-openai-secret');
+  assert.equal(openaiCalls[0].payload.model, 'gpt-5.6-terra');
+  assert.equal(openaiCalls[0].payload.store, false, 'do not retain report inputs in OpenAI response application state');
+  assert.equal(openaiCalls[0].payload.reasoning.effort, 'none');
+  assert.equal(openaiCalls[0].payload.max_output_tokens, 2600);
+  assert.equal(openaiCalls[0].payload.text.format.type, 'json_schema');
+  assert.equal(openaiCalls[0].payload.text.format.strict, true);
+  assert.equal(openaiCalls[0].payload.text.format.schema.properties.reports.type, 'array');
+  assert.match(openaiCalls[0].payload.input, /RS68A882/, 'provider receives dictated source');
+  assert.match(openaiCalls[0].payload.instructions, /JSON/);
+  assert(!JSON.stringify(openaiDone).includes('synthetic-openai-secret'));
+  await openai.env.REPORT_JOBS.get(openaiJob.jobId).alarm();
+  assert.equal(openaiCalls.length, 1, 'alarm redelivery must not repeat a paid GPT request');
+
+  const selectedModel = setup({ response: '' }, {
+    fetch: async (_, init) => new Response(JSON.stringify({
+      status: 'completed', output: [{ type: 'message', role: 'assistant',
+        content: [{ type: 'output_text', text: JSON.stringify(result()) }] }]
+    }), { status: 200 })
+  });
+  selectedModel.env.REPORT_AI_PROVIDER = 'openai';
+  selectedModel.env.OPENAI_API_KEY = 'synthetic-openai-key';
+  selectedModel.env.OPENAI_MODEL = 'gpt-5.6-sol';
+  const modelJob = await (await selectedModel.post(first)).json();
+  await selectedModel.env.REPORT_JOBS.get(modelJob.jobId).alarm();
+  assert.equal((await (await selectedModel.get(modelJob.jobId)).json()).model, 'gpt-5.6-sol');
+
+  const noOpenaiKey = setup();
+  noOpenaiKey.env.REPORT_AI_PROVIDER = 'openai';
+  noOpenaiKey.env.GEMINI_API_KEY = 'synthetic-gemini-secret';
+  const noKeyJob = await (await noOpenaiKey.post(first)).json();
+  await noOpenaiKey.env.REPORT_JOBS.get(noKeyJob.jobId).alarm();
+  const noKeyStatus = await (await noOpenaiKey.get(noKeyJob.jobId)).json();
+  assert.equal(noKeyStatus.status, 'failed');
+  assert.equal(noKeyStatus.error.code, 'ai_no_provider');
+  assert.equal(noOpenaiKey.calls.length, 0, 'explicit OpenAI without secret cannot silently use Gemini');
+
+  const openaiFailed = setup({ response: '' }, {
+    fetch: async () => new Response(JSON.stringify({ error: { message: 'synthetic-sensitive-field-notes-key' } }),
+      { status: 429, headers: { 'Content-Type': 'application/json' } })
+  });
+  openaiFailed.env.REPORT_AI_PROVIDER = 'openai';
+  openaiFailed.env.OPENAI_API_KEY = 'synthetic-openai-key';
+  openaiFailed.env.GEMINI_API_KEY = 'synthetic-gemini-key';
+  const failedOpenAIJob = await (await openaiFailed.post(first)).json();
+  await openaiFailed.env.REPORT_JOBS.get(failedOpenAIJob.jobId).alarm();
+  const failedOpenAI = await (await openaiFailed.get(failedOpenAIJob.jobId)).json();
+  assert.equal(failedOpenAI.status, 'failed');
+  assert.equal(failedOpenAI.error.code, 'ai_provider_unavailable');
+  assert.equal(failedOpenAI.error.provider, 'openai');
+  assert.equal(failedOpenAI.error.httpStatus, 429);
+  assert(!JSON.stringify(failedOpenAI).includes('synthetic-sensitive-field-notes-key'));
+  assert.equal(openaiFailed.calls.length, 0, 'no hidden Gemini retry on OpenAI error');
+
+  const openaiTruncated = setup({ response: '' }, {
+    fetch: async () => new Response(JSON.stringify({
+      status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' },
+      output: [{ type: 'message', role: 'assistant', content: [
+        { type: 'output_text', text: '{"version":1' }
+      ] }]
+    }), { status: 200 })
+  });
+  openaiTruncated.env.REPORT_AI_PROVIDER = 'openai';
+  openaiTruncated.env.OPENAI_API_KEY = 'synthetic-openai-key';
+  const shortOpenAIJob = await (await openaiTruncated.post(first)).json();
+  await openaiTruncated.env.REPORT_JOBS.get(shortOpenAIJob.jobId).alarm();
+  assert.equal((await (await openaiTruncated.get(shortOpenAIJob.jobId)).json()).error.code, 'report_truncated');
+  console.log('PASS jobs · OpenAI explicit opt-in, schema, no state storage, single call, no secret leaks or fallback');
 
   const geminiTruncated = setup({ response: '' }, {
     fetch: async () => new Response(JSON.stringify({
