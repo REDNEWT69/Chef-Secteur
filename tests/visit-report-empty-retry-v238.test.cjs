@@ -310,15 +310,18 @@ console.log('PASS 3+5 · réponse vide rattrapée en 2 tentatives, sur BLANC com
 /* 10. Double tap : un seul flux de génération                                         */
 /* ================================================================================== */
 {
-  const generateAI=SLACK.slice(SLACK.indexOf('async function generateAI'),SLACK.indexOf('async function copy('));
-  const lock=generateAI.indexOf('generating=true'),firstAwait=generateAI.indexOf('await');
+  const groq=SLACK.slice(SLACK.indexOf('async function generateGroqReport'),SLACK.indexOf('function updateAIButton'));
+  const lock=groq.indexOf('freeTestRunning=true'),firstAwait=groq.indexOf('await');
   assert(lock>0&&firstAwait>0&&lock<firstAwait,'le verrou doit précéder le premier await');
-  assert.match(SLACK,/if\(generating\)\{say\('Génération déjà en cours/,'un double tap ne lance pas deux générations');
-  assert.match(SLACK,/finally\{generating=false;if\(button\)\{button\.disabled=false/,
-    'le bouton reste verrouillé jusqu’à la fin, second essai compris, puis réactivé');
-  // Le second essai vit DANS l'appel passerelle : le verrou le couvre sans rien changer.
-  assert(generateAI.indexOf('await api.requestReportRegeneration')>0&&generateAI.indexOf('await api.requestReportRegeneration')<generateAI.indexOf('finally'),
-    'l’appel IA, et donc le second essai, vit sous le verrou');
+  assert.match(groq,/if\(!v\|\|v\.status!=='completed'\|\|!button\|\|freeTestRunning\)return false/,
+    'un double tap ne lance pas deux générations');
+  assert.match(groq,/finally\{\s*freeTestRunning=false;/,
+    'le bouton reste verrouillé jusqu’à la fin puis réactivé');
+  assert(groq.indexOf('await root.StoreRunnerReportAIAutoV2771.freePreview')>0
+    &&groq.indexOf('await root.StoreRunnerReportAIAutoV2771.freePreview')<groq.indexOf('finally'),
+    'le seul appel Groq vit dans le verrou');
+  assert(groq.includes('await api.saveFinalReport(v.id,type,data.text,false)'),
+    'texte libre enregistré sans mutation des notes terrain');
   console.log('PASS 10 · double tap : un seul flux, bouton verrouillé pendant le second essai');
 }
 
