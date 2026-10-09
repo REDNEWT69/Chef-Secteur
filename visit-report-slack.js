@@ -322,8 +322,8 @@ async function generateGroqReport(){
  if(!M||!config||!config.gateway){say('Connexion IA non configurée.',true);return false}
  const store=storeOf(state(),v),kind=skeletonForStore(store),
   type=kind==='cuisinistes'?'cuisiniste':kind==='buying-groups'?'buying-groups':activeTab;
- const source=typeof M.sourceForReportJob==='function'&&v.reportJob?
-  M.sourceForReportJob(v):M.frozenReportSource(state(),v);
+ const source=(typeof M.sourceForReportJob==='function'&&v.reportJob&&M.sourceForReportJob(v))
+  ||M.frozenReportSource(state(),v);
  if(!source){say('Notes originales indisponibles.',true);return false}
  const row=(source.reports||[]).find(r=>r.reportType===type);
  if(!row||(row.entries||[]).every(e=>!text(e.text))){say('Aucune note originale pour cette famille.',true);return false}
@@ -340,8 +340,8 @@ async function generateGroqReport(){
     &&activeVisit===v.id&&currentDraftKey()===key&&freeTestSequence===token;
   if(!still||!sheet.open||!area.readOnly)return false;
   if(!data||typeof data.text!=='string'||!data.text.trim())throw Error('Groq a renvoyé un texte vide.');
-  const latest=typeof M.sourceForReportJob==='function'&&live.reportJob?
-    M.sourceForReportJob(live):M.frozenReportSource(state(),live);
+  const latest=(typeof M.sourceForReportJob==='function'&&live.reportJob&&M.sourceForReportJob(live))
+    ||M.frozenReportSource(state(),live);
   if(!latest||await root.StoreRunnerReportRenderer.sourceSignature(latest)!==signature)
     throw Error('Les notes originales ont changé pendant la génération. Rien n’a été remplacé.');
   const api=visitsAPI();
