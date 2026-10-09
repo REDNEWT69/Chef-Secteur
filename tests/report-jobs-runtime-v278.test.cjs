@@ -36,8 +36,11 @@ const result = { version: 1, reports: [{ reportType: 'cuisiniste', items: [{ sec
       assert.equal(new URL(request.url).host, 'api.groq.com');
       calls += 1;
       const payload = await request.json();
-      assert.equal(payload.max_completion_tokens, 2600);
+      assert.equal(payload.max_completion_tokens, 4096);
       assert.equal(payload.include_reasoning, false);
+      assert.equal(payload.response_format.type, 'json_schema');
+      assert.equal(payload.response_format.json_schema.strict, true);
+      assert.deepEqual(payload.response_format.json_schema.schema.required, ['version', 'reports']);
       await providerGate;
       return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) }, finish_reason: 'stop' }] }),
         { headers: { 'Content-Type': 'application/json' } });
