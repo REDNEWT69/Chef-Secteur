@@ -26,9 +26,7 @@ for(const width of [390,360])test.describe('Android '+width,()=>{
  test('clôture réelle, reload, réouverture et nouvelle clôture remplacent la mémoire, puis suppression',async({page,context})=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));await boot(page);
   const id=await page.evaluate(()=>StoreRunnerVisits.start('v277-a'));
-  await field(page,'Note terrain BRUN').fill('Formation réalisée avec Julie.\nSAV RF48A401EB4 à relancer.');
-  await expect(page.locator(DIALOG+' .sr-status')).toContainText('Enregistré',{timeout:15000});
-  await field(page,'Prochain passage / formation BRUN').fill('Revoir le mural au prochain passage.');
+  await field(page,'Note terrain BRUN').fill('Formation réalisée avec Julie.\nSAV RF48A401EB4 à relancer.\nRevoir le mural au prochain passage.');
   await expect(page.locator(DIALOG+' .sr-status')).toContainText('Enregistré',{timeout:15000});
   await expect.poll(()=>page.evaluate(()=>StoreRunnerVisitModel.reportMemoryFor(state,'v277-a').items.length)).toBe(0);
   await context.setOffline(true);await complete(page); // analyse sans réseau, aucune étape ajoutée
@@ -42,9 +40,7 @@ for(const width of [390,360])test.describe('Android '+width,()=>{
   page.once('dialog',d=>d.accept());await page.locator(DIALOG+' [data-sr-reopen-visit]').tap();
   await expect(page.locator('#srVisitTitle')).toContainText('Visite en cours');
   expect(await page.evaluate(()=>StoreRunnerVisitModel.reportMemoryFor(state,'v277-a').items)).toEqual([]);
-  await field(page,'Note terrain BRUN').fill('SAV RF48A401EB4 résolu.');
-  await expect(page.locator(DIALOG+' .sr-status')).toContainText('Enregistré',{timeout:15000});
-  await field(page,'Prochain passage / formation BRUN').fill('Formation réalisée sur le son.');
+  await field(page,'Note terrain BRUN').fill('SAV RF48A401EB4 résolu.\nFormation réalisée sur le son.');
   await expect(page.locator(DIALOG+' .sr-status')).toContainText('Enregistré',{timeout:15000});
   await complete(page);
   expect(await page.evaluate(()=>state.businessV2.visits.length)).toBe(1);
