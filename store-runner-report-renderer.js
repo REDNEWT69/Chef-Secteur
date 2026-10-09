@@ -299,7 +299,9 @@ function editorialCommercialGuard(item,sourceText){
  // contractual outcome. 'Aucun contrat validé' must never become 'contrat validé'.
  if(item.section==='contract'){
   const q=plain(sourceText),p=plain(item.text);
-  const barred=/\b(?:aucun|pas|non|sans)\b.{0,45}\b(?:contrat|accord)\b.{0,50}\b(?:valide|signe|accepte|conclu)\b/.test(q);
+  const barred=/\b(?:aucun|pas|non|sans|ni|absence|jamais)\b.{0,45}\b(?:contrat|accord)\b.{0,50}\b(?:valide|signe|accepte|conclu)\b/.test(q)
+   || /\b(?:contrat|accord)\b.{0,45}\b(?:non|pas|jamais|ni)\b.{0,25}\b(?:valide|signe|accepte|conclu)\b/.test(q)
+   || /\b(?:contrat|accord)\b.{0,40}\b(?:a confirmer|a signer|en attente)\b/.test(q);
   const affirmed=/\b(?:contrat|accord)\b.{0,50}\b(?:valide|signe|accepte|conclu)\b/.test(p);
   if(barred&&affirmed&&!/\b(?:aucun|pas|non|sans|ni|absence)\b/.test(p))return false;
  }
