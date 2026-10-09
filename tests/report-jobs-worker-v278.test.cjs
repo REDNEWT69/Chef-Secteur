@@ -127,12 +127,12 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   const inventedPending = await (await inventedPrice.post(first)).json();
   await inventedPrice.env.REPORT_JOBS.get(inventedPending.jobId).alarm();
   const inventedStatus = await (await inventedPrice.get(inventedPending.jobId)).json();
-  assert.equal(inventedStatus.status, 'done');
-  assert.equal(inventedStatus.result.quality.status, 'source-only');
-  assert.equal(inventedStatus.result.reports[0].items[0].text, RAW);
-  assert(!JSON.stringify(inventedStatus.result).includes('899 €'));
+  assert.equal(inventedStatus.status, 'failed', 'do not display a raw note as a successful report');
+  assert.equal(inventedStatus.error.code, 'report_invalid_result');
+  assert(!('result' in inventedStatus));
+  assert(!JSON.stringify(inventedStatus).includes('899 €'));
   assert.equal(inventedPrice.calls.length, 1);
-  console.log('PASS jobs · invented product price downgraded to immutable source, one inference');
+  console.log('PASS jobs · invented price fails without raw-note copy or a second inference');
 
   // Natural field dictation: a grounded partial quote is valid when adjacent
   // notes do not alter its meaning, even if the dictation has no punctuation.
@@ -169,10 +169,9 @@ function setup(answer = { response: JSON.stringify(result()), finish_reason: 'st
   const unsafePending = await (await unsafeJob.post(await body(unsafeSource))).json();
   await unsafeJob.env.REPORT_JOBS.get(unsafePending.jobId).alarm();
   const unsafeStatus = await (await unsafeJob.get(unsafePending.jobId)).json();
-  assert.equal(unsafeStatus.status, 'done');
-  assert.equal(unsafeStatus.result.quality.status, 'source-only');
-  assert.equal(unsafeStatus.result.reports[0].items[0].section, 'notes');
-  assert.equal(unsafeStatus.result.reports[0].items[0].text, unsafeDictation);
+  assert.equal(unsafeStatus.status, 'failed', 'contractual negation must never become a confirmed agreement');
+  assert.equal(unsafeStatus.error.code, 'report_invalid_result');
+  assert(!('result' in unsafeStatus));
   assert(!('source' in unsafeStatus));
   assert.equal(unsafeJob.calls.length, 1);
 
