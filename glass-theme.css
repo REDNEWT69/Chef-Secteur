@@ -137,16 +137,15 @@ body.glassHome #premiumHomeV2 #calendarHomeStatus .calendarHomeLine{display:inli
 body.glassHome #premiumHomeV2 #calendarHomeStatus button{min-height:44px;padding:0 0 0 4px;font-size:11px;line-height:1;display:inline-flex;align-items:center;justify-content:center}
 body.glassHome #premiumHomeV2 #calendarHomeStatus strong{font-size:11px;line-height:1}
 @media(max-width:700px){
-  /* Accueil V283 : Google Agenda est une seconde ligne immédiatement sous
-     Francheville · Position précise. Les deux états existaient déjà dans le
-     même conteneur ; ne pas créer un nouveau badge ni déplacer le planning. */
+  /* Garder des cibles tactiles de 44 px pour Position et Reconnecter.
+     On resserre seulement les lignes visuelles, sans réduire les boutons. */
   #premiumHomeV2 .phHeaderContext{gap:0}
   #premiumHomeV2 .phHeaderContext{transform:translateY(-18px)}
-  #premiumHomeV2 .phHeaderContext .phBase{min-height:30px;padding:0;align-items:center}
-  body.glassHome #premiumHomeV2 #calendarHomeStatus{min-height:30px;align-items:flex-start}
+  #premiumHomeV2 .phHeaderContext .phBase{min-height:44px;padding:0;align-items:center}
+  body.glassHome #premiumHomeV2 #calendarHomeStatus{min-height:44px;align-items:flex-start;margin-top:-14px}
   body.glassHome #premiumHomeV2 #calendarHomeStatus .calendarHomeCopy{align-self:stretch;padding-top:0}
-  body.glassHome #premiumHomeV2 #calendarHomeStatus .calendarHomeLine{min-height:30px;align-items:center}
-  body.glassHome #premiumHomeV2 #calendarHomeStatus button{min-height:30px;padding:0 0 0 4px;align-self:center}
+  body.glassHome #premiumHomeV2 #calendarHomeStatus .calendarHomeLine{min-height:44px;align-items:center}
+  body.glassHome #premiumHomeV2 #calendarHomeStatus button{min-height:44px;padding:0 0 0 4px;align-self:center}
 }
 /* V254.1 — l'identité reste en haut, l'IA sous le titre, puis seulement la carte Runner. */
 #premiumHomeV2 .phTop{order:1!important}
