@@ -288,8 +288,8 @@ async function ensureReportIntent(visitId){
  const ok=await save(s=>{const v=(s.businessV2&&s.businessV2.visits||[]).find(x=>x.id===key);if(!v||v.status!=='completed'||v.reportJob||!v.runnerAI||v.runnerAI.status!=='pending')return false;M.createReportJob(s,key);applied=true;return true},null,{backgroundReport:true,visitId:key});
  return ok&&applied;
 }
-async function saveFinalReport(visitId,family,text){
- const key=String(visitId);const ok=await save(s=>{const v=M.getVisit(s,key),types=M.reportTypes(s,v),type=types.includes('cuisiniste')?'cuisiniste':types.includes('buying-groups')?'buying-groups':family;M.editProfessionalReport(s,key,type,text)},()=>announceReport(key));return ok;
+async function saveFinalReport(visitId,family,text,finalize=false){
+ const key=String(visitId);const ok=await save(s=>{const v=M.getVisit(s,key),types=M.reportTypes(s,v),type=types.includes('cuisiniste')?'cuisiniste':types.includes('buying-groups')?'buying-groups':family;M.editProfessionalReport(s,key,type,text,finalize)},()=>announceReport(key));return ok;
 }
 async function requestReportRegeneration(visitId){
  const key=String(visitId);let reused=false;const ok=await save(s=>{const previous=M.getVisit(s,key).reportJob;const job=M.createReportJob(s,key,true);if(previous===job){reused=true;return false}});
