@@ -88,3 +88,31 @@
 .sr-reportMemory small{margin-top:8px}
 .sr-reportMemory .sr-memorySource,.sr-reportMemory summary{min-height:44px;padding:10px 4px;font-size:12px;line-height:1.4;cursor:pointer;text-align:left;white-space:normal}
 .sr-reportMemory .sr-memorySource{border:0;background:transparent;color:inherit;text-decoration:underline;max-width:100%}
+
+/* Visit contact shortcut: one tap, no navigation and comfortable on iPhone. */
+.sr-contactsShortcut{margin:4px 0 12px}
+.sr-contactsToggle{width:100%;min-height:46px!important;border:1px solid #d5dff1;border-radius:13px;background:#eef4ff;color:#163b94;font-size:14px;font-weight:800;text-align:left;padding:10px 14px}
+.sr-contactsToggle::after{content:'⌄';float:right;font-size:17px;line-height:1}
+.sr-contactsToggle[aria-expanded=true]::after{content:'⌃'}
+.sr-contactsPanel{margin-top:8px;padding:12px;border:1px solid #dbe2ed;border-radius:14px;background:#f9fbff;overflow-wrap:anywhere}
+.sr-contactsPanel h3{font-size:15px;margin:0 0 10px}
+.sr-contactRow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:10px 0;border-top:1px solid #e5eaf2;font-size:13px}
+.sr-contactRow strong{width:100%;font-size:14px}
+.sr-contactRow small{color:#667085;font-size:12px}
+.sr-contactRow span{font-size:13px;overflow-wrap:anywhere}
+.sr-contactActions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sr-contactActions button,.sr-contactActions a,.sr-contactEdit,.sr-contactPhone{display:inline-flex;justify-content:center;align-items:center;min-height:44px;padding:8px 12px;border-radius:10px;font-size:13px;font-weight:700;text-decoration:none}
+.sr-contactActions button,.sr-contactEdit{border:1px solid #ced9ed;background:#fff;color:#163b94}
+.sr-contactActions a{background:#163b94;color:#fff}
+.sr-contactPhone{color:#163b94;background:#eef4ff;text-decoration:none}
+.sr-contactEdit{margin-left:auto}
+.sr-contactEmpty{font-size:12px;color:#667085}
+.sr-contactEditor{margin-top:12px;padding-top:12px;border-top:1px solid #dbe2ed}
+.sr-contactEditor h4{font-size:14px;margin:0 0 10px}
+.sr-contactField{display:block;font-size:12px;font-weight:700;margin:8px 0}
+.sr-contactField input{box-sizing:border-box;display:block;width:100%;min-height:46px;margin-top:5px;padding:9px 12px;border:1px solid #cfd6e2;border-radius:11px;background:white;color:#1d2939;font-size:16px}
+.sr-contactEditorActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.sr-contactEditorActions button{flex:1;min-width:110px;border:1px solid #cfd6e2;border-radius:11px;font-size:13px;font-weight:750;padding:10px}
+.sr-contactSave{background:#1537b6;border-color:#1537b6!important;color:#fff}
+.sr-contactCancel{background:#fff;color:#455468}
+.sr-contactDelete{background:#fff5f4;color:#a42318}

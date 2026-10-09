@@ -3,7 +3,7 @@
 const M=window.StoreRunnerVisitModel;
 const VISIBLE_STEPS=[3];
 const STEP_LABELS={3:'Terrain'};
-let dialog,body,status,title,session,activeId=null,viewStep=3,opener=null,quickMemoryObserver=null,storeDialogObserver=null,expandedMemoryStore='',previewFamily='';
+let dialog,body,status,title,session,activeId=null,viewStep=3,opener=null,quickMemoryObserver=null,storeDialogObserver=null,expandedMemoryStore='',previewFamily='',contactsOpen=false,contactEditIndex=-1;
 const closingVisits=new Set();
 function element(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n}
 function button(text,fn,cls='secondary'){const b=element('button',text,cls);b.type='button';b.addEventListener('click',fn);return b}
@@ -50,6 +50,106 @@ function familySwitch(host,v){
  }
  host.append(box)
 }
+
+/* One-tap contact book directly in the visit dialog. Stored in the existing
+   state.storeContacts[storeId] collection also read by Magasin 360. This is
+   deliberately separate from visit notes, report sources and AI jobs. */
+function storeContacts(storeId){
+ const all=window.state&&window.state.storeContacts,rows=all&&all[String(storeId)];
+ return Array.isArray(rows)?rows.filter(r=>r&&typeof r==='object').map(r=>({...r})):[];
+}
+function emailValid(value){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value||'').trim())}
+function contactInput(parent,label,value,type='text'){
+ const field=element('label',label,'sr-contactField'),input=element('input');input.type=type;input.value=String(value||'');input.autocomplete=type==='email'?'email':'off';field.append(input);parent.append(field);return input;
+}
+async function copyContactEmail(email){
+ try{
+  if(!navigator.clipboard||!navigator.clipboard.writeText)throw Error('Clipboard unavailable');
+  await navigator.clipboard.writeText(email);message('Adresse e-mail copiée.');
+ }catch(e){
+  // iOS Safari can deny Clipboard writes even in a user gesture; give a
+  // selectable fallback rather than claim that the address was copied.
+  window.prompt('Sélectionne et copie cette adresse e-mail :',email);
+ }
+}
+function emailActions(host,email){
+ const actions=element('div',undefined,'sr-contactActions');
+ const copy=button('Copier',()=>copyContactEmail(email),'sr-contactCopy');copy.setAttribute('aria-label','Copier '+email);actions.append(copy);
+ const mail=element('a','Écrire','sr-contactMail');mail.href='mailto:'+email;mail.setAttribute('aria-label','Écrire à '+email);actions.append(mail);host.append(actions);
+}
+async function saveStoreContact(storeId,rows){
+ // Flush every in-flight terrain note first. StoreRunnerVisitStore serializes
+ // only the business visit slice and cannot be used to save storeContacts.
+ if(!await save())return false;
+ const s=window.state;if(!s)return false;
+ const before=s.storeContacts,all={...(before&&typeof before==='object'&&!Array.isArray(before)?before:{})};
+ if(rows.length)all[String(storeId)]=rows;else delete all[String(storeId)];
+ s.storeContacts=all;
+ try{
+  if(typeof window.save!=='function')throw Error('Sauvegarde magasin indisponible.');
+  await window.save();
+  const db=window.__chefStorage||window.storage;
+  if(db&&typeof db.flush==='function')await db.flush();
+  document.dispatchEvent(new CustomEvent('store-runner:store-contact-updated',{detail:{storeId:String(storeId)}}));
+  message('Contact magasin enregistré.');
+  return true;
+ }catch(e){s.storeContacts=before;message('Contact non enregistré : '+e.message,true);return false}
+}
+function contactsShortcut(host,v){
+ const store=storeFor(v.storeId),id=String(v.storeId),rows=storeContacts(id);
+ const box=element('section',undefined,'sr-contactsShortcut');
+ const toggle=button('👤 Contacts magasin'+(rows.length?' ('+rows.length+')':''),async()=>{
+  if(!await save())return;
+  contactsOpen=!contactsOpen;contactEditIndex=-1;render();
+ },'sr-contactsToggle');
+ toggle.dataset.srContactsToggle=id;toggle.setAttribute('aria-expanded',contactsOpen?'true':'false');box.append(toggle);
+ if(!contactsOpen){host.append(box);return}
+ const panel=element('div',undefined,'sr-contactsPanel');panel.dataset.srContactsPanel=id;
+ panel.append(element('h3','Contacts · '+(store?store.enseigne+' '+store.ville:'Magasin archivé')));
+ const general=store&&String(store.email||'').trim();
+ if(emailValid(general)){
+  const row=element('div',undefined,'sr-contactRow');row.append(element('strong','E-mail général du magasin'),element('span',general));emailActions(row,general);panel.append(row)
+ }
+ if(store&&String(store.phone||'').trim()){
+  const line=element('div',undefined,'sr-contactRow');line.append(element('strong','Téléphone magasin'));
+  const a=element('a',String(store.phone),'sr-contactPhone');a.href='tel:'+String(store.phone).replace(/[^+0-9]/g,'');line.append(a);panel.append(line);
+ }
+ if(!rows.length&&!general)panel.append(element('p','Aucun contact enregistré pour ce magasin.','sr-contactEmpty'));
+ rows.forEach((contact,i)=>{
+  const row=element('div',undefined,'sr-contactRow');
+  row.append(element('strong',contact.name||contact.role||'Contact '+(i+1)));
+  const role=String(contact.role||'').trim();if(contact.name&&role)row.append(element('small',role));
+  const email=String(contact.email||'').trim();
+  if(email){row.append(element('span',email));if(emailValid(email))emailActions(row,email)}
+  const edit=button('Modifier',async()=>{if(!await save())return;contactEditIndex=i;render()},'sr-contactEdit');
+  edit.dataset.srContactEdit=String(i);row.append(edit);panel.append(row);
+ });
+ const editing=contactEditIndex>=0&&contactEditIndex<rows.length,contact=editing?rows[contactEditIndex]:{};
+ const editor=element('div',undefined,'sr-contactEditor');
+ editor.append(element('h4',editing?'Modifier le contact':'Ajouter un contact'));
+ const name=contactInput(editor,'Nom',contact.name||'');
+ const role=contactInput(editor,'Fonction',contact.role||'');
+ const email=contactInput(editor,'E-mail',contact.email||'','email');
+ const actions=element('div',undefined,'sr-contactEditorActions');
+ const submit=button(editing?'Enregistrer les modifications':'Ajouter le contact',async()=>{
+  const next={...contact,name:name.value.trim(),role:role.value.trim(),email:email.value.trim()};
+  if(!next.name&&!next.role){message('Indique le nom ou la fonction du contact.',true);name.focus();return}
+  if(!emailValid(next.email)){message('Indique une adresse e-mail valide.',true);email.focus();return}
+  submit.disabled=true;
+  const updated=rows.slice();if(editing)updated[contactEditIndex]=next;else updated.push(next);
+  if(await saveStoreContact(id,updated)){contactEditIndex=-1;render()}else submit.disabled=false;
+ },'sr-contactSave');
+ actions.append(submit);
+ if(editing){
+  actions.append(button('Annuler',()=>{contactEditIndex=-1;render()},'sr-contactCancel'));
+  actions.append(button('Supprimer',async()=>{
+   if(!window.confirm('Supprimer ce contact du magasin ?'))return;
+   if(await saveStoreContact(id,rows.filter((_,j)=>j!==contactEditIndex))){contactEditIndex=-1;render()}
+  },'sr-contactDelete'));
+ }
+ editor.append(actions);panel.append(editor);box.append(panel);host.append(box);
+}
+
 function legacyReport(host,block){
  const rows=[['actions','Actions réalisées'],['massification','Massification / exposition'],['omni','Suivi OMNI']].filter(([key])=>String(block[key]||'').trim());
  if(!rows.length)return;
@@ -321,15 +421,15 @@ function steps(host,v){
  for(const i of VISIBLE_STEPS){const b=button(STEP_LABELS[i],async()=>{if(v.status==='draft')await save(s=>M.editVisit(s,v.id,'step',null,i),()=>{render();dialog.scrollTop=0});else{viewStep=i;render();dialog.scrollTop=0}});b.setAttribute('aria-current',step===i?'step':'false');nav.append(b)}
  host.append(nav)
 }
-function render(){releaseRunner();const v=current();if(!v){hub();return}body.replaceChildren();title.textContent=name(v.storeId)+' · '+(v.status==='draft'?'Visite en cours':'Visite terminée');steps(body,v);if(!isCuisinisteStoreId(v.storeId))familySwitch(body,v);report(body,v)}
-function hub(){activeId=null;title.textContent='Visites';body.replaceChildren();const rows=domain().visits.slice().sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));if(!rows.length)body.append(element('p','Démarre une visite depuis une fiche magasin, le planning ou la tournée.'));for(const v of rows){const box=element('section',undefined,'sr-item');box.append(element('h3',name(v.storeId)),element('p',v.status==='draft'?'Visite en cours':('Terminée le '+v.completedDate)),button(v.status==='draft'?'Reprendre la visite':'Consulter la visite',()=>{activeId=v.id;previewFamily=activeFamily(v);viewStep=3;render()}));body.append(box)}}
+function render(){releaseRunner();const v=current();if(!v){hub();return}body.replaceChildren();title.textContent=name(v.storeId)+' · '+(v.status==='draft'?'Visite en cours':'Visite terminée');contactsShortcut(body,v);steps(body,v);if(!isCuisinisteStoreId(v.storeId))familySwitch(body,v);report(body,v)}
+function hub(){activeId=null;contactsOpen=false;contactEditIndex=-1;title.textContent='Visites';body.replaceChildren();const rows=domain().visits.slice().sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));if(!rows.length)body.append(element('p','Démarre une visite depuis une fiche magasin, le planning ou la tournée.'));for(const v of rows){const box=element('section',undefined,'sr-item');box.append(element('h3',name(v.storeId)),element('p',v.status==='draft'?'Visite en cours':('Terminée le '+v.completedDate)),button(v.status==='draft'?'Reprendre la visite':'Consulter la visite',()=>{activeId=v.id;previewFamily=activeFamily(v);viewStep=3;render()}));body.append(box)}}
 function show(){if(!dialog.open){opener=document.activeElement;dialog.showModal()}}
 /* V233 — une visite terminée aujourd'hui est consultée par défaut.
    Aucune annulation de dialogue ne peut désormais tomber dans M.start() et créer un
    doublon silencieux. Pour continuer la saisie, l'utilisateur passe explicitement par
    « Réouvrir cette visite », qui réutilise le même visitId. */
 async function start(storeId){
- show();
+ show();contactsOpen=false;contactEditIndex=-1;
  const key=String(storeId),draft=domain().visits.find(v=>String(v.storeId)===key&&v.status==='draft');
  if(!draft){
   const recent=sameDayCompleted(key);
@@ -341,9 +441,9 @@ async function start(storeId){
  }
  let id;await save(s=>{id=M.start(s,key);const v=M.getVisit(s,id);if(v.status==='draft'&&v.step!==3)M.editVisit(s,id,'step',null,3);normalizeVisitFamily(s,v);M.compactTerrainFields(s,id)},()=>{activeId=id;previewFamily=activeFamily(current());viewStep=3;render()});return id
 }
-function openVisit(visitId){const v=domain().visits.find(x=>x.id===String(visitId));if(!v)return false;show();activeId=v.id;previewFamily=activeFamily(v);viewStep=3;render();if(v.status==='draft')save(s=>{const live=M.getVisit(s,v.id);const normalized=normalizeVisitFamily(s,live),compact=M.compactTerrainFields(s,v.id);return !!(normalized||compact)});return true}
+function openVisit(visitId){const v=domain().visits.find(x=>x.id===String(visitId));if(!v)return false;show();contactsOpen=false;contactEditIndex=-1;activeId=v.id;previewFamily=activeFamily(v);viewStep=3;render();if(v.status==='draft')save(s=>{const live=M.getVisit(s,v.id);const normalized=normalizeVisitFamily(s,live),compact=M.compactTerrainFields(s,v.id);return !!(normalized||compact)});return true}
 function openHub(){show();save(undefined,hub);return true}
-async function close(){if(!await save())return;releaseRunner();dialog.close();if(opener&&opener.isConnected)opener.focus();if(typeof window.renderAll==='function')window.renderAll()}
+async function close(){if(!await save())return;releaseRunner();contactsOpen=false;contactEditIndex=-1;dialog.close();if(opener&&opener.isConnected)opener.focus();if(typeof window.renderAll==='function')window.renderAll()}
 function memoryFor(storeId){const id=String(storeId||''),b=domain();const visits=(b.visits||[]).filter(v=>String(v.storeId)===id&&v.status==='completed').slice().sort((a,b)=>String(b.completedAt||b.completedDate||'').localeCompare(String(a.completedAt||a.completedDate||'')));const actions=(b.actions||[]).filter(a=>String(a.storeId)===id&&!['done','cancelled'].includes(a.status)).slice().sort((a,b)=>String(a.dueDate||'9999-12-31').localeCompare(String(b.dueDate||'9999-12-31'))||String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));return{visits,actions}}
 function isCuisinisteStoreId(storeId){
  const s=storeFor(storeId);if(!s)return false;
