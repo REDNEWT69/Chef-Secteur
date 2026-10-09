@@ -85,7 +85,7 @@ fabricated.reports[1].items[4].text='La barre de son Samsung 511 est absente.';
 assert.equal(R.validateEditorial(fabricated,source).quality.omittedItems,1,'protect product references');
 const fakeSource=structuredClone(report);
 fakeSource.reports[1].items[0].source='report.brun.nonexistent';
-assert.equal(R.validateEditorial(fakeSource,source).quality.omittedItems,1);
+assert.equal(R.validateEditorial(fakeSource,source).quality.omittedItems,2,'invalid provenance and uncovered source are both noted');
 const formatted=structuredClone(report);
 formatted.reports[1].items[0].text='<script>danger</script>';
 assert.equal(R.validateEditorial(formatted,source).quality.omittedItems,1);
@@ -96,5 +96,95 @@ assert.equal(R.validateEditorial(report,source).quality.acceptedItems,9,'inputs 
 const raw=structuredClone(report);
 for(const r of raw.reports)r.items=[];
 assert.throws(()=>R.validateEditorial(raw,source),/rapport vide/);
+
+
+// Even when Gemini writes excellent prose for some sections, leaving out audio
+// must be visible in quality diagnostics rather than silently disappearing.
+const missedAudio=structuredClone(report);
+missedAudio.reports[1].items=missedAudio.reports[1].items.filter(i=>i.source!=='report.brun.audio');
+const audioCoverage=R.validateEditorial(missedAudio,source);
+assert.equal(audioCoverage.quality.status,'partial');
+assert.equal(audioCoverage.quality.omittedItems,1);
+assert.equal(R.validateDelivered(audioCoverage,source).quality.omittedItems,1);
+assert(!R.render(audioCoverage.reports[1],source).includes(source.reports[1].entries[2].text));
+
+// Note-level safety: a figure from another source in the SAME department is
+// not evidence of a figure inside this observation.
+const movedPrice=structuredClone(report);
+movedPrice.reports[0].items[0].text+=' Une remise de 649 € a été accordée.';
+const protectedCrossNote=R.validateEditorial(movedPrice,source);
+assert.equal(protectedCrossNote.quality.omittedItems,1);
+assert.equal(protectedCrossNote.quality.acceptedItems,8);
+assert(!R.render(protectedCrossNote.reports[0],source).includes('remise de 649 €'));
+
+// Partial valid generation should show rewritten observations only. The exact
+// transcription stays available in immutable source, never repeated in output.
+const oneVerbatim=structuredClone(report);
+oneVerbatim.reports[0].items[3].text=source.reports[0].entries[2].text;
+const notCopied=R.validateEditorial(oneVerbatim,source);
+assert.equal(notCopied.quality.status,'partial');
+assert.equal(notCopied.quality.acceptedItems,8);
+assert.equal(notCopied.quality.omittedItems,1);
+assert.equal(notCopied.quality.sourceOnlyItems,0);
+assert(!R.render(notCopied.reports[0],source).includes(source.reports[0].entries[2].text));
+assert.equal(R.validateDelivered(notCopied,source).quality.omittedItems,1);
+assert.equal(source.reports[0].entries[2].text,'massification aspirateurs laveurs rowenta placée vers entrée du rayon cuisson');
+
+const allVerbatim={
+ version:1,reports:source.reports.map(row=>({
+ reportType:row.reportType,items:row.entries.map(entry=>({
+ section:row.reportType==='brun'?'tv':'context',text:entry.text,source:entry.source,quote:entry.text
+ }))
+ }))
+};
+assert.throws(()=>R.validateEditorial(allVerbatim,source),/rapport vide/,
+ 'Gemini verbatim output cannot be published as a professional report');
+
+const kitchenSource={version:1,store:{enseigne:'Schmidt',ville:'Saint-Paul-lès-Romans',channel:'cuisinistes'},
+ reports:[{reportType:'cuisiniste',entries:[
+ {source:'report.cuisiniste.visit',family:'cuisiniste',text:'RDV avec Amira responsable du showroom, four Samsung NV7B4505AS en expo, contrat expo non signé, formation prevue vendredi'}
+ ]}]
+};
+const kitchenResult={version:1,reports:[{reportType:'cuisiniste',items:[
+ {section:'context',text:'Rencontre avec Amira, responsable du showroom.',source:'report.cuisiniste.visit',quote:'RDV avec Amira'},
+ {section:'showroom',text:'Le four Samsung NV7B4505AS est exposé dans le showroom.',source:'report.cuisiniste.visit',quote:'four Samsung NV7B4505AS en expo'},
+ {section:'contract',text:'Le contrat d’exposition n’est pas encore signé.',source:'report.cuisiniste.visit',quote:'contrat expo non signé'},
+ {section:'training',text:'Une formation produits est prévue vendredi.',source:'report.cuisiniste.visit',quote:'formation prevue vendredi'}
+ ]}]};
+const kitchen=R.validateEditorial(kitchenResult,kitchenSource);
+assert.equal(kitchen.quality.status,'complete');
+assert.equal(kitchen.quality.acceptedItems,4);
+assert.equal(R.validateDelivered(kitchen,kitchenSource).quality.acceptedItems,4);
+assert(R.render(kitchen.reports[0],kitchenSource).includes('Le contrat d’exposition n’est pas encore signé.'));
+const falselySigned=structuredClone(kitchenResult);
+falselySigned.reports[0].items[2].text='Le contrat d’exposition est signé.';
+const rejectedContract=R.validateEditorial(falselySigned,kitchenSource);
+assert.equal(rejectedContract.quality.omittedItems,1,'a pending or unsigned contract must never become signed');
+assert(!R.render(rejectedContract.reports[0],kitchenSource).includes('Le contrat d’exposition est signé.'));
+
+
+// Reject copying a dictated sentence with nothing more than capital letters,
+// accents or commas, while allowing genuinely rewritten professional prose.
+const punctuationCopy=structuredClone(report);
+punctuationCopy.reports[0].items[0].text=
+ 'Beaucoup de vendeur de Boulanger Steel ont suivi leur directeur à Boulanger Villard.';
+const punctuationResult=R.validateEditorial(punctuationCopy,source);
+assert.equal(punctuationResult.quality.acceptedItems,8);
+assert.equal(punctuationResult.quality.omittedItems,1);
+assert.equal(R.validateDelivered(punctuationResult,source).quality.status,'partial');
+
+// A model must not bypass an unsigned expo contract safeguard by placing its
+// invented signed agreement under "Contexte" instead of "Contrat".
+const misclassifiedContract=structuredClone(kitchenResult);
+misclassifiedContract.reports[0].items[2].section='context';
+misclassifiedContract.reports[0].items[2].text='Le contrat d’exposition est signé.';
+const rejectedMisclassified=R.validateEditorial(misclassifiedContract,kitchenSource);
+assert.equal(rejectedMisclassified.quality.omittedItems,1);
+assert(!R.render(rejectedMisclassified.reports[0],kitchenSource).includes('Le contrat d’exposition est signé.'));
+const forgedDelivered=structuredClone(kitchen);
+forgedDelivered.reports[0].items[2].section='context';
+forgedDelivered.reports[0].items[2].text='Le contrat d’exposition est signé.';
+assert.throws(()=>R.validateDelivered(forgedDelivered,kitchenSource),/rejeté/,
+ 'mobile-side validation rejects invented signed contracts irrespective of section');
 
 console.log('PASS V280 autonomous prose, semantic BLANC/BRUN sections, source provenance, figures, browser verification and no duplicates');

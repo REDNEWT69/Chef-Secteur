@@ -13,7 +13,8 @@ const TOKEN = 'c'.repeat(64), RAW = 'Un réfrigérateur américain Samsung RS68A
 const source = { version: 1, visitId: 'workerd-synthetic-visit', storeId: 'workerd-synthetic-store', completedDate: '2026-10-07',
   store: { enseigne: 'Enseigne test', ville: 'Ville test', channel: 'cuisinistes' },
   reports: [{ reportType: 'cuisiniste', entries: [{ source: 'report.cuisiniste.showroom', family: 'cuisiniste', text: RAW }] }] };
-const result = { version: 1, reports: [{ reportType: 'cuisiniste', items: [{ section: 'showroom', text: RAW,
+const EDITED = 'Le réfrigérateur américain Samsung RS68A882 est exposé en showroom au prix de 749 €.';
+const result = { version: 1, reports: [{ reportType: 'cuisiniste', items: [{ section: 'showroom', text: EDITED,
   source: 'report.cuisiniste.showroom', quote: RAW }] }] };
 
 (async () => {
@@ -66,16 +67,16 @@ const result = { version: 1, reports: [{ reportType: 'cuisiniste', items: [{ sec
       if (final.status === 'done') break;
       await new Promise(resolve => setTimeout(resolve, 25));
     }
-    assert.equal(final.status, 'done'); assert.equal(final.result.reports[0].items[0].text, RAW);
+    assert.equal(final.status, 'done'); assert.equal(final.result.reports[0].items[0].text, EDITED);
     await mf.dispose(); mf = undefined;
     // Reopen an entirely new runtime over the same SQLite data. Results and the claim
     // survive server process lifetime as well as client lifetime.
     mf = new Miniflare(options);
     const restored = await (await get(job.jobId)).json();
     assert.equal(restored.status, 'done');
-    assert.equal(restored.result.reports[0].items[0].text, RAW);
-    assert.equal(restored.result.reports[0].items[0].section, 'notes', 'verbatim AI output is not a professional rewrite');
-    assert.equal(restored.result.quality.status, 'source-only');
+    assert.equal(restored.result.reports[0].items[0].text, EDITED);
+    assert.equal(restored.result.reports[0].items[0].section, 'showroom', 'professional rewrite survives restart');
+    assert.equal(restored.result.quality.status, 'complete');
     assert.equal(restored.result.quality.mode, 'editorial');
     assert.doesNotThrow(() => Report.validateDelivered(restored.result, source));
     assert.equal((await post()).status, 200); assert.equal(calls, 1);
