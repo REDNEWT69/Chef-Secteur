@@ -470,11 +470,31 @@ function validateBestEffort(raw,source){
   quality:{status:sourceOnly||omitted?(accepted?'partial':'source-only'):'complete',
    acceptedItems:accepted,sourceOnlyItems:sourceOnly,omittedItems:omitted}};
 }
+function validateFreeDelivered(doc,source){
+ const types=expectedTypes(source);
+ if(!keysOnly(doc,['version','reports','quality'])||doc.version!==VERSION||!doc.quality||doc.quality.mode!=='free'||!Array.isArray(doc.reports)||doc.reports.length!==types.length)fail('schéma ou familles inattendus');
+ const seen=new Set();
+ const reports=doc.reports.map(r=>{
+  if(!keysOnly(r,['reportType','text'])||!types.includes(r.reportType)||seen.has(r.reportType)||typeof r.text!=='string')fail('rapport dupliqué ou inconnu');
+  seen.add(r.reportType);
+  const written=text(r.text),original=reportFor(source,r.reportType).entries.map(e=>text(e.text)).join(' ');
+  if(!written||written.length>20000)fail('rapport vide');
+  const refs=x=>new Set(String(x).match(/\\b(?:[A-Z]{1,5}\\d[A-Z0-9/-]*|\\d{2,3}[A-Z][A-Z0-9/-]{2,})\\b/g)||[]);
+  const numbers=x=>new Set([...String(x).matchAll(/\\b(\\d+(?:[,.]\\d+)?)\\s*(€|euros?|%)/gi)].map(m=>m[1].replace(',','.')+'|'+(m[2]==='%'?'%':'€')));
+  for(const fn of [refs,numbers]){
+   const a=fn(original),b=fn(written);
+   if([...a].some(x=>!b.has(x))||[...b].some(x=>!a.has(x)))fail('faits, attribution ou nuance modifiés');
+  }
+  return{reportType:r.reportType,text:written};
+ });
+ return{version:VERSION,reports,quality:{mode:'free',status:'review'}};
+}
 // The phone independently verifies the already-safe server output. Never
 // call the strict V278 validator on a partial result: doing so would reject
 // the exact source quotations preserved to avoid losing field observations.
 function validateDelivered(raw,source){
  const doc=parse(raw);
+ if(doc&&doc.quality&&doc.quality.mode==='free')return validateFreeDelivered(doc,source);
  if(doc&&doc.quality&&doc.quality.mode==='editorial')return validateEditorialDelivered(doc,source);
  const types=expectedTypes(source);
  if(!keysOnly(doc,['version','reports','quality'])||doc.version!==VERSION||!Array.isArray(doc.reports)||doc.reports.length!==types.length)fail('schéma ou familles inattendus');
@@ -579,6 +599,6 @@ Rubriques possibles par type : ${JSON.stringify(schemas)}
 SOURCES_IMMUABLES:
 ${JSON.stringify(source)}`;
 }
-const api={VERSION,PROMPT_VERSION,MAX_ITEMS,TYPES,LABELS,ORDER,canonicalJSON,canonical:canonicalJSON,sourceSignature,reportsFor,buildPrompt,validate,validateBestEffort,validateEditorial,validateDelivered,render,fallback,memory,validCleanup,validTopic};
+const api={VERSION,PROMPT_VERSION,MAX_ITEMS,TYPES,LABELS,ORDER,canonicalJSON,canonical:canonicalJSON,sourceSignature,reportsFor,buildPrompt,validate,validateBestEffort,validateEditorial,validateDelivered,validateFreeDelivered,render,fallback,memory,validCleanup,validTopic};
 root.StoreRunnerReportRenderer=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
