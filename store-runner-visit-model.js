@@ -281,21 +281,38 @@ function professionalReportOf(v,family){
  const p=v&&v.professionalReport,reports=object(p)&&object(p.reports)?p.reports:{},key=Object.hasOwn(reports,'cuisiniste')?'cuisiniste':Object.hasOwn(reports,'buying-groups')?'buying-groups':family||v&&v.activeFamily||'brun';
  return object(reports[key])?clone(reports[key]):null;
 }
-/* V281 — la sortie magasin validée prime dans la lecture du carnet terrain.
-   La dictée brute reste sous v.report pour la traçabilité et la signature des
-   travaux IA. Ne jamais la remplacer dans un objet de visite terminée. */
+/* V281 — a manually saved Sortie magasin report IS the corresponding terrain
+   note, not a second display layer. Older visits with separate report storage
+   continue to display their final text until the next explicit manual save. */
 function effectiveTerrainNote(v,family){
  const raw=reportOf(v);
  if(!v||v.status!=='completed')return family==='cuisiniste'||family==='buying-groups'?'':raw[family]&&raw[family].team||'';
  const final=professionalReportOf(v,family);
- if(final&&typeof final.text==='string'&&final.text.trim())return final.text;
- return family==='cuisiniste'||family==='buying-groups'?'':raw[family]&&raw[family].team||'';
+ if(final&&typeof final.text==='string')return final.text;
+ return family==='cuisiniste'||family==='buying-groups'?raw.shared.context:raw[family]&&raw[family].team||'';
 }
 function editProfessionalReport(s,visitId,family,value){
  const v=getVisit(s,visitId);if(v.status!=='completed')fail('Termine la visite avant de modifier son compte rendu.');if(typeof value!=='string'||!REPORT_TYPES.includes(family))fail('Compte rendu professionnel invalide.');
  const p=object(v.professionalReport)?v.professionalReport:{version:1,revision:0,reports:{}};v.professionalReport=p;p.revision++;
- const previous=p.reports[family]||{},at=now();p.reports[family]={...previous,text:value,manual:true,reportType:family,sourceSignature:v.reportJob&&v.reportJob.sourceSignature||previous.sourceSignature||'',revision:p.revision,generatedAt:previous.generatedAt||at,updatedAt:at};
- if(object(v.reportJob))v.reportJob.obsolete=true;if(v.runnerAI&&v.runnerAI.status==='pending')v.runnerAI.status='failed';touch(v);return p.reports[family];
+ const previous=p.reports[family]||{},at=now();
+ // A real persisted copy, not merely an alternative on-screen display. Capture
+ // an already accepted server job before mutating its immutable source.
+ preserveReportSource(v);
+ v.report=reportOf(v);
+ if(family==='brun'||family==='blanc')v.report[family].team=value;
+ else {
+  // Cuisinistes / groupements have a single "Rapport magasin" terrain field.
+  v.report.shared.context=value;
+  for(const f of FAMILIES)for(const key of Object.keys(REPORT_FIELDS))v.report[f][key]='';
+ }
+ p.reports[family]={...previous,text:value,manual:true,reportType:family,sourceSignature:v.reportJob&&v.reportJob.sourceSignature||previous.sourceSignature||'',revision:p.revision,generatedAt:previous.generatedAt||at,updatedAt:at};
+ if(object(v.reportJob))v.reportJob.obsolete=true;
+ if(v.runnerAI)v.runnerAI.status='failed';
+ // Prevent a copied old conclusion from competing with the newly confirmed text
+ // in the next-visit memory (the new report remains the authoritative source).
+ v.runnerConclusionSource=family==='cuisiniste'||family==='buying-groups'?'report.shared.context':'report.'+family+'.team';
+ v.runnerMemory=analyzeReport(v);
+ touch(v);return p.reports[family];
 }
 function applyProfessionalReport(s,visitId,expected,validated,reports,memory){
  const v=getVisit(s,visitId);if(!reportJobGuard(v,expected))return false;
