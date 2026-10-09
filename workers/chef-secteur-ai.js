@@ -786,12 +786,57 @@ async function oneJobInference(env, source) {
       || selected === 'workers-ai' && !hasWorkersAI(env)) {
       throw jobError('ai_no_provider', 'Le moteur IA sélectionné n’est pas configuré.');
     }
+    // V285: report completion and regeneration use the same direct Groq prose
+    // as the successful free test, but through the existing durable job/alarm.
+    // Crucially, we use the immutable visit snapshot, never the previously
+    // generated report. One prose generation per requested BRUN/BLANC family.
+    if (selected === 'groq' || !selected && !(env && env.GEMINI_API_KEY) && env && env.GROQ_API_KEY) {
+      const reports = [];
+      let answer;
+      for (const row of REPORTS.reportsFor(source)) {
+        const notes = row.entries.map(entry => String(entry.text || '').trim()).filter(Boolean).join('\n\n');
+        if (!notes) {
+          reports.push({ reportType: row.reportType, text: '' });
+          continue;
+        }
+        const family = { brun: 'BRUN', blanc: 'BLANC', cuisiniste: 'CUISINISTE',
+          'buying-groups': 'BUYING GROUP' }[row.reportType];
+        const prompt = 'Magasin : ' + source.store.enseigne + ' ' + source.store.ville
+          + '\nFamille : ' + family + '\nDate : ' + source.completedDate
+          + '\n\nNotes terrain originales (ne pas utiliser un ancien compte rendu) :\n' + notes;
+        try {
+          answer = await Promise.race([callGroq(env,
+            'Tu es chef de secteur Samsung. Transforme librement une dictée terrain, même mal formulée, en compte rendu professionnel en français. '
+            + 'Conserve TOUTES les références, prix, primes, remises, concurrents, positions de produits, demandes et réserves réellement cités. '
+            + 'Corrige les fautes orales, supprime les répétitions, regroupe par thèmes utiles, rédige un rapport concis et lisible. '
+            + 'Ne fais pas un plan marketing. N’invente ni modèle, ni prix, ni date, ni action, ni comparaison, ni promesse, ni recommandation, ni conclusion non justifiée. '
+            + 'Une proposition ne devient jamais une commande validée. Une date non fixée reste non fixée. '
+            + 'Distingue BRUN et BLANC. N’ajoute aucune signature ni nom de visiteur fictif. '
+            + 'Réponds uniquement avec le compte rendu en texte naturel, sans JSON ni tableau.',
+            prompt, 4096, { reasoningEffort: 'low', includeReasoning: false, signal: controller.signal }), expired]);
+        } catch (err) {
+          throw err && err.code ? err : jobError('ai_provider_unavailable', 'Groq indisponible.');
+        }
+        if (!answer.text) throw jobError('ai_empty_response', 'Réponse Groq vide.');
+        if (['length', 'max_tokens'].includes(String(answer.finishReason || '').toLowerCase())) {
+          throw jobError('report_truncated', 'Rapport Groq tronqué.');
+        }
+        reports.push({ reportType: row.reportType, text: answer.text });
+      }
+      // Only a small envelope is validated. The actual prose is never
+      // converted into 36 citation items or filtered into empty sections.
+      const candidate = { version: 1, reports, quality: { mode: 'free' } };
+      try { return { answer: answer || { provider: 'groq', model: groqModel(env) },
+        result: REPORTS.validateFreeDelivered(candidate, source) }; }
+      catch (err) {
+        if (err && safeReportValidationReason(err)) err.reportProvider = 'groq';
+        throw err;
+      }
+    }
     if (selected === 'openai') {
       inference = callOpenAIReport(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
     } else if (selected === 'gemini' || !selected && env && env.GEMINI_API_KEY) {
       inference = callGemini(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
-    } else if (selected === 'groq' || !selected && env && env.GROQ_API_KEY) {
-      inference = callGroq(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, { ...options, structuredReport: true });
     } else if (selected === 'workers-ai' || !selected && hasWorkersAI(env)) {
       inference = callWorkersAI(env, VISIT_REPORT_SYSTEM, message, VISIT_REPORT_MAX_TOKENS, options);
     } else {
