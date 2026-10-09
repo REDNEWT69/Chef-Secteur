@@ -254,7 +254,7 @@ function draftKey(v,skeleton){return v.id+':'+(MERGED[skeleton]?'merged':activeT
 function currentDraftKey(){const v=visitById(activeVisit);if(!v)return'';return draftKey(v,skeletonForStore(storeOf(state(),v)))}
 function ensureStyle(){if(!root.document||root.document.getElementById('sr-report-style'))return;const s=el('style');s.id='sr-report-style';s.textContent='#'+SHEET_ID+'{box-sizing:border-box;width:min(720px,calc(100vw - 20px));max-width:calc(100vw - 20px);max-height:calc(100dvh - 20px);overflow:auto;padding:16px;border-radius:24px;border:1px solid #d9dce3;background:#fff;color:#1d1d1f}#'+SHEET_ID+'::backdrop{background:rgba(17,24,39,.45)}.sr-reportHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.sr-reportHead h2{margin:0;font-size:20px}.sr-reportHead p{margin:4px 0 0;color:#667085;font-size:12px}.sr-reportTabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 8px}.sr-reportTab{min-height:44px;border:1px solid #d3d9e3;border-radius:13px;background:#f4f6fa;color:#454b56;font-weight:800;font-size:12px}.sr-reportTab[aria-selected=true]{background:#1428a0;border-color:#1428a0;color:#fff}#srReportText{width:100%;box-sizing:border-box;min-height:300px;border:1px solid #d9dee8;border-radius:14px;padding:10px;font:400 12px ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.45;background:#fbfcff;color:#1d1d1f;-webkit-text-fill-color:#1d1d1f;resize:vertical}#srReportText:not([readonly]){background:#fff;border-color:#8eb6ff;box-shadow:0 0 0 3px rgba(20,40,160,.08)}.sr-reportStatus{min-height:18px;font-size:12px;color:#315b9d;margin:8px 0}.sr-reportStatus.sr-reportError{color:#b42318}.sr-reportActions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px}.sr-reportBtn{min-height:48px;border-radius:14px;font-weight:800}.sr-reportAI{background:linear-gradient(180deg,#1428a0,#0f1f7d);color:#fff;border:0}.sr-reportAI:disabled{opacity:.62}.sr-reportEdit{background:#fff;color:#1428a0;border:1px solid #ccd4ef}.sr-reportCopy{background:#1428a0;color:#fff;border:0}.sr-reportPhotos{background:#eef0f4;color:#1d1d1f;border:0}.sr-reportPhotos:disabled{opacity:.55}.sr-reportClose{background:#eef0f4;color:#1d1d1f;border:0}#'+VISIT_BTN_ID+',#'+QUICK_BTN_ID+'{min-height:44px}';root.document.head.appendChild(s)}
 function ensureFreeStyle(){if(!root.document||root.document.getElementById('sr-report-free-css'))return;const st=el('style');st.id='sr-report-free-css';st.textContent='.sr-reportFree{background:#f0f5fc;color:#1428a0;border:1px solid #c7d6f5}.sr-reportFree:disabled{opacity:.6}.sr-reportFreeBox{margin:12px 0;padding:12px;border:1px solid #cbd9ee;border-radius:14px;background:#f8fbff}.sr-reportFreeBox[hidden]{display:none}.sr-reportFreeBox h3{font-size:15px;margin:0 0 8px}.sr-reportFreeBox p{font-size:12px;line-height:1.4;color:#4b586a;margin:0 0 8px}.sr-reportFreeBox textarea{box-sizing:border-box;width:100%;min-height:260px;border:1px solid #d5dce7;border-radius:10px;padding:10px;font:400 13px ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.5;resize:vertical;color:#1d2939;background:#fff}.sr-reportFreeBox button{width:100%;margin-top:8px}';root.document.head.appendChild(st)}
-function ensureSheet(){if(sheet)return sheet;if(!root.document)return null;ensureStyle();ensureFreeStyle();sheet=el('dialog');sheet.id=SHEET_ID;sheet.setAttribute('aria-labelledby','srReportTitle');sheet.innerHTML='<div class="sr-reportHead"><div><h2 id="srReportTitle">Sortie magasin</h2><p id="srReportSubtitle"></p></div></div><div id="srReportTabs" class="sr-reportTabs"></div><textarea id="srReportText" rows="18" readonly aria-label="Compte rendu à copier"></textarea><p id="srReportStatus" class="sr-reportStatus" role="status"></p><div class="sr-reportActions"></div>';const actions=sheet.querySelector('.sr-reportActions'),ai=btn('✨ Régénérer le compte rendu',generateAI,'sr-reportBtn sr-reportAI'),free=btn('🧪 Tester IA libre (non enregistré)',testFreePreview,'sr-reportBtn sr-reportFree'),edit=btn('Modifier le texte',toggleEdit,'sr-reportBtn sr-reportEdit'),copyBtn=btn('Copier le compte rendu',copy,'sr-reportBtn sr-reportCopy'),share=btn('Aucune photo pour cette visite.',sharePhotos,'sr-reportBtn sr-reportPhotos');ai.id=AI_BTN_ID;free.id=FREE_BTN_ID;edit.id=EDIT_BTN_ID;share.id=SHARE_BTN_ID;share.disabled=true;actions.append(ai,free,edit,copyBtn,share,btn('Fermer',close,'sr-reportBtn sr-reportClose'));const freeBox=el('section',undefined,'sr-reportFreeBox');freeBox.id='srReportFreeBox';freeBox.hidden=true;freeBox.innerHTML='<h3>Essai IA libre · Groq</h3><p id="srReportFreeStatus" role="status">Texte expérimental, non vérifié et non enregistré.</p><textarea id="srReportFreeText" rows="14" readonly aria-label="Résultat brut du test IA libre"></textarea>';freeBox.append(btn('Copier cet essai',copyFreePreview,'sr-reportBtn sr-reportEdit'));sheet.appendChild(freeBox);const area=sheet.querySelector('#srReportText');area.addEventListener('input',()=>{const k=area.dataset.draftKey;if(k&&!area.readOnly){aiDrafts[k]=area.value;persistFinalEdit(area)}});sheet.addEventListener('cancel',e=>{e.preventDefault();close()});root.document.body.appendChild(sheet);return sheet}
+function ensureSheet(){if(sheet)return sheet;if(!root.document)return null;ensureStyle();ensureFreeStyle();sheet=el('dialog');sheet.id=SHEET_ID;sheet.setAttribute('aria-labelledby','srReportTitle');sheet.innerHTML='<div class="sr-reportHead"><div><h2 id="srReportTitle">Sortie magasin</h2><p id="srReportSubtitle"></p></div></div><div id="srReportTabs" class="sr-reportTabs"></div><textarea id="srReportText" rows="18" readonly aria-label="Compte rendu à copier"></textarea><p id="srReportStatus" class="sr-reportStatus" role="status"></p><div class="sr-reportActions"></div>';const actions=sheet.querySelector('.sr-reportActions'),ai=btn('✨ Régénérer le compte rendu',generateAI,'sr-reportBtn sr-reportAI'),free=btn('🧪 Tester IA libre (non enregistré)',testFreePreview,'sr-reportBtn sr-reportFree'),edit=btn('Modifier le texte',toggleEdit,'sr-reportBtn sr-reportEdit'),copyBtn=btn('Copier le compte rendu',copy,'sr-reportBtn sr-reportCopy'),share=btn('Aucune photo pour cette visite.',sharePhotos,'sr-reportBtn sr-reportPhotos');ai.id=AI_BTN_ID;free.id=FREE_BTN_ID;edit.id=EDIT_BTN_ID;share.id=SHARE_BTN_ID;share.disabled=true;actions.append(ai,free);const freeBox=el('section',undefined,'sr-reportFreeBox');freeBox.id='srReportFreeBox';freeBox.hidden=true;freeBox.innerHTML='<h3>Essai IA libre · Groq</h3><p id="srReportFreeStatus" role="status">Texte expérimental, non vérifié et non enregistré.</p><textarea id="srReportFreeText" rows="14" readonly aria-label="Résultat brut du test IA libre"></textarea>';freeBox.append(btn('Copier cet essai',copyFreePreview,'sr-reportBtn sr-reportEdit'));actions.append(freeBox,edit,copyBtn,share,btn('Fermer',close,'sr-reportBtn sr-reportClose'));const area=sheet.querySelector('#srReportText');area.addEventListener('input',()=>{const k=area.dataset.draftKey;if(k&&!area.readOnly){aiDrafts[k]=area.value;persistFinalEdit(area)}});sheet.addEventListener('cancel',e=>{e.preventDefault();close()});root.document.body.appendChild(sheet);return sheet}
 /* V235 — une photo sans famille n'appartient plus ni à BRUN ni à BLANC : reprise dans
    les deux, elle produisait un doublon entre les deux comptes rendus et entre les lots
    de partage. `listStrictByFamily` est la lecture dédiée ; si un module plus ancien est
@@ -287,9 +287,17 @@ function reportStatus(v){
 }
 /* One-click experiment: free prose from Groq only, never replaces an existing
    Sortie magasin report, notes terrain or Runner business memory. No storage. */
-let freeTestRunning=false,freeTestSequence=0;
+let freeTestRunning=false,freeTestSequence=0,freePreviewDraftKey='';
+function showFreePreviewStatus(message){
+ const panel=sheet&&sheet.querySelector('#srReportFreeBox'),status=sheet&&sheet.querySelector('#srReportFreeStatus');
+ if(!panel||!status)return false;
+ panel.hidden=false;
+ status.textContent=message;
+ if(typeof panel.scrollIntoView==='function')panel.scrollIntoView({block:'nearest',behavior:'smooth'});
+ return true;
+}
 function clearFreePreview(){
- freeTestSequence++;
+ freeTestSequence++;freePreviewDraftKey='';
  if(!sheet)return;
  const area=sheet.querySelector('#srReportFreeText'),box=sheet.querySelector('#srReportFreeBox');
  if(area)area.value='';if(box)box.hidden=true;
@@ -297,19 +305,25 @@ function clearFreePreview(){
 async function testFreePreview(){
  const v=visitById(activeVisit),panel=sheet&&sheet.querySelector('#srReportFreeBox');
  const result=sheet&&sheet.querySelector('#srReportFreeText'),btn=sheet&&sheet.querySelector('#'+FREE_BTN_ID);
- if(!v||v.status!=='completed'||!panel||!result||freeTestRunning)return false;
- if(root.navigator&&root.navigator.onLine===false){say('Connexion nécessaire pour cet essai Groq.',true);return false}
+ if(!panel||!result||!btn)return false;
+ if(freeTestRunning){showFreePreviewStatus('Une rédaction libre est déjà en cours.');return false}
+ if(!v||v.status!=='completed'){showFreePreviewStatus('Termine d’abord la visite pour essayer la rédaction libre.');return false}
+ if(root.navigator&&root.navigator.onLine===false){showFreePreviewStatus('Connexion nécessaire pour cet essai Groq. Ton compte rendu reste intact.');return false}
  const M=model(),R=root.StoreRunnerReportRenderer,config=root.aiConfig;
- if(!M||!R||!config||!config.gateway){say('Connexion IA non configurée.',true);return false}
+ if(!M||!R||!config||!config.gateway){showFreePreviewStatus('Connexion IA non configurée. Vérifie la passerelle /api/ai.');return false}
  const store=storeOf(state(),v),kind=skeletonForStore(store);
  const type=kind==='cuisinistes'?'cuisiniste':kind==='buying-groups'?'buying-groups':activeTab;
- const source=typeof M.sourceForReportJob==='function'?M.sourceForReportJob(v):M.frozenReportSource(state(),v);
- if(!source){say('Notes sources indisponibles.',true);return false}
+ // A completed historical visit may have no durable reportJob, or its
+ // compact snapshot may no longer match an edited note. Never make the
+ // experiment a no-op: reuse canonical notes from the current visit.
+ const savedSource=typeof M.sourceForReportJob==='function'?M.sourceForReportJob(v):null;
+ const source=savedSource||(typeof M.frozenReportSource==='function'?M.frozenReportSource(state(),v):null);
+ if(!source){showFreePreviewStatus('Impossible de relire les notes de cette visite. Ton rapport existant reste intact.');return false}
  const row=(source.reports||[]).find(r=>r.reportType===type);
- if(!row||(row.entries||[]).every(e=>!text(e.text))){say('Aucune note originale pour cette famille.',true);return false}
- const token=++freeTestSequence,key=currentDraftKey();
+ if(!row||(row.entries||[]).every(e=>!text(e.text))){showFreePreviewStatus('Aucune note terrain dans la famille '+type.toUpperCase()+'. Vérifie l’onglet BRUN / BLANC.');return false}
+ const token=++freeTestSequence,key=currentDraftKey();freePreviewDraftKey=key;
  freeTestRunning=true;btn.disabled=true;btn.textContent='🧪 Rédaction libre en cours…';
- panel.hidden=false;result.value='';sheet.querySelector('#srReportFreeStatus').textContent='Une seule génération Groq, sans filtre de rubriques ni validation des phrases. Résultat non enregistré.';
+ result.value='';showFreePreviewStatus('Connexion à Groq… Une seule génération, sans filtre. Le résultat ne sera pas enregistré.');
  try{
   if(!await ensureAutoAI()||!root.StoreRunnerReportAIAutoV2771||
     typeof root.StoreRunnerReportAIAutoV2771.freePreview!=='function')throw Error('Passerelle IA indisponible.');
@@ -317,12 +331,12 @@ async function testFreePreview(){
   const data=await root.StoreRunnerReportAIAutoV2771.freePreview(source,type,signature);
   if(freeTestSequence!==token||!sheet.open||key!==currentDraftKey())return false;
   result.value=data.text;
-  sheet.querySelector('#srReportFreeStatus').textContent='Résultat brut Groq · non enregistré, non vérifié. Compare avec ton rapport habituel ci-dessus.';
+  showFreePreviewStatus('Résultat Groq reçu · essai non enregistré. Compare avec ton compte rendu habituel au-dessus.');
   return true;
  }catch(e){
-  if(freeTestSequence===token&&sheet.open)sheet.querySelector('#srReportFreeStatus').textContent=
-    e&&e.name==='AbortError'?'Essai trop long. Ton rapport habituel est conservé.':
-    'Essai impossible : '+(e&&e.message||'erreur réseau')+' Le rapport habituel est conservé.';
+  if(freeTestSequence===token&&sheet.open)showFreePreviewStatus(
+    e&&e.name==='AbortError'?'L’essai a dépassé le délai. Aucun rapport n’a été modifié.':
+    'Essai impossible : '+(e&&e.message||'erreur réseau')+' Ton rapport habituel est conservé.');
   return false;
  }finally{
   freeTestRunning=false;
@@ -348,7 +362,7 @@ async function localReport(v,photos){
 async function refresh(){
  const sequence=++refreshSequence,v=visitById(activeVisit);if(!v){say('Visite introuvable.',true);return}
  const store=storeOf(state(),v),skeleton=skeletonForStore(store),merged=!!MERGED[skeleton];
- clearFreePreview();sheet.querySelector('#srReportSubtitle').textContent=text(store.enseigne)+' '+text(store.ville)+' · '+visitDate(v)+(merged?' · un seul compte rendu':'');
+ if(freePreviewDraftKey&&freePreviewDraftKey!==draftKey(v,skeleton))clearFreePreview();sheet.querySelector('#srReportSubtitle').textContent=text(store.enseigne)+' '+text(store.ville)+' · '+visitDate(v)+(merged?' · un seul compte rendu':'');
  const tabs=sheet.querySelector('#srReportTabs');tabs.replaceChildren();tabs.hidden=merged;
  if(!merged){const M=model();for(const family of M.FAMILIES){const b=btn(family.toUpperCase(),()=>{activeTab=family;say('');refresh()},'sr-reportTab');b.setAttribute('role','tab');b.setAttribute('aria-selected',activeTab===family?'true':'false');b.dataset.family=family;tabs.append(b)}}
  const photos=await photosFor(v.storeId,v.id,activeTab,merged),key=draftKey(v,skeleton),area=sheet.querySelector('#srReportText');
