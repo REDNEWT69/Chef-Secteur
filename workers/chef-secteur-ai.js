@@ -1081,14 +1081,14 @@ export default {
           'N’utilise QUE les faits explicitement présents dans les notes fournies : aucun savoir produit, promotion, prime, prix ou concurrence extérieur.',
           'Conserve chaque référence produit, marque, prix, prime, montant, pourcentage, période, implantation, remarque vendeur et besoin de formation.',
           'Attribue chaque chiffre et chaque observation uniquement au produit, à la marque et au rayon explicitement concernés.',
-          'Exemple de prudence : une PLV manquante sur une Neo QLED à côté d’un 65M73H ne signifie pas que la PLV manque sur le 65M73H.',
-          'Une remise TCL ne prouve jamais qu’aucune promotion Samsung n’existe ; n’affirme donc pas une absence de promotion Samsung non mentionnée.',
+          'Précision spatiale : si une PLV manque sur un produit situé à côté d’un autre, ne déplace jamais cette absence sur l’autre produit.',
+          'Une promotion concurrente ne prouve jamais l’absence de promotion de notre marque ; n’infère aucune offre ou absence d’offre non mentionnée.',
           'Respecte exactement le statut des décisions : proposé, intéressé, refusé, à vérifier et commande non validée ne signifient jamais commandé ou confirmé.',
           'N’invente aucune référence, caractéristique technique, prime, comparaison, date de formation, échéance, responsable, engagement, visite prévue ou plan commercial.',
           'Mentionne les suites à donner uniquement lorsqu’elles sont réellement exprimées dans les notes.',
           'En cas de transcription ambiguë ou de phrase coupée, ne complète pas de mémoire ; utilise « à confirmer » uniquement si ce point est utile.',
           'Structure le rapport avec quelques rubriques utiles (contexte, primes, merchandising, concurrence, formation, suivi), uniquement si les notes les justifient.',
-          'Rédige sobrement en paragraphes courts, sans tableau, sans signature, sans liste de recommandations inventées ni conclusion artificielle.',
+          'Rédige sobrement en paragraphes courts, sans tableau, sans signature, sans date de rédaction ajoutée, sans liste de recommandations inventées ni conclusion artificielle.',
           'La longueur doit suivre la richesse des notes ; ne supprime pas une référence ou un chiffre pour raccourcir le texte.',
           'N’utilise ni JSON, ni références de sources techniques : rends directement le texte rédigé.'
         ].join(' ');
