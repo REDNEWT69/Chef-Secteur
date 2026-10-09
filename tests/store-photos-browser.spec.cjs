@@ -194,9 +194,9 @@ test('V1 magasin : horaires Boulanger/Darty + photos persistantes + rapport IA F
   const reportBox=await report.boundingBox();expect(reportBox.x).toBeGreaterThanOrEqual(0);expect(reportBox.x+reportBox.width).toBeLessThanOrEqual(390);
   await expect(report.locator('[data-family="brun"]')).toHaveAttribute('aria-selected','true');
   await expect(report.locator('#srReportText')).toHaveValue(/Glare Free est un argument différenciant face à LG/);
-  const aiButton=report.locator('#srReportAI');await expect(aiButton).toBeVisible();await expect(aiButton).toHaveText('✨ Régénérer le compte rendu');
+  const aiButton=report.locator('#srReportFreeTest');await expect(aiButton).toBeVisible();await expect(aiButton).toHaveText('✨ Génération auto (Groq)');
   const aiBox=await aiButton.boundingBox();expect(aiBox.height).toBeGreaterThanOrEqual(44);
-  expect(await page.evaluate(()=>state.businessV2.visits[0].reportJob.status)).toBe('pending');
+  expect(await page.evaluate(()=>state.businessV2.visits[0].reportJob.obsolete)).toBe(true);
   const originalNotes=await page.evaluate(()=>StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).brun.team);
   const editButton=report.locator('#srReportEdit'),area=report.locator('#srReportText');
   await editButton.tap();await expect(area).toBeEditable();
