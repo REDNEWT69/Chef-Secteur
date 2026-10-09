@@ -4,7 +4,7 @@
    When that proof fails, the entire result is rejected and existing reports survive. */
 (function(root){
 'use strict';
-const VERSION=1,PROMPT_VERSION='visit-report-v278-5',MAX_ITEMS=36;
+const VERSION=1,PROMPT_VERSION='visit-report-v280-editorial-autonomy',MAX_ITEMS=36;
 const TYPES=['brun','blanc','cuisiniste','buying-groups'];
 const LABELS={context:'🏬 Contexte magasin',tv:'📺 TV / Présence Samsung',challenge:'🏆 Challenge / Prime vendeur',competition:'🆚 Concurrence / Retour vendeur',offers:'🏷️ ODR / Offres Samsung',training:'🎓 Formation',blackFriday:'🛍️ Black Friday',audio:'🔊 Audio / Barres de son',merchandising:'🏬 Merchandising / Massification',omni:'📱 Suivi OMNI',laundry:'🧺 Lavage',cooking:'🍳 Cuisson',cold:'❄️ Froid',vacuum:'🧹 Aspiration',smallAppliances:'☕ Petit électroménager',showroom:'❄️ Point produits / Showroom',contract:'📑 Contrat d’exposition',service:'🛠️ SAV / ADV',products:'📦 Point produits',newsletter:'📰 Newsletter',market:'🏬 Contexte marché',actionsDone:'🛠️ Actions réalisées',positives:'✅ Points positifs',focus:'⚠️ Points à travailler',actions:'🎯 Plan d’action / prochain passage',summary:'📝 Synthèse',notes:'📝 Notes terrain'};
 const ORDER={
@@ -283,6 +283,105 @@ function naturalRewrite(proposed,quote,context){
  if(overlap.length<Math.min(2,from.size)||overlap.length/Math.max(1,to.length)<0.25)return false;
  return true;
 }
+
+// V280. New reports use editorial freedom, not word-by-word proof.
+// A source ID and immutable dictation remain mandatory. Only invented
+// figures/references, malformed JSON and unsafe markup are blocked.
+function editorialFigures(proposed,sourceText){
+ const sourceTokens=exactTokens(sourceText).map(tokenKey);
+ const proposedTokens=exactTokens(proposed).map(tokenKey);
+ const available=new Map();
+ for(const t of sourceTokens)available.set(t,(available.get(t)||0)+1);
+ for(const t of proposedTokens){const n=available.get(t)||0;if(!n)return false;available.set(t,n-1)}
+ return true;
+}
+function editorialSentence(value){
+ const v=text(value);
+ if(!v||v.length>1800||/<[^>]*>|[\r\n]|\x60{3}|⸻|\p{Extended_Pictographic}|(?:^|\s)(?:#{1,6}\s|\*\s|>\s|-\s)|\*\*|__|---/u.test(v))return '';
+ return v;
+}
+function validateEditorial(raw,source){
+ const doc=parse(raw),types=expectedTypes(source);
+ if(!keysOnly(doc,['version','reports'])||doc.version!==VERSION||!Array.isArray(doc.reports)||doc.reports.length!==types.length)fail('schéma ou familles inattendus');
+ const seen=new Set(),reports=[];let accepted=0,sourceOnly=0,omitted=0,allCount=0;
+ for(const report of doc.reports){
+  if(!keysOnly(report,['reportType','items'])||!types.includes(report.reportType)||seen.has(report.reportType)||!Array.isArray(report.items))fail('rapport dupliqué ou inconnu');
+  seen.add(report.reportType);
+  const entries=reportFor(source,report.reportType).entries;
+  const bySource=new Map(entries.map(x=>[x.source,x]));
+  const allNotes=entries.map(e=>text(e.text)).join('\n');
+  const items=[],duplicate=new Set();let skipped=0,rawCount=0,cleanCount=0;
+  for(const item of report.items){
+   if(++allCount>MAX_ITEMS){skipped++;continue}
+   if(!keysOnly(item,['section','text','source','quote'])||!ORDER[report.reportType].includes(item.section)||
+      typeof item.text!=='string'||typeof item.source!=='string'||typeof item.quote!=='string'){skipped++;continue}
+   const src=bySource.get(item.source),sentence=editorialSentence(item.text);
+   if(!src||!sentence||!editorialFigures(sentence,allNotes)){skipped++;continue}
+   const key=item.source+'|'+plain(sentence);if(duplicate.has(key))continue;duplicate.add(key);
+   // Inexact quotations are not grounds for rejecting fluent prose.
+   // Replace their provenance with the untouched source entry.
+   const quoted=text(item.quote),original=text(src.text);
+   const quote=quoted&&original.replace(/\s+/g,' ').includes(quoted.replace(/\s+/g,' '))?quoted:original;
+   const isRaw=plain(sentence)===plain(quote)||plain(sentence)===plain(original);
+   items.push({section:isRaw?'notes':item.section,text:isRaw?quote:sentence,source:item.source,quote});
+   if(isRaw)rawCount++;else cleanCount++;
+  }
+  if(!items.length){
+   for(const entry of entries.slice(0,MAX_ITEMS)){
+    const original=text(entry.text);if(!original)continue;
+    items.push({section:'notes',text:original,source:entry.source,quote:original});rawCount++;
+   }
+  }
+  if(!items.length&&entries.some(x=>text(x.text)))fail('rapport vide');
+  accepted+=cleanCount;sourceOnly+=rawCount;omitted+=skipped;
+  reports.push({reportType:report.reportType,items,
+   ...(rawCount||skipped?{review:{sourceOnly:rawCount,omitted:skipped}}:{})});
+ }
+ return {version:VERSION,reports,quality:{mode:'editorial',
+  status:sourceOnly||omitted?(accepted?'partial':'source-only'):'complete',
+  acceptedItems:accepted,sourceOnlyItems:sourceOnly,omittedItems:omitted}};
+}
+function validateEditorialDelivered(doc,source){
+ const types=expectedTypes(source);
+ if(!keysOnly(doc,['version','reports','quality'])||doc.version!==VERSION||
+    !Array.isArray(doc.reports)||doc.reports.length!==types.length)fail('schéma ou familles inattendus');
+ const seen=new Set(),reports=[];let accepted=0,sourceOnly=0,omitted=0,total=0;
+ for(const report of doc.reports){
+  if(!keysOnly(report,['reportType','items','review'])||!types.includes(report.reportType)||
+     seen.has(report.reportType)||!Array.isArray(report.items))fail('rapport dupliqué ou inconnu');
+  seen.add(report.reportType);
+  const entries=reportFor(source,report.reportType).entries;
+  const bySource=new Map(entries.map(x=>[x.source,x]));
+  const allNotes=entries.map(e=>text(e.text)).join('\n');
+  const items=[];let reportRaw=0;
+  for(const item of report.items){
+   if(++total>MAX_ITEMS+entries.length||!keysOnly(item,['section','text','source','quote'])||
+      !ORDER[report.reportType].includes(item.section)||
+      typeof item.text!=='string'||typeof item.source!=='string'||typeof item.quote!=='string')fail('fait non conforme');
+   const src=bySource.get(item.source),sentence=editorialSentence(item.text),quoted=text(item.quote);
+   if(!src||!sentence||!editorialFigures(sentence,allNotes)||!quoted||
+      !text(src.text).replace(/\s+/g,' ').includes(quoted.replace(/\s+/g,' ')))fail('fait non conforme');
+   if(item.section==='notes'&&plain(sentence)===plain(quoted))reportRaw++;
+   else accepted++;
+   items.push({section:item.section,text:sentence,source:item.source,quote:quoted});
+  }
+  sourceOnly+=reportRaw;
+  const v=report.review;
+  if(v){
+   if(!keysOnly(v,['sourceOnly','omitted'])||!Number.isInteger(v.sourceOnly)||
+      !Number.isInteger(v.omitted)||v.sourceOnly!==reportRaw||v.omitted<0||v.omitted>200)fail('fait non conforme');
+   omitted+=v.omitted;
+  }else if(reportRaw)fail('fait non conforme');
+  reports.push({reportType:report.reportType,items,...(v?{review:v}:{})});
+ }
+ const quality=doc.quality;
+ if(!keysOnly(quality,['mode','status','acceptedItems','sourceOnlyItems','omittedItems'])||
+   quality.mode!=='editorial'||quality.acceptedItems!==accepted||
+   quality.sourceOnlyItems!==sourceOnly||quality.omittedItems!==omitted||
+   quality.status!==(sourceOnly||omitted?(accepted?'partial':'source-only'):'complete'))fail('fait non conforme');
+ return {version:VERSION,reports,quality};
+}
+
 function validateBestEffort(raw,source){
  const doc=parse(raw),types=expectedTypes(source);
  if(!keysOnly(doc,['version','reports'])||doc.version!==VERSION||!Array.isArray(doc.reports)||doc.reports.length!==types.length)fail('schéma ou familles inattendus');
@@ -353,7 +452,9 @@ function validateBestEffort(raw,source){
 // call the strict V278 validator on a partial result: doing so would reject
 // the exact source quotations preserved to avoid losing field observations.
 function validateDelivered(raw,source){
- const doc=parse(raw),types=expectedTypes(source);
+ const doc=parse(raw);
+ if(doc&&doc.quality&&doc.quality.mode==='editorial')return validateEditorialDelivered(doc,source);
+ const types=expectedTypes(source);
  if(!keysOnly(doc,['version','reports','quality'])||doc.version!==VERSION||!Array.isArray(doc.reports)||doc.reports.length!==types.length)fail('schéma ou familles inattendus');
  const seen=new Set(),reports=[];
  for(const report of doc.reports){
@@ -450,6 +551,6 @@ Sections autorisées dans l'ordre local: ${JSON.stringify(schemas)}
 SOURCES_IMMUABLES:
 ${JSON.stringify(source)}`;
 }
-const api={VERSION,PROMPT_VERSION,MAX_ITEMS,TYPES,LABELS,ORDER,canonicalJSON,canonical:canonicalJSON,sourceSignature,reportsFor,buildPrompt,validate,validateBestEffort,validateDelivered,render,fallback,memory,validCleanup,validTopic};
+const api={VERSION,PROMPT_VERSION,MAX_ITEMS,TYPES,LABELS,ORDER,canonicalJSON,canonical:canonicalJSON,sourceSignature,reportsFor,buildPrompt,validate,validateBestEffort,validateEditorial,validateDelivered,render,fallback,memory,validCleanup,validTopic};
 root.StoreRunnerReportRenderer=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
