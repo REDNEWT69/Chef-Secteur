@@ -146,5 +146,10 @@ assert.equal(kitchen.quality.status,'complete');
 assert.equal(kitchen.quality.acceptedItems,4);
 assert.equal(R.validateDelivered(kitchen,kitchenSource).quality.acceptedItems,4);
 assert(R.render(kitchen.reports[0],kitchenSource).includes('Le contrat d’exposition n’est pas encore signé.'));
+const falselySigned=structuredClone(kitchenResult);
+falselySigned.reports[0].items[2].text='Le contrat d’exposition est signé.';
+const rejectedContract=R.validateEditorial(falselySigned,kitchenSource);
+assert.equal(rejectedContract.quality.omittedItems,1,'a pending or unsigned contract must never become signed');
+assert(!R.render(rejectedContract.reports[0],kitchenSource).includes('Le contrat d’exposition est signé.'));
 
 console.log('PASS V280 autonomous prose, semantic BLANC/BRUN sections, source provenance, figures, browser verification and no duplicates');
