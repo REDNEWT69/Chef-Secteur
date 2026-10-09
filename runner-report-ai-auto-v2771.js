@@ -70,8 +70,13 @@ async function reconcileVisit(visitId){
   if(result.status==='failed')return false;if(result.status!=='done'){if(visible())schedule(POLL_MS);return true}
   const source={...snapshot,sourceSignature:job.sourceSignature};let validated;
   try{validated=renderer().validateDelivered(result.result,source)}catch(e){await failed(id,expected,'Le résultat IA ne respecte pas les notes sources. Le rapport précédent est conservé.');return false}
-  const reports={};for(const report of validated.reports)reports[report.reportType]=renderer().render(report,source);
-  const memory=renderer().memory(validated,source);return await visits().applyReportResult(id,expected,validated,reports,memory);
+  const reports={};
+  for(const report of validated.reports)reports[report.reportType]=
+    validated.quality&&validated.quality.mode==='free'?report.text:renderer().render(report,source);
+  // The free report never becomes a source of invented Runner actions.
+  // Existing source-derived local memory remains available separately.
+  const memory=validated.quality&&validated.quality.mode==='free'?{version:1,items:[]}:renderer().memory(validated,source);
+  return await visits().applyReportResult(id,expected,validated,reports,memory);
  }catch(e){
   try{if(expected&&current(id,expected)){
    if(e.httpStatus&&e.httpStatus>=400&&e.httpStatus<500&&![408,429].includes(e.httpStatus))await failed(id,expected,'La tâche distante ne peut pas être récupérée. Régénère le compte rendu.');
