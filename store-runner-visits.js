@@ -150,7 +150,7 @@ function report(host,v){
  const hasFinal=!!(saved&&typeof saved.text==='string');
  const finalNote=hasFinal?M.effectiveTerrainNote(v,family):M.unifiedTerrainNote(v,family);
  if(v.status==='draft')runnerMemory(host,v.storeId,{family,excludeVisitId:v.id,previous:true,limit:6});
- const note=field(host,'Note terrain '+family.toUpperCase(),finalNote,value=>save(s=>M.editReport(s,v.id,family,'team',value)),'textarea',v.status==='completed');note.rows=14;note.dataset.srTerrainFamily=family;note.dataset.srTerrainSource=hasFinal?'final':'raw';note.placeholder='Ex. vendeur rencontré, ce qu’il t’a dit, perception de la marque, concurrence, produit remarqué, problème ou opportunité…';
+ const note=field(host,'Note terrain '+family.toUpperCase(),finalNote,value=>save(s=>M.editReport(s,v.id,family,'team',value)),'textarea',v.status==='completed');note.rows=8;note.dataset.srTerrainFamily=family;note.dataset.srTerrainSource=hasFinal?'final':'raw';note.placeholder='Ex. vendeur rencontré, ce qu’il t’a dit, perception de la marque, concurrence, produit remarqué, problème ou opportunité…';
  if(hasFinal)host.append(element('p','Compte rendu final enregistré depuis Sortie magasin.','sr-hint'));
  else host.append(element('p','Note ici tous les constats, actions, formations et points à suivre.','sr-hint'));
  const photo=button('📷 Photos '+family.toUpperCase(),()=>openPhotos(v),'sr-photoEntry');photo.dataset.family=family;host.append(photo);
@@ -160,7 +160,7 @@ function report(host,v){
   const finish=button('Terminer la visite',()=>completeVisit(v),'primary');finish.dataset.srCompleteVisit=v.id;host.append(finish)
  }else{
   host.append(element('p','Visite terminée le '+v.completedDate,'sr-completed'));
-  runnerRemark(host,v);
+  if(!hasFinal)runnerRemark(host,v);
   if(!hasFinal)runnerMemory(host,v.storeId,{family,onlyVisitId:v.id,history:true});
   if(v.completedDate===localDay()){const reopen=button('↩ Réouvrir cette visite',()=>reopenVisit(v,true),'secondary');reopen.dataset.srReopenVisit=v.id;host.append(reopen)}
   dangerZone(host,v);
