@@ -38,11 +38,10 @@ const result = { version: 1, reports: [{ reportType: 'cuisiniste', items: [{ sec
       const payload = await request.json();
       assert.equal(payload.max_completion_tokens, 4096);
       assert.equal(payload.include_reasoning, false);
-      assert.equal(payload.response_format.type, 'json_schema');
-      assert.equal(payload.response_format.json_schema.strict, true);
-      assert.deepEqual(payload.response_format.json_schema.schema.required, ['version', 'reports']);
+      assert.equal(payload.response_format, undefined, 'la rédaction libre n’impose pas de JSON');
+      assert.match(payload.messages.map(m=>m.content).join(' '), /Notes terrain originales/);
       await providerGate;
-      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) }, finish_reason: 'stop' }] }),
+      return new Response(JSON.stringify({ choices: [{ message: { content: EDITED }, finish_reason: 'stop' }] }),
         { headers: { 'Content-Type': 'application/json' } });
     }
   };
@@ -70,20 +69,20 @@ const result = { version: 1, reports: [{ reportType: 'cuisiniste', items: [{ sec
       if (final.status === 'done') break;
       await new Promise(resolve => setTimeout(resolve, 25));
     }
-    assert.equal(final.status, 'done'); assert.equal(final.result.reports[0].items[0].text, EDITED);
+    assert.equal(final.status, 'done'); assert.equal(final.result.reports[0].text, EDITED);
     await mf.dispose(); mf = undefined;
     // Reopen an entirely new runtime over the same SQLite data. Results and the claim
     // survive server process lifetime as well as client lifetime.
     mf = new Miniflare(options);
     const restored = await (await get(job.jobId)).json();
     assert.equal(restored.status, 'done');
-    assert.equal(restored.result.reports[0].items[0].text, EDITED);
-    assert.equal(restored.result.reports[0].items[0].section, 'showroom', 'professional rewrite survives restart');
-    assert.equal(restored.result.quality.status, 'complete');
-    assert.equal(restored.result.quality.mode, 'editorial');
+    assert.equal(restored.result.reports[0].text, EDITED);
+    assert.equal(restored.result.reports[0].reportType, 'cuisiniste', 'free prose survives restart');
+    assert.equal(restored.result.quality.status, 'review');
+    assert.equal(restored.result.quality.mode, 'free');
     assert.doesNotThrow(() => Report.validateDelivered(restored.result, source));
     assert.equal((await post()).status, 200); assert.equal(calls, 1);
-    console.log('PASS workerd · real SQLite/alarm processes with no client, concurrent duplicate POST, result survives runtime restart, one provider invocation');
+    console.log('PASS workerd · real SQLite/alarm processes with no client, concurrent duplicate POST, free prose survives runtime restart, one provider invocation');
   } finally {
     release();
     if (mf) await mf.dispose();
