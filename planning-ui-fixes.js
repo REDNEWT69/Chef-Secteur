@@ -108,6 +108,47 @@
     return true;
   }
 
+  /* The Google connection line lives directly below the planning departure.
+     The OAuth badge remains the single status source; the existing settings
+     details and their connection controls stay in their original owner. */
+  function ensureCalendarStatusShortcut(){
+    const badge=document.getElementById('googleCalendarBadge');
+    if(!badge)return null;
+    let shortcut=document.getElementById('planningGoogleStatusShortcut');
+    if(shortcut)return shortcut;
+    shortcut=document.createElement('button');
+    shortcut.id='planningGoogleStatusShortcut';
+    shortcut.type='button';
+    shortcut.className='planningGoogleStatusShortcut';
+    shortcut.setAttribute('aria-controls','planningCalendarDetails');
+    shortcut.innerHTML='<span class="planningGoogleLabel">▦ Google Agenda</span><span class="planningGoogleState" data-planning-google-state>Non connecté</span><span class="planningGoogleChevron" aria-hidden="true">›</span>';
+    const stateLabel=shortcut.querySelector('[data-planning-google-state]');
+    const sync=()=>{
+      const label=String(badge.textContent||'Non connecté').trim();
+      if(stateLabel&&stateLabel.textContent!==label)stateLabel.textContent=label;
+      shortcut.classList.toggle('connected',badge.classList.contains('on'));
+      shortcut.setAttribute('aria-label','Google Agenda : '+label+'. Ouvrir les réglages Google.');
+    };
+    sync();
+    if(typeof MutationObserver==='function'){
+      const observer=new MutationObserver(sync);
+      observer.observe(badge,{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['class']});
+      shortcut.__googleBadgeObserver=observer;
+    }
+    shortcut.addEventListener('click',function(){
+      // NavigationController owns the settings sheet. Reuse its existing button.
+      const settingsButton=document.getElementById(SETTINGS_SHORTCUT_ID);
+      if(settingsButton&&typeof settingsButton.click==='function')settingsButton.click();
+      else openPlanningSettings();
+      const details=document.getElementById('planningCalendarDetails');
+      if(details){
+        details.open=true;
+        if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>{if(typeof details.scrollIntoView==='function')details.scrollIntoView({block:'nearest',behavior:'smooth'})});
+      }
+    });
+    return shortcut;
+  }
+
   function reorderPlanning(){
     const plan=document.querySelector('#planPanel .applePlan'),title=plan&&plan.querySelector('.applePlanTitle'),tabs=document.getElementById('dayTabs'),timeline=plan&&plan.querySelector('.timelineShell'),metrics=document.getElementById('planMetrics'),saturday=document.getElementById('saturdayRecommendation'),departure=plan&&plan.querySelector('.departureCard'),settings=document.getElementById('planningSettings');
     if(!plan||!tabs||!timeline)return;
@@ -140,6 +181,7 @@
     moveAfter(above,timeline);
     const monthly=document.querySelector('#planPanel #managerPlanningMonth, #planPanel .managerPlanningMonth, #planPanel .monthPlanning, #planPanel [data-planning-month]');let anchor=timeline;
     if(monthly){moveAfter(anchor,monthly);anchor=monthly}if(metrics){moveAfter(anchor,metrics);anchor=metrics}if(saturday){moveAfter(anchor,saturday);anchor=saturday}if(departure){moveAfter(anchor,departure);anchor=departure}
+    const googleStatus=ensureCalendarStatusShortcut();if(googleStatus&&departure)moveAfter(departure,googleStatus);
     if(settings&&!editing&&(settings.parentNode!==plan||settings.nextElementSibling))plan.appendChild(settings);
   }
 
@@ -392,6 +434,11 @@
     .planningHeroV2{margin:0 0 8px;padding:8px 2px 2px;background:transparent;border:0;box-shadow:none}.planningTerrainBtn{display:block;width:100%;min-height:50px;margin:12px 0 4px;border:0;border-radius:17px;background:#111;color:#fff;font-size:16px;font-weight:800;box-shadow:0 12px 28px rgba(0,0,0,.14)}.planningTerrainBtn[hidden]{display:none}.planningHeroTop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}.planningHeroPill{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.78);border:1px solid rgba(60,60,67,.12);font-size:11px;font-weight:800;color:#667085;box-shadow:0 4px 14px rgba(31,41,55,.04)}.planningHeroWeek{font-size:11px;color:#8a93a2;font-weight:650;text-align:right}.planningHeroDay{font-family:Georgia,"Times New Roman",serif;font-size:44px;line-height:.98;letter-spacing:-.045em;font-weight:500;color:#111318;margin:0}.planningHeroFull{font-size:14px;color:#717987;margin-top:8px;font-weight:600}
     #planPanel #dayTabs{margin:10px 0 8px;padding-bottom:2px;display:flex!important;flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none}#planPanel #dayTabs::-webkit-scrollbar{display:none}#planPanel #dayTabs .dayTab{flex:1 1 0!important;min-width:56px!important;max-width:96px!important;scroll-snap-align:center;touch-action:pan-x}
     .planningToolsV2{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}.planningToolsV2 button{min-height:44px;padding:10px 13px;flex:1 1 180px}#planPanel .timelineShell{margin-bottom:20px}#planPanel #planMetrics{margin:18px 0 14px!important}#planPanel .departureCard{margin:8px 0 14px!important}#planPanel #saturdayRecommendation:empty{display:none}
+    #planPanel .planningGoogleStatusShortcut{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:100%;min-height:48px;margin:-5px 0 14px;padding:11px 14px;border:1px solid rgba(120,125,140,.17);border-radius:15px;background:rgba(255,255,255,.76);color:#243044;text-align:left;cursor:pointer}
+    #planPanel .planningGoogleLabel{font-size:13px;font-weight:800;min-width:0}
+    #planPanel .planningGoogleState{margin-left:auto;white-space:nowrap;font-size:11px;font-weight:750;color:#667085;border-radius:999px;padding:5px 8px;background:#eef0f4}
+    #planPanel .planningGoogleStatusShortcut.connected .planningGoogleState{background:#e8f8ee;color:#137333}
+    #planPanel .planningGoogleChevron{font-size:21px;line-height:1;color:#8e99aa}
     /* AGENTS.md : la hiérarchie d'affichage du planning appartient à ce module. Le duo
        de reporting « Qualité du planning / Cette semaine » fait doublon avec les tuiles
        d'accueil et le détail d'activité : il est retiré de la vue, pas supprimé. */
