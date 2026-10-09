@@ -26,6 +26,7 @@ jobs:
       - run: node tests/store-runner-report-renderer-v278.test.cjs
       - run: node tests/store-runner-editorial-v280.test.cjs
       - run: node tests/report-free-preview-v282.test.cjs
+      - run: node tests/report-express-fidelity-v285.test.cjs
       - run: node tests/report-jobs-worker-v278.test.cjs
       - run: node tests/report-jobs-runtime-v278.test.cjs
       - run: node tests/backups.test.cjs

@@ -15,7 +15,9 @@ test('Sortie magasin : essai IA libre sans JSON visible à part, note et rapport
   const incoming=JSON.parse(route.request().postData()||'{}');previewCalls.push(incoming);
   await route.fulfill({status:200,contentType:'application/json',
    body:JSON.stringify({mode:'report_free_preview',reportType:incoming.reportType,text:free,
-    model:'openai/gpt-oss-120b',provider:'groq'})});
+    model:'openai/gpt-oss-120b',provider:'groq',
+    audit:{missingReferences:[],unexpectedReferences:['55X9999'],missingPrices:['679'],
+      unexpectedPrices:[],missingPercentages:[],unexpectedPercentages:[],unexpectedDates:['15 novembre']}})});
  });
  const button=sheet.locator('#srReportFreeTest');
  await expect(button).toBeVisible();await expect(sheet.locator('#srReportFreeBox')).toBeHidden();
@@ -23,6 +25,9 @@ test('Sortie magasin : essai IA libre sans JSON visible à part, note et rapport
  await expect(sheet.locator('#srReportFreeBox')).toBeVisible();
  await expect(sheet.locator('#srReportFreeText')).toHaveValue(free);
  await expect(sheet.locator('#srReportFreeStatus')).toContainText('non enregistré, non vérifié');
+ await expect(sheet.locator('#srReportFreeStatus')).toContainText('références nouvelles à vérifier : 55X9999');
+ await expect(sheet.locator('#srReportFreeStatus')).toContainText('montants oubliés : 679');
+ await expect(sheet.locator('#srReportFreeStatus')).toContainText('dates nouvelles à vérifier : 15 novembre');
  expect(previewCalls).toHaveLength(1);
  expect(previewCalls[0].mode).toBe('report_free_preview');
  expect(previewCalls[0].reportType).toBe('brun');

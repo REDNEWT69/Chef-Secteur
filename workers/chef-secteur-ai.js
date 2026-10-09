@@ -954,6 +954,51 @@ async function handlePing(env, origin) {
   }, 200, origin);
 }
 
+/* V285 — advisory source-only comparison for the opt-in Groq preview.
+   Never rewrite, silently discard, save or auto-approve the model's prose.
+   This is a checklist aid, not a fact-checking guarantee. */
+function reportExpressAudit(notes, output, completedDate) {
+  const uniq = values => [...new Set(values)];
+  const refs = s => uniq(String(s || '').toUpperCase().match(/\b(?=[A-Z0-9-]{4,22}\b)(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z0-9]+(?:-[A-Z0-9]+)?\b/g) || []);
+  const amounts = s => {
+    // Dictation may use « zéro euro » instead of « 0 € ».
+    const spoken=String(s||'').replace(/\bz[ée]ro\s+euros?\b/gi,'0 €');
+    return uniq([...spoken.matchAll(/\b(\d{1,5}(?:[\s\u00a0\u202f]\d{3})?(?:[.,]\d{1,2})?)\s*(?:€|euros?)(?![\p{L}\p{N}])/giu)]
+      .map(m=>m[1].replace(/[\s\u00a0\u202f]/g,'').replace(',','.')));
+  };
+  const percentages = s => uniq([...String(s||'').matchAll(/\b(\d{1,3}(?:[.,]\d+)?)\s*%/g)]
+    .map(m=>m[1].replace(',','.')));
+  const months=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  const monthNames='janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[ée]cembre';
+  const dates = s => {
+    const val=String(s||'').toLowerCase(),result=[];
+    const cleanMonth=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    const add=(day,month)=>result.push(Number(day)+' '+cleanMonth(month));
+    const dateRe=new RegExp('\\b(\\d{1,2})(?:er)?\\s+('+monthNames+')\\b','gi');
+    for(const m of val.matchAll(dateRe))add(m[1],m[2]);
+    const rangeRe=new RegExp('\\b(\\d{1,2})\\s+au\\s+(\\d{1,2})\\s+('+monthNames+')\\b','gi');
+    for(const m of val.matchAll(rangeRe))add(m[1],m[3]);
+    return uniq(result);
+  };
+  const whitelistedDate = () => {
+    const m=String(completedDate||'').match(/^\d{4}-(\d{2})-(\d{2})$/);
+    return m ? Number(m[2])+' '+months[Number(m[1])-1].normalize('NFD').replace(/[\u0300-\u036f]/g,'') : '';
+  };
+  const diff=(a,b)=>a.filter(x=>!b.includes(x)).slice(0,20);
+  const inRefs=refs(notes),outRefs=refs(output),inAmounts=amounts(notes),outAmounts=amounts(output);
+  const inPercents=percentages(notes),outPercents=percentages(output),inDates=dates(notes),outDates=dates(output);
+  const visitDate=whitelistedDate();
+  return {
+    missingReferences:diff(inRefs,outRefs),
+    unexpectedReferences:diff(outRefs,inRefs),
+    missingPrices:diff(inAmounts,outAmounts),
+    unexpectedPrices:diff(outAmounts,inAmounts),
+    missingPercentages:diff(inPercents,outPercents),
+    unexpectedPercentages:diff(outPercents,inPercents),
+    unexpectedDates:diff(outDates,inDates.concat(visitDate?[visitDate]:[]))
+  };
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
@@ -1072,11 +1117,21 @@ export default {
         const prompt = 'Magasin : ' + String(source.store.enseigne || '') + ' ' + String(source.store.ville || '')
           + '\nFamille : ' + typeName + '\nDate : ' + source.completedDate
           + '\n\nNotes originales :\n' + note;
-        const system = 'Tu es chef de secteur Samsung et tu rédiges un compte rendu professionnel en français. '
-          + 'Transforme librement les notes orales en un rapport clair avec les rubriques réellement pertinentes. '
-          + 'Conserve les références produits, prix, écarts tarifaires, enseignes concurrentes, noms, formations et actions. '
-          + 'Ne transforme pas une possibilité en engagement et n’invente aucun fait. '
-          + 'N’utilise ni JSON, ni références de sources techniques : rends directement le texte rédigé.';
+        // V285: faithful field-ready BASE, not a consulting report. Groq keeps
+        // free prose; a second strict JSON conversion would lose original facts.
+        const system = [
+          'Tu reformules les notes dictées d’un chef de secteur Samsung en un compte rendu de visite terrain.',
+          'OBJECTIF : une BASE professionnelle, claire et directement copiable, même si les notes sont orales, mal ponctuées, répétitives ou avec des phrases incomplètes.',
+          'Tu es rédacteur, PAS consultant : tu ne dois ni compléter les faits par des connaissances générales, ni proposer un nouveau plan commercial.',
+          'FIDÉLITÉ ABSOLUE : conserve chaque référence produit exactement, chaque prix, montant de prime, pourcentage, période promotionnelle, marque concurrente, implantation, remarque vendeur, besoin de formation et décision réellement rapportée.',
+          'L’attribution est essentielle : ne déplace pas un prix vers une autre référence, une PLV vers un produit voisin, ou une promotion TCL vers Samsung. Ne déduis jamais l’absence d’une promotion Samsung d’une promotion concurrente.',
+          'Interdiction d’inventer des modèles, prix, remises, comparatifs, visites futures, délais, dates, responsables, décisions, engagements ou actions. Ne transforme jamais une proposition ou un intérêt en commande validée.',
+          'Actions / suivi : mentionne uniquement les actions décidées, proposées ou explicitement à suivre dans les notes, avec leur vrai statut. Ne crée pas de recommandations, de calendrier ni de prochaines étapes supplémentaires.',
+          'Si une information est ambiguë ou tronquée, préserve le sens certain et note brièvement « à confirmer » seulement si nécessaire ; ne devine pas.',
+          'STYLE : français professionnel naturel et concis, rubriques courtes uniquement quand elles sont utiles (Contexte, Primes, Merchandising, Concurrence, Formation, Points à suivre). Aucun tableau, aucune analyse fictive, aucun texte de remplissage.',
+          'La longueur suit la richesse des notes : généralement 150 à 350 mots, sans supprimer une donnée importante pour respecter ce repère. Pas de signature fictive ni de responsable inventé.',
+          'Réponds directement avec le compte rendu rédigé. N’utilise ni JSON, ni références de sources techniques : rends directement le texte rédigé.'
+        ].join('\\n');
         try {
           const answer = await callGroq(env, system, prompt, 4096,
             { reasoningEffort: 'low', includeReasoning: false });
@@ -1086,6 +1141,7 @@ export default {
           // NO report validation, NO business memory, NO persistence, NO raw
           // provider error. User compares this text with the usual report.
           return json({ mode: 'report_free_preview', reportType, text: answer.text,
+            audit: reportExpressAudit(note, answer.text, source.completedDate),
             provider: answer.provider, model: answer.model }, 200, origin);
         } catch (e) {
           // Provider errors may quote confidential notes. Never return them.

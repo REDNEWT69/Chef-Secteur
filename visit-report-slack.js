@@ -294,6 +294,25 @@ function clearFreePreview(){
  const area=sheet.querySelector('#srReportFreeText'),box=sheet.querySelector('#srReportFreeBox');
  if(area)area.value='';if(box)box.hidden=true;
 }
+/* Le contrôle ne prétend jamais garantir qu'un rapport est exact : il signale
+   seulement les références et chiffres manifestement absents ou ajoutés.
+   Les notes, le texte Groq et le rapport officiel restent intacts. */
+function expressAuditNotice(a){
+ if(!a||typeof a!=='object')return 'Relis les prix et les références avant utilisation.';
+ const rules=[
+  ['missingReferences','références oubliées'],
+  ['unexpectedReferences','références nouvelles à vérifier'],
+  ['missingPrices','montants oubliés'],
+  ['unexpectedPrices','montants nouveaux à vérifier'],
+  ['missingPercentages','pourcentages oubliés'],
+  ['unexpectedPercentages','pourcentages nouveaux à vérifier'],
+  ['unexpectedDates','dates nouvelles à vérifier']
+ ];
+ const warnings=rules.filter(([key])=>Array.isArray(a[key])&&a[key].length)
+  .map(([key,label])=>label+' : '+a[key].slice(0,8).join(', '));
+ return warnings.length?'⚠️ Contrôle indicatif : '+warnings.join(' ; ')+'. Compare avec tes notes.'
+  :'Contrôle automatique : aucune référence ou valeur chiffrée suspecte détectée. Relis quand même le contenu et les décisions.';
+}
 async function testFreePreview(){
  const v=visitById(activeVisit),panel=sheet&&sheet.querySelector('#srReportFreeBox');
  const result=sheet&&sheet.querySelector('#srReportFreeText'),btn=sheet&&sheet.querySelector('#'+FREE_BTN_ID);
@@ -309,7 +328,7 @@ async function testFreePreview(){
  if(!row||(row.entries||[]).every(e=>!text(e.text))){say('Aucune note originale pour cette famille.',true);return false}
  const token=++freeTestSequence,key=currentDraftKey();
  freeTestRunning=true;btn.disabled=true;btn.textContent='🧪 Rédaction libre en cours…';
- panel.hidden=false;result.value='';sheet.querySelector('#srReportFreeStatus').textContent='Une seule génération Groq, sans filtre de rubriques ni validation des phrases. Résultat non enregistré.';
+ panel.hidden=false;result.value='';sheet.querySelector('#srReportFreeStatus').textContent='Une génération Groq express, sans JSON contraignant. Résultat non enregistré à relire.';
  try{
   if(!await ensureAutoAI()||!root.StoreRunnerReportAIAutoV2771||
     typeof root.StoreRunnerReportAIAutoV2771.freePreview!=='function')throw Error('Passerelle IA indisponible.');
@@ -317,7 +336,7 @@ async function testFreePreview(){
   const data=await root.StoreRunnerReportAIAutoV2771.freePreview(source,type,signature);
   if(freeTestSequence!==token||!sheet.open||key!==currentDraftKey())return false;
   result.value=data.text;
-  sheet.querySelector('#srReportFreeStatus').textContent='Résultat brut Groq · non enregistré, non vérifié. Compare avec ton rapport habituel ci-dessus.';
+  sheet.querySelector('#srReportFreeStatus').textContent='Rapport express Groq · non enregistré, non vérifié. '+expressAuditNotice(data.audit);
   return true;
  }catch(e){
   if(freeTestSequence===token&&sheet.open)sheet.querySelector('#srReportFreeStatus').textContent=
