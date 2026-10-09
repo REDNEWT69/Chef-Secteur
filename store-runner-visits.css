@@ -88,11 +88,3 @@
 .sr-reportMemory small{margin-top:8px}
 .sr-reportMemory .sr-memorySource,.sr-reportMemory summary{min-height:44px;padding:10px 4px;font-size:12px;line-height:1.4;cursor:pointer;text-align:left;white-space:normal}
 .sr-reportMemory .sr-memorySource{border:0;background:transparent;color:inherit;text-decoration:underline;max-width:100%}
-
-/* V281 — compte rendu professionnel dans la visite terminée, lisible sur Android.
-   Lecture seule : les champs de dictée restent la source originale. */
-.sr-finalReportInVisit{margin:10px 0 16px;padding:14px;border:1px solid var(--line,#dbe5f3);border-radius:15px;background:var(--sr-surface-solid,#f8fafc);min-width:0}
-.sr-finalReportInVisit h3{margin:0 0 5px;font-size:15px;line-height:1.35;overflow-wrap:anywhere}
-.sr-finalReportOrigin{margin:0 0 11px;color:var(--muted,#667085);font-size:12px;line-height:1.4}
-.sr-finalReportText{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font-size:14px;line-height:1.6;user-select:text;-webkit-user-select:text}
-@media(max-width:390px){.sr-finalReportInVisit{padding:11px}.sr-finalReportText{font-size:13.5px}}
