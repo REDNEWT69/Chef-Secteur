@@ -57,3 +57,16 @@ test('Android : réponse Groq échouée ne remplace pas un compte rendu précéd
  expect(await page.evaluate(()=>StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).brun.team)).toBe(note);
  expect(durable.calls).toHaveLength(0);
 });
+
+test('Android : aucune donnée BLANC ne peut être générée depuis une note BRUN uniquement',async({page})=>{
+ const durable=await H.installJobs(page),{id,note}=await H.seedAndComplete(page,'brun',{products:['brun','blanc']},'manual-groq');
+ let previewCalls=0;
+ await page.route(url=>url.pathname==='/api/ai',async route=>{previewCalls++;await route.fulfill({status:500,body:'not expected'})});
+ const sheet=await H.openReport(page,id,'blanc');
+ await sheet.locator('#srReportFreeTest').tap();
+ await expect(sheet.locator('#srReportStatus')).toContainText('Aucune note originale propre à cette famille');
+ expect(previewCalls).toBe(0);
+ expect(durable.calls).toHaveLength(0);
+ expect(await page.evaluate(id=>StoreRunnerVisits.reportFor(id,'blanc'),id)).toBe(null);
+ expect(await page.evaluate(()=>StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).brun.team)).toBe(note);
+});
