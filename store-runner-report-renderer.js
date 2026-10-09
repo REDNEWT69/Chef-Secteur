@@ -1,7 +1,6 @@
-/* V278 — a provider extracts grounded business data; Store Runner owns presentation.
-   Pure shared module, loaded on demand by the browser and imported by the Worker.
-   Proposed prose is accepted only as a bounded cleanup of its exact source quotation.
-   When that proof fails, the entire result is rejected and existing reports survive. */
+/* V278/V280 — shared renderer: legacy reports retain the original strict validation;
+   new editorial reports prioritize professional prose, source provenance and figure safety.
+   Raw dictated notes live in the immutable visit source, not the generated report. */
 (function(root){
 'use strict';
 const VERSION=1,PROMPT_VERSION='visit-report-v280-editorial-autonomy',MAX_ITEMS=36;
@@ -320,22 +319,24 @@ function validateEditorial(raw,source){
   seen.add(report.reportType);
   const entries=reportFor(source,report.reportType).entries;
   const bySource=new Map(entries.map(x=>[x.source,x]));
-  const allNotes=entries.map(e=>text(e.text)).join('\n');
   const items=[],duplicate=new Set();let skipped=0,rawCount=0,cleanCount=0;
   for(const item of report.items){
    if(++allCount>MAX_ITEMS){skipped++;continue}
    if(!keysOnly(item,['section','text','source','quote'])||!ORDER[report.reportType].includes(item.section)||
       typeof item.text!=='string'||typeof item.source!=='string'||typeof item.quote!=='string'){skipped++;continue}
    const src=bySource.get(item.source),sentence=editorialSentence(item.text);
-   if(!src||!sentence||!editorialFigures(sentence,allNotes)||!editorialCommercialGuard(item,src.text)){skipped++;continue}
+   if(!src||!sentence||!editorialFigures(sentence,src.text)||!editorialCommercialGuard(item,src.text)){skipped++;continue}
    const key=item.source+'|'+plain(sentence);if(duplicate.has(key))continue;duplicate.add(key);
    // Inexact quotations are not grounds for rejecting fluent prose.
    // Replace their provenance with the untouched source entry.
    const quoted=text(item.quote),original=text(src.text);
    const quote=quoted&&original.replace(/\s+/g,' ').includes(quoted.replace(/\s+/g,' '))?quoted:original;
    const isRaw=plain(sentence)===plain(quote)||plain(sentence)===plain(original);
-   items.push({section:isRaw?'notes':item.section,text:isRaw?quote:sentence,source:item.source,quote});
-   if(isRaw)rawCount++;else cleanCount++;
+   // A provider must not make a verbatim dictation look like a completed report.
+   // Keep the original note in the visit source and request manual review instead.
+   if(isRaw){skipped++;continue}
+   items.push({section:item.section,text:sentence,source:item.source,quote});
+   cleanCount++;
   }
   // A completely unusable generation fails cleanly instead of presenting the
   // entire unedited dictation as a 'successful' AI report.
@@ -359,19 +360,19 @@ function validateEditorialDelivered(doc,source){
   seen.add(report.reportType);
   const entries=reportFor(source,report.reportType).entries;
   const bySource=new Map(entries.map(x=>[x.source,x]));
-  const allNotes=entries.map(e=>text(e.text)).join('\n');
   const items=[];let reportRaw=0;
   for(const item of report.items){
    if(++total>MAX_ITEMS+entries.length||!keysOnly(item,['section','text','source','quote'])||
       !ORDER[report.reportType].includes(item.section)||
       typeof item.text!=='string'||typeof item.source!=='string'||typeof item.quote!=='string')fail('fait non conforme');
    const src=bySource.get(item.source),sentence=editorialSentence(item.text),quoted=text(item.quote);
-   if(!src||!sentence||!editorialFigures(sentence,allNotes)||!editorialCommercialGuard(item,src.text)||!quoted||
+   if(!src||!sentence||!editorialFigures(sentence,src.text)||!editorialCommercialGuard(item,src.text)||!quoted||
       !text(src.text).replace(/\s+/g,' ').includes(quoted.replace(/\s+/g,' ')))fail('fait non conforme');
    if(item.section==='notes'&&plain(sentence)===plain(quoted))reportRaw++;
    else accepted++;
    items.push({section:item.section,text:sentence,source:item.source,quote:quoted});
   }
+  if(!items.length&&entries.some(x=>text(x.text)))fail('rapport vide');
   sourceOnly+=reportRaw;
   const v=report.review;
   if(v){
@@ -553,8 +554,9 @@ Tu es AUTONOME pour comprendre la dictée, corriger les fautes vocales évidente
 Ne classe pas selon des mots-clés : considère le SENS de chaque observation. Exemple : une massification d'aspirateurs placée à l'entrée du rayon cuisson est du MERCHANDISING, pas un retour vendeur en ASPIRATION.
 Lexique métier : BLANC signifie électroménager (froid, lavage, cuisson, aspiration), jamais une couleur; BRUN signifie image, TV et audio. TG = tête de gondole; massification = exposition groupée; mur de fours = meuble de présentation. « en castrape » peut signifier « encastrable » en contexte cuisson; série Q = gamme de barres de son Samsung en contexte audio; SmartThings est une technologie Samsung.
 Utilise le nom canonique du magasin donné dans la fiche visite pour éviter les transcriptions vocales approximatives du magasin (Saint-Étienne Villars vs Steel/Villard). N'invente pas d'identité de personne ni de référence produit.
-Le commercial doit dicter librement, sans corriger sa manière de parler : tu structures correctement toute la note, même longue ou sans ponctuation.
+Le commercial doit dicter librement, sans corriger sa manière de parler : tu structures correctement toute la note, même longue ou sans ponctuation. Une dictée recopiée mot pour mot, même placée dans une jolie rubrique, n'est PAS un compte rendu professionnel. Reformule chaque observation avec une syntaxe naturelle sans en réduire le contenu.
 Une observation par item, ou deux faits étroitement liés. Maximum 36 items au total. text contient une phrase professionnelle sans titre, emoji ni markdown. Choisis librement la rubrique parmi celles de la famille. Un fait concernant l'audio doit aller dans audio, un contact magasin dans context, une mise en avant dans merchandising.
+Avant de rendre le JSON, relis les observations et évite de laisser des faits exploitables uniquement dans la dictée originale. Garde les réserves et les formulations attribuées au vendeur. Ne crée pas de rubrique Notes terrain pour copier la dictée.
 RÈGLES MÉTIER : n'invente jamais de personnes, actions, formations, prix, quantités, références, positions, décisions ou rendez-vous. N'inverse pas présence/absence, auteur d'une action ou marque concernée; ne transforme pas un retour vendeur en fait prouvé ni une discussion commerciale en contrat signé. Respecte réserves, incertitudes, négations. Ne déduis pas de plan d'action absent des notes.
 Si une transcription orale est vraiment ambiguë, rédige prudemment sans deviner. Corrige les fautes évidentes et les tournures maladroites en préservant le sens.
 source doit être l'identifiant exact d'une entrée de la bonne famille. quote est une trace de provenance : cite si possible un passage source, mais la qualité de text ne doit pas être limitée aux mots exacts de quote. Le Worker conserve les notes d'origine et corrige une citation imparfaite.
