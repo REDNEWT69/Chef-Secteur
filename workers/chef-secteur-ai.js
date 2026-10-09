@@ -1045,7 +1045,7 @@ export default {
 function reportExpressAudit(notes, output) {
   const refs = text => [...new Set((String(text || '').toUpperCase()
     .match(/\b(?=[A-Z0-9-]{4,22}\b)(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z0-9]+(?:-[A-Z0-9]+)?\b/g) || []))];
-  const amounts = text => [...new Set(([...String(text || '').matchAll(/\b(\d{1,5}(?:[\s\u00a0\u202f]\d{3})?(?:[.,]\d{1,2})?)\s*(?:€|euros?)\b?/gi)]
+  const amounts = text => [...new Set(([...String(text || '').matchAll(/\b(\d{1,5}(?:[\s\u00a0\u202f]\d{3})?(?:[.,]\d{1,2})?)\s*(?:€|euros?)(?![\p{L}\p{N}])/giu)]
     .map(m => m[1].replace(/[\s\u00a0\u202f]/g, '').replace(',', '.'))))];
   const percentages = text => [...new Set(([...String(text || '').matchAll(/\b(\d{1,3}(?:[.,]\d+)?)\s*%/g)]
     .map(m => m[1].replace(',', '.'))))];
