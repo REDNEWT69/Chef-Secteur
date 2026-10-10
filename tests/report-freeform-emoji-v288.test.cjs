@@ -20,7 +20,7 @@ const generated=[
  '- Hisense 100E7Q : 45 €.',
  '',
  '**Merchandising**',
- 'Samsung 65M73H affiché à 679 €. PLV manquante.',
+ 'Samsung **65M73H** affiché à **679 €**. PLV manquante.',
  '',
  '**Concurrence**',
  'TCL propose une remise de 15 % sur Mini LED.',
@@ -49,7 +49,9 @@ const generated=[
   '65M73H affiché à 679 €','15 %','75R85H proposé','Commande non validée']){
   assert(expected.includes(detail),'source detail lost: '+detail);
  }
- assert.match(expected,/\*\*Date :\*\* 10\/10\/2026/);
+ assert.match(expected,/Date : 10\/10\/2026/);
+ assert.match(expected,/Samsung 65M73H affiché à 679 €/);
+ assert.doesNotMatch(expected,/\*\*/,'no Markdown bold markers in the displayed report');
  assert.equal(R.decorateFreeform(expected,source,'brun'),expected,'must not duplicate icons');
  const delivered={reportType:'brun',text:generated};
  assert.equal(R.render(delivered,source),expected,'durable reports use same visual formatting');
@@ -57,6 +59,23 @@ const generated=[
  assert.equal(JSON.stringify(source),original,'original field notes immutable');
  const already='⚫ Résumé BRUN – Carrefour Vénissieux\n\n🏬 Contexte magasin\n\nSamsung 55M74H : 0 €.';
  assert.equal(R.decorateFreeform(already,source,'brun'),already,'do not double-decorate');
+ const groqAuchan=['⚫ Résumé BRUN – Auchan Saint Priest',
+  '**Magasin** : Auchan Saint-Priest',
+  '**Famille** : BRUN',
+  '**Date** : 10/10/2026',
+  '',
+  '**🏬 Contexte**',
+  '- Les vendeurs privilégient le rapport qualité-prix.',
+  '',
+  '**🏬 Merchandising**',
+  '- Modèles **55U7025H**, **43U7025H** et **54Q6fAA**.',
+  '- OLED **55S84** affiché à **729 €** ; prix final **779 €**.',
+  '',
+  '**🎯 Points à suivre**',
+  '- Aucun suivi indiqué dans les notes.'
+ ].join('\n');
+ assert.equal(R.decorateFreeform(groqAuchan,source,'brun'),groqAuchan.replace(/\*\*/g,''),
+  'Auchan freeform example: remove only bold delimiters, retain icons, bullets, prices and references');
  const noTitle='Samsung 55M74H : 0 €.\nContexte : vendeurs rapidement rencontrés.';
  assert.equal(R.decorateFreeform(noTitle,source,'brun'),
   '⚫ Résumé BRUN – Carrefour Vénissieux\n\n'+noTitle,
