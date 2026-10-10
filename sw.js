@@ -27,7 +27,7 @@ const CORE_SHELL = [
   "./ai-context-limit.js", "./assistant-store-lookup.js", "./map-layer-fix.js",
   "./timeline-end-times.js", "./visit-counting.js", "./visit-coverage.js", "./range-planner-v2.js",
   "./planning-day-origin.js", "./boulanger-default-hours.js", "./store-photos.js",
-  "./terrain-planning-v1.js", "./store-runner-professional-events.js", "./working-hours-end.js", "./daily-capacity.js",
+  "./terrain-planning-v1.js", "./working-hours-end.js", "./daily-capacity.js",
   "./planning-pro-plus.js", "./planning-summary-v219.js", "./period-day-slider.js",
   "./planning-manual-visits.js", "./planning-reorder-v254.js", "./workdays-enforcer.js",
   "./planning-command-engine.js", "./store-explorer.js", "./runner-visual.js", "./runner-behavior.js", "./runner-ambient.js",
@@ -37,7 +37,7 @@ const CORE_SHELL = [
   "./connection-ui.js", "./update-manager.js", "./store-runner-whats-new.js",
   "./planning-manual-hours.js", "./glass-theme.css", "./reliability-ui.js",
   "./stores-layout-order.js", "./boulanger-national.js", "./national-sectors.js",
-  "./sector-admin.js"
+  "./sector-admin.js", "./store-runner-professional-events.js"
 ];
 /* Données, pas code : leur absence ne doit pas bloquer une mise à jour. */
 const OPTIONAL_SHELL = [
