@@ -2,7 +2,7 @@
    des notes terrain. La clôture crée le job serveur ; cette surface lit et édite le résultat. */
 (function(root){
 'use strict';
-const SHEET_ID='srReportSheet',VISIT_BTN_ID='srReportBtn',QUICK_BTN_ID='srReportQuickBtn',SHARE_BTN_ID='srReportSharePhotos',AI_BTN_ID='srReportAI',EDIT_BTN_ID='srReportEdit',FREE_BTN_ID='srReportFreeTest';
+const SHEET_ID='srReportSheet',VISIT_BTN_ID='srReportBtn',QUICK_BTN_ID='srReportQuickBtn',SHARE_BTN_ID='srReportSharePhotos',EDIT_BTN_ID='srReportEdit',FREE_BTN_ID='srReportFreeTest';
 const PLACEHOLDER='[Non renseigné par le FMT]';
 const PRIMARY_BRAND='Sam'+'sung';
 const FAMILY_OF_BRAND={
@@ -254,7 +254,7 @@ function draftKey(v,skeleton){return v.id+':'+(MERGED[skeleton]?'merged':activeT
 function currentDraftKey(){const v=visitById(activeVisit);if(!v)return'';return draftKey(v,skeletonForStore(storeOf(state(),v)))}
 function ensureStyle(){if(!root.document||root.document.getElementById('sr-report-style'))return;const s=el('style');s.id='sr-report-style';s.textContent='#'+SHEET_ID+'{box-sizing:border-box;width:min(720px,calc(100vw - 20px));max-width:calc(100vw - 20px);max-height:calc(100dvh - 20px);overflow:auto;padding:16px;border-radius:24px;border:1px solid #d9dce3;background:#fff;color:#1d1d1f}#'+SHEET_ID+'::backdrop{background:rgba(17,24,39,.45)}.sr-reportHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.sr-reportHead h2{margin:0;font-size:20px}.sr-reportHead p{margin:4px 0 0;color:#667085;font-size:12px}.sr-reportTabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 8px}.sr-reportTab{min-height:44px;border:1px solid #d3d9e3;border-radius:13px;background:#f4f6fa;color:#454b56;font-weight:800;font-size:12px}.sr-reportTab[aria-selected=true]{background:#1428a0;border-color:#1428a0;color:#fff}#srReportText{width:100%;box-sizing:border-box;min-height:300px;border:1px solid #d9dee8;border-radius:14px;padding:10px;font:400 12px ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.45;background:#fbfcff;color:#1d1d1f;-webkit-text-fill-color:#1d1d1f;resize:vertical}#srReportText:not([readonly]){background:#fff;border-color:#8eb6ff;box-shadow:0 0 0 3px rgba(20,40,160,.08)}.sr-reportStatus{min-height:18px;font-size:12px;color:#315b9d;margin:8px 0}.sr-reportStatus.sr-reportError{color:#b42318}.sr-reportActions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px}.sr-reportBtn{min-height:48px;border-radius:14px;font-weight:800}.sr-reportAI{background:linear-gradient(180deg,#1428a0,#0f1f7d);color:#fff;border:0}.sr-reportAI:disabled{opacity:.62}.sr-reportEdit{background:#fff;color:#1428a0;border:1px solid #ccd4ef}.sr-reportCopy{background:#1428a0;color:#fff;border:0}.sr-reportPhotos{background:#eef0f4;color:#1d1d1f;border:0}.sr-reportPhotos:disabled{opacity:.55}.sr-reportClose{background:#eef0f4;color:#1d1d1f;border:0}#'+VISIT_BTN_ID+',#'+QUICK_BTN_ID+'{min-height:44px}';root.document.head.appendChild(s)}
 function ensureFreeStyle(){if(!root.document||root.document.getElementById('sr-report-free-css'))return;const st=el('style');st.id='sr-report-free-css';st.textContent='.sr-reportFree{background:#f0f5fc;color:#1428a0;border:1px solid #c7d6f5}.sr-reportFree:disabled{opacity:.6}.sr-reportFreeBox{margin:12px 0;padding:12px;border:1px solid #cbd9ee;border-radius:14px;background:#f8fbff}.sr-reportFreeBox[hidden]{display:none}.sr-reportFreeBox h3{font-size:15px;margin:0 0 8px}.sr-reportFreeBox p{font-size:12px;line-height:1.4;color:#4b586a;margin:0 0 8px}.sr-reportFreeBox textarea{box-sizing:border-box;width:100%;min-height:260px;border:1px solid #d5dce7;border-radius:10px;padding:10px;font:400 13px ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.5;resize:vertical;color:#1d2939;background:#fff}.sr-reportFreeBox button{width:100%;margin-top:8px}';root.document.head.appendChild(st)}
-function ensureSheet(){if(sheet)return sheet;if(!root.document)return null;ensureStyle();ensureFreeStyle();sheet=el('dialog');sheet.id=SHEET_ID;sheet.setAttribute('aria-labelledby','srReportTitle');sheet.innerHTML='<div class="sr-reportHead"><div><h2 id="srReportTitle">Sortie magasin</h2><p id="srReportSubtitle"></p></div></div><div id="srReportTabs" class="sr-reportTabs"></div><textarea id="srReportText" rows="18" readonly aria-label="Compte rendu à copier"></textarea><p id="srReportStatus" class="sr-reportStatus" role="status"></p><div class="sr-reportActions"></div>';const actions=sheet.querySelector('.sr-reportActions'),ai=btn('✨ Régénérer le compte rendu',generateAI,'sr-reportBtn sr-reportAI'),free=btn('🧪 Tester IA libre (non enregistré)',testFreePreview,'sr-reportBtn sr-reportFree'),edit=btn('Modifier le texte',toggleEdit,'sr-reportBtn sr-reportEdit'),copyBtn=btn('Copier le compte rendu',copy,'sr-reportBtn sr-reportCopy'),share=btn('Aucune photo pour cette visite.',sharePhotos,'sr-reportBtn sr-reportPhotos');ai.id=AI_BTN_ID;free.id=FREE_BTN_ID;edit.id=EDIT_BTN_ID;share.id=SHARE_BTN_ID;share.disabled=true;actions.append(ai,free,edit,copyBtn,share,btn('Fermer',close,'sr-reportBtn sr-reportClose'));const freeBox=el('section',undefined,'sr-reportFreeBox');freeBox.id='srReportFreeBox';freeBox.hidden=true;freeBox.innerHTML='<h3>Essai IA libre · Groq</h3><p id="srReportFreeStatus" role="status">Texte expérimental, non vérifié et non enregistré.</p><textarea id="srReportFreeText" rows="14" readonly aria-label="Résultat brut du test IA libre"></textarea>';freeBox.append(btn('Copier cet essai',copyFreePreview,'sr-reportBtn sr-reportEdit'));sheet.appendChild(freeBox);const area=sheet.querySelector('#srReportText');area.addEventListener('input',()=>{const k=area.dataset.draftKey;if(k&&!area.readOnly){aiDrafts[k]=area.value;persistFinalEdit(area)}});sheet.addEventListener('cancel',e=>{e.preventDefault();close()});root.document.body.appendChild(sheet);return sheet}
+function ensureSheet(){if(sheet)return sheet;if(!root.document)return null;ensureStyle();ensureFreeStyle();sheet=el('dialog');sheet.id=SHEET_ID;sheet.setAttribute('aria-labelledby','srReportTitle');sheet.innerHTML='<div class="sr-reportHead"><div><h2 id="srReportTitle">Sortie magasin</h2><p id="srReportSubtitle"></p></div></div><div id="srReportTabs" class="sr-reportTabs"></div><textarea id="srReportText" rows="18" readonly aria-label="Compte rendu à copier"></textarea><p id="srReportStatus" class="sr-reportStatus" role="status"></p><div class="sr-reportActions"></div>';const actions=sheet.querySelector('.sr-reportActions'),free=btn('✨ Génération auto',generateGroqReport,'sr-reportBtn sr-reportFree'),edit=btn('Modifier le texte',toggleEdit,'sr-reportBtn sr-reportEdit'),copyBtn=btn('Copier le compte rendu',copy,'sr-reportBtn sr-reportCopy'),share=btn('Aucune photo pour cette visite.',sharePhotos,'sr-reportBtn sr-reportPhotos');free.id=FREE_BTN_ID;edit.id=EDIT_BTN_ID;share.id=SHARE_BTN_ID;share.disabled=true;actions.append(free,edit,copyBtn,share,btn('Fermer',close,'sr-reportBtn sr-reportClose'));const area=sheet.querySelector('#srReportText');area.addEventListener('input',()=>{const k=area.dataset.draftKey;if(k&&!area.readOnly){aiDrafts[k]=area.value;persistFinalEdit(area)}});sheet.addEventListener('cancel',e=>{e.preventDefault();close()});root.document.body.appendChild(sheet);return sheet}
 /* V235 — une photo sans famille n'appartient plus ni à BRUN ni à BLANC : reprise dans
    les deux, elle produisait un doublon entre les deux comptes rendus et entre les lots
    de partage. `listStrictByFamily` est la lecture dédiée ; si un module plus ancien est
@@ -273,7 +273,7 @@ function updatePhotoButton(photos,merged){const b=sheet&&sheet.querySelector('#'
 function visitsAPI(){return root.StoreRunnerVisits}
 function savedReport(v){const api=visitsAPI();return api&&typeof api.reportFor==='function'?api.reportFor(v.id,activeTab):null}
 function reportStatus(v){
- const job=v&&v.reportJob;if(job&&job.obsolete)return 'Compte rendu modifié et enregistré.';
+ const job=v&&v.reportJob;if(job&&job.obsolete)return savedReport(v)?'Compte rendu enregistré. Relis-le avant de le copier.':'Visite enregistrée. Utilise « Génération auto » pour rédiger son compte rendu.';
  if(!job)return v&&v.status==='draft'?'Le compte rendu sera préparé automatiquement à la clôture.':'';
  if(job.status==='done'){
   const payload=v&&v.professionalReport&&v.professionalReport.data;
@@ -291,18 +291,11 @@ function reportStatus(v){
  if(root.navigator&&root.navigator.onLine===false)return 'Visite clôturée. Le compte rendu sera repris au retour du réseau.';
  return job.status==='processing'?'Compte rendu en préparation sur le serveur. Tu peux quitter l’application.':'Visite clôturée. Compte rendu en attente de traitement.';
 }
-/* One-click experiment: free prose from Groq only, never replaces an existing
-   Sortie magasin report, notes terrain or Runner business memory. No storage. */
+/* V287 — one Groq generation button. The proven freeform preview endpoint
+   becomes an explicitly triggered, locally persisted professional report.
+   A returned text is never substituted for the immutable source notes. */
 let freeTestRunning=false,freeTestSequence=0;
-function clearFreePreview(){
- freeTestSequence++;
- if(!sheet)return;
- const area=sheet.querySelector('#srReportFreeText'),box=sheet.querySelector('#srReportFreeBox');
- if(area)area.value='';if(box)box.hidden=true;
-}
-/* Le contrôle ne prétend jamais garantir qu'un rapport est exact : il signale
-   seulement les références et chiffres manifestement absents ou ajoutés.
-   Les notes, le texte Groq et le rapport officiel restent intacts. */
+function clearFreePreview(){freeTestSequence++;}
 function expressAuditNotice(a){
  if(!a||typeof a!=='object')return 'Relis les prix et les références avant utilisation.';
  const rules=[
@@ -319,48 +312,61 @@ function expressAuditNotice(a){
  return warnings.length?'⚠️ Contrôle indicatif : '+warnings.join(' ; ')+'. Compare avec tes notes.'
   :'Contrôle automatique : aucune référence ou valeur chiffrée suspecte détectée. Relis quand même le contenu et les décisions.';
 }
-async function testFreePreview(){
- const v=visitById(activeVisit),panel=sheet&&sheet.querySelector('#srReportFreeBox');
- const result=sheet&&sheet.querySelector('#srReportFreeText'),btn=sheet&&sheet.querySelector('#'+FREE_BTN_ID);
- if(!v||v.status!=='completed'||!panel||!result||freeTestRunning)return false;
- if(root.navigator&&root.navigator.onLine===false){say('Connexion nécessaire pour cet essai Groq.',true);return false}
+async function generateGroqReport(){
+ const v=visitById(activeVisit),button=sheet&&sheet.querySelector('#'+FREE_BTN_ID);
+ if(!v||v.status!=='completed'||!button||freeTestRunning)return false;
+ const area=sheet.querySelector('#srReportText');
+ if(area&&!area.readOnly){say('Termine la modification avant de générer un nouveau rapport.',true);return false}
+ if(root.navigator&&root.navigator.onLine===false){say('Connexion nécessaire pour générer le compte rendu Groq.',true);return false}
  const M=model(),R=root.StoreRunnerReportRenderer,config=root.aiConfig;
- if(!M||!R||!config||!config.gateway){say('Connexion IA non configurée.',true);return false}
- const store=storeOf(state(),v),kind=skeletonForStore(store);
- const type=kind==='cuisinistes'?'cuisiniste':kind==='buying-groups'?'buying-groups':activeTab;
- const source=typeof M.sourceForReportJob==='function'?M.sourceForReportJob(v):M.frozenReportSource(state(),v);
- if(!source){say('Notes sources indisponibles.',true);return false}
+ if(!M||!config||!config.gateway){say('Connexion IA non configurée.',true);return false}
+ const store=storeOf(state(),v),kind=skeletonForStore(store),
+  type=kind==='cuisinistes'?'cuisiniste':kind==='buying-groups'?'buying-groups':activeTab;
+ const source=(typeof M.sourceForReportJob==='function'&&v.reportJob&&M.sourceForReportJob(v))
+  ||M.frozenReportSource(state(),v);
+ if(!source){say('Notes originales indisponibles.',true);return false}
  const row=(source.reports||[]).find(r=>r.reportType===type);
- if(!row||(row.entries||[]).every(e=>!text(e.text))){say('Aucune note originale pour cette famille.',true);return false}
+ if(!row||!(row.entries||[]).some(e=>text(e.text)&&(!['brun','blanc'].includes(type)||e.family===type||e.family==='both'))){say('Aucune note originale propre à cette famille.',true);return false}
  const token=++freeTestSequence,key=currentDraftKey();
- freeTestRunning=true;btn.disabled=true;btn.textContent='🧪 Rédaction libre en cours…';
- panel.hidden=false;result.value='';sheet.querySelector('#srReportFreeStatus').textContent='Une génération Groq express, sans JSON contraignant. Résultat non enregistré à relire.';
+ freeTestRunning=true;button.disabled=true;button.textContent='✨ Rédaction en cours…';
+ say('Génération Groq en cours. Garde cette fenêtre ouverte jusqu’à l’enregistrement.');
  try{
+  if(!await editSaving)throw Error('Une modification précédente n’a pas été enregistrée.');
   if(!await ensureAutoAI()||!root.StoreRunnerReportAIAutoV2771||
     typeof root.StoreRunnerReportAIAutoV2771.freePreview!=='function')throw Error('Passerelle IA indisponible.');
-  const signature=await R.sourceSignature(source);
+  const signature=await root.StoreRunnerReportRenderer.sourceSignature(source);
   const data=await root.StoreRunnerReportAIAutoV2771.freePreview(source,type,signature);
-  if(freeTestSequence!==token||!sheet.open||key!==currentDraftKey())return false;
-  result.value=data.text;
-  sheet.querySelector('#srReportFreeStatus').textContent='Rapport express Groq · non enregistré, non vérifié. '+expressAuditNotice(data.audit);
+  const live=visitById(v.id),still=live&&live.status==='completed'
+    &&activeVisit===v.id&&currentDraftKey()===key&&freeTestSequence===token;
+  if(!still||!sheet.open||!area.readOnly)return false;
+  if(!data||typeof data.text!=='string'||!data.text.trim())throw Error('Groq a renvoyé un texte vide.');
+  const latest=(typeof M.sourceForReportJob==='function'&&live.reportJob&&M.sourceForReportJob(live))
+    ||M.frozenReportSource(state(),live);
+  if(!latest||await root.StoreRunnerReportRenderer.sourceSignature(latest)!==signature)
+    throw Error('Les notes originales ont changé pendant la génération. Rien n’a été remplacé.');
+  const api=visitsAPI();
+  if(!api||typeof api.saveFinalReport!=='function')throw Error('Enregistrement du compte rendu indisponible.');
+  if(!await api.saveFinalReport(v.id,type,data.text,false))throw Error('Le rapport Groq n’a pas été enregistré.');
+  await refresh();
+  say('Compte rendu Groq enregistré dans la visite. Notes originales conservées. '+expressAuditNotice(data.audit));
   return true;
  }catch(e){
-  if(freeTestSequence===token&&sheet.open)sheet.querySelector('#srReportFreeStatus').textContent=
-    e&&e.name==='AbortError'?'Essai trop long. Ton rapport habituel est conservé.':
-    'Essai impossible : '+(e&&e.message||'erreur réseau')+' Le rapport habituel est conservé.';
+  if(freeTestSequence===token&&sheet.open)say(e&&e.name==='AbortError'?
+   'Groq a mis trop de temps à répondre. Aucun texte n’a été remplacé.':
+   'Génération Groq impossible : '+(e&&e.message||'erreur réseau')+'. Le rapport précédent est conservé.',true);
   return false;
  }finally{
   freeTestRunning=false;
-  if(btn){btn.disabled=false;btn.textContent='🧪 Tester IA libre (non enregistré)'}
+  if(button){button.disabled=false;updateAIButton(false)}
  }
 }
-async function copyFreePreview(){
- const area=sheet&&sheet.querySelector('#srReportFreeText');if(!area||!area.value)return false;
- try{await root.navigator.clipboard.writeText(area.value);sheet.querySelector('#srReportFreeStatus').textContent='Essai IA libre copié, sans modifier la visite.';return true}
- catch(e){area.focus();area.select();sheet.querySelector('#srReportFreeStatus').textContent='Sélectionne et copie le texte manuellement.';return false}
+function updateAIButton(){
+ const b=sheet&&sheet.querySelector('#'+FREE_BTN_ID);if(!b)return;
+ const v=visitById(activeVisit);
+ b.textContent=freeTestRunning?'✨ Rédaction en cours…':'✨ Génération auto';
+ b.disabled=freeTestRunning||!v||v.status!=='completed';
+ b.title=v&&v.status==='draft'?'Termine la visite avant de générer son compte rendu.':'Génère puis enregistre le rapport de la famille affichée.';
 }
-
-function updateAIButton(merged){const b=sheet&&sheet.querySelector('#'+AI_BTN_ID);if(!b)return;const v=visitById(activeVisit);b.textContent='✨ Régénérer le compte rendu';b.disabled=generating||!v||v.status!=='completed';b.title=v&&v.status==='draft'?'Termine la visite pour préparer son compte rendu.':''}
 function updateEditButton(){const area=sheet&&sheet.querySelector('#srReportText'),b=sheet&&sheet.querySelector('#'+EDIT_BTN_ID);if(!area||!b)return;b.textContent=area.readOnly?'Modifier le texte':'Terminer la modification';b.disabled=!(visitById(activeVisit)||{}).completedDate}
 async function localReport(v,photos){
  const old=build(state(),v.id,activeTab,photos);
@@ -416,17 +422,6 @@ function aiFailureMessage(e){
    pendant que la première lecture IndexedDB était encore en vol. Tout ce qui suit le
    verrou — lecture des photos, construction de la charge utile, appel IA — vit dans le
    même `try`, et le `finally` rend toujours le bouton et libère le verrou. */
-async function generateAI(){const v=visitById(activeVisit);if(!v){say('Visite introuvable.',true);return false}
- if(generating){say('Génération déjà en cours, patiente quelques secondes.');return false}
- if(v.status!=='completed'){say('Termine la visite pour préparer automatiquement son compte rendu.');return false}
- const button=sheet&&sheet.querySelector('#'+AI_BTN_ID);generating=true;if(button){button.disabled=true;button.textContent='✨ Préparation…'}
- try{
-  if(!await editSaving)return false;
-  const api=visitsAPI();if(!api||typeof api.requestReportRegeneration!=='function')throw new Error('service de compte rendu indisponible');
-  const ok=await api.requestReportRegeneration(v.id);if(!ok)throw new Error('préparation non enregistrée');
-  await ensureAutoAI();say('Compte rendu en préparation. Tu peux quitter l’application.');return true;
- }catch(e){say(aiFailureMessage(e),true);return false}finally{generating=false;if(button){button.disabled=false;updateAIButton(false)}}
-}
 async function copy(){const area=sheet&&sheet.querySelector('#srReportText');if(!area)return false;try{if(root.navigator&&root.navigator.clipboard&&root.navigator.clipboard.writeText){await root.navigator.clipboard.writeText(area.value);say('Compte rendu copié.');return true}}catch(e){}const wasReadonly=area.readOnly;try{area.readOnly=false;area.select();const ok=root.document.execCommand&&root.document.execCommand('copy');area.readOnly=wasReadonly;if(ok){say('Compte rendu copié.');return true}}catch(e){area.readOnly=wasReadonly}say('Copie impossible ici. Sélectionne le texte et copie-le à la main.',true);return false}
 /* V235 — un lot à la fois, et la progression n'avance qu'après une promesse résolue.
    `navigator.share` rejette avec `AbortError` quand l'utilisateur referme la feuille

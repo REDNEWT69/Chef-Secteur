@@ -58,6 +58,12 @@ const source={version:1,visitId:'visit-test',storeId:'store-test',completedDate:
  assert.deepEqual(received.result.reports[0].audit.missingReferences,[]);
  assert.equal(calls.length,2,'preview + one durable invocation');
  assert.deepEqual(calls[0].messages,calls[1].messages,'identical preview/auto prompts on single family');
+ const instructions=calls[0].messages[0].content;
+ for(const title of ['⚫ Résumé BRUN','⚪ Résumé BLANC','🆚 Concurrence','🎓 Formation','📝 Synthèse']){
+  assert(instructions.includes(title),'missing icon instruction: '+title);
+ }
+ assert.match(instructions,/Les icônes servent seulement à rendre les titres/);
+
  assert(!('response_format' in calls[1]),'no JSON schema in the automatic Groq call');
  assert.equal(calls[1].reasoning_effort,'low');
  assert.equal(calls[1].include_reasoning,false);

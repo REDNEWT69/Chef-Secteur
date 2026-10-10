@@ -72,6 +72,9 @@ const source={
   assert.match(system.toLowerCase(),new RegExp(rule.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i'),
     'missing report instruction: '+rule);
  }
+ assert.match(system,/PRÉSENTATION AVEC ICÔNES/);
+ assert.match(system,/Ne crée aucune rubrique vide/);
+ assert.match(system,/Elles ne doivent jamais remplacer des faits/);
  assert.match(requests[0].messages[1].content,/55M74H zéro euro/);
  assert.match(requests[0].messages[1].content,/75R85H proposé/);
  reply=invented;

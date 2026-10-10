@@ -21,7 +21,8 @@ async function installJobs(page,{status='done',delay=0,mutate,error='Le moteur I
  });
  return{calls,jobs};
 }
-async function seedAndComplete(page,family='brun',storeOverrides={}){
+async function seedAndComplete(page,family='brun',storeOverrides={},mode='legacy-automatic'){
+ if(mode==='legacy-automatic')await page.addInitScript(()=>{window.StoreRunnerReportMode='legacy-automatic'});
  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>window.state&&window.StoreRunnerVisitModel&&window.StoreRunnerVisits&&window.StoreRunnerVisitReport);
  await page.evaluate(async ({fam,storeOverrides})=>{

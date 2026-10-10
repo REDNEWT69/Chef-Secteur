@@ -157,7 +157,6 @@ function banc(rows,options){
   const onglet=fam=>feuille().querySelector('#srReportTabs').children.filter(b=>b.dataset.family===fam)[0];
 
   return {photos,partage,etat,visitId,R,doc,ia,
-    genererIA:async()=>{feuille().querySelector('#srReportAI').dispatch('click');await repos()},
     ouvrir:()=>R.open(visitId),
     bouton,
     statut:()=>feuille().querySelector('#srReportStatus').textContent,
@@ -421,9 +420,7 @@ async function test9(){
   await b.ouvrir();
   assert.equal(b.libelle(),'Partager les 3 photos BRUN','BRUN ne compte que les 3 photos de la visite');
   assert.match(b.rapport(),/\*\*Photos :\*\* 2 avant \/ 1 après jointes à ce message\./,'le CR local compte les mêmes 3 photos');
-  await b.genererIA();
-  assert.equal(b.ia.charges.length,1,'la génération IA est bien partie');
-  assert.deepEqual(JSON.parse(JSON.stringify(b.ia.charges[0].context.visit.photos)),{total:3,before:2,after:1,other:0},'la charge IA ne compte que la visite');
+  assert.equal(b.ia.charges.length,0,'le partage photo reste indépendant du bouton Groq');
   await b.partager();
   const brun=b.noms()[0];
   assert.equal(brun.length,3,'3 fichiers BRUN, pas 3 + 4 anciens + 3 sans visite');

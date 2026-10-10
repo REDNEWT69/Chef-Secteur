@@ -1,27 +1,47 @@
-/* The legacy synchronous empty retry is unit-tested in V238. Durable jobs perform
-   one provider invocation and surface failure without changing source notes. */
+/* V287: no automatic legacy regeneration on visit completion. Existing V238
+   provider-empty/parser guards remain in unit tests; Groq freeform requires an
+   explicit click, must never destroy notes on failure, and only audits anomalies. */
 const {test,expect}=require('@playwright/test');
 const H=require('./helpers/report-jobs-browser.cjs');
 test.use({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1,serviceWorkers:'block',screenshot:'only-on-failure',trace:'retain-on-failure'});
-
-for(const [label,result] of [['vide',''],['tronqué','{"version":1,"reports":[']]){
- test('BLANC : résultat '+label+' rejeté, clôture et données exactes conservées',async({page})=>{
-  const transport=await H.installJobs(page,{mutate(response){response.result=result}});
-  const {id,note}=await H.seedAndComplete(page,'blanc');await H.jobState(page,id,'failed');const sheet=await H.openReport(page,id,'blanc');
-  await expect(sheet.locator('#srReportStatus')).toContainText('Les notes sont conservées');await expect(sheet.locator('#srReportText')).toHaveValue(/749 €/);
-  const status=await sheet.locator('#srReportStatus').textContent();expect(status).not.toMatch(/HTTP|provider|finishReason|ai_empty_response/);
-  await expect(sheet.locator('#srReportAI')).toBeEnabled();expect(transport.calls).toHaveLength(1);
-  const stored=await page.evaluate(()=>({status:state.businessV2.visits[0].status,note:StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).blanc.team}));
-  expect(stored).toEqual({status:'completed',note});await H.noOverflow(page);
+const audit={missingReferences:[],unexpectedReferences:[],missingPrices:[],unexpectedPrices:[],missingPercentages:[],unexpectedPercentages:[],unexpectedDates:[]};
+for(const label of ['vide','mal formé']){
+ test('BLANC : réponse '+label+' refusée sans perdre notes ni visite',async({page})=>{
+  const transport=await H.installJobs(page),{id,note}=await H.seedAndComplete(page,'blanc',{},'manual-groq');
+  await page.route(url=>url.pathname==='/api/ai',async route=>{
+   const body=route.request().postDataJSON();
+   await route.fulfill({status:200,contentType:'application/json',
+    body:JSON.stringify(label==='vide'?
+     {mode:'report_free_preview',reportType:body.reportType,text:'',audit}:
+     {mode:'unrelated',reportType:body.reportType,text:'erreur de protocole',audit})});
+  });
+  const sheet=await H.openReport(page,id,'blanc');
+  await sheet.locator('#srReportFreeTest').tap();
+  await expect(sheet.locator('#srReportStatus')).toContainText('Génération Groq impossible');
+  await expect(sheet.locator('#srReportText')).toHaveValue(/749 €/);
+  expect(await page.evaluate(id=>StoreRunnerVisits.reportFor(id,'blanc'),id)).toBe(null);
+  expect(await page.evaluate(()=>StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).blanc.team)).toBe(note);
+  expect(transport.calls).toHaveLength(0);await H.noOverflow(page);
  });
 }
-
-test('BLANC : invention de prix rejetée et régénération explicite possible',async({page})=>{
- const transport=await H.installJobs(page,{mutate(response,input){if(input.generation===0){const item=response.result.reports[0].items.find(i=>i.section==='laundry');item.text=item.text.replace('749','799')}}});
- const {id,note}=await H.seedAndComplete(page,'blanc');await H.jobState(page,id,'failed');const sheet=await H.openReport(page,id,'blanc');
- await expect(sheet.locator('#srReportText')).toHaveValue(/749 €/);await expect(sheet.locator('#srReportText')).not.toHaveValue(/799 €/);
- await sheet.locator('#srReportAI').click();await H.jobState(page,id,'done');
- await expect(sheet.locator('#srReportText')).toHaveValue(/^⚪ Résumé BLANC/);await expect(sheet.locator('#srReportText')).toHaveValue(/749 €/);
- expect(transport.calls).toHaveLength(2);expect(transport.calls.map(x=>x.generation)).toEqual([0,1]);
- expect(await page.evaluate(()=>StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).blanc.team)).toBe(note);await H.noOverflow(page);
+test('BLANC : un prix inattendu est signalé sans filtrer la rédaction, résultat modifiable',async({page})=>{
+ const transport=await H.installJobs(page),{id,note}=await H.seedAndComplete(page,'blanc',{},'manual-groq');
+ const text='⚪ Résumé BLANC – Samsung en lavage : 799 €, à vérifier.';
+ await page.route(url=>url.pathname==='/api/ai',async route=>{
+  const body=route.request().postDataJSON();
+  await route.fulfill({status:200,contentType:'application/json',
+   body:JSON.stringify({mode:'report_free_preview',reportType:body.reportType,text,
+    provider:'groq',audit:{...audit,unexpectedPrices:['799'],missingPrices:['749']}})});
+ });
+ const sheet=await H.openReport(page,id,'blanc');
+ await sheet.locator('#srReportFreeTest').tap();
+ await expect(sheet.locator('#srReportText')).toHaveValue(text);
+ await expect(sheet.locator('#srReportStatus')).toContainText('montants nouveaux à vérifier : 799');
+ expect(await page.evaluate(id=>StoreRunnerVisits.reportFor(id,'blanc').text,id)).toBe(text);
+ expect(await page.evaluate(()=>StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).blanc.team)).toBe(note);
+ await sheet.locator('#srReportEdit').tap();
+ await sheet.locator('#srReportText').fill('⚪ Résumé BLANC – Samsung en lavage : 749 €.');
+ await sheet.locator('#srReportEdit').tap();
+ expect(await page.evaluate(id=>StoreRunnerVisits.reportFor(id,'blanc').text,id)).toContain('749 €');
+ expect(transport.calls).toHaveLength(0);await H.noOverflow(page);
 });
