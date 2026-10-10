@@ -90,9 +90,8 @@ function makeUi(){
   if(!doc.getElementById('srProHome')){
     const home=doc.querySelector('#homePanel .homeHero');if(home){const e=doc.createElement('div');e.id='srProHome';home.insertAdjacentElement('afterend',e)}
   }
-  if(!doc.getElementById('srProPlanning')){
-    const title=doc.querySelector('#planPanel .applePlanTitle');if(title){const e=doc.createElement('div');e.id='srProPlanning';title.insertAdjacentElement('afterend',e)}
-  }
+  // Les séminaires sont présentés par le propriétaire de la vue mensuelle.
+  const oldPanel=doc.getElementById('srProPlanning');if(oldPanel)oldPanel.remove();
   return true;
 }
 function openEditor(item){
@@ -146,17 +145,8 @@ function renderHome(){
       (mapLink(e)?' <a target="_blank" rel="noopener noreferrer" href="'+html(mapLink(e))+'">Itinéraire ↗</a>':'')+'</div>';
   }).join('');
 }
-function renderPlanning(){
-  const box=root.document.getElementById('srProPlanning');if(!box)return;
-  const s=stateNow(),raw=String(s&&s.settings&&s.settings.weekDate||today()).slice(0,10);
-  if(!validDate(raw)){box.innerHTML='';return}
-  const d=new Date(raw+'T12:00:00Z'),first=addDay(raw,1-(d.getUTCDay()||7)),last=addDay(first,6);
-  const events=rows(s).filter(e=>e.endDate>=first&&e.startDate<=last);
-  box.innerHTML=events.length?'<div class="srProSection"><b>📅 Journées bloquées cette semaine</b>'+
-    events.map(e=>'<div class="srProMeta">'+html(e.startDate===e.endDate?e.startDate:eventDateSummary(e))+' · '+html(e.kind)+' · '+html(e.title)+(e.location?' · '+html(e.location):'')+'</div>').join('')+
-    '<p class="srProNote">Aucune nouvelle visite automatique sur ces dates. Les visites déjà présentes restent à vérifier.</p></div>':'';
-}
-function refresh(){if(!root.document||!stateNow())return;if(makeUi()){renderList();renderHome();renderPlanning()}}
+
+function refresh(){if(!root.document||!stateNow())return;if(makeUi()){renderList();renderHome()}}
 function boot(){
   refresh();
   ['store-runner:planning-updated','store-runner:data-restored','store-runner:home-rendered'].forEach(name=>root.document.addEventListener(name,refresh));

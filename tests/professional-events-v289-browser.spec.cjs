@@ -37,6 +37,26 @@ test('Android 390px : séminaire local multi-jours bloque le générateur, reste
    existing:state.plan.Mercredi.length
  }));
  expect(actual).toEqual({stored:1,paris:'Paris',prior:false,first:true,second:true,after:false,existing:1});
+ // Agenda interne : le séminaire est visible aux deux dates, même sans Google Agenda.
+ await page.evaluate(()=>goTab('planPanel'));
+ await expect(page.locator('#srProPlanning')).toHaveCount(0);
+ const calendar=page.locator('#planningProMonth'),monthBody=page.locator('#proMonthBody');
+ await expect(calendar).toBeVisible();
+ await calendar.locator('summary').tap();
+ let november=false;
+ for(let i=0;i<16;i++){
+   const label=String(await monthBody.locator('.proMonthHead b').textContent());
+   if(/novembre 2026/i.test(label)){november=true;break}
+   await monthBody.locator('.proMonthNext').tap();
+ }
+ expect(november).toBe(true);
+ await expect(calendar.locator('[data-pro-date="2026-11-18"]')).toHaveClass(/proDayBlocked/);
+ await expect(calendar.locator('[data-pro-date="2026-11-18"]')).toContainText('Séminaire Samsung');
+ await expect(calendar.locator('[data-pro-date="2026-11-19"]')).toContainText('Séminaire Samsung');
+ await expect(calendar.locator('[data-pro-date="2026-11-17"]')).not.toContainText('Séminaire Samsung');
+ await expect(calendar.locator('.proMonthLocalSummary')).toContainText('Paris');
+ expect(await page.evaluate(()=>state.calendarEvents.length)).toBe(0);
+ await page.evaluate(()=>goTab('appointmentsPanel'));
  await page.evaluate(async()=>{await __chefStorage.flush()});
  await page.reload({waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>window.StoreRunnerProfessionalEvents&&window.StoreRunnerBoot?.settled());
