@@ -1,7 +1,7 @@
 const {test,expect}=require('@playwright/test');
 const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
 test.use({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1,serviceWorkers:'block'});
-test('V278 Android 390 px : Google + séminaire multi-jours dans agenda mensuel, export manuel iCalendar',async({page})=>{
+test('V278 Android 390 px : Google + séminaire multi-jours dans agenda mensuel, sans export externe',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>window.StoreRunnerProfessionalEvents&&window.StoreRunnerBoot?.settled()&&document.getElementById('planningProMonth'));
@@ -30,14 +30,8 @@ test('V278 Android 390 px : Google + séminaire multi-jours dans agenda mensuel,
  await expect(last).not.toContainText('Google formation');
  await page.evaluate(()=>goTab('appointmentsPanel'));
  await expect(page.locator('#srProList')).toContainText('Séminaire terrain 2026');
- const link=page.locator('[data-sr-pro-calendar]');
- await expect(link).toBeVisible();
- const contents=await page.evaluate(()=>StoreRunnerProfessionalEvents.toICS(state.professionalEvents[0]));
- expect(contents).toContain('DTSTART;VALUE=DATE:20261019');
- expect(contents).toContain('DTEND;VALUE=DATE:20261022');
+ await expect(page.locator('[data-sr-pro-calendar]')).toHaveCount(0);
  const before=await page.evaluate(()=>JSON.stringify({plan:state.plan,appointments:state.appointments,calendarEvents:state.calendarEvents,professionalEvents:state.professionalEvents}));
- const download=page.waitForEvent('download');
- await link.tap();const item=await download;expect(item.suggestedFilename()).toBe('store-runner-2026-10-19.ics');
  const after=await page.evaluate(()=>JSON.stringify({plan:state.plan,appointments:state.appointments,calendarEvents:state.calendarEvents,professionalEvents:state.professionalEvents}));
  expect(after).toBe(before);
  expect(errors).toEqual([]);

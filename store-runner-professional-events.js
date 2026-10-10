@@ -81,8 +81,7 @@ function makeUi(){
     panel.insertBefore(container,panel.firstChild);
     container.querySelector('#srProAdd').addEventListener('click',()=>openEditor());
     container.querySelector('#srProList').addEventListener('click',e=>{
-      const edit=e.target.closest('[data-sr-pro-edit]'),del=e.target.closest('[data-sr-pro-delete]'),calendar=e.target.closest('[data-sr-pro-calendar]');
-      if(calendar){const item=rows(stateNow()).find(x=>x.id===calendar.dataset.srProCalendar);if(item)exportCalendar(item).catch(err=>root.alert('Export calendrier impossible : '+String(err.message||err)));return}
+      const edit=e.target.closest('[data-sr-pro-edit]'),del=e.target.closest('[data-sr-pro-delete]');
       if(edit){const item=rows(stateNow()).find(x=>x.id===edit.dataset.srProEdit);if(item)openEditor(item)}
       if(del){const item=rows(stateNow()).find(x=>x.id===del.dataset.srProDelete);
         if(item&&root.confirm('Supprimer cet événement professionnel ?'))remove(item.id)}
@@ -91,42 +90,9 @@ function makeUi(){
   if(!doc.getElementById('srProHome')){
     const home=doc.querySelector('#homePanel .homeHero');if(home){const e=doc.createElement('div');e.id='srProHome';home.insertAdjacentElement('afterend',e)}
   }
-  // La vue mensuelle est propriétaire de l'affichage des séminaires.
+  // Les séminaires sont présentés par le propriétaire de la vue mensuelle.
   const oldPanel=doc.getElementById('srProPlanning');if(oldPanel)oldPanel.remove();
   return true;
-}
-/* Export manuel, jamais d'écriture cachée dans les agendas externes. */
-function icsEscape(s){return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/\r\n|\n|\r/g,'\\n').replace(/;/g,'\\;').replace(/,/g,'\\,')}
-function foldICal(line){
-  const chunks=[];let buf='',bytes=0;
-  for(const ch of line){
-    const width=encodeURIComponent(ch).replace(/%[A-F0-9]{2}/gi,'x').length;
-    if(bytes+width>70){chunks.push(buf);buf=' ';bytes=1}
-    buf+=ch;bytes+=width;
-  }
-  chunks.push(buf);return chunks.join('\r\n');
-}
-function toICS(value){
-  const e=normalize(value),start=e.startDate.replace(/-/g,''),end=addDay(e.endDate,1).replace(/-/g,'');
-  const uid='sr-'+String(e.id||e.startDate+'-'+e.title).replace(/[^a-z0-9_-]/gi,'').slice(0,100)+'@store-runner.fr';
-  const stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z');
-  const location=[e.address,e.location].filter(Boolean).join(', '),description=[e.kind,e.notes].filter(Boolean).join('\n');
-  const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Store Runner//Evenements professionnels//FR','CALSCALE:GREGORIAN','METHOD:PUBLISH','BEGIN:VEVENT',
-    'UID:'+uid,'DTSTAMP:'+stamp,'DTSTART;VALUE=DATE:'+start,'DTEND;VALUE=DATE:'+end,
-    'SUMMARY:'+icsEscape(e.title),'LOCATION:'+icsEscape(location),'DESCRIPTION:'+icsEscape(description),
-    'END:VEVENT','END:VCALENDAR'];
-  return lines.map(foldICal).join('\r\n')+'\r\n';
-}
-async function exportCalendar(e){
-  const content=toICS(e),name='store-runner-'+e.startDate+'.ics',file=new root.File([content],name,{type:'text/calendar'});
-  const nav=root.navigator||{};
-  if(nav.share&&(!nav.canShare||nav.canShare({files:[file]}))){
-    try{await nav.share({files:[file],title:e.title});return 'partage'}catch(err){if(err&&err.name==='AbortError')return 'annulé'}
-  }
-  const url=root.URL.createObjectURL(file),a=root.document.createElement('a');
-  a.href=url;a.download=name;root.document.body.appendChild(a);a.click();a.remove();
-  root.setTimeout(()=>root.URL.revokeObjectURL(url),8000);
-  return 'fichier';
 }
 function openEditor(item){
   makeUi();const doc=root.document,old=doc.getElementById('srProDialog');if(old)old.remove();
@@ -165,7 +131,6 @@ function renderList(){
       (e.notes?'<div class="srProMeta">'+html(e.notes)+'</div>':'')+
       (conflicts.length?'<div class="srProWarning">⚠️ Visites ou RDV déjà prévus : '+html(conflicts.join(', '))+'. À vérifier, rien n’a été supprimé.</div>':'')+
       '<div class="srProActions">'+(url?'<a href="'+html(url)+'" rel="noopener noreferrer" target="_blank">Itinéraire ↗</a>':'')+
-      '<button type="button" data-sr-pro-calendar="'+html(e.id)+'">Exporter calendrier Apple (.ics)</button>'+
       '<button type="button" data-sr-pro-edit="'+html(e.id)+'">Modifier</button><button type="button" data-sr-pro-delete="'+html(e.id)+'">Supprimer</button></div></div>';
   }).join(''):'<p class="srProNote">Aucun événement enregistré.</p>';
 }
@@ -180,24 +145,15 @@ function renderHome(){
       (mapLink(e)?' <a target="_blank" rel="noopener noreferrer" href="'+html(mapLink(e))+'">Itinéraire ↗</a>':'')+'</div>';
   }).join('');
 }
-function renderPlanning(){
-  const box=root.document.getElementById('srProPlanning');if(!box)return;
-  const s=stateNow(),raw=String(s&&s.settings&&s.settings.weekDate||today()).slice(0,10);
-  if(!validDate(raw)){box.innerHTML='';return}
-  const d=new Date(raw+'T12:00:00Z'),first=addDay(raw,1-(d.getUTCDay()||7)),last=addDay(first,6);
-  const events=rows(s).filter(e=>e.endDate>=first&&e.startDate<=last);
-  box.innerHTML=events.length?'<div class="srProSection"><b>📅 Journées bloquées cette semaine</b>'+
-    events.map(e=>'<div class="srProMeta">'+html(e.startDate===e.endDate?e.startDate:eventDateSummary(e))+' · '+html(e.kind)+' · '+html(e.title)+(e.location?' · '+html(e.location):'')+'</div>').join('')+
-    '<p class="srProNote">Aucune nouvelle visite automatique sur ces dates. Les visites déjà présentes restent à vérifier.</p></div>':'';
-}
-function refresh(){if(!root.document||!stateNow())return;if(makeUi()){renderList();renderHome();renderPlanning()}}
+
+function refresh(){if(!root.document||!stateNow())return;if(makeUi()){renderList();renderHome()}}
 function boot(){
   refresh();
   ['store-runner:planning-updated','store-runner:data-restored','store-runner:home-rendered'].forEach(name=>root.document.addEventListener(name,refresh));
   root.addEventListener('focus',refresh);
   root.document.addEventListener('visibilitychange',()=>{if(!root.document.hidden)refresh()});
 }
-const api={KINDS,validDate,addDay,rows,normalize,covering,coversDate,plannedConflicts,upsert,remove,refresh,openEditor,toICS,icsEscape};
+const api={KINDS,validDate,addDay,rows,normalize,covering,coversDate,plannedConflicts,upsert,remove,refresh,openEditor};
 root.StoreRunnerProfessionalEvents=api;
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot()}

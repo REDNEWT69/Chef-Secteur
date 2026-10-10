@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const professional=require('../store-runner-professional-events.js');
+const source=fs.readFileSync('planning-pro-plus.js','utf8');
+const eventModule=fs.readFileSync('store-runner-professional-events.js','utf8');
+assert.equal(require('../version.json').displayVersion,'278');
+assert(source.includes('state.professionalEvents'),'le calendrier présente les événements locaux');
+assert(source.includes('state.calendarEvents'),'le calendrier présente Google');
+assert(source.includes('window.chefSecteurEventCoversDate'),'les bornes Google sont préservées');
+assert(source.includes('proMonthStatus'),'état de Google dans la vue repliée');
+assert(source.includes('store-runner:calendar-updated'),'rafraîchissement après synchronisation');
+assert(!eventModule.includes('toICS(')&&!eventModule.includes('Exporter calendrier Apple'),'aucun export Apple');
+assert(professional.coversDate('2026-10-21',{professionalEvents:[{startDate:'2026-10-19',endDate:'2026-10-21'}]}));
+assert(!professional.coversDate('2026-10-22',{professionalEvents:[{startDate:'2026-10-19',endDate:'2026-10-21'}]}));
+assert(fs.readFileSync('calendar-oauth.js','utf8').includes('lecture seule'));
+console.log('V278 : Google Agenda et événements locaux, sans export externe : OK');

@@ -26,13 +26,13 @@
   const RELEASES=[
     {
       version:'278',
-      title:'Ton agenda plus clair, et export vers Apple',
+      title:'Tes rendez-vous et séminaires visibles dans le Planning',
       items:[
         'La vue mensuelle montre les séminaires et événements professionnels enregistrés dans Store Runner sur chacun de leurs jours.',
         'Tes événements Google Agenda sont distingués de ceux de Store Runner, avec leur état de connexion ou de synchronisation en cache.',
         'Tu retrouves tes événements Google sur plusieurs jours, sans les perdre entre la date de début et la date de fin.',
-        'Depuis Événements professionnels, exporte un rendez-vous au format calendrier .ics pour l’ouvrir dans Apple Calendrier ou une autre application compatible.',
-        'Aucun événement externe n’est créé automatiquement, et tes données de planning restent intactes.'
+        'Le Planning indique tes rendez-vous Google et tes événements professionnels, y compris les séminaires sur plusieurs jours.',
+        'Google Agenda reste en lecture seule et tes données de planning restent intactes.'
       ]
     },
     {
