@@ -29,6 +29,13 @@ test('V278 Android 390 px : Google + séminaire multi-jours dans agenda mensuel,
  await expect(last).not.toContainText('Séminaire terrain 2026');
  await expect(last).not.toContainText('Google formation');
  await page.evaluate(()=>window.StoreRunnerPeriodDaySlider.openDate('2026-10-21'));
+ for(const date of ['2026-10-19','2026-10-20','2026-10-21'])
+   await expect(page.locator('#dayTabs .periodDayTab[data-date="'+date+'"] .srDayAgendaBadge')).toHaveCount(1);
+ await expect(page.locator('#dayTabs .periodDayTab[data-date="2026-10-22"] .srDayAgendaBadge')).toHaveCount(0);
+ // Une seule source suffit à la pastille : Google seul doit rester visible.
+ await page.evaluate(()=>{state.professionalEvents=[];document.dispatchEvent(new CustomEvent('store-runner:professional-events-updated'))});
+ await expect(page.locator('#dayTabs .periodDayTab[data-date="2026-10-21"] .srDayAgendaBadge')).toHaveCount(1);
+ await page.evaluate(()=>{state.professionalEvents=[{id:'v278-seminaire',kind:'Séminaire',title:'Séminaire terrain 2026',startDate:'2026-10-19',endDate:'2026-10-21',location:'Saint-Ouen'}];document.dispatchEvent(new CustomEvent('store-runner:professional-events-updated'))});
  await expect(page.locator('#proDayAgenda')).toContainText('Séminaire terrain 2026');
  await expect(page.locator('#proDayAgenda')).toContainText('Google formation');
  await page.evaluate(()=>goTab('appointmentsPanel'));
