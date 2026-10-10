@@ -60,6 +60,9 @@ function dayFits(route,day,state=root.state,weekMonday){
   return work==null?true:start+work<=end+0.001;
 }
 function dateBlocked(date,state=root.state){
+  /* Les événements professionnels locaux sont une contrainte explicite.
+     Google Agenda peut se reconnecter ou se vider sans débloquer ces dates. */
+  if(root.StoreRunnerProfessionalEvents&&root.StoreRunnerProfessionalEvents.coversDate(date,state))return true;
   /* Agenda possède les bornes (fin exclusive des événements all-day). Le moteur terrain
      conserve ici sa liste historique de motifs bloquants, mais ne redéfinit plus les plages. */
   const covers=typeof root.chefSecteurEventCoversDate==='function'

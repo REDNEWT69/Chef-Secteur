@@ -130,7 +130,7 @@ test('V234 — un seul voile de démarrage couvre tout le montage, sans flash de
     .map(entry => new URL(entry.name).pathname.split('/').pop())
     .filter(Boolean));
   expect(scriptResources.length).toBeGreaterThan(0);
-  expect(scriptResources.length).toBeLessThanOrEqual(cleanupBaseline.runtimeInventory.startupScriptResources);
+  expect(scriptResources.length).toBeLessThanOrEqual(cleanupBaseline.runtimeInventory.startupScriptResources+1); // V277 : +1 module Séminaires, budget r20 historique inchangé
   expect(new Set(scriptResources).size, 'aucun script runtime ne doit être chargé deux fois').toBe(scriptResources.length);
 
   // Sur une installation neuve, l'onboarding peut couvrir l'accueil. On vérifie donc

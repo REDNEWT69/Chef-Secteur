@@ -1,4 +1,4 @@
-const BUILD_REV = "20261010-r102-groq-plain-276";
+const BUILD_REV = "20261010-v277-seminaires-277";
 /* V261.2 hotfix : même révision applicative, nouveau namespace de cache afin que les
    PWA déjà installées récupèrent le correctif de capacité à la source (visit-counting.js)
    sans mélanger ancien et nouveau shell. Le BUILD_REV reste V261 : aucune migration. */
@@ -37,7 +37,7 @@ const CORE_SHELL = [
   "./connection-ui.js", "./update-manager.js", "./store-runner-whats-new.js",
   "./planning-manual-hours.js", "./glass-theme.css", "./reliability-ui.js",
   "./stores-layout-order.js", "./boulanger-national.js", "./national-sectors.js",
-  "./sector-admin.js"
+  "./sector-admin.js", "./store-runner-professional-events.js"
 ];
 /* Données, pas code : leur absence ne doit pas bloquer une mise à jour. */
 const OPTIONAL_SHELL = [

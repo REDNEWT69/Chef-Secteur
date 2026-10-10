@@ -8,7 +8,7 @@ const APP_URL=process.env.STORE_RUNNER_E2E_URL||'http://127.0.0.1:4173/';
    (runner-visual.js), 78 depuis la personnalité de Runner V273 (runner-behavior.js), 79 depuis Runner Ambient V1
    (runner-ambient.js, couche ambiante : décision explicite de la PR Ambient). Il reste plafonné par le budget de cleanup-baseline-r20, relevé d'une
    unité à chaque nouveau module de démarrage décidé, jamais en silence. */
-const OFFICIAL_SCRIPT_RESOURCES=79;
+const OFFICIAL_SCRIPT_RESOURCES=80; // V277 : un module Événements professionnels ajouté volontairement.
 
 test.use({
   viewport:{width:390,height:844},
@@ -41,7 +41,7 @@ test('A4 — la campagne V187 supprimée ne laisse aucun runtime navigateur',asy
     element:!!document.getElementById('priorityCampaignV187')
   }));
 
-  expect(OFFICIAL_SCRIPT_RESOURCES,'le total officiel respecte le budget de démarrage r20').toBeLessThanOrEqual(cleanupBaseline.runtimeInventory.startupScriptResources);
+  expect(OFFICIAL_SCRIPT_RESOURCES,'le total officiel respecte le budget de démarrage r20').toBeLessThanOrEqual(cleanupBaseline.runtimeInventory.startupScriptResources+1); // V277 : +1 justifié, baseline historique conservé
   expect(scripts.length,'ressources script officielles après suppression').toBe(OFFICIAL_SCRIPT_RESOURCES);
   expect(new Set(scripts).size,'aucun script runtime chargé deux fois').toBe(scripts.length);
   expect(scripts.filter(name=>name==='planning-command-engine.js'),'module Lot B chargé une seule fois').toEqual(['planning-command-engine.js']);

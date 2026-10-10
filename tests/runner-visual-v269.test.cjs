@@ -25,9 +25,11 @@ assert.match(index, /'\.\/store-explorer\.js','\.\/runner-visual\.js','\.\/weekl
   'Runner est chargé avant les derniers modules, sans déplacer mobile-ux-v262.js en dernier');
 assert.equal(sw.split('"./runner-visual.js"').length - 1, 1, 'sw.js précache runner-visual.js une seule fois (CORE_SHELL, obligatoire)');
 assert.ok(sw.indexOf('"./runner-visual.js"') < sw.indexOf('const OPTIONAL_SHELL'), 'runner-visual.js est dans le shell obligatoire, pas dans le facultatif');
-assert.equal(version.displayVersion, '276', 'Intelligence Runner : nouveauté visible V276');
-assert.match(version.latestBuild, /-276$/, 'le build se termine par la version visible 276');
-assert.match(version.latestBuild, /^\d{8}-r\d+-[a-z-]+-276$/);
+assert(Number(version.displayVersion)>=276, 'Runner V276 reste pris en charge dans les versions suivantes');
+assert(require('../store-runner-whats-new.js').releaseFor('276'), 'L’historique des nouveautés V276 doit rester disponible');
+assert(require('../store-runner-whats-new.js').releaseFor(version.displayVersion), 'La version actuelle doit avoir ses nouveautés');
+assert.ok(version.latestBuild.endsWith('-'+String(version.displayVersion)), 'Le build doit terminer par la version visible');
+assert.match(version.latestBuild, /^\d{8}-(?:r\d+|v\d+)-[a-z0-9-]+-\d{3}$/, 'Format de build lisible et cohérent');
 assert.equal(index.match(/const BUILD_REV='([^']+)'/)[1], version.latestBuild);
 assert.equal(sw.match(/const BUILD_REV = "([^"]+)"/)[1], version.latestBuild);
 assert.ok(!fs.existsSync(path.join(__dirname, '..', 'runner-visual.css')), 'aucune feuille séparée : le style est injecté au premier mount');
