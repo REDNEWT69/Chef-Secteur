@@ -112,7 +112,7 @@ function renderSelectedDayAgenda(){
  const box=document.getElementById('proDayAgenda');if(!box)return;
  const selected=document.querySelector('#dayTabs .periodDayTab.active[data-date],#dayTabs .dayTab.active[data-date]');
  const date=selected&&selected.dataset&&selected.dataset.date;
- if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(date||''))){box.hidden=true;box.innerHTML='';return}
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date||''))){box.hidden=true;box.innerHTML='';return}
  const local=(Array.isArray(state.professionalEvents)?state.professionalEvents:[]).filter(e=>e&&e.title&&e.startDate<=date&&e.endDate>=date);
  const google=(Array.isArray(state.calendarEvents)?state.calendarEvents:[]).filter(e=>{
    if(!e)return false;
