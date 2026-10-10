@@ -79,8 +79,8 @@ test('Android : si Groq oublie les émojis, Génération auto ajoute les titres 
  await H.installJobs(page);
  const {id,note}=await H.seedAndComplete(page,'brun',{},'manual-groq');
  const sheet=await H.openReport(page,id);
- const raw='**Compte rendu de visite terrain – Enseigne-Test Ville-Test**\n\n**Contexte**\nLe Samsung 77S92H est présenté.\n\n**Formation**\nFormation à confirmer.';
- const styled='**⚫ Résumé BRUN – Enseigne-Test Ville-Test**\n\n**🏬 Contexte**\nLe Samsung 77S92H est présenté.\n\n**🎓 Formation**\nFormation à confirmer.';
+ const raw='**Compte rendu de visite terrain – Enseigne-Test Ville-Test**\n\n**Contexte**\nLe Samsung **77S92H** est présenté à **729 €**.\n\n**Formation**\nFormation à confirmer.';
+ const styled='⚫ Résumé BRUN – Enseigne-Test Ville-Test\n\n🏬 Contexte\nLe Samsung 77S92H est présenté à 729 €.\n\n🎓 Formation\nFormation à confirmer.';
  let requests=0;
  await page.route(url=>url.pathname==='/api/ai',async route=>{
   requests++;
