@@ -72,3 +72,34 @@ test('Android : aucune donnée BLANC ne peut être générée depuis une note BR
  expect(await page.evaluate(id=>StoreRunnerVisits.reportFor(id,'blanc'),id)).toBe(null);
  expect(await page.evaluate(()=>StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).brun.team)).toBe(note);
 });
+
+
+test('Android : si Groq oublie les émojis, Génération auto ajoute les titres sans retoucher les faits',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await H.installJobs(page);
+ const {id,note}=await H.seedAndComplete(page,'brun',{},'manual-groq');
+ const sheet=await H.openReport(page,id);
+ const raw='**Compte rendu de visite terrain – Enseigne-Test Ville-Test**\n\n**Contexte**\nLe Samsung 77S92H est présenté.\n\n**Formation**\nFormation à confirmer.';
+ const styled='**⚫ Résumé BRUN – Enseigne-Test Ville-Test**\n\n**🏬 Contexte**\nLe Samsung 77S92H est présenté.\n\n**🎓 Formation**\nFormation à confirmer.';
+ let requests=0;
+ await page.route(url=>url.pathname==='/api/ai',async route=>{
+  requests++;
+  const incoming=JSON.parse(route.request().postData()||'{}');
+  await route.fulfill({status:200,contentType:'application/json',
+   body:JSON.stringify({mode:'report_free_preview',reportType:incoming.reportType,
+    text:raw,provider:'groq',model:'openai/gpt-oss-120b',
+    audit:{missingReferences:[],unexpectedReferences:[],missingPrices:[],
+      unexpectedPrices:[],missingPercentages:[],unexpectedPercentages:[],unexpectedDates:[]}})});
+ });
+ await sheet.locator('#srReportFreeTest').tap();
+ await expect(sheet.locator('#srReportText')).toHaveValue(styled);
+ expect(await page.evaluate(id=>StoreRunnerVisits.reportFor(id,'brun').text,id)).toBe(styled);
+ expect(await page.evaluate(()=>StoreRunnerVisitModel.reportOf(state.businessV2.visits[0]).brun.team)).toBe(note);
+ expect(requests).toBe(1,'decoration must not trigger a second Groq request');
+ await page.evaluate(async()=>__chefStorage.flush());
+ await page.reload({waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>window.StoreRunnerVisits&&window.StoreRunnerVisitReport&&window.StoreRunnerBoot?.settled());
+ await H.openReport(page,id);
+ await expect(page.locator('#srReportText')).toHaveValue(styled);
+ expect(errors).toEqual([]);
+});
