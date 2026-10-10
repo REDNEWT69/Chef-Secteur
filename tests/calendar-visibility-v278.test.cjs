@@ -9,7 +9,7 @@ assert(source.includes('state.calendarEvents'),'le calendrier présente Google')
 assert(source.includes('window.chefSecteurEventCoversDate'),'les bornes Google sont préservées');
 assert(source.includes('proMonthStatus'),'état de Google dans la vue repliée');
 assert(source.includes('renderSelectedDayAgenda'),'résumé du jour sélectionné');
-assert(strip.includes('store-runner:calendar-updated'),'rafraîchissement après synchronisation');
+assert(source.includes('store-runner:calendar-updated'),'rafraîchissement après synchronisation');
 assert(!eventModule.includes('toICS(')&&!eventModule.includes('Exporter calendrier Apple'),'aucun export Apple');
 assert(professional.coversDate('2026-10-21',{professionalEvents:[{startDate:'2026-10-19',endDate:'2026-10-21'}]}));
 assert(!professional.coversDate('2026-10-22',{professionalEvents:[{startDate:'2026-10-19',endDate:'2026-10-21'}]}));
@@ -18,6 +18,6 @@ const strip=fs.readFileSync('period-day-slider.js','utf8');
 assert(strip.includes('syncAgendaDayBadges'),'icône d’agenda dans la bande existante');
 assert(strip.includes('srDayAgendaBadge'),'pastille distincte de l’icône lune');
 assert(strip.includes('store-runner:professional-events-updated'),'rafraîchissement après séminaire');
-assert(source.includes('store-runner:calendar-updated'),'rafraîchissement après Google');
+assert(strip.includes('store-runner:calendar-updated'),'rafraîchissement après Google');
 assert(strip.includes('chefSecteurEventCoversDate'),'plage multi-jours Google');
 console.log('V278 : Google Agenda et événements locaux, sans export externe : OK');
