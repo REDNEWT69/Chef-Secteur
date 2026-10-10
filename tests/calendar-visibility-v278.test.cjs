@@ -14,4 +14,10 @@ assert(!eventModule.includes('toICS(')&&!eventModule.includes('Exporter calendri
 assert(professional.coversDate('2026-10-21',{professionalEvents:[{startDate:'2026-10-19',endDate:'2026-10-21'}]}));
 assert(!professional.coversDate('2026-10-22',{professionalEvents:[{startDate:'2026-10-19',endDate:'2026-10-21'}]}));
 assert(fs.readFileSync('calendar-oauth.js','utf8').includes('lecture seule'));
+const strip=fs.readFileSync('period-day-slider.js','utf8');
+assert(strip.includes('syncAgendaDayBadges'),'icône d’agenda dans la bande existante');
+assert(strip.includes('srDayAgendaBadge'),'pastille distincte de l’icône lune');
+assert(strip.includes('store-runner:professional-events-updated'),'rafraîchissement après séminaire');
+assert(strip.includes('store-runner:calendar-updated'),'rafraîchissement après Google');
+assert(strip.includes('chefSecteurEventCoversDate'),'plage multi-jours Google');
 console.log('V278 : Google Agenda et événements locaux, sans export externe : OK');
