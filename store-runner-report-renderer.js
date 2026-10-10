@@ -582,7 +582,7 @@ function decorateFreeform(reportText,source,reportType){
  const lines=original.split(/\r?\n/),first=lines.findIndex(line=>line.trim());
  if(first<0)return original;
  const current=lines[first].trim(),key=freeformHeadingKey(current);
- if(/^[⚫⚪🟠🔵]/u.test(current)){
+ if(/^[⚫⚪🟠🔵]/u.test(current.replace(/^\s*(?:#{1,6}\s*)?(?:\*\*|__)?/,'').trim())){
   // A provider-authored, already-iconized report title remains untouched.
  }else if(/^(?:resume|compte rendu|rapport de visite)(?:\b|$)/.test(key)
    &&current.length<=160&&!/[.!?;:]/.test(key)){
