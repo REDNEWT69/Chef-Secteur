@@ -28,6 +28,17 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'279',
+      title:'Un nouvel écran Mises à jour, avec Runner',
+      items:[
+        'L’écran « Mises à jour » est entièrement redessiné : un panneau clair présente les nouveautés de chaque version.',
+        'Runner, ton copilote, t’accompagne en 3D à côté de la liste des nouveautés.',
+        'L’affichage s’adapte à ton écran : Runner au-dessus du panneau sur téléphone en portrait, à gauche du panneau sur ordinateur et sur téléphone en paysage.',
+        'Les modes clair et sombre sont pris en charge.',
+        'L’écran reste disponible hors ligne, Runner compris.'
+      ]
+    },
+    {
       version:'278',
       title:'Tes rendez-vous et séminaires visibles dans le Planning',
       items:[
@@ -722,17 +733,27 @@
       ${D} .srwnOk:focus-visible,${D} .srwnX:focus-visible{outline:3px solid var(--srwn-blue2);outline-offset:2px}
       @media(max-width:380px){${D} .srwnPanel{padding:16px 14px 14px}${D} .srwnList li{font-size:14.5px}}
       @media(max-height:640px) and (max-width:759px){${D} .srwnRunner{height:130px}${D} .srwnPanel{margin-top:-24px}}
-      @media(min-width:760px){
+      @media(min-width:760px),(orientation:landscape) and (min-width:560px) and (max-height:560px){
         ${D}.open{align-items:center}
         ${D} .srwnCard{max-width:1040px;padding:28px 34px 28px 22px;border-radius:36px}
         ${D} .srwnStage{flex-direction:row;align-items:center;gap:0}
-        ${D} .srwnHero{flex:0 0 auto;padding:0}
-        ${D} .srwnRunner{height:min(66dvh,540px);height:min(66vh,540px);max-width:none}
+        ${D} .srwnHero{flex:0 0 auto;padding:0;align-self:flex-start;margin-block:auto;position:sticky;top:0}
+        ${D} .srwnRunner{height:min(66dvh,540px,50vw);height:min(66vh,540px,50vw);max-width:none}
         ${D} .srwnPanel{flex:1 1 0;min-width:0;margin:0 0 0 12px;padding:26px 28px 24px;border-radius:28px;transform:rotate(-1.4deg);max-width:480px}
         ${D} .srwnH{font-size:34px}
         ${D} .srwnList li{font-size:16px;padding:9px 0 9px 24px}
         ${D} .srwnList li::before{top:17px}
         ${D} .srwnX{top:12px;right:12px}
+      }
+      @media(orientation:landscape) and (max-height:560px) and (min-width:560px){
+        ${D}.open{padding:8px calc(10px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left))}
+        ${D} .srwnCard{padding:12px 16px 0 10px;border-radius:26px}
+        ${D} .srwnRunner{height:min(74dvh,540px,50vw);height:min(74vh,540px,50vw)}
+        ${D} .srwnPanel{margin:0 0 14px 8px;padding:16px 18px 14px}
+        ${D} .srwnH{font-size:26px}
+        ${D} .srwnList li{font-size:14px;padding:6px 0 6px 22px}
+        ${D} .srwnList li::before{top:13px}
+        ${D} .srwnX{top:4px;right:4px}
       }
       @media(prefers-reduced-motion:no-preference){
         ${D}.open .srwnRunner{animation:srwnIn .42s cubic-bezier(.2,.8,.2,1) both}
