@@ -8,6 +8,7 @@ assert(source.includes('state.professionalEvents'),'le calendrier présente les 
 assert(source.includes('state.calendarEvents'),'le calendrier présente Google');
 assert(source.includes('window.chefSecteurEventCoversDate'),'les bornes Google sont préservées');
 assert(source.includes('proMonthStatus'),'état de Google dans la vue repliée');
+assert(source.includes('renderSelectedDayAgenda'),'résumé du jour sélectionné');
 assert(source.includes('store-runner:calendar-updated'),'rafraîchissement après synchronisation');
 assert(!eventModule.includes('toICS(')&&!eventModule.includes('Exporter calendrier Apple'),'aucun export Apple');
 assert(professional.coversDate('2026-10-21',{professionalEvents:[{startDate:'2026-10-19',endDate:'2026-10-21'}]}));

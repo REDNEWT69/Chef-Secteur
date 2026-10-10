@@ -28,6 +28,9 @@ test('V278 Android 390 px : Google + séminaire multi-jours dans agenda mensuel,
  const last=details.locator('[data-pro-date="2026-10-22"]');
  await expect(last).not.toContainText('Séminaire terrain 2026');
  await expect(last).not.toContainText('Google formation');
+ await page.evaluate(()=>window.StoreRunnerPeriodDaySlider.openDate('2026-10-21'));
+ await expect(page.locator('#proDayAgenda')).toContainText('Séminaire terrain 2026');
+ await expect(page.locator('#proDayAgenda')).toContainText('Google formation');
  await page.evaluate(()=>goTab('appointmentsPanel'));
  await expect(page.locator('#srProList')).toContainText('Séminaire terrain 2026');
  await expect(page.locator('[data-sr-pro-calendar]')).toHaveCount(0);
