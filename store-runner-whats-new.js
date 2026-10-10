@@ -19,11 +19,25 @@
   const STYLE_ID='store-runner-whats-new-css';
   const UPDATE_BANNER_ID='storeRunnerUpdateBanner';
   const AUTO_OPEN_DELAY=1100;
+  /* Runner, détouré de l'image de référence : ressource précachée par sw.js (CORE_SHELL),
+     donc disponible hors ligne. Image décorative, jamais porteuse d'information. */
+  const RUNNER_IMAGE='./runner-whats-new.webp';
 
   /* Texte utilisateur, jamais du changelog technique : ce que le terrain constate,
      pas ce que le dépôt a changé. Versions les plus récentes en premier, 3 à 6
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
+    {
+      version:'279',
+      title:'Un nouvel écran Mises à jour, avec Runner',
+      items:[
+        'L’écran « Mises à jour » est entièrement redessiné : un panneau clair présente les nouveautés de chaque version.',
+        'Runner, ton copilote, t’accompagne en 3D à côté de la liste des nouveautés.',
+        'L’affichage s’adapte à ton écran : Runner au-dessus du panneau sur téléphone en portrait, à gauche du panneau sur ordinateur et sur téléphone en paysage.',
+        'Les modes clair et sombre sont pris en charge.',
+        'L’écran reste disponible hors ligne, Runner compris.'
+      ]
+    },
     {
       version:'278',
       title:'Tes rendez-vous et séminaires visibles dans le Planning',
@@ -683,19 +697,70 @@
     const style=document.createElement('style');
     style.id=STYLE_ID;
     /* z-index au-dessus du bandeau de mise à jour (9999) : l'écran de nouveautés
-       est modal, rien ne doit flotter par-dessus son fond flouté. */
+       est modal, rien ne doit flotter par-dessus son fond flouté.
+       Composition fidèle à l'image de référence : Runner (image) à gauche, panneau
+       blanc arrondi à droite, titre bleu + badge NEW, puces bleues. Sur téléphone,
+       Runner passe au-dessus du panneau, qui le chevauche légèrement. */
+    const D='#'+DIALOG_ID;
     style.textContent=`
-      #${DIALOG_ID}{display:none;position:fixed;inset:0;z-index:10010;background:rgba(20,24,32,.24);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
-      #${DIALOG_ID}.open{display:block}
-      #${DIALOG_ID} .srwnCard{position:absolute;left:12px;right:12px;bottom:calc(18px + env(safe-area-inset-bottom));max-height:calc(100vh - 64px);max-height:calc(100dvh - 64px);overflow:auto;-webkit-overflow-scrolling:touch;padding:10px 10px 12px;border-radius:28px;background:rgba(249,250,252,.98);border:1px solid rgba(255,255,255,.9);box-shadow:0 28px 80px rgba(20,25,35,.24)}
-      #${DIALOG_ID} .srwnHandle{width:42px;height:5px;border-radius:999px;background:#d3d6dc;margin:2px auto 14px}
-      #${DIALOG_ID} .srwnTitle{padding:0 8px;font-size:22px;font-weight:850;letter-spacing:-.02em;color:#1d1d1f}
-      #${DIALOG_ID} .srwnSub{padding:5px 8px 0;font-size:13px;line-height:1.4;color:#6b7280}
-      #${DIALOG_ID} .srwnList{list-style:none;margin:14px 0 2px;padding:0}
-      #${DIALOG_ID} .srwnList li{position:relative;padding:9px 10px 9px 32px;font-size:14px;line-height:1.42;color:#1d1d1f;overflow-wrap:anywhere}
-      #${DIALOG_ID} .srwnList li::before{content:'✓';position:absolute;left:10px;top:9px;font-weight:850;color:#1428A0}
-      #${DIALOG_ID} .srwnOk{width:100%;margin-top:10px;border:0;border-radius:16px;min-height:50px;padding:0 12px;background:#1428A0;color:#fff;font-size:15px;font-weight:850}
-      @media(max-width:520px){#${DIALOG_ID} .srwnTitle{font-size:20px}}
+      ${D}{display:none;position:fixed;inset:0;z-index:10010;background:rgba(20,24,32,.28);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);--srwn-blue:#1f6fe0;--srwn-blue2:#2f86ea;--srwn-ink:#10264a;--srwn-panel:#f8fafd;--srwn-line:#d9e4f5;--srwn-stage:linear-gradient(160deg,#f3f8ff 0%,#e6f0fd 100%);--srwn-shadow:0 26px 60px rgba(31,80,150,.22)}
+      html[data-sr-theme="dark"] ${D}{--srwn-blue:#7db3ff;--srwn-blue2:#5b9bf0;--srwn-ink:#e8eefc;--srwn-panel:#1d2740;--srwn-line:#33415f;--srwn-stage:linear-gradient(160deg,#18223a 0%,#111a2e 100%);--srwn-shadow:0 26px 60px rgba(0,0,0,.5);background:rgba(4,8,18,.5)}
+      ${D}.open{display:flex;align-items:flex-end;justify-content:center;padding:12px 12px calc(14px + env(safe-area-inset-bottom));padding-top:calc(12px + env(safe-area-inset-top))}
+      ${D} .srwnCard{outline:none;position:relative;width:100%;max-width:560px;max-height:100%;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;border-radius:30px;background:var(--srwn-stage);border:1px solid rgba(255,255,255,.7);box-shadow:var(--srwn-shadow);padding:12px 12px 0;box-sizing:border-box}
+      html[data-sr-theme="dark"] ${D} .srwnCard{border-color:rgba(255,255,255,.08)}
+      ${D} .srwnX{position:absolute;top:6px;right:6px;z-index:3;width:44px;height:44px;border:0;border-radius:50%;background:rgba(255,255,255,.72);color:var(--srwn-ink);font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
+      html[data-sr-theme="dark"] ${D} .srwnX{background:rgba(255,255,255,.1)}
+      ${D} .srwnStage{display:flex;flex-direction:column;align-items:stretch}
+      ${D} .srwnHero{display:flex;justify-content:flex-start;pointer-events:none;padding-left:4px}
+      ${D} .srwnRunner{display:block;height:clamp(170px,31dvh,290px);height:clamp(170px,31vh,290px);width:auto;max-width:70%;object-fit:contain;filter:drop-shadow(0 14px 18px rgba(25,70,140,.25));user-select:none;-webkit-user-select:none;-webkit-user-drag:none}
+      ${D} .srwnPanel{position:relative;margin-top:-34px;margin-bottom:14px;padding:18px 18px 16px;border-radius:24px;background:var(--srwn-panel);border:1px solid rgba(255,255,255,.9);box-shadow:0 18px 40px rgba(31,80,150,.18),0 2px 6px rgba(31,80,150,.08);transform:rotate(-.7deg);transform-origin:50% 100%}
+      html[data-sr-theme="dark"] ${D} .srwnPanel{border-color:rgba(255,255,255,.07);box-shadow:0 18px 40px rgba(0,0,0,.4)}
+      ${D} .srwnPanel::before{content:'';position:absolute;right:14px;top:12px;width:34px;height:12px;pointer-events:none;background:linear-gradient(var(--srwn-line),var(--srwn-line)) right top/34px 2px no-repeat,linear-gradient(var(--srwn-blue2),var(--srwn-blue2)) right 0 bottom 0/16px 3px no-repeat;opacity:.8}
+      ${D} .srwnHead{display:flex;align-items:center;flex-wrap:wrap;gap:10px 12px;padding-right:48px}
+      ${D} .srwnH{margin:0;font-size:clamp(26px,7.4vw,32px);line-height:1.1;font-weight:800;letter-spacing:-.025em;color:var(--srwn-blue)}
+      ${D} .srwnNew{display:inline-flex;align-items:center;height:26px;padding:0 12px;border-radius:999px;background:var(--srwn-blue2);color:#fff;font-size:13px;font-weight:850;letter-spacing:.04em;box-shadow:0 4px 10px rgba(31,111,224,.28)}
+      ${D} .srwnNew[hidden]{display:none}
+      ${D} .srwnRule{width:100%;display:flex;align-items:center;gap:6px;margin:10px 0 2px}
+      ${D} .srwnRule::before{content:'';width:56px;height:3px;border-radius:3px;background:var(--srwn-blue2)}
+      ${D} .srwnRule::after{content:'';width:9px;height:3px;border-radius:3px;background:var(--srwn-line)}
+      ${D} .srwnTitle{margin-top:8px;font-size:13px;font-weight:800;letter-spacing:.02em;color:var(--srwn-blue)}
+      ${D} .srwnSub{margin-top:2px;font-size:15px;line-height:1.35;font-weight:700;color:var(--srwn-ink)}
+      ${D} .srwnList{list-style:none;margin:10px 0 4px;padding:0}
+      ${D} .srwnList li{position:relative;padding:8px 0 8px 22px;font-size:15px;line-height:1.42;font-weight:550;color:var(--srwn-ink);overflow-wrap:anywhere}
+      ${D} .srwnList li::before{content:'';position:absolute;left:3px;top:15px;width:8px;height:8px;border-radius:50%;background:var(--srwn-blue2)}
+      ${D} .srwnOk{display:block;width:100%;position:sticky;bottom:8px;margin-top:12px;border:0;border-radius:16px;min-height:50px;box-shadow:0 0 0 8px var(--srwn-panel);padding:0 12px;background:var(--srwn-blue);color:#fff;font-size:16px;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent}
+      html[data-sr-theme="dark"] ${D} .srwnOk{background:#4a90f0;color:#06112a}
+      ${D} .srwnOk:focus-visible,${D} .srwnX:focus-visible{outline:3px solid var(--srwn-blue2);outline-offset:2px}
+      @media(max-width:380px){${D} .srwnPanel{padding:16px 14px 14px}${D} .srwnList li{font-size:14.5px}}
+      @media(max-height:640px) and (max-width:759px){${D} .srwnRunner{height:130px}${D} .srwnPanel{margin-top:-24px}}
+      @media(min-width:760px),(orientation:landscape) and (min-width:560px) and (max-height:560px){
+        ${D}.open{align-items:center}
+        ${D} .srwnCard{max-width:1040px;padding:28px 34px 28px 22px;border-radius:36px}
+        ${D} .srwnStage{flex-direction:row;align-items:center;gap:0}
+        ${D} .srwnHero{flex:0 0 auto;padding:0;align-self:flex-start;margin-block:auto;position:sticky;top:0}
+        ${D} .srwnRunner{height:min(66dvh,540px,50vw);height:min(66vh,540px,50vw);max-width:none}
+        ${D} .srwnPanel{flex:1 1 0;min-width:0;margin:0 0 0 12px;padding:26px 28px 24px;border-radius:28px;transform:rotate(-1.4deg);max-width:480px}
+        ${D} .srwnH{font-size:34px}
+        ${D} .srwnList li{font-size:16px;padding:9px 0 9px 24px}
+        ${D} .srwnList li::before{top:17px}
+        ${D} .srwnX{top:12px;right:12px}
+      }
+      @media(orientation:landscape) and (max-height:560px) and (min-width:560px){
+        ${D}.open{padding:8px calc(10px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left))}
+        ${D} .srwnCard{padding:12px 16px 0 10px;border-radius:26px}
+        ${D} .srwnRunner{height:min(74dvh,540px,50vw);height:min(74vh,540px,50vw)}
+        ${D} .srwnPanel{margin:0 0 14px 8px;padding:16px 18px 14px}
+        ${D} .srwnH{font-size:26px}
+        ${D} .srwnList li{font-size:14px;padding:6px 0 6px 22px}
+        ${D} .srwnList li::before{top:13px}
+        ${D} .srwnX{top:4px;right:4px}
+      }
+      @media(prefers-reduced-motion:no-preference){
+        ${D}.open .srwnRunner{animation:srwnIn .42s cubic-bezier(.2,.8,.2,1) both}
+        ${D}.open .srwnPanel{animation:srwnPanelIn .46s .06s cubic-bezier(.2,.8,.2,1) both}
+        @keyframes srwnIn{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
+        @keyframes srwnPanelIn{from{opacity:0;translate:0 14px}to{opacity:1;translate:0 0}}
+      }
     `;
     document.head.appendChild(style);
   }
@@ -709,11 +774,25 @@
     dialog.setAttribute('role','dialog');
     dialog.setAttribute('aria-modal','true');
     dialog.setAttribute('aria-label','Nouveautés de Store Runner');
-    dialog.innerHTML='<div class="srwnCard"><div class="srwnHandle"></div><div class="srwnTitle" data-srwn-title></div><div class="srwnSub" data-srwn-sub></div><ul class="srwnList" data-srwn-list></ul><button type="button" class="srwnOk" data-srwn-ok>Compris</button></div>';
+    /* Runner est décoratif (alt vide) : tout le sens passe par le texte du panneau. */
+    dialog.innerHTML='<div class="srwnCard" tabindex="-1">'
+      +'<button type="button" class="srwnX" data-srwn-close aria-label="Fermer">✕</button>'
+      +'<div class="srwnStage">'
+      +'<div class="srwnHero"><img class="srwnRunner" src="'+RUNNER_IMAGE+'" alt="" width="640" height="795" decoding="async" draggable="false"></div>'
+      +'<section class="srwnPanel" aria-labelledby="srwnHeading">'
+      +'<div class="srwnHead"><h2 class="srwnH" id="srwnHeading">Mises à jour</h2><span class="srwnNew" data-srwn-new hidden>NEW</span></div>'
+      +'<div class="srwnRule" aria-hidden="true"></div>'
+      +'<div class="srwnTitle" data-srwn-title></div><div class="srwnSub" data-srwn-sub></div>'
+      +'<ul class="srwnList" data-srwn-list></ul>'
+      +'<button type="button" class="srwnOk" data-srwn-ok>Compris</button>'
+      +'</section></div></div>';
     document.body.appendChild(dialog);
     const ok=dialog.querySelector('[data-srwn-ok]');
     if(ok)ok.addEventListener('click',function(e){if(e&&e.preventDefault)e.preventDefault();close()});
+    const x=dialog.querySelector('[data-srwn-close]');
+    if(x)x.addEventListener('click',function(e){if(e&&e.preventDefault)e.preventDefault();close()});
     dialog.addEventListener('click',function(e){if(e&&e.target===dialog)close()});
+    dialog.addEventListener('keydown',function(e){if(e&&e.key==='Escape')close()});
     return dialog;
   }
 
@@ -726,6 +805,10 @@
     const list=dialog.querySelector('[data-srwn-list]');
     if(title)title.textContent='Nouveautés V'+release.version;
     if(sub)sub.textContent=release.title;
+    /* NEW seulement pour une version pas encore vue : rouverte depuis le menu après
+       « Compris », la version reste lisible mais n'est plus annoncée comme nouvelle. */
+    const badge=dialog.querySelector('[data-srwn-new]');
+    if(badge)badge.hidden=lastSeenVersion()===release.version;
     if(list){
       while(list.firstChild)list.removeChild(list.firstChild);
       for(let i=0;i<release.items.length;i++){
@@ -740,8 +823,12 @@
   function open(version){
     const release=releaseFor(version||currentVersion())||latestRelease();
     if(!release)return false;
-    fill(release).classList.add('open');
+    const dialog=fill(release);
+    dialog.classList.add('open');
     openedVersion=release.version;
+    /* Le focus va à la carte (jamais à un bouton : pas d'anneau parasite au toucher). */
+    const card=dialog.querySelector('.srwnCard');
+    if(card&&typeof card.focus==='function'){try{card.focus({preventScroll:true})}catch(e){}}
     return true;
   }
 

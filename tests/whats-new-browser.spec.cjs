@@ -66,7 +66,9 @@ test('Nouveautés s’affiche une seule fois après une vraie mise à jour et se
   await expect(dialog).toBeVisible({timeout:6000});
   const version=await page.evaluate(()=>window.StoreRunnerWhatsNew.currentVersion());
   expect(version).toMatch(/^\d+$/);
+  expect(version).toBe('279');
   await expect(dialog.locator('[data-srwn-title]')).toHaveText('Nouveautés V'+version);
+  await expect(dialog.locator('[data-srwn-sub]')).toHaveText('Un nouvel écran Mises à jour, avec Runner');
   await expect(dialog.locator('[data-srwn-sub]')).not.toBeEmpty();
 
   const items=dialog.locator('[data-srwn-list] li');
@@ -124,3 +126,84 @@ test('Nouveautés s’affiche une seule fois après une vraie mise à jour et se
 
   expect(errors).toEqual([]);
 });
+
+// Refonte « Mises à jour » : mêmes garanties à 360, 390 et 412 px, en clair et en sombre.
+for(const [w,h] of [[360,740],[390,844],[412,915]]){
+  for(const theme of ['light','dark']){
+    test(`Mises à jour : Runner, panneau et « Compris » tiennent à ${w} px (${theme})`,async({page})=>{
+      const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+      await page.setViewportSize({width:w,height:h});
+      await page.addInitScript(t=>{try{localStorage.setItem('store-runner-appearance-v1',JSON.stringify({mode:t,accent:'blue'}))}catch(e){}},theme);
+      await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+      await ready(page);
+      await page.evaluate(()=>window.StoreRunnerWhatsNew.open(window.StoreRunnerWhatsNew.currentVersion()));
+      const dialog=page.locator('#storeRunnerWhatsNew');
+      await expect(dialog).toBeVisible();
+      await expect(dialog.locator('.srwnH')).toHaveText('Mises à jour');
+      await expect(dialog.locator('[data-srwn-new]')).toBeVisible();          // version pas encore vue
+      const img=dialog.locator('.srwnRunner');
+      await expect(img).toBeVisible();
+      expect(await img.evaluate(el=>el.complete&&el.naturalWidth>0)).toBe(true);
+      expect(await img.getAttribute('alt')).toBe('');
+      const items=await dialog.locator('[data-srwn-list] li').count();
+      expect(items).toBeGreaterThanOrEqual(3);
+      // Rien ne déborde ; « Compris » et ✕ restent atteignables sans défiler.
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(w);
+      const card=await dialog.locator('.srwnCard').boundingBox();
+      for(const sel of ['[data-srwn-ok]','[data-srwn-close]']){
+        const b=await dialog.locator(sel).boundingBox();
+        expect(b.height).toBeGreaterThanOrEqual(44);
+        expect(b.y+b.height).toBeLessThanOrEqual(card.y+card.height);
+        expect(b.x+b.width).toBeLessThanOrEqual(w);
+      }
+      await dialog.locator('[data-srwn-close]').tap();
+      await expect(dialog).toBeHidden();
+      expect(await read(page,SEEN_KEY)).toBe(await page.evaluate(()=>window.StoreRunnerWhatsNew.currentVersion()));
+      // Rouvert depuis le menu après lecture : la version reste lisible mais n'est plus « NEW ».
+      await page.evaluate(()=>window.StoreRunnerWhatsNew.open());
+      await expect(dialog.locator('[data-srwn-new]')).toBeHidden();
+      expect(errors).toEqual([]);
+    });
+  }
+}
+
+// Composition : portrait = Runner au-dessus ; large ou paysage = Runner à gauche, panneau à droite.
+// Le basculement à 760 px ne doit jamais faire déborder la carte.
+const LAYOUTS=[
+  ['iPhone portrait',390,844,'stack'],['Android portrait 360',360,740,'stack'],['Android portrait 412',412,915,'stack'],
+  ['portrait 759',759,1000,'stack'],['seuil 760',760,1000,'row'],['seuil 761',761,1000,'row'],['tablette 1024',1024,768,'row'],
+  ['PC 1280',1280,800,'row'],['iPhone paysage',844,390,'row'],['Android paysage',915,412,'row'],['petit paysage',667,375,'row']
+];
+for(const [name,w,h,mode] of LAYOUTS){
+  test(`Composition « ${name} » ${w}×${h} : ${mode==='row'?'Runner à gauche, panneau à droite':'Runner au-dessus du panneau'}, sans débordement`,async({page})=>{
+    const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+    await page.setViewportSize({width:w,height:h});
+    await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+    await ready(page);
+    await page.evaluate(()=>window.StoreRunnerWhatsNew.open());
+    const dialog=page.locator('#storeRunnerWhatsNew');
+    await expect(dialog).toBeVisible();
+    await page.waitForTimeout(700);                              // fin de l'animation d'entrée
+    const img=await dialog.locator('.srwnRunner').boundingBox();
+    const panel=await dialog.locator('.srwnPanel').boundingBox();
+    const card=await dialog.locator('.srwnCard').boundingBox();
+    if(mode==='row'){
+      expect(img.x+img.width/2).toBeLessThan(panel.x+panel.width/2);   // Runner à gauche
+      expect(img.x+img.width).toBeLessThanOrEqual(panel.x+40);          // côte à côte, pas empilés
+      expect(Math.abs((img.y+img.height/2)-(panel.y+panel.height/2))).toBeLessThan(Math.max(card.height/2,120));
+    }else{
+      expect(img.y+img.height/2).toBeLessThan(panel.y+panel.height/2);  // Runner au-dessus
+      expect(panel.y).toBeGreaterThan(img.y+img.height*0.5);
+    }
+    expect(card.x).toBeGreaterThanOrEqual(0);
+    expect(card.y).toBeGreaterThanOrEqual(0);
+    expect(card.x+card.width).toBeLessThanOrEqual(w);
+    expect(card.y+card.height).toBeLessThanOrEqual(h);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(w);
+    expect(await dialog.locator('.srwnCard').evaluate(el=>el.scrollWidth-el.clientWidth)).toBeLessThanOrEqual(1);
+    const ok=await dialog.locator('[data-srwn-ok]').boundingBox();
+    expect(ok.height).toBeGreaterThanOrEqual(44);
+    expect(ok.y+ok.height).toBeLessThanOrEqual(card.y+card.height);     // « Compris » reste atteignable
+    expect(errors).toEqual([]);
+  });
+}

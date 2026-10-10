@@ -297,3 +297,40 @@ assert.equal(collant.api.isOpen(),true);
 assert.equal(sticky.hidden,false,'un bandeau collant porte une information à garder et ne doit pas être masqué');
 
 console.log('quoi de neuf: ouverture sur vraie mise à jour seulement, rechargement inerte, menu ⋮ et cas dégradés ok · V'+MODULE.latestRelease().version);
+
+// --- 7. Refonte « Mises à jour » : Runner précaché, panneau dynamique, rien d'inventé --
+{
+  const root=__dirname+'/../';
+  const sw=fs.readFileSync(root+'sw.js','utf8');
+  const src=fs.readFileSync(root+'store-runner-whats-new.js','utf8');
+  assert(fs.existsSync(root+'runner-whats-new.webp'),'la ressource Runner doit exister');
+  assert(fs.statSync(root+'runner-whats-new.webp').size<120*1024,'la ressource Runner reste légère (< 120 Ko)');
+  const shell=sw.slice(sw.indexOf('const CORE_SHELL'),sw.indexOf('const OPTIONAL_SHELL'));
+  assert(shell.includes('"./runner-whats-new.webp"'),'Runner doit être dans CORE_SHELL (hors ligne)');
+  assert(src.includes("'./runner-whats-new.webp'"),'le module référence la ressource par URL relative');
+  for(const hook of ['data-srwn-title','data-srwn-sub','data-srwn-list','data-srwn-ok','data-srwn-close','data-srwn-new','Mises à jour'])
+    assert(src.includes(hook),'le panneau garde le contrat : '+hook);
+  assert(/alt=""/.test(src),'Runner reste décoratif (alt vide)');
+  assert(!/innerHTML\s*=\s*[^;]*release\./.test(src),'le texte des nouveautés ne passe jamais par innerHTML');
+  console.log('PASS: refonte Mises à jour — Runner précaché, panneau dynamique');
+}
+
+// --- 8. V279 : annonce en tête, historique V278 conservé, build cohérent ----------------
+{
+  const root=__dirname+'/../';
+  const v=JSON.parse(fs.readFileSync(root+'version.json','utf8'));
+  assert.equal(v.displayVersion,'279');
+  assert.equal(MODULE.latestRelease().version,'279','V279 est en tête de RELEASES');
+  assert.equal(MODULE.RELEASES[1].version,'278','V278 reste juste dessous');
+  const n=MODULE.RELEASES[0].items.length;
+  assert(n>=3&&n<=6,'3 à 6 éléments');
+  const text=MODULE.RELEASES[0].items.join(' ');
+  for(const mot of ['Mises à jour','Runner','portrait','paysage','clair','sombre','hors ligne'])
+    assert(text.includes(mot),'V279 annonce : '+mot);
+  assert(!/\d\s?%/.test(text),'aucun pourcentage inventé');
+  assert.equal(MODULE.displayVersion(v.latestBuild),'279','le build se termine par la version produit');
+  const rev=v.latestBuild;
+  assert(fs.readFileSync(root+'sw.js','utf8').includes('const BUILD_REV = "'+rev+'"'),'sw.js suit latestBuild');
+  assert(fs.readFileSync(root+'index.html','utf8').includes("const BUILD_REV='"+rev+"'"),'index.html suit latestBuild');
+  console.log('PASS: V279 en tête, V278 conservée, build '+rev);
+}
