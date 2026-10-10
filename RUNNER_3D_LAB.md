@@ -1,6 +1,6 @@
 # Runner 3D Lab — audit d'hébergement et plan
 
-Statut : **préparation**. Aucun déploiement, aucun code de prototype, aucune modification de la production.
+Statut : **prototype publié** (artefact privé, phase 1). Aucune modification de la production.
 Base : `main` 033bbf7 (V279). Branche : `claude/runner-3d-lab`. PR Draft « NE PAS FUSIONNER ».
 
 ## But
@@ -48,3 +48,30 @@ Pour un lien public ou partageable avec Leia : option B (création d'un dépôt 
 - Aucune écriture hors `lab/` et ce document ; aucune fusion sans autorisation explicite.
 - Aucune requête réseau vers `store-runner.fr`, aucun `fetch` d'API, aucune clé.
 - Le 3D n'est jamais activé par défaut dans la production ; le choix de migration est une décision séparée.
+
+## Phase 1 : prototype livré
+- Lien (privé, ouvert depuis le compte Claude) : https://claude.ai/artifact/Pm1f2HhSEEPHb142eXsSPB
+- Fichiers : `lab/runner-3d/` (page, `runner3d.js`, `lab.js`, `manifest.json`). `runner-visual.js` et `runner-whats-new.webp` sont publiés depuis la racine, sans copie ; l'empreinte sha256 de `runner-visual.js` est vérifiée par `tests/runner-3d-lab.test.cjs` et dans le navigateur (onglet Compte rendu).
+- Republication : même chemin de page, mêmes fichiers (`manifest.json`).
+- Tests : `tests/runner-3d-lab.test.cjs` (garde-fous statiques) et `tests/runner-3d-lab-browser.spec.cjs` (15 tests), ajoutés à Reliability. Le Lab est servi sur une origine fictive par `tools/runner-lab-routes.cjs`.
+
+## Animations réellement disponibles
+Natif : même mécanisme que le Runner actuel. Simulé : calque ou effet sur l'image unique. Indisponible : exige d'autres poses.
+
+| Animation | Runner actuel | Runner 3D |
+|---|---|---|
+| Clignement | natif | simulé (paupière sur yeux recolorés) |
+| Hochement, regard, inclinaison | natif | simulé (calque tête) |
+| Salut | absent | simulé (calque bras droit) |
+| Saut, secousse | absent | simulé |
+| États neutre, analyse, alerte, succès | natif (yeux + bras) | simulé (yeux recolorés, « … », « ! », étincelles) |
+| Bras levés par état | natif | indisponible |
+| Assis, jambes qui balancent | natif | simulé (jambes en calques) |
+| Déplacement d'une carte à l'autre, entrée discrète, présence | natif | natif |
+| Marche, course | absent | indisponible |
+
+## Mesures (indicatives)
+Banc d'essai de 8 s dans Chromium de bureau sans GPU, processeur ralenti ×1, ×4 et ×6 : les deux Runners restent à ~60 images/s, aucune tâche longue. Coût de montage (décodage des calques) : ~17 ms (3D) contre ~1-4 ms (actuel) à vitesse normale ; 25 nœuds DOM (3D) contre 179 (actuel). Les vraies mesures sont à faire sur téléphone avec l'onglet Mesures (bouton « Copier le rapport »). Pas de WebKit dans cette sandbox : iPhone/Safari non testé.
+
+## Phase 2 (non démarrée)
+Site de test permanent via un dépôt GitHub distinct : demander à l'utilisateur la création du dépôt et l'activation de Pages. Le choix Runner actuel / Runner 3D dans Plus → Apparence n'est envisagé qu'après validation du prototype.
