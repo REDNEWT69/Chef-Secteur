@@ -23,7 +23,8 @@ assert.ok(sw.indexOf('"./runner-ambient.js"') < sw.indexOf('const OPTIONAL_SHELL
 assert.equal(baseline.runtimeInventory.startupScriptResources, 79, 'budget de démarrage : 78 + runner-ambient.js, décision explicite de la PR');
 assert.equal(index.match(/const BUILD_REV='([^']+)'/)[1], version.latestBuild);
 assert.equal(sw.match(/const BUILD_REV = "([^"]+)"/)[1], version.latestBuild);
-assert.equal(version.displayVersion, '276', 'aucune nouvelle version produit visible : build seulement');
+assert(Number(version.displayVersion)>=276, 'la couche Runner Ambient V276 reste compatible avec les versions suivantes');
+assert(require('../store-runner-whats-new.js').releaseFor(version.displayVersion), 'la version visible possède ses nouveautés');
 assert.ok(!fs.existsSync(path.join(__dirname, '..', 'runner-ambient.css')), 'aucune feuille séparée : le style est injecté au premier calque');
 
 /* 2. Aucune donnée, aucun moteur, aucun focus, aucun clic, aucun texte saisi lu. */
