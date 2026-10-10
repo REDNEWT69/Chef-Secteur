@@ -44,7 +44,10 @@ async function freePreview(source,reportType,sourceSignature){
   if(!response.ok)throw Error(data&&data.error||'Essai IA libre indisponible.');
   if(!data||data.mode!=='report_free_preview'||data.reportType!==reportType||
      typeof data.text!=='string'||!data.text.trim())throw Error('Texte IA libre indisponible.');
-  return data;
+  // Visual decoration only: keep Groq's facts and audit unchanged.
+  // The saved report uses the same headings as the durable renderer.
+  return {...data,text:renderer()&&typeof renderer().decorateFreeform==='function'
+   ?renderer().decorateFreeform(data.text,source,reportType):data.text};
  }finally{root.clearTimeout(timeout)}
 }
 function boundResponse(result,job){return !!(result&&result.protocolVersion===1&&typeof result.jobId==='string'&&result.jobId&&model().JOB_STATUSES.includes(result.status)&&result.visitId===job.visitId&&result.storeId===job.storeId&&result.completedDate===job.completedDate&&result.sourceSignature===job.sourceSignature&&result.generation===job.generation)}

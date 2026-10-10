@@ -546,8 +546,63 @@ function validateDelivered(raw,source){
 }
 function label(section,type){if(type==='cuisiniste'){if(section==='context')return'🏬 Suivi magasin';if(section==='competition')return'🆚 Concurrence';if(section==='training')return'🍳 Formation réalisée / prévue'}return LABELS[section]}
 function storeName(source){return[text(source&&source.store&&source.store.enseigne),text(source&&source.store&&source.store.ville)].filter(Boolean).join(' ')}
+
+/* Presentation-only safety net for Groq's freeform reports.
+   The provider sometimes omits requested heading icons. Only exact standalone
+   headings are decorated here; facts, numbers, references, dates and raw notes
+   must remain untouched. Shared by preview and durable-report display. */
+const FREEFORM_SECTION_ICONS={
+ 'contexte':'🏬','contexte magasin':'🏬',
+ 'primes':'🏆','prime':'🏆','primes vendeurs':'🏆',
+ 'challenge':'🏆','challenge / primes vendeurs':'🏆','challenge / prime vendeur':'🏆',
+ 'tv':'📺','tv / produits':'📺','produits':'📺','proposition produit':'📺','proposition de produit':'📺',
+ 'merchandising':'🏬','merchandising / exposition':'🏬','exposition':'🏬','implantation':'🏬',
+ 'concurrence':'🆚','retours vendeurs':'🗣️','retour vendeur':'🗣️',
+ 'formation':'🎓','formations':'🎓',
+ 'points a suivre':'🎯','actions a suivre':'🎯','plan d action':'🎯','plan d action / prochain passage':'🎯',
+ 'prochain passage':'🎯','actions':'🎯',
+ 'remarque generale':'📝','synthese':'📝','bilan':'📝',
+ 'froid':'❄️','cuisson':'🍳','lavage':'🧺','aspiration':'🧹','entretien des sols':'🧹',
+ 'contrat d exposition':'📑','sav':'🛠️','sav / adv':'🛠️'
+};
+function freeformHeadingKey(value){
+ return String(value||'').trim().replace(/^#{1,6}\s*/,'')
+  .replace(/^(?:\*\*|__)/,'').replace(/(?:\*\*|__)$/,'')
+  .replace(/:\s*$/,'').trim().normalize('NFD')
+  .replace(/[\u0300-\u036f]/g,'').toLowerCase()
+  .replace(/[’']/g,' ').replace(/\s+/g,' ');
+}
+function decorateFreeform(reportText,source,reportType){
+ const original=String(reportText||'').trim();
+ if(!original||!TYPES.includes(reportType))return original;
+ const title={brun:'⚫ Résumé BRUN',blanc:'⚪ Résumé BLANC',
+  cuisiniste:'🟠 Compte rendu CUISINISTE',
+  'buying-groups':'🔵 Compte rendu BUYING GROUP'}[reportType];
+ const name=storeName(source),canonical=title+(name?' – '+name:'');
+ const lines=original.split(/\r?\n/),first=lines.findIndex(line=>line.trim());
+ if(first<0)return original;
+ const current=lines[first].trim(),key=freeformHeadingKey(current);
+ if(/^[⚫⚪🟠🔵]/u.test(current.replace(/^\s*(?:#{1,6}\s*)?(?:\*\*|__)?/,'').trim())){
+  // A provider-authored, already-iconized report title remains untouched.
+ }else if(/^(?:resume|compte rendu|rapport de visite)(?:\b|$)/.test(key)
+   &&current.length<=160&&!/[.!?;:]/.test(key)){
+  // Replace only a standalone generic title, never a sentence containing facts.
+  lines[first]=current.startsWith('**')?'**'+canonical+'**':canonical;
+ }else{
+  // No standalone title: prepend a canonical heading, retaining all source text.
+  lines.splice(first,0,canonical,'');
+ }
+ for(let i=0;i<lines.length;i++){
+  const line=lines[i],heading=freeformHeadingKey(line);
+  const icon=FREEFORM_SECTION_ICONS[heading];
+  if(!icon||/^\s*[-*]\s/.test(line))continue;
+  lines[i]=line.replace(/^(\s*(?:#{1,6}\s*)?(?:\*\*|__)?)\s*/,(_,prefix)=>prefix+icon+' ');
+ }
+ return lines.join('\n').trim();
+}
+
 function render(doc,source){
- if(doc&&TYPES.includes(doc.reportType)&&typeof doc.text==='string')return doc.text;
+ if(doc&&TYPES.includes(doc.reportType)&&typeof doc.text==='string')return decorateFreeform(doc.text,source,doc.reportType);
  if(!doc||!TYPES.includes(doc.reportType)||!Array.isArray(doc.items))throw new Error('Rapport structuré invalide');
  const type=doc.reportType,name=storeName(source),head=type==='cuisiniste'?'🟠 COMPTE RENDU CUISINISTE':type==='buying-groups'?'🟠 COMPTE RENDU BUYING GROUP':(type==='brun'?'⚫ Résumé BRUN':'⚪ Résumé BLANC');
  const lines=[head+(name?' – '+name:'')],day=text(source&&source.completedDate||source&&source.date);
@@ -612,6 +667,6 @@ Rubriques possibles par type : ${JSON.stringify(schemas)}
 SOURCES_IMMUABLES:
 ${JSON.stringify(source)}`;
 }
-const api={VERSION,PROMPT_VERSION,MAX_ITEMS,TYPES,LABELS,ORDER,canonicalJSON,canonical:canonicalJSON,sourceSignature,reportsFor,buildPrompt,validate,validateBestEffort,validateEditorial,validateFreeform,validateDelivered,render,fallback,memory,validCleanup,validTopic};
+const api={VERSION,PROMPT_VERSION,MAX_ITEMS,TYPES,LABELS,ORDER,canonicalJSON,canonical:canonicalJSON,sourceSignature,reportsFor,buildPrompt,validate,validateBestEffort,validateEditorial,validateFreeform,validateDelivered,render,decorateFreeform,fallback,memory,validCleanup,validTopic};
 root.StoreRunnerReportRenderer=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
