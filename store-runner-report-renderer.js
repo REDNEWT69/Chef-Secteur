@@ -598,7 +598,9 @@ function decorateFreeform(reportText,source,reportType){
   if(!icon||/^\s*[-*]\s/.test(line))continue;
   lines[i]=line.replace(/^(\s*(?:#{1,6}\s*)?(?:\*\*|__)?)\s*/,(_,prefix)=>prefix+icon+' ');
  }
- return lines.join('\n').trim();
+ // Groq may output Markdown bold markers into the plain-text report editor.
+ // Remove only paired-asterisk syntax, never the source notes or list bullets.
+ return lines.join('\n').replace(/\*\*/g,'').trim();
 }
 
 function render(doc,source){

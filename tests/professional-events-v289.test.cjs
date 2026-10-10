@@ -38,4 +38,8 @@ assert.equal(events.coversDate('2026-11-19',state),false);
 assert.equal(events.remove(first.event.id),false);
 assert.equal(JSON.stringify({plan:state.plan,appointments:state.appointments}),original);
 assert.equal(saved,3,'creation, edit and removal must each persist');
+const release=require('../store-runner-whats-new.js').releaseFor('277');
+assert(release&&release.title.includes('Séminaires'));
+assert.equal(require('../version.json').displayVersion,'277');
+assert(require('fs').readFileSync('sw.js','utf8').includes('store-runner-professional-events.js'));
 console.log('PASS: V289 local professional events block every inclusive date, preserve plans, survive Google refresh and backup, edit/delete safely.');

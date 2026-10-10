@@ -25,6 +25,17 @@
      éléments par version. Ajouter une version = ajouter une entrée ici, rien d'autre. */
   const RELEASES=[
     {
+      version:'277',
+      title:'Séminaires et journées réservées dans ton planning',
+      items:[
+        'Dans Rendez-vous & actions, ajoute un séminaire, une formation, une réunion, un salon, un déplacement ou une absence sans choisir de magasin.',
+        'Indique les dates, la ville, l’adresse et les notes utiles. Le bouton Itinéraire t’aide à retrouver le lieu du rendez-vous.',
+        'Les journées réservées sont exclues des nouvelles tournées créées automatiquement par Store Runner.',
+        'Si tu avais déjà placé une visite ou un rendez-vous sur ces dates, Store Runner le signale sans effacer ton planning.',
+        'Sur l’Accueil, retrouve un rappel la veille et le jour même. Tes événements restent enregistrés hors ligne, même sans Google Agenda.'
+      ]
+    },
+    {
       version:'276',
       title:'Runner suit ce que tu viens de faire',
       items:[
