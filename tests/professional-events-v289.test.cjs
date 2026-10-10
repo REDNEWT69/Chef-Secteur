@@ -40,6 +40,6 @@ assert.equal(JSON.stringify({plan:state.plan,appointments:state.appointments}),o
 assert.equal(saved,3,'creation, edit and removal must each persist');
 const release=require('../store-runner-whats-new.js').releaseFor('277');
 assert(release&&release.title.includes('Séminaires'));
-assert.equal(require('../version.json').displayVersion,'277');
+assert(Number(require('../version.json').displayVersion)>=277,'La fonctionnalité Séminaires V277 reste disponible après les mises à jour');
 assert(require('fs').readFileSync('sw.js','utf8').includes('store-runner-professional-events.js'));
 console.log('PASS: V289 local professional events block every inclusive date, preserve plans, survive Google refresh and backup, edit/delete safely.');

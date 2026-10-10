@@ -74,24 +74,58 @@ function quality(){let score=100;for(const x of alerts())score-=x.type==='bad'?1
 /* La vue mensuelle combine l'Agenda Google en lecture seule et les événements locaux.
    Ne jamais injecter ces derniers dans state.calendarEvents : Google le remplace à la synchro. */
 function eventMap(){
-  const map={};
-  try{
-    for(const e of (state.calendarEvents||[])){
-      const raw=e.date||e.startDate||(e.start&&e.start.dateTime)||(e.start&&e.start.date),key=raw?String(raw).slice(0,10):'';
-      if(key)(map[key]||(map[key]=[])).push(e);
+  const map={},m=currentMonth(),first=new Date(m.year,m.month,1,12),last=new Date(m.year,m.month+1,0,12);
+  const local=Array.isArray(state.professionalEvents)?state.professionalEvents:[],
+    google=Array.isArray(state.calendarEvents)?state.calendarEvents:[];
+  for(let d=new Date(first);d<=last;d=addDays(d,1)){
+    const date=iso(d),list=[];
+    for(const e of local){
+      if(e&&e.startDate<=date&&e.endDate>=date&&e.title)list.push({title:e.title,source:'local',professional:true,kind:e.kind,location:e.location,id:e.id});
     }
-    const m=currentMonth(),first=iso(new Date(m.year,m.month,1,12)),last=iso(new Date(m.year,m.month+1,0,12));
-    for(const e of (state.professionalEvents||[])){
-      if(!e||!e.title||!e.startDate||!e.endDate||e.startDate>last||e.endDate<first)continue;
-      let day=e.startDate<first?first:e.startDate;
-      const end=e.endDate>last?last:e.endDate;
-      while(day<=end){
-        (map[day]||(map[day]=[])).unshift({id:e.id,title:e.title,kind:e.kind,location:e.location,professional:true});
-        day=iso(addDays(parseDate(day),1));
-      }
+    for(const e of google){
+      if(!e)continue;
+      let covers=false;
+      try{
+        if(typeof window.chefSecteurEventCoversDate==='function')covers=window.chefSecteurEventCoversDate(e,date);
+        else{
+          const from=String(e.date||e.startDate||e.start||'').slice(0,10),end=String(e.end||from).slice(0,10);
+          covers=from<=date&&date<=end;
+          if(e.allDay&&date===end&&end>from)covers=false;
+        }
+      }catch(err){}
+      if(covers)list.push({title:e.title||e.summary||'Événement Google',source:'google',id:e.id});
     }
-  }catch(err){console.warn('Agenda mensuel : affichage partiel',err)}
+    if(list.length)map[date]=list;
+  }
   return map;
+}
+function googleAgendaSummary(){
+  const status=window.chefGoogleStatus||{},last=state.calendarLastSync;
+  if(status.connected===true)return 'Google connecté';
+  if(status.phase==='expired'||status.phase==='disconnected')return 'Google à reconnecter';
+  if(status.phase==='offline')return 'Google hors ligne, données en cache';
+  if(last)return 'Google en cache, synchro à vérifier';
+  return 'Google non connecté';
+}
+/* V278 — lire le jour sélectionné sans modifier les rendez-vous ni l'Agenda Google. */
+function renderSelectedDayAgenda(){
+ const box=document.getElementById('proDayAgenda');if(!box)return;
+ const selected=document.querySelector('#dayTabs .periodDayTab.active[data-date],#dayTabs .dayTab.active[data-date]');
+ const date=selected&&selected.dataset&&selected.dataset.date;
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date||''))){box.hidden=true;box.innerHTML='';return}
+ const local=(Array.isArray(state.professionalEvents)?state.professionalEvents:[]).filter(e=>e&&e.title&&e.startDate<=date&&e.endDate>=date);
+ const google=(Array.isArray(state.calendarEvents)?state.calendarEvents:[]).filter(e=>{
+   if(!e)return false;
+   try{if(typeof window.chefSecteurEventCoversDate==='function')return window.chefSecteurEventCoversDate(e,date)}catch(err){}
+   const start=String(e.date||e.startDate||e.start||'').slice(0,10),end=String(e.end||start).slice(0,10);
+   return !!start&&start<=date&&(date<end||(!e.allDay&&date===end));
+ });
+ const list=[...local.map(e=>({source:'Store Runner',title:e.title,location:e.location||''})),
+             ...google.map(e=>({source:'Google Agenda',title:e.title||e.summary||'Événement',location:e.location||''}))];
+ let markup='<strong>📅 Agenda du '+esc(parseDate(date).toLocaleDateString('fr-FR',{day:'numeric',month:'long'}))+'</strong><small>'+esc(googleAgendaSummary())+'</small>';
+ if(list.length)markup+=list.slice(0,5).map(e=>'<div class="proDayAgendaItem"><b>'+esc(e.source)+'</b> · '+esc(e.title)+(e.location?' · '+esc(e.location):'')+'</div>').join('')+(list.length>5?'<small>+'+(list.length-5)+' autre(s) événement(s)</small>':'');
+ else markup+='<div class="proDayAgendaItem">Aucun événement enregistré pour cette date dans les données disponibles.</div>';
+ box.hidden=false;box.innerHTML=markup;
 }
 function loadMonthDay(raw){const date=parseDate(raw);if(!date||date.getDay()===0)return;try{const api=window.StoreRunnerPeriodDaySlider;if(api&&typeof api.openDate==='function'){api.openDate(raw);const target=document.querySelector('.timelineShell')||document.getElementById('dayTabs');if(target&&typeof target.scrollIntoView==='function')setTimeout(()=>target.scrollIntoView({behavior:'smooth',block:'start'}),80);return}}catch(e){}const a=archive(),mon=monday(date),key=iso(mon),snap=a[key],day=DAYS[date.getDay()-1];if(snap&&snap.plan){state.plan={};for(const d of DAYS)state.plan[d]=(snap.plan[d]||[]).map(resolveStore)}try{if(!state.settings)state.settings={};state.settings.weekDate=key;const w=document.getElementById('weekDate');if(w)w.value=key;window.selectedPlanningDay=day;if(typeof save==='function')save();if(typeof renderAll==='function')renderAll()}catch(e){}}
 function shiftMonth(delta){const m=currentMonth();viewMonth=new Date(m.year,m.month+delta,1,12);renderMonth()}
@@ -103,7 +137,7 @@ function renderMonth(){
   const localEvents=(state.professionalEvents||[]).filter(e=>e&&e.startDate<=lastKey&&e.endDate>=firstKey).slice().sort((a,b)=>a.startDate.localeCompare(b.startDate));
   const blocked=new Set(Object.entries(emap).filter(([day,events])=>day>=firstKey&&day<=lastKey&&events.some(e=>e.professional)).map(([day])=>day));
   const summary=document.querySelector('#planningProMonth summary');
-  if(summary)summary.textContent='Vue mensuelle du planning'+(blocked.size?' · 📅 '+blocked.size+' jour'+(blocked.size>1?'s':'')+' bloqué'+(blocked.size>1?'s':''):'');
+  if(summary&&summary.firstChild)summary.firstChild.nodeValue='Vue mensuelle du planning'+(blocked.size?' · 📅 '+blocked.size+' jour'+(blocked.size>1?'s':'')+' bloqué'+(blocked.size>1?'s':''):'');
   let start=new Date(first),dow=(start.getDay()+6)%7;
   start.setDate(start.getDate()-dow);
   const cells=Math.ceil((dow+last.getDate())/7)*7,by={};
@@ -119,7 +153,7 @@ function renderMonth(){
     if(route.length>4)h+='<div class="proMore">+'+(route.length-4)+' visites</div>';
     for(const e of evs.slice(0,2)){
       const title=e.professional?(String(e.kind||'Événement')+' · '+String(e.title||'')):String(e.title||e.summary||'Agenda');
-      h+='<div class="proEvent'+(e.professional?' proEventLocal':'')+'" title="'+esc(title)+(e.location?' · '+esc(e.location):'')+'">'+(e.professional?'📅 ':'▣ ')+esc(title)+'</div>';
+      h+='<div class="proEvent'+(e.professional?' proEventLocal':' proEventGoogle')+'" title="'+esc(title)+(e.location?' · '+esc(e.location):'')+'">'+(e.professional?'📅 ':'▣ ')+esc(title)+'</div>';
     }
     h+='</button>';
   }
@@ -133,6 +167,8 @@ function renderMonth(){
     h+='</div>';
   }
   box.innerHTML=h;
+  const status=document.getElementById('proMonthStatus');
+  if(status){const localIds=new Set(localEvents.map(e=>e.id));const googleIds=new Set(Object.values(emap).flat().filter(e=>e.source==='google').map(e=>e.id));status.textContent=googleAgendaSummary()+' · '+googleIds.size+' événement(s) Google · '+localIds.size+' événement(s) Store Runner';}
   const prev=box.querySelector('.proMonthPrev'),next=box.querySelector('.proMonthNext');
   if(prev)prev.onclick=()=>shiftMonth(-1);if(next)next.onclick=()=>shiftMonth(1);
   box.querySelectorAll('[data-pro-date]').forEach(b=>b.onclick=()=>loadMonthDay(b.dataset.proDate));
@@ -154,12 +190,12 @@ function renderAlerts(zone,list){
   if(more)more.onclick=function(){alertsExpanded=!alertsExpanded;renderAlerts(zone,list)};
 }
 function syncOptimizeLabel(){const b=document.getElementById('proOptimizeDay');if(!b)return;const label=isCompact()?'Réoptimiser':'Optimiser cette journée';if(b.textContent!==label)b.textContent=label}
-function render(){const q=quality(),st=monthStats(),a=alerts(),qe=document.getElementById('proQuality'),me=document.getElementById('proMonthMetrics'),ae=document.getElementById('proAlerts');if(qe)qe.innerHTML='<div class="proScore">'+q.score+'<small>/100</small></div><div><b>'+q.label+'</b><span>charge, horaires et couverture de la semaine</span></div>';if(me)me.innerHTML='<div><b>'+st.visits+'</b><span>visites mois</span></div><div><b>'+Math.round(st.km)+'</b><span>km estimés</span></div><div><b>'+Math.round(st.minutes/60)+'</b><span>h terrain + route</span></div><div><b>'+st.hotels+'</b><span>découchés</span></div>';if(!a.length)alertsExpanded=false;renderAlerts(ae,a);syncOptimizeLabel();renderMonth()}
+function render(){const q=quality(),st=monthStats(),a=alerts(),qe=document.getElementById('proQuality'),me=document.getElementById('proMonthMetrics'),ae=document.getElementById('proAlerts');if(qe)qe.innerHTML='<div class="proScore">'+q.score+'<small>/100</small></div><div><b>'+q.label+'</b><span>charge, horaires et couverture de la semaine</span></div>';if(me)me.innerHTML='<div><b>'+st.visits+'</b><span>visites mois</span></div><div><b>'+Math.round(st.km)+'</b><span>km estimés</span></div><div><b>'+Math.round(st.minutes/60)+'</b><span>h terrain + route</span></div><div><b>'+st.hotels+'</b><span>découchés</span></div>';if(!a.length)alertsExpanded=false;renderAlerts(ae,a);syncOptimizeLabel();renderMonth();renderSelectedDayAgenda()}
 function optimizeDay(){const day=selectedDay();try{if(typeof window.regenerateDay==='function')window.regenerateDay(day);else if(typeof regenerateDay==='function')regenerateDay(day);else if(typeof generateWeek==='function')generateWeek();setTimeout(render,150)}catch(e){console.warn(e)}}
 function printMonth(){renderMonth();document.body.classList.add('printProMonth');setTimeout(()=>{window.print();setTimeout(()=>document.body.classList.remove('printProMonth'),400)},50)}
 function cleanupStray(){try{const w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT),kill=[];let n;while(n=w.nextNode()){const t=String(n.nodeValue||'').trim();if(/^(\\n)+$/.test(t)||t==='\\n\\n')kill.push(n)}kill.forEach(n=>n.remove())}catch(e){}}
-function css(){if(document.getElementById('planningProPlusCss'))return;const s=document.createElement('style');s.id='planningProPlusCss';s.textContent='.proCard{background:#fff;border:1px solid #e1e5ed;border-radius:18px;padding:14px;margin:0 0 12px;box-shadow:0 4px 14px rgba(25,42,80,.045)}#planningProTop{margin:0 0 14px}.proTop{display:grid;grid-template-columns:1fr 1fr;gap:12px}.proActions,.proTitle,.proMonthTools,.proMonthHead,.proMonthNav{display:flex;justify-content:space-between;gap:10px;align-items:center}.proActions span,.proTitle span,.proMonthTools span,.proMonthHead span{display:block;font-size:10px;color:#667085}.proMonthNav>.secondary{flex:0 0 38px;width:38px;height:38px;padding:0;border-radius:12px;font-size:25px;line-height:1}.proMonthHead{flex:1;min-width:0}.proSwipeHint{text-align:center;font-size:9px;color:#98a2b3;margin:5px 0 9px}.proQuality{display:flex;align-items:center;gap:12px;margin-top:8px}.proScore{font-size:30px;font-weight:850}.proScore small{font-size:11px;color:#98a2b3}.proMetrics{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:8px}.proMetrics div{background:#f7f9fc;border-radius:11px;padding:8px}.proMetrics b{display:block;font-size:17px}.proMetrics span{font-size:9px;color:#667085}.proAlert{padding:9px 10px;border-radius:11px;margin-top:7px;font-size:11px;line-height:1.35}.proAlert.warn{background:#fff8e8;color:#7a4b00}.proAlert.bad{background:#fff2f0;color:#9e2d23}.proAlert.info{background:#f2f4f7;color:#475467}#proAlerts[hidden]{display:none!important}.proAlertMore{appearance:none;width:100%;margin-top:7px;min-height:38px;border:1px solid #e1e5ed;border-radius:11px;background:#f7f9fc;color:#475467;font:inherit;font-size:11px;font-weight:750;cursor:pointer;touch-action:manipulation}.proMonthCard{margin-top:14px}.proMonthCard summary{font-weight:800;cursor:pointer}.proMonthTools{margin:12px 0}.proWeekdays,.proMonthGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}.proWeekdays span{text-align:center;font-size:9px;color:#667085;padding:3px}.proDay{appearance:none;text-align:left;color:inherit;font:inherit;min-width:0;min-height:78px;border:1px solid #e7eaf0;border-radius:10px;padding:5px;background:#fff;overflow:hidden}.proDay.clickable{cursor:pointer;touch-action:manipulation}.proDay.clickable:active{transform:scale(.97);background:#f5f8ff}.proDay.muted{opacity:.28;background:#f8f9fb}.proDay:disabled{color:inherit}.proDate{font-size:10px;font-weight:800;margin-bottom:4px}.proStore,.proEvent,.proMore{font-size:8.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:7px;padding:3px 4px;margin:2px 0}.proStore.boulanger{background:#fff3cc;color:#8a6200}.proStore.darty{background:#ffeaea;color:#a92a2a}.proStore.fnac{background:#eaf3ff;color:#1769d2}.proStore.carrefour,.proStore.conforama{background:#fff0e8;color:#a54a18}.proStore.cuisinella{background:#f1ebff;color:#6941c6}.proEvent{background:#eaf3ff;color:#1769d2}.proDayBlocked{border-color:#e9b674;background:#fffbf3}.proEventLocal{background:#fff0d6;color:#81510c}.proMonthLocalSummary{margin:12px 0 0;padding:11px;background:#fffbf3;border:1px solid #efdbba;border-radius:11px;font-size:12px}.proMonthLocalRow{margin-top:8px;display:grid;gap:3px}.proMonthLocalRow strong{font-size:12px}.proMonthLocalRow small{color:#667085;font-size:11px}.proMore{background:#f2f4f7;color:#667085}@media(max-width:700px){.proSwipeHint{display:none}.proTop{grid-template-columns:1fr}.proActions{align-items:flex-start}.proMetrics{grid-template-columns:repeat(2,1fr)}.proDay{min-height:70px;padding:4px}.proStore,.proEvent,.proMore{font-size:8px;padding:2px 3px}.proMonthHead{align-items:center;flex-direction:column;gap:2px;text-align:center}.proMonthNav{gap:6px}}@media print{body.printProMonth *{visibility:hidden!important}body.printProMonth #planningProMonth,body.printProMonth #planningProMonth *{visibility:visible!important}body.printProMonth #planningProMonth{position:absolute;inset:0;margin:0;background:#fff}.bottomAppNav{display:none!important}}';document.head.appendChild(s)}
-function install(){const plan=document.getElementById('planPanel'),apple=plan&&plan.querySelector('.applePlan');if(!apple)return false;css();if(!document.getElementById('planningProTop')){const top=document.createElement('div');top.id='planningProTop';top.innerHTML='<div class="proCard proAlertCard" id="proAlertCard"><div class="proActions"><div><b>Alertes & recommandations</b><span>ce qui mérite ton attention avant de partir</span></div><button id="proOptimizeDay" class="secondary" type="button">Optimiser cette journée</button></div><div id="proAlerts"></div></div><div class="proTop"><div class="proCard"><div class="proTitle"><b>Qualité du planning</b><span>semaine affichée</span></div><div id="proQuality" class="proQuality"></div></div><div class="proCard"><div class="proTitle"><b>Résumé du mois</b><span>activité estimée</span></div><div id="proMonthMetrics" class="proMetrics"></div></div></div>';const metrics=document.getElementById('planMetrics');apple.insertBefore(top,metrics||apple.firstChild);document.getElementById('proOptimizeDay').addEventListener('click',optimizeDay)}if(!document.getElementById('planningProMonth')){const month=document.createElement('details');month.id='planningProMonth';month.className='proCard proMonthCard';/* Fonction utile mais secondaire : repliée par défaut, jamais supprimée. */month.open=false;month.innerHTML='<summary>Vue mensuelle du planning</summary><div class="proMonthTools"><span>Visites, événements professionnels et Google Agenda</span><button id="proPrintMonth" class="secondary" type="button">Exporter / PDF</button></div><div id="proMonthBody"></div>';const timeline=apple.querySelector('.timelineShell');if(timeline)timeline.insertAdjacentElement('afterend',month);else apple.appendChild(month);document.getElementById('proPrintMonth').addEventListener('click',printMonth)}cleanupStray();render();return true}
+function css(){if(document.getElementById('planningProPlusCss'))return;const s=document.createElement('style');s.id='planningProPlusCss';s.textContent='.proCard{background:#fff;border:1px solid #e1e5ed;border-radius:18px;padding:14px;margin:0 0 12px;box-shadow:0 4px 14px rgba(25,42,80,.045)}#planningProTop{margin:0 0 14px}.proTop{display:grid;grid-template-columns:1fr 1fr;gap:12px}.proActions,.proTitle,.proMonthTools,.proMonthHead,.proMonthNav{display:flex;justify-content:space-between;gap:10px;align-items:center}.proActions span,.proTitle span,.proMonthTools span,.proMonthHead span{display:block;font-size:10px;color:#667085}.proMonthNav>.secondary{flex:0 0 38px;width:38px;height:38px;padding:0;border-radius:12px;font-size:25px;line-height:1}.proMonthHead{flex:1;min-width:0}.proSwipeHint{text-align:center;font-size:9px;color:#98a2b3;margin:5px 0 9px}.proQuality{display:flex;align-items:center;gap:12px;margin-top:8px}.proScore{font-size:30px;font-weight:850}.proScore small{font-size:11px;color:#98a2b3}.proMetrics{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:8px}.proMetrics div{background:#f7f9fc;border-radius:11px;padding:8px}.proMetrics b{display:block;font-size:17px}.proMetrics span{font-size:9px;color:#667085}.proAlert{padding:9px 10px;border-radius:11px;margin-top:7px;font-size:11px;line-height:1.35}.proAlert.warn{background:#fff8e8;color:#7a4b00}.proAlert.bad{background:#fff2f0;color:#9e2d23}.proAlert.info{background:#f2f4f7;color:#475467}#proAlerts[hidden]{display:none!important}.proAlertMore{appearance:none;width:100%;margin-top:7px;min-height:38px;border:1px solid #e1e5ed;border-radius:11px;background:#f7f9fc;color:#475467;font:inherit;font-size:11px;font-weight:750;cursor:pointer;touch-action:manipulation}.proDayAgenda{padding:12px 14px;border:1px solid #d9e3f1;border-radius:14px;background:#f8fbff;margin:8px 0 12px;font-size:12px}.proDayAgenda strong{display:block;font-size:14px}.proDayAgenda small{display:block;font-size:11px;color:#667085;margin-top:4px}.proDayAgendaItem{margin-top:8px;line-height:1.4}.proDayAgendaItem b{color:#275d98}.proDayAgenda[hidden]{display:none!important}.proMonthCard{margin-top:14px}.proMonthCard summary{font-weight:800;cursor:pointer}.proMonthStatus{display:block;font-size:11px;font-weight:500;color:#667085;margin-top:6px}.proEventLocal{background:#e8f2ff!important;color:#1859a0!important}.proEventGoogle{background:#edf6ee!important;color:#226241!important}.proMonthTools{margin:12px 0}.proWeekdays,.proMonthGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}.proWeekdays span{text-align:center;font-size:9px;color:#667085;padding:3px}.proDay{appearance:none;text-align:left;color:inherit;font:inherit;min-width:0;min-height:78px;border:1px solid #e7eaf0;border-radius:10px;padding:5px;background:#fff;overflow:hidden}.proDay.clickable{cursor:pointer;touch-action:manipulation}.proDay.clickable:active{transform:scale(.97);background:#f5f8ff}.proDay.muted{opacity:.28;background:#f8f9fb}.proDay:disabled{color:inherit}.proDate{font-size:10px;font-weight:800;margin-bottom:4px}.proStore,.proEvent,.proMore{font-size:8.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:7px;padding:3px 4px;margin:2px 0}.proStore.boulanger{background:#fff3cc;color:#8a6200}.proStore.darty{background:#ffeaea;color:#a92a2a}.proStore.fnac{background:#eaf3ff;color:#1769d2}.proStore.carrefour,.proStore.conforama{background:#fff0e8;color:#a54a18}.proStore.cuisinella{background:#f1ebff;color:#6941c6}.proEvent{background:#eaf3ff;color:#1769d2}.proDayBlocked{border-color:#e9b674;background:#fffbf3}.proEventLocal{background:#fff0d6;color:#81510c}.proMonthLocalSummary{margin:12px 0 0;padding:11px;background:#fffbf3;border:1px solid #efdbba;border-radius:11px;font-size:12px}.proMonthLocalRow{margin-top:8px;display:grid;gap:3px}.proMonthLocalRow strong{font-size:12px}.proMonthLocalRow small{color:#667085;font-size:11px}.proMore{background:#f2f4f7;color:#667085}@media(max-width:700px){.proSwipeHint{display:none}.proTop{grid-template-columns:1fr}.proActions{align-items:flex-start}.proMetrics{grid-template-columns:repeat(2,1fr)}.proDay{min-height:70px;padding:4px}.proStore,.proEvent,.proMore{font-size:8px;padding:2px 3px}.proMonthHead{align-items:center;flex-direction:column;gap:2px;text-align:center}.proMonthNav{gap:6px}}@media print{body.printProMonth *{visibility:hidden!important}body.printProMonth #planningProMonth,body.printProMonth #planningProMonth *{visibility:visible!important}body.printProMonth #planningProMonth{position:absolute;inset:0;margin:0;background:#fff}.bottomAppNav{display:none!important}}';document.head.appendChild(s)}
+function install(){const plan=document.getElementById('planPanel'),apple=plan&&plan.querySelector('.applePlan');if(!apple)return false;css();if(!document.getElementById('planningProTop')){const top=document.createElement('div');top.id='planningProTop';top.innerHTML='<div class="proCard proAlertCard" id="proAlertCard"><div class="proActions"><div><b>Alertes & recommandations</b><span>ce qui mérite ton attention avant de partir</span></div><button id="proOptimizeDay" class="secondary" type="button">Optimiser cette journée</button></div><div id="proAlerts"></div></div><div class="proTop"><div class="proCard"><div class="proTitle"><b>Qualité du planning</b><span>semaine affichée</span></div><div id="proQuality" class="proQuality"></div></div><div class="proCard"><div class="proTitle"><b>Résumé du mois</b><span>activité estimée</span></div><div id="proMonthMetrics" class="proMetrics"></div></div></div>';const metrics=document.getElementById('planMetrics');apple.insertBefore(top,metrics||apple.firstChild);document.getElementById('proOptimizeDay').addEventListener('click',optimizeDay)}if(!document.getElementById('proDayAgenda')){const tabs=document.getElementById('dayTabs');if(tabs){const agenda=document.createElement('section');agenda.id='proDayAgenda';agenda.className='proDayAgenda';agenda.setAttribute('aria-live','polite');tabs.insertAdjacentElement('afterend',agenda)}}if(!document.getElementById('planningProMonth')){const month=document.createElement('details');month.id='planningProMonth';month.className='proCard proMonthCard';/* Fonction utile mais secondaire : repliée par défaut, jamais supprimée. */month.open=false;month.innerHTML='<summary>Vue mensuelle du planning<small id="proMonthStatus" class="proMonthStatus"></small></summary><div class="proMonthTools"><span>Visites, événements professionnels et Google Agenda</span><button id="proPrintMonth" class="secondary" type="button">Exporter / PDF</button></div><div id="proMonthBody"></div>';const timeline=apple.querySelector('.timelineShell');if(timeline)timeline.insertAdjacentElement('afterend',month);else apple.appendChild(month);document.getElementById('proPrintMonth').addEventListener('click',printMonth)}cleanupStray();render();return true}
 function scheduleInstall(delay){clearTimeout(refreshTimer);refreshTimer=setTimeout(function(){install();observeRefreshTargets()},delay==null?45:delay)}
 function observeRefreshTargets(){
   if(!refreshObserver)refreshObserver=new MutationObserver(function(records){for(const r of records){if((r.addedNodes&&r.addedNodes.length)||(r.removedNodes&&r.removedNodes.length)||r.type==='characterData'){scheduleInstall(45);return}}});
@@ -173,6 +209,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 window.addEventListener('load',function(){install();observeRefreshTargets()},{once:true});
 window.addEventListener('focus',function(){install();observeRefreshTargets()});
 document.addEventListener('visibilitychange',function(){if(!document.hidden){install();observeRefreshTargets()}});
-document.addEventListener('store-runner:professional-events-updated',renderMonth);
+document.addEventListener('store-runner:professional-events-updated',function(){renderMonth();renderSelectedDayAgenda()});
+document.addEventListener('store-runner:calendar-updated',function(){renderMonth();renderSelectedDayAgenda()});
 document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#dayTabs .dayTab'))setTimeout(function(){install();observeRefreshTargets()},80)},true);
 })();
