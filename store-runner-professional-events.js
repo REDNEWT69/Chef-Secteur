@@ -91,9 +91,8 @@ function makeUi(){
   if(!doc.getElementById('srProHome')){
     const home=doc.querySelector('#homePanel .homeHero');if(home){const e=doc.createElement('div');e.id='srProHome';home.insertAdjacentElement('afterend',e)}
   }
-  if(!doc.getElementById('srProPlanning')){
-    const title=doc.getElementById('planningProMonth')||doc.querySelector('#planPanel .applePlanTitle');if(title){const e=doc.createElement('div');e.id='srProPlanning';title.insertAdjacentElement('afterend',e)}
-  }
+  // La vue mensuelle est propriétaire de l'affichage des séminaires.
+  const oldPanel=doc.getElementById('srProPlanning');if(oldPanel)oldPanel.remove();
   return true;
 }
 /* Export manuel, jamais d'écriture cachée dans les agendas externes. */
