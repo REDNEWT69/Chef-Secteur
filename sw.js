@@ -1,4 +1,4 @@
-const BUILD_REV = "20261010-v278-agenda-278";
+const BUILD_REV = "20261010-v278-miseajour-278";
 /* V261.2 hotfix : même révision applicative, nouveau namespace de cache afin que les
    PWA déjà installées récupèrent le correctif de capacité à la source (visit-counting.js)
    sans mélanger ancien et nouveau shell. Le BUILD_REV reste V261 : aucune migration. */
@@ -34,7 +34,7 @@ const CORE_SHELL = [
   "./visit-history-delete.js", "./assistant-sheet-drag.js", "./visual-refresh-v1.js",
   "./home-refresh-v2.js", "./sector-pilotage.js", "./v182-fixes.js",
   "./planning-route-optimizer-v251.js", "./auto-planning-fix.js",
-  "./connection-ui.js", "./update-manager.js", "./store-runner-whats-new.js",
+  "./connection-ui.js", "./update-manager.js", "./store-runner-whats-new.js", "./runner-whats-new.webp",
   "./planning-manual-hours.js", "./glass-theme.css", "./reliability-ui.js",
   "./stores-layout-order.js", "./boulanger-national.js", "./national-sectors.js",
   "./sector-admin.js", "./store-runner-professional-events.js"

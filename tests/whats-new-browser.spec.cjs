@@ -124,3 +124,43 @@ test('Nouveautés s’affiche une seule fois après une vraie mise à jour et se
 
   expect(errors).toEqual([]);
 });
+
+// Refonte « Mises à jour » : mêmes garanties à 360, 390 et 412 px, en clair et en sombre.
+for(const [w,h] of [[360,740],[390,844],[412,915]]){
+  for(const theme of ['light','dark']){
+    test(`Mises à jour : Runner, panneau et « Compris » tiennent à ${w} px (${theme})`,async({page})=>{
+      const errors=[];page.on('pageerror',e=>errors.push(String(e&&e.message||e)));
+      await page.setViewportSize({width:w,height:h});
+      await page.addInitScript(t=>{try{localStorage.setItem('store-runner-appearance-v1',JSON.stringify({mode:t,accent:'blue'}))}catch(e){}},theme);
+      await page.goto(APP_URL,{waitUntil:'domcontentloaded'});
+      await ready(page);
+      await page.evaluate(()=>window.StoreRunnerWhatsNew.open(window.StoreRunnerWhatsNew.currentVersion()));
+      const dialog=page.locator('#storeRunnerWhatsNew');
+      await expect(dialog).toBeVisible();
+      await expect(dialog.locator('.srwnH')).toHaveText('Mises à jour');
+      await expect(dialog.locator('[data-srwn-new]')).toBeVisible();          // version pas encore vue
+      const img=dialog.locator('.srwnRunner');
+      await expect(img).toBeVisible();
+      expect(await img.evaluate(el=>el.complete&&el.naturalWidth>0)).toBe(true);
+      expect(await img.getAttribute('alt')).toBe('');
+      const items=await dialog.locator('[data-srwn-list] li').count();
+      expect(items).toBeGreaterThanOrEqual(3);
+      // Rien ne déborde ; « Compris » et ✕ restent atteignables sans défiler.
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(w);
+      const card=await dialog.locator('.srwnCard').boundingBox();
+      for(const sel of ['[data-srwn-ok]','[data-srwn-close]']){
+        const b=await dialog.locator(sel).boundingBox();
+        expect(b.height).toBeGreaterThanOrEqual(44);
+        expect(b.y+b.height).toBeLessThanOrEqual(card.y+card.height);
+        expect(b.x+b.width).toBeLessThanOrEqual(w);
+      }
+      await dialog.locator('[data-srwn-close]').tap();
+      await expect(dialog).toBeHidden();
+      expect(await read(page,SEEN_KEY)).toBe(await page.evaluate(()=>window.StoreRunnerWhatsNew.currentVersion()));
+      // Rouvert depuis le menu après lecture : la version reste lisible mais n'est plus « NEW ».
+      await page.evaluate(()=>window.StoreRunnerWhatsNew.open());
+      await expect(dialog.locator('[data-srwn-new]')).toBeHidden();
+      expect(errors).toEqual([]);
+    });
+  }
+}
