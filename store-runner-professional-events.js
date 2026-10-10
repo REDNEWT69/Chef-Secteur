@@ -101,7 +101,7 @@ function openEditor(item){
   const e=item||{},date=today();
   dlg.innerHTML='<form id="srProForm"><h3>'+html(item?'Modifier':'Ajouter')+' un événement professionnel</h3><div class="srProFields">'+
     '<label>Type<select name="kind">'+KINDS.map(v=>'<option value="'+html(v)+'"'+(v===(e.kind||'Séminaire')?' selected':'')+'>'+html(v)+'</option>').join('')+'</select></label>'+
-    '<label>Intitulé *<input name="title" required maxlength="160" placeholder="Ex. Séminaire Samsung à Paris" value="'+html(e.title||'')+'"></label>'+
+    '<label>Intitulé *<input name="title" required maxlength="160" placeholder="Ex. Séminaire professionnel à Paris" value="'+html(e.title||'')+'"></label>'+
     '<div class="srProDates"><label>Du *<input name="startDate" type="date" required value="'+html(e.startDate||date)+'"></label><label>Au *<input name="endDate" type="date" required value="'+html(e.endDate||date)+'"></label></div>'+
     '<label>Lieu / ville<input name="location" maxlength="160" placeholder="Ex. Paris" value="'+html(e.location||'')+'"></label>'+
     '<label>Adresse complète<input name="address" maxlength="350" placeholder="Ex. 10 rue Exemple, Paris" value="'+html(e.address||'')+'"></label>'+
