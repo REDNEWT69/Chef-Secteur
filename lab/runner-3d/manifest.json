@@ -1,0 +1,10 @@
+{
+  "_": "Fichiers publiés avec l'artefact « Runner 3D Lab » : chemin publié → source du dépôt. runner-visual.js et runner-whats-new.webp viennent de la racine, sans copie.",
+  "page": "lab/runner-3d/page.html",
+  "files": {
+    "runner-visual.js": "runner-visual.js",
+    "runner-whats-new.webp": "runner-whats-new.webp",
+    "runner3d.js": "lab/runner-3d/runner3d.js",
+    "lab.js": "lab/runner-3d/lab.js"
+  }
+}
