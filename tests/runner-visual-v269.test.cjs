@@ -28,7 +28,8 @@ assert.ok(sw.indexOf('"./runner-visual.js"') < sw.indexOf('const OPTIONAL_SHELL'
 assert(Number(version.displayVersion)>=276, 'Intelligence Runner V276 et versions ultérieures restent pris en charge');
 assert(require('../store-runner-whats-new.js').releaseFor('276'), 'les nouveautés Intelligence Runner V276 doivent rester consultables');
 assert(require('../store-runner-whats-new.js').releaseFor(version.displayVersion), 'chaque version publiée doit proposer ses nouveautés');
-assert.match(version.latestBuild, new RegExp('-'+version.displayVersion+'
+assert.ok(version.latestBuild.endsWith('-'+String(version.displayVersion)), 'Le build doit finir par la version visible');
+assert.match(version.latestBuild, /^\d{8}-(?:r\d+|v\d+)-[a-z0-9-]+-\d{3}$/, 'Identifiant de build coherent');
 assert.equal(index.match(/const BUILD_REV='([^']+)'/)[1], version.latestBuild);
 assert.equal(sw.match(/const BUILD_REV = "([^"]+)"/)[1], version.latestBuild);
 assert.ok(!fs.existsSync(path.join(__dirname, '..', 'runner-visual.css')), 'aucune feuille séparée : le style est injecté au premier mount');
